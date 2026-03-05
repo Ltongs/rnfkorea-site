@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ko" class="scroll-smooth">
+  <head>
+    <meta charset="UTF-8" />
+
+    <!-- ✅ NAVER site verification -->
+    <meta
+      name="naver-site-verification"
+      content="35c5f4e996d928011abdd73727a12c780783c87a"
+    />
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RNF KOREA - 산업용 에너지 & 모빌리티 솔루션</title>
+
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#0A192F" />
+
+    <!-- ✅ Font: Noto Sans KR (원복: 300~700만) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- ✅ Tailwind CDN (반드시 head 안) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+
+  <body>
+    <!-- ✅ Netlify form (하나만 유지) -->
+    <form
+      name="catalog"
+      method="POST"
+      data-netlify="true"
+      netlify-honeypot="bot-field"
+      hidden
+    >
+      <input type="hidden" name="form-name" value="catalog" />
+      <p hidden>
+        <label>Don’t fill this out: <input name="bot-field" /></label>
+      </p>
+      <input name="companyName" />
+      <input name="contactName" />
+      <input name="phone" />
+      <input name="email" />
+    </form>
+<form name="project-consult" method="POST" data-netlify="true" netlify-honeypot="bot-field" hidden>
+  <input type="hidden" name="form-name" value="project-consult" />
+  <p hidden><label>Don’t fill this out: <input name="bot-field" /></label></p>
+  <input name="projectType" />
+  <input name="projectLabel" />
+  <input name="company" />
+  <input name="name" />
+  <input name="phone" />
+  <input name="email" />
+  <textarea name="message"></textarea>
+</form>
+<form name="project-consult" method="POST" data-netlify="true" hidden>
+  <input type="hidden" name="form-name" value="project-consult" />
+  <input name="company" />
+  <input name="name" />
+  <input name="phone" />
+  <input name="email" />
+  <textarea name="message"></textarea>
+</form>
+<!-- ✅ Netlify form: project_consult (keep only ONE) -->
+<form
+  name="project_consult"
+  method="POST"
+  data-netlify="true"
+  netlify-honeypot="bot-field"
+  hidden
+>
+  <input type="hidden" name="form-name" value="project_consult" />
+  <p hidden>
+    <label>Don’t fill this out: <input name="bot-field" /></label>
+  </p>
+
+  <!-- 공통 -->
+  <input name="project" />
+  <input name="financeType" />
+  <input name="segment" />
+  <input name="pagePath" />
+
+  <!-- 사용자 입력 -->
+  <input name="companyName" />
+  <input name="contactName" />
+  <input name="phone" />
+  <input name="email" />
+  <input name="location" />
+  <input name="modelOrSpec" />
+  <input name="qty" />
+  <textarea name="message"></textarea>
+</form>
+    <div id="root"></div>
+    <script type="module" src="/src/index.tsx"></script>
+  </body>
+</html>
+

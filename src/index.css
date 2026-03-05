@@ -1,0 +1,57 @@
+/* =========================
+   RNF - index.css (FINAL)
+   - Tailwind CDN 사용 전제
+   - 글씨 두꺼워짐/색 이상 원복
+   ========================= */
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  font-family: "Noto Sans KR", sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+
+  /* ✅ 두꺼워짐 방지: 전역 기본 weight 원복 */
+  font-weight: 400;
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ✅ 혹시 어딘가에서 text 색을 흰색으로 먹여버렸을 때 대비(홈 하단 텍스트 흐려짐/안보임 방지)
+   Tailwind의 text-gray 계열을 쓰지만, 기본 상속이 망가진 경우를 막습니다. */
+#root {
+  color: #0f172a; /* slate-900 */
+}
+
+/* ---------- Hero animation (안 사라지는 안전 버전) ---------- */
+@keyframes rnfFadeUp {
+  from {
+    opacity: 0.001;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeUp {
+  animation: rnfFadeUp 0.75s ease-out both;
+}
+
+.delay-150 { animation-delay: 0.15s; }
+.delay-300 { animation-delay: 0.30s; }
+.delay-450 { animation-delay: 0.45s; }
+.delay-600 { animation-delay: 0.60s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fadeUp {
+    animation: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+}

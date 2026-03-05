@@ -1,0 +1,45 @@
+/* RNF - index.css (Tailwind CDN 전제) */
+
+html, body, #root { height: 100%; }
+body { overflow-y: auto; }
+
+body {
+  font-family: "Noto Sans KR", sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+
+  /* ✅ “두꺼워 보임” 방지: 기본 굵기 고정 */
+  font-weight: 400;
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ---- Hero animation (텍스트 안 사라지는 안전 버전) ---- */
+@keyframes rnfFadeUp {
+  from {
+    opacity: 0.001;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeUp {
+  animation: rnfFadeUp 0.75s ease-out both;
+}
+
+.delay-150 { animation-delay: 0.15s; }
+.delay-300 { animation-delay: 0.30s; }
+.delay-450 { animation-delay: 0.45s; }
+.delay-600 { animation-delay: 0.60s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fadeUp {
+    animation: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+}
