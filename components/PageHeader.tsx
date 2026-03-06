@@ -23,8 +23,6 @@ const topBtnBase =
   "transition-all whitespace-nowrap";
 
 // ✅ 오렌지 밑줄 (hover / active)
-// -bottom 값을 0 또는 -0.5 정도로 올리면 텍스트에 더 붙습니다.
-// (완전 붙이려면 after:-bottom-0 또는 after:bottom-0 권장)
 const underlineHover =
   "after:content-[''] after:absolute after:left-0 after:bottom-0 " +
   "after:h-[2px] after:w-full after:bg-orange-500 " +
@@ -40,7 +38,7 @@ const dropItem =
 
 const dropBox =
   "absolute right-0 top-full mt-0 w-[240px] rounded-2xl border border-gray-200 bg-white " +
-  "shadow-[0_18px_50px_rgba(15,23,42,0.10)] overflow-hidden z-[9999] pointer-events-auto";
+  "shadow-[0_18px_50px_rgba(15,23,42,0.10)] z-[9999] pointer-events-auto";
 
 // 드롭다운 공통 타이머 유틸
 function useDropdownTimers() {
@@ -104,7 +102,11 @@ export default function PageHeader() {
     pathname.startsWith("/export-shop/") ||
     pathname === "/battery-shop" ||
     pathname.startsWith("/battery-shop/");
-  const workActive = pathname.startsWith("/work/") || pathname.startsWith("/narumi");
+  const workActive =
+    pathname.startsWith("/work/") ||
+    pathname.startsWith("/narumi") ||
+    pathname === "/bson" ||
+    pathname.startsWith("/bson/");
 
   // ✅ hover open/close
   const hoverOpen = (which: "biz" | "shop" | "work") => {
@@ -132,10 +134,16 @@ export default function PageHeader() {
   };
 
   // ✅ 업무용 이동 (내부 사용자만 허용)
-  const goWork = (path: string) => {
+  const goWorkInternalOnly = (path: string) => {
     closeAll();
     if (user && isInternal) nav(path);
     else nav("/narumi/login");
+  };
+
+  // ✅ BS_ON (누구나 접근)
+  const goBsonPublic = () => {
+    closeAll();
+    nav("/bson");
   };
 
   return (
@@ -174,27 +182,41 @@ export default function PageHeader() {
             </button>
 
             {openBiz && (
-              <>
-                <div
-                  className={`absolute right-0 top-full w-[240px] ${BRIDGE_H} pointer-events-auto`}
-                  onMouseEnter={() => timers.clearClose()}
-                  onMouseLeave={() => hoverClose(setOpenBiz)}
-                />
-                <div
-                  className={dropBox}
-                  role="menu"
-                  onMouseEnter={() => timers.clearClose()}
-                  onMouseLeave={() => hoverClose(setOpenBiz)}
-                  onPointerDown={(e) => e.stopPropagation()}
-                >
-                  <Link to="/tires" className={dropItem} onClick={closeAll}>타이어</Link>
-                  <Link to="/battery" className={dropItem} onClick={closeAll}>배터리</Link>
-                  <Link to="/export" className={dropItem} onClick={closeAll}>노후장비 수출사업</Link>
-                  <Link to="/finance" className={dropItem} onClick={closeAll}>금융솔루션</Link>
-                  <Link to="/cargo-finance" className={dropItem} onClick={closeAll}>개인(개별)화물협회</Link>
-                </div>
-              </>
-            )}
+  <>
+    <div
+      className={`absolute right-0 top-full w-[240px] ${BRIDGE_H} pointer-events-auto`}
+      onMouseEnter={() => timers.clearClose()}
+      onMouseLeave={() => hoverClose(setOpenBiz)}
+    />
+    <div
+      className={dropBox}
+      role="menu"
+      onMouseEnter={() => timers.clearClose()}
+      onMouseLeave={() => hoverClose(setOpenBiz)}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <Link to="/tires" className={dropItem} onClick={closeAll}>
+        타이어
+      </Link>
+
+      <Link to="/battery" className={dropItem} onClick={closeAll}>
+        배터리
+      </Link>
+
+      <Link to="/export" className={dropItem} onClick={closeAll}>
+        노후장비 수출사업
+      </Link>
+
+      <Link to="/finance" className={dropItem} onClick={closeAll}>
+        금융솔루션
+      </Link>
+
+      <Link to="/cargo-finance" className={dropItem} onClick={closeAll}>
+        개인(개별)협회 전용 금융상품
+      </Link>
+    </div>
+  </>
+)}
           </div>
 
           {/* ========================= 쇼핑몰 ========================= */}
@@ -277,25 +299,14 @@ export default function PageHeader() {
                   onMouseLeave={() => hoverClose(setOpenWork)}
                   onPointerDown={(e) => e.stopPropagation()}
                 >
-                  <button
-                    type="button"
-                    className={dropItem}
-                    onClick={() => goWork("/work/narumi")}
-                  >
+                  <button type="button" className={dropItem} onClick={() => goWorkInternalOnly("/work/narumi")}>
                     나르미업무
                   </button>
 
-                  {/* ✅ 여기: BS_ON 연결 완료 */}
-                  <button
-  onClick={() => {
-    closeAll();
-    nav("/bson");
-  }}
-  className={dropItem}
-  type="button"
->
-  BS_ON 업무
-</button>
+                  {/* ✅ BS_ON: 누구나 접근 */}
+                  <button type="button" className={dropItem} onClick={goBsonPublic}>
+                    BS_ON 업무
+                  </button>
                 </div>
               </>
             )}

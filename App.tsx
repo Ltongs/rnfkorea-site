@@ -44,23 +44,21 @@ import {
 /* auth */
 import { AuthProvider, useAuth } from "./lib/auth";
 
+/* ✅ Header */
+import PageHeader from "./components/PageHeader";
+
 /* Pages — 반드시 직접 파일 경로로 */
 import NarumiPage from "./pages/Narumi";
 import BsonWorkPage from "./pages/BsonWork/index";
 import NarumiLoginPage from "./pages/Narumi/login";
 import SitemapPage from "./pages/Sitemap";
+import IndividualCargoFinancePage from "./pages/IndividualCargoFinance";
 
 import TireShopPage from "./pages/TireShop/index";
 import TireShopDetailPage from "./pages/TireShop/detail";
 import { fetchTireRows } from "./lib/tiresCsv";
 import { TIRE_CSV_URL } from "./pages/TireShop/config";
 import { ProjectConsultForm } from "./components/ProjectConsultForm";
-
-
-
-
-
-
 
 const CARD_H = "h-[168px] md:h-[176px]"; // ✅ 완전 고정 높이 (원하면 숫자만 조절)
 
@@ -4623,31 +4621,35 @@ const App = () => {
       <BrowserRouter>
         <ScrollToTop />
         <ScrollToTopButton />
-        <Header />
+        <PageHeader />
         
         <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/tires" element={<TiresPage />} />
-          <Route path="/battery" element={<BatteryPage />} />
-          <Route path="/export" element={<ExportOverviewPage />} />
-          <Route path="/export-shop" element={<ExportShopPage />} />
-          <Route path="/finance" element={<FinancePage />} />
-          <Route path="/sitemap" element={<SitemapPage />} />
+  <Route path="/" element={<HomePage />} />
+  <Route path="/tires" element={<TiresPage />} />
+  <Route path="/battery" element={<BatteryPage />} />
+  <Route path="/export" element={<ExportOverviewPage />} />
+  <Route path="/export-shop" element={<ExportShopPage />} />
+  <Route path="/finance" element={<FinancePage />} />
 
-          {/* Narumi (internal) */}
-          <Route path="/narumi/login" element={<NarumiLoginPage />} />
-          <Route path="/narumi" element={<ProtectedRoute><NarumiPage /></ProtectedRoute>} />
-          {/* BS_ON (public for now) */}
-          <Route path="/work/bson" element={<BsonWorkPage />} />
-          <Route path="/bson" element={<BsonWorkPage />} />
-<Route path="/work/bson" element={<Navigate to="/bson" replace />} />
+  {/* ✅ 개별(개인)화물협회 */}
+  <Route path="/cargo-finance" element={<IndividualCargoFinancePage />} />
 
-          {/* optional: legacy / case */}
-          <Route path="/Narumi" element={<Navigate to="/narumi" replace />} />
-          <Route path="/tires-shop" element={<TireShopPage />} />
-          <Route path="/tires-shop/:sku" element={<TireShopDetailPage />} />
-         
-        </Routes>
+  <Route path="/sitemap" element={<SitemapPage />} />
+
+  {/* Narumi (internal) */}
+  <Route path="/narumi/login" element={<NarumiLoginPage />} />
+  <Route path="/narumi" element={<ProtectedRoute><NarumiPage /></ProtectedRoute>} />
+
+  {/* ✅ BS_ON (public) */}
+  <Route path="/bson" element={<BsonWorkPage />} />
+  <Route path="/work/bson" element={<Navigate to="/bson" replace />} />
+
+  {/* optional: legacy / case */}
+  <Route path="/Narumi" element={<Navigate to="/narumi" replace />} />
+
+  <Route path="/tires-shop" element={<TireShopPage />} />
+  <Route path="/tires-shop/:sku" element={<TireShopDetailPage />} />
+</Routes>
         <Footer />
             </BrowserRouter>
     </AuthProvider>
