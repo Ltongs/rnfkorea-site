@@ -1,7 +1,7 @@
 // pages/Finance/index.tsx
 import React from "react";
-import PageHeader from "../../components/PageHeader";
 import { Link } from "react-router-dom";
+import PageTitle from "../../components/PageTitle";
 
 type LogoSpec = {
   src: string;
@@ -136,11 +136,26 @@ const FinancePage: React.FC = () => {
 
   return (
     <div className="container mx-auto px-4 py-16 space-y-12">
-      <PageHeader
-        current="금융솔루션"
-        title="금융 솔루션"
-        desc="장비 도입 비용을 줄이고 운영 효율을 높이기 위한 렌탈·리스·할부금융 구조를 설계합니다. 현장 조건과 현금흐름에 맞춰 가장 현실적인 선택지를 제안드립니다."
-      />
+      <PageTitle
+  title="금융 솔루션"
+  desc="장비 도입 비용을 줄이고 운영 효율을 높이기 위한 렌탈·리스·할부금융 구조를 설계합니다. 현장 조건과 현금흐름에 맞춰 가장 현실적인 선택지를 제안드립니다."
+/>
+      {/* ===================== 페이지 소개 ===================== */}
+      <section className="space-y-4">
+        <div className="flex items-start gap-3">
+          <div className="mt-1 h-6 w-1.5 rounded bg-orange-500" />
+          <div>
+            <h1 className="text-2xl md:text-4xl font-extrabold text-navy-900 tracking-tight">
+              금융 솔루션
+            </h1>
+            <p className="text-gray-600 mt-3 max-w-3xl leading-relaxed">
+              장비 도입 비용을 줄이고 운영 효율을 높이기 위한
+              렌탈·리스·할부금융 구조를 설계합니다.
+              현장 조건과 현금흐름에 맞춰 가장 현실적인 선택지를 제안드립니다.
+            </p>
+          </div>
+        </div>
+      </section>
 
       {/* ===================== 배터리 전환 금융 구조 ===================== */}
       <section className="space-y-8">
@@ -151,7 +166,8 @@ const FinancePage: React.FC = () => {
               배터리/타이어 교체 금융솔루션
             </h2>
             <p className="text-gray-600 mt-2 max-w-3xl">
-              RNF KOREA는 배터리/타이어 교체를 위한 금융·렌탈 구조를 설계합니다.<br/>
+              RNF KOREA는 배터리/타이어 교체를 위한 금융·렌탈 구조를 설계합니다.
+              <br />
               초기 투자 부담을 줄이고, 운영비를 줄여서 렌탈료로 상환하는 운영 절감 효과 기반 상환 모델을 제공합니다.
             </p>
           </div>
@@ -276,252 +292,46 @@ const FinancePage: React.FC = () => {
             </CardFooterNote>
           </div>
 
-          {/* 3) 리스 (개인_개별협회 전용) — ✅ 클릭 시 개별협회 페이지로 이동 */}
+          {/* 3) 리스 */}
           <Link
             to="/cargo-finance"
-            className="block"
+            className={`${cardBase} block flex flex-col h-full hover:border-orange-400`}
             aria-label="리스(개인_개별협회 전용 상품) 상세 페이지로 이동"
           >
-            <div className={`${cardBase} flex flex-col h-full`}>
-              <div className="flex items-start gap-3">
-                <div className="mt-1 h-6 w-1.5 rounded bg-orange-500" />
-                <div>
-                  <h3 className="text-lg md:text-xl font-extrabold text-navy-900">
-                    리스 (개인_개별협회 전용 상품)
-                  </h3>
-                  <p className="text-gray-600 mt-2 text-sm leading-relaxed">
-                    (주)롯데오토리스와 협업으로 개인(개별)화물협회 전용 우대 조건을 제공합니다.
-                  </p>
-                </div>
+            <div className="flex items-start gap-3">
+              <div className="mt-1 h-6 w-1.5 rounded bg-orange-500" />
+              <div>
+                <h3 className="text-lg md:text-xl font-extrabold text-navy-900">
+                  리스 (개인_개별협회 전용 상품)
+                </h3>
+                <p className="text-gray-600 mt-2 text-sm leading-relaxed">
+                  (주)롯데오토리스와 협업으로 개인(개별)화물협회 전용 우대 조건을 제공합니다.
+                </p>
               </div>
-
-              <ul className="mt-4 space-y-2 text-sm text-gray-700">
-                <li>• 협회 회원에 한하여 제공 가능</li>
-                <li>• 금융상품 이용시 우대 조건 제공</li>
-                <li>• 쿠팡 지역협의체 물량 우선 공유</li>
-                <li>• 협회 회원 전용 프로세스/서류 간소화</li>
-              </ul>
-
-              <PartnerLineRight
-                label="Partner"
-                partnersText="롯데오토리스"
-                logos={[{ ...partnerAssets.LOTTE, size: "h-12", opacity: "opacity-90" }]}
-              />
-
-              <CardFooterNote>
-                추천 고객: 개별화물협회 회원 또는 신규(예정)사업자
-                <span className="ml-2 text-orange-600 font-extrabold">
-                  (자세히 보기)
-                </span>
-              </CardFooterNote>
             </div>
+
+            <ul className="mt-4 space-y-2 text-sm text-gray-700">
+              <li>• 협회 회원에 한하여 제공 가능</li>
+              <li>• 금융상품 이용시 우대 조건 제공</li>
+              <li>• 쿠팡 지역협의체 물량 우선 공유</li>
+              <li>• 협회 회원 전용 프로세스/서류 간소화</li>
+            </ul>
+
+            <PartnerLineRight
+              label="Partner"
+              partnersText="롯데오토리스"
+              logos={[{ ...partnerAssets.LOTTE, size: "h-12", opacity: "opacity-90" }]}
+            />
+
+            <CardFooterNote>
+              추천 고객: 개별화물협회 회원 또는 신규(예정)사업자
+              <span className="ml-2 text-orange-600 font-extrabold">
+                (자세히 보기)
+              </span>
+            </CardFooterNote>
           </Link>
 
-          {/* ===================== MOU 섹션 ===================== */}
-          <div className="mt-6 pt-5 border-t border-gray-100 w-full max-w-none col-span-full md:col-span-3">
-            <div className="flex items-start justify-between mt-16">
-              <div className="flex items-start gap-3">
-                <div className="mt-1 h-6 w-1.5 rounded bg-orange-500" />
-                <div>
-                  <h2 className="text-2xl md:text-3xl font-extrabold text-navy-900 tracking-tight">
-                    MOU 협약 개인(개별)화물협회
-                  </h2>
-                  <p className="text-gray-600 mt-2 leading-relaxed">
-                    지역 협회와의 협약을 기반으로 금융 지원을 제공합니다.
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-1 shrink-0">
-                <span className="inline-flex items-center px-4 py-2 rounded-full bg-orange-50 text-orange-600 text-sm font-extrabold border border-orange-200">
-                  3개 시도 협약 완료
-                </span>
-              </div>
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-12 gap-4 w-full items-stretch">
-              {/* LEFT: Map */}
-              <div className="md:col-span-4 relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 w-full h-full">
-                <div className="relative w-full h-full flex flex-col">
-                  <div className="text-xs font-extrabold text-gray-500 mb-3">
-                    협약 네트워크(지도)
-                  </div>
-
-                  <div className="relative w-full flex-1 min-h-[190px]">
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-[85%] max-w-[380px] mx-auto">
-                        <svg viewBox="0 0 240 170" className="w-full h-auto" aria-label="South Korea map">
-                          <path
-                            d="
-                              M126 10
-                              C112 14,103 24,102 38
-                              C101 50,92 62,88 78
-                              C84 95,78 112,86 126
-                              C96 145,115 156,134 160
-                              C153 164,170 158,182 146
-                              C192 135,198 120,192 104
-                              C187 90,197 82,198 66
-                              C199 50,189 38,178 30
-                              C168 22,154 12,126 10 Z
-                            "
-                            fill="rgba(15,23,42,0.06)"
-                            stroke="rgba(15,23,42,0.26)"
-                            strokeWidth="2"
-                            strokeLinejoin="round"
-                          />
-                          <path
-                            d="M168 24 C180 38,186 56,182 74 C178 92,186 104,184 122 C182 138,172 150,160 156"
-                            fill="none"
-                            stroke="rgba(15,23,42,0.10)"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                          />
-                          <ellipse
-                            cx="108"
-                            cy="164"
-                            rx="12"
-                            ry="5.5"
-                            fill="rgba(15,23,42,0.06)"
-                            stroke="rgba(15,23,42,0.18)"
-                            strokeWidth="1.4"
-                          />
-
-                          {(() => {
-                            const SEOUL = { x: 132, y: 42, label: "서울", tx: 14, ty: 4 };
-                            const GYEONGBUK = { x: 165, y: 84, label: "경북", tx: 14, ty: 4 };
-                            const GWANGJU = { x: 118, y: 112, label: "광주", tx: 14, ty: 4 };
-
-                            const PushPin = ({
-                              x,
-                              y,
-                              label,
-                              tx,
-                              ty,
-                            }: {
-                              x: number;
-                              y: number;
-                              label: string;
-                              tx: number;
-                              ty: number;
-                            }) => (
-                              <g>
-                                <circle cx={x} cy={y} r="7" fill="rgb(239,68,68)" />
-                                <circle cx={x - 2.2} cy={y - 2.5} r="2.2" fill="rgba(255,255,255,0.55)" />
-                                <path
-                                  d={`
-                                    M ${x + 1.2} ${y + 6}
-                                    L ${x - 1.2} ${y + 6}
-                                    L ${x - 0.3} ${y + 26}
-                                    L ${x + 0.3} ${y + 26}
-                                    Z
-                                  `}
-                                  fill="rgba(148,163,184,0.95)"
-                                />
-                                <path
-                                  d={`
-                                    M ${x + 0.35} ${y + 26}
-                                    L ${x} ${y + 31}
-                                    L ${x - 0.35} ${y + 26}
-                                    Z
-                                  `}
-                                  fill="rgba(100,116,139,0.95)"
-                                />
-                                <text
-                                  x={x + tx}
-                                  y={y + ty}
-                                  fontSize="12"
-                                  fontWeight="800"
-                                  fill="rgb(15,23,42)"
-                                >
-                                  {label}
-                                </text>
-                              </g>
-                            );
-
-                            return (
-                              <>
-                                <PushPin {...SEOUL} />
-                                <PushPin {...GYEONGBUK} />
-                                <PushPin {...GWANGJU} />
-                              </>
-                            );
-                          })()}
-                        </svg>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-2 text-[11px] text-gray-400 leading-relaxed">
-                    * 지도는 협약 네트워크 위치를 설명하기 위한 시각화입니다.
-                  </div>
-                </div>
-              </div>
-
-              {/* RIGHT: Structure */}
-              <div className="md:col-span-8 w-full h-full">
-                <div className="rounded-2xl border border-gray-200 bg-white p-5 w-full h-full">
-                  <div className="flex flex-wrap gap-2 w-full mb-4">
-                    {[
-                      { label: "서울", sub: "협회 MOU" },
-                      { label: "광주", sub: "협회 MOU" },
-                      { label: "경북", sub: "협회 MOU" },
-                    ].map((x) => (
-                      <span
-                        key={x.label}
-                        className="
-                          inline-flex items-center gap-2
-                          px-3 py-2 rounded-2xl
-                          bg-white border border-gray-200
-                          shadow-[0_1px_0_rgba(0,0,0,0.02)]
-                        "
-                      >
-                        <span className="inline-block w-2.5 h-2.5 rounded-full bg-orange-500" />
-                        <span className="text-sm font-extrabold text-navy-900">{x.label}</span>
-                        <span className="text-xs font-bold text-gray-500">{x.sub}</span>
-                      </span>
-                    ))}
-                  </div>
-
-                  <div className="text-sm font-extrabold text-navy-900">협약 구조 (운영 방식)</div>
-
-                  <div className="mt-3 space-y-2 text-sm text-gray-700 leading-relaxed">
-                    <div className="flex gap-2">
-                      <span className="mt-1 inline-block w-1.5 h-1.5 rounded-full bg-orange-500" />
-                      <span>
-                        <b className="text-navy-900">지역 협회</b>를 통해 대상 고객(개별/개인)을 확보하고,
-                        신청–서류–심사 흐름을 표준화합니다.
-                      </span>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <span className="mt-1 inline-block w-1.5 h-1.5 rounded-full bg-orange-500" />
-                      <span>
-                        <b className="text-navy-900">RNF KOREA</b>는 상품 안내/조건 비교/서류 준비를 지원하여
-                        진행 속도와 승인 가능성을 높입니다.
-                      </span>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <span className="mt-1 inline-block w-1.5 h-1.5 rounded-full bg-orange-500" />
-                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span className="inline-flex items-center gap-2 font-extrabold text-navy-900">
-                          <span>롯데오토리스</span>
-                        </span>
-                        <span>는 최종 심사 및 계약을 수행합니다.</span>
-                        <span className="text-gray-500 font-bold text-xs">
-                          (금리·한도·기간은 금융사 기준으로 확정)
-                        </span>
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 text-[11px] text-gray-400">
-                    * 협약 지역은 지속 확대 예정입니다.
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          
         </div>
       </section>
 

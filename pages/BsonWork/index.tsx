@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import PageTitle from "../../components/PageTitle";
 
 type Row = {
   no?: string;
@@ -271,8 +272,15 @@ export default function BsonWorkPage() {
     "bg-gray-100 border border-gray-200 text-gray-400 font-extrabold cursor-not-allowed";
 
   return (
-    <div className="container mx-auto px-4 py-10 space-y-6">
-      {/* 상단 */}
+  <div className="container mx-auto px-4 py-10 space-y-6">
+    <PageTitle
+  title="BS_ON 업무"
+  desc="RNF KOREA 내부 자산 및 딜 관리 페이지입니다. 사진 업로드 진행 상태와 자산 정보를 관리합니다."
+/>
+
+   
+
+    {/* 상단 */}
       <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
         <div>
           <div className="text-sm font-bold text-gray-500">BS_ON · 렌탈 딜 자산 관리</div>
