@@ -317,23 +317,7 @@ export default function NarumiPage() {
       alert("출고일자는 YYYY.MM.DD 형식으로 입력해주세요. (예: 2026.02.25)");
       return;
     }
-{/* PAGE TITLE */}
-<section className="space-y-4">
-  <div className="flex items-start gap-3">
-    <div className="mt-1 h-6 w-1.5 rounded bg-orange-500" />
 
-    <div>
-      <h1 className="text-2xl md:text-4xl font-extrabold text-navy-900 tracking-tight">
-        Narumi 업무 관리
-      </h1>
-
-      <p className="text-gray-600 mt-3 max-w-3xl leading-relaxed">
-        차량 출고 및 등록 진행 상태를 관리하는 RNF 내부 업무 페이지입니다.
-        나르미 진행 상태, 보험, 등록, 서류 준비 여부를 확인할 수 있습니다.
-      </p>
-    </div>
-  </div>
-</section>
     setSaving(true);
     setErr("");
 
@@ -508,21 +492,13 @@ export default function NarumiPage() {
   return (
     <div className="container mx-auto px-4 py-10 space-y-6">
       <PageTitle
-  title="Narumi 업무 관리"
-  desc="차량 출고 및 등록 진행 상태를 관리하는 RNF 내부 업무 페이지입니다. 보험, 등록, 서류 준비 등 진행 단계를 한눈에 확인할 수 있습니다."
-/>
+        title="Narumi 업무 관리"
+        desc="차량 출고 및 등록 진행 상태를 관리하는 RNF 내부 업무 페이지입니다. 보험, 등록, 서류 준비 등 진행 단계를 한눈에 확인할 수 있습니다."
+      />
+
       <div className="space-y-3 border-b border-gray-200 pb-5">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="space-y-3">
-            <h1 className="text-3xl md:text-4xl font-extrabold text-navy-900 tracking-tight">
-              나르미 업무
-            </h1>
-
-            <p className="text-gray-600">
-              나르미모터스 입력 → RNF 단계 처리 → 차량등록증 업로드 시{" "}
-              <span className="font-extrabold">완결</span> 표시
-            </p>
-
             <div className="text-xs text-gray-400 leading-relaxed">
               * 고객 전화번호는 입력 후 {UI_MASK_AFTER_HOURS}시간 경과 시 화면에서 뒷 4자리가 마스킹됩니다.
               <br />
@@ -567,197 +543,115 @@ export default function NarumiPage() {
         )}
       </div>
 
+      {/* 신규 입력 (나르미모터스) */}
       <section className={`${cardClass} p-5`}>
-  <div className="flex items-start gap-3 mb-4">
-    <div className="mt-1 h-5 w-1.5 rounded bg-orange-500" />
-    <div className="flex-1">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="text-lg font-extrabold text-navy-900">
-          업무 목록 ({filteredRows.length})
-        </div>
-        {loading && <div className="text-sm text-gray-500">Loading…</div>}
-      </div>
-
-      <div className="text-sm text-gray-500 mt-1 leading-relaxed">
-        차량등록증 업로드 완료 후에는 보험~차량등록증 키가 모두 잠금됩니다.
-      </div>
-    </div>
-  </div>
-
-  <div className="space-y-2">
-    {filteredRows.map((r) => {
-      const locked = !!r.vehicle_doc_path;
-      const hasVehicleDoc = !!r.vehicle_doc_path;
-      const vehicleDocCanUpload = isVehicleDocKeyEnabled(r);
-      const currentStatus = deriveStatus(r);
-
-      return (
-        <div
-          key={String(r.id)}
-          className="border border-gray-200 rounded-2xl bg-white overflow-hidden"
-        >
-          <div className="grid lg:grid-cols-2">
-
-            {/* 좌측 정보 */}
-            <div className="p-3 border-b lg:border-b-0 lg:border-r border-gray-200">
-
-              <div className="flex items-center gap-2 flex-wrap mb-3">
-                <span
-                  className={`${pillBase} ${
-                    currentStatus === "completed"
-                      ? pillDone
-                      : currentStatus === "todo"
-                      ? pillGray
-                      : pillProg
-                  }`}
-                >
-                  {statusLabel(currentStatus)}
-                </span>
-
-                <span className="text-xs font-extrabold text-gray-500">
-                  ID {String(r.id)}
-                </span>
-              </div>
-
-              <div className="grid sm:grid-cols-2 gap-x-5 gap-y-3">
-
-                <div>
-                  <div className={infoLabel}>차대번호</div>
-                  <div className={infoValue}>{r.vin}</div>
-                </div>
-
-                <div>
-                  <div className={infoLabel}>전화번호</div>
-                  <div className={infoValue}>{getDisplayPhone(r)}</div>
-                </div>
-
-                <div>
-                  <div className={infoLabel}>출고일자</div>
-                  <div className={infoValue}>{r.delivery_date_text || "-"}</div>
-                </div>
-
-                <div>
-                  <div className={infoLabel}>생성일시</div>
-                  <div className={infoValue}>{formatCreatedAt(r.created_at)}</div>
-                </div>
-
-                <div>
-                  <div className={infoLabel}>롯데오토리스</div>
-                  <div className={infoValue}>{r.is_lotte_autolease ? "Y" : "N"}</div>
-                </div>
-
-              </div>
+        <div className="flex items-start gap-3 mb-4">
+          <div className="mt-1 h-5 w-1.5 rounded bg-orange-500" />
+          <div>
+            <div className="text-lg font-extrabold text-navy-900">
+              신규 입력 (나르미모터스)
             </div>
-
-            {/* 우측 RNF 단계 + 메모 */}
-            <div className="p-3 flex flex-col gap-3">
-
-              {/* RNF 단계 */}
-              <div>
-                <div className="text-sm font-extrabold text-gray-500 mb-2">
-                  RNF 단계
-                </div>
-
-                <div className="grid grid-cols-2 xl:grid-cols-3 gap-2">
-
-                  <button
-                    disabled={locked}
-                    className={[
-                      btnBase,
-                      locked ? btnDisabled : r.has_insurance ? btnOn : btnOff,
-                    ].join(" ")}
-                    onClick={() => toggleStage(r.id, "has_insurance")}
-                  >
-                    보험서류
-                  </button>
-
-                  <button
-                    disabled={locked}
-                    className={[
-                      btnBase,
-                      locked ? btnDisabled : r.docs_ready ? btnOn : btnOff,
-                    ].join(" ")}
-                    onClick={() => toggleStage(r.id, "docs_ready")}
-                  >
-                    등록서류
-                  </button>
-
-                  <button
-                    disabled={locked}
-                    className={[
-                      btnBase,
-                      locked ? btnDisabled : r.is_registering ? btnOn : btnOff,
-                    ].join(" ")}
-                    onClick={() => toggleStage(r.id, "is_registering")}
-                  >
-                    등록접수
-                  </button>
-
-                  <button
-                    disabled={locked}
-                    className={[
-                      btnBase,
-                      locked ? btnDisabled : r.is_registered ? btnOn : btnOff,
-                    ].join(" ")}
-                    onClick={() => toggleStage(r.id, "is_registered")}
-                  >
-                    등록완료
-                  </button>
-
-                  <button
-                    disabled={!vehicleDocCanUpload || uploadingId === r.id || locked}
-                    className={[
-                      btnBase,
-                      hasVehicleDoc ? btnOn : btnOff,
-                      (!vehicleDocCanUpload || uploadingId === r.id || locked)
-                        ? btnDisabled
-                        : "",
-                    ].join(" ")}
-                    onClick={() => onClickVehicleDocUpload(r)}
-                  >
-                    {uploadingId === r.id
-                      ? "업로드중"
-                      : hasVehicleDoc
-                      ? "차량등록증"
-                      : "차량등록증"}
-                  </button>
-
-                  <button
-                    disabled={!hasVehicleDoc}
-                    className={[
-                      btnBase,
-                      hasVehicleDoc ? btnOff : btnDisabled,
-                    ].join(" ")}
-                    onClick={() => downloadVehicleDoc(r)}
-                  >
-                    다운로드
-                  </button>
-
-                </div>
-              </div>
-
-              {/* 메모 */}
-              <div>
-                <div className="text-sm font-extrabold text-gray-500 mb-2">
-                  메모
-                </div>
-
-                <div className="min-h-[56px] text-sm text-gray-700 whitespace-pre-wrap break-words rounded-xl bg-gray-50 border border-gray-200 px-3 py-2">
-                  {r.special_note?.trim() ? r.special_note : (
-                    <span className="text-gray-400">-</span>
-                  )}
-                </div>
-
-              </div>
-
+            <div className="text-sm text-gray-500 mt-1">
+              차대번호/고객전화번호/출고일자/롯데오토리스 여부를 먼저 입력합니다.
             </div>
-
           </div>
         </div>
-      );
-    })}
-  </div>
-</section>
+
+        <div className="grid md:grid-cols-12 gap-4 items-end">
+          <div className="md:col-span-5 relative">
+            <label className={labelClass}>차대번호(VIN) *</label>
+            <input
+              value={vin}
+              onChange={(e) => setVin(normalizeVin(e.target.value))}
+              placeholder="예: KMH..."
+              className={inputClass}
+            />
+            <div className="absolute -bottom-5 left-0 text-xs text-gray-400">
+              VIN 끝6자리(참고):
+              <span className="font-extrabold text-gray-600 ml-1">
+                {last6 || "------"}
+              </span>
+            </div>
+          </div>
+
+          <div className="md:col-span-3">
+            <label className={labelClass}>전화번호 *</label>
+            <input
+              value={customerPhone}
+              onChange={(e) => setCustomerPhone(formatPhoneKR(e.target.value))}
+              placeholder="010-1234-5678"
+              inputMode="tel"
+              className={inputClass}
+            />
+          </div>
+
+          <div className="md:col-span-2">
+            <label className={labelClass}>출고일자 *</label>
+            <input
+              value={deliveryText}
+              onChange={(e) => setDeliveryText(formatYYYYMMDDToDots(e.target.value))}
+              placeholder="YYYY.MM.DD"
+              inputMode="numeric"
+              className={inputClass}
+            />
+          </div>
+
+          <div className="md:col-span-2">
+            <label className={labelClass}>롯데오토리스(Y/N)</label>
+            <div className="h-[52px] w-full rounded-xl border border-gray-200 bg-white flex items-center gap-6 px-4">
+              <label className="inline-flex items-center gap-2 font-extrabold text-sm text-navy-900 cursor-pointer">
+                <input
+                  type="radio"
+                  name="lotte"
+                  checked={lotte === true}
+                  onChange={() => setLotte(true)}
+                  className="h-4 w-4 accent-orange-500"
+                />
+                Y
+              </label>
+              <label className="inline-flex items-center gap-2 font-extrabold text-sm text-navy-900 cursor-pointer">
+                <input
+                  type="radio"
+                  name="lotte"
+                  checked={lotte === false}
+                  onChange={() => setLotte(false)}
+                  className="h-4 w-4 accent-orange-500"
+                />
+                N
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5">
+          <label className={labelClass}>특이사항 (긴 내용 가능)</label>
+          <textarea
+            value={specialNote}
+            onChange={(e) => setSpecialNote(e.target.value)}
+            placeholder="예: 고객 요청사항 / 특이사항 / 보험사 정보 / 등록 관련 메모 ..."
+            className="w-full min-h-[84px] px-4 py-3 rounded-xl border border-gray-200 focus:border-orange-400 focus:ring-4 focus:ring-orange-200/40 outline-none whitespace-pre-wrap"
+          />
+        </div>
+
+        <div className="mt-5 flex items-center gap-3 flex-wrap">
+          <button
+            type="button"
+            onClick={onAdd}
+            disabled={saving}
+            className="px-6 py-3 rounded-xl bg-orange-500 text-white font-extrabold hover:bg-orange-600 disabled:opacity-60 whitespace-nowrap"
+          >
+            {saving ? "추가 중..." : "추가"}
+          </button>
+
+          <button
+            type="button"
+            onClick={onReset}
+            className="px-6 py-3 rounded-xl border border-gray-200 text-navy-900 font-extrabold hover:border-gray-300 whitespace-nowrap"
+          >
+            입력 초기화
+          </button>
+        </div>
+      </section>
 
       {isAdmin && (
         <section className={`${cardClass} p-5`}>
@@ -825,6 +719,7 @@ export default function NarumiPage() {
         onChange={onFilePicked}
       />
 
+      {/* 업무 목록 */}
       <section className={`${cardClass} p-5`}>
         <div className="flex items-start gap-3 mb-4">
           <div className="mt-1 h-5 w-1.5 rounded bg-orange-500" />
@@ -848,7 +743,7 @@ export default function NarumiPage() {
           </div>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-2">
           {filteredRows.map((r) => {
             const locked = !!r.vehicle_doc_path;
             const hasVehicleDoc = !!r.vehicle_doc_path;
@@ -861,9 +756,8 @@ export default function NarumiPage() {
                 className="border border-gray-200 rounded-2xl bg-white overflow-hidden"
               >
                 <div className="grid lg:grid-cols-2">
-                  {/* 좌측 섹션 */}
-                  <div className="p-5 border-b lg:border-b-0 lg:border-r border-gray-200">
-                    <div className="flex items-center gap-2 flex-wrap mb-4">
+                  <div className="p-3 border-b lg:border-b-0 lg:border-r border-gray-200">
+                    <div className="flex items-center gap-2 flex-wrap mb-3">
                       <span
                         className={`${pillBase} ${
                           currentStatus === "completed"
@@ -887,7 +781,7 @@ export default function NarumiPage() {
                       )}
                     </div>
 
-                    <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4">
+                    <div className="grid sm:grid-cols-2 gap-x-5 gap-y-3">
                       <div>
                         <div className={infoLabel}>차대번호(VIN)</div>
                         <div className={infoValue}>{r.vin}</div>
@@ -928,11 +822,9 @@ export default function NarumiPage() {
                     </div>
                   </div>
 
-                  {/* 우측 섹션 */}
-                  <div className="p-5 flex flex-col gap-5">
-                    {/* 상단 RNF 단계 */}
+                  <div className="p-3 flex flex-col gap-3">
                     <div>
-                      <div className="text-sm font-extrabold text-gray-500 mb-3">
+                      <div className="text-sm font-extrabold text-gray-500 mb-2">
                         RNF 단계
                       </div>
 
@@ -1033,12 +925,11 @@ export default function NarumiPage() {
                       </div>
                     </div>
 
-                    {/* 하단 메모 */}
-                    <div className="pt-1">
+                    <div>
                       <div className="text-sm font-extrabold text-gray-500 mb-2">
                         메모
                       </div>
-                      <div className="min-h-[92px] text-sm text-gray-700 whitespace-pre-wrap break-words rounded-xl bg-gray-50 border border-gray-200 px-4 py-3">
+                      <div className="min-h-[56px] text-sm text-gray-700 whitespace-pre-wrap break-words rounded-xl bg-gray-50 border border-gray-200 px-3 py-2">
                         {r.special_note?.trim() ? (
                           r.special_note
                         ) : (

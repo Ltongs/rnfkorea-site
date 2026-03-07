@@ -46,7 +46,7 @@ import { AuthProvider, useAuth } from "./lib/auth";
 
 /* components */
 import PageHeader from "./components/PageHeader";
-import ProtectedRouteComponent from "./components/ProtectedRoute";
+import ProtectedRouteGuard from "./components/ProtectedRoute";
 import { ProjectConsultForm } from "./components/ProjectConsultForm";
 
 /* pages */
@@ -4621,53 +4621,57 @@ const App = () => {
     <LangContext.Provider value={{ lang, setLang, t }}>
       <AuthProvider>
       <BrowserRouter>
-        <ScrollToTop />
-        <ScrollToTopButton />
-        <PageHeader />
-        
-        <Routes>
-  <Route path="/" element={<HomePage />} />
-  <Route path="/tires" element={<TiresPage />} />
-  <Route path="/battery" element={<BatteryPage />} />
-  <Route path="/export" element={<ExportOverviewPage />} />
-  <Route path="/export-shop" element={<ExportShopPage />} />
-  <Route path="/finance" element={<FinancePage />} />
-  <Route path="/cargo-finance" element={<IndividualCargoFinancePage />} />
-  <Route path="/sitemap" element={<SitemapPage />} />
-  <Route path="/work/narumi" element={<Navigate to="/narumi" replace />} />
+  <div className="min-h-screen overflow-x-hidden bg-white">
+    <ScrollToTop />
+    <ScrollToTopButton />
+    <PageHeader />
 
-  {/* Narumi */}
-  <Route path="/narumi/login" element={<NarumiLoginPage />} />
-  <Route
-    path="/narumi"
-    element={
-      <ProtectedRouteComponent>
-  <NarumiPage />
-</ProtectedRouteComponent>
-    }
-  />
-  <Route
-    path="/narumi/admin"
-    element={
-      <ProtectedRouteComponent>
-  <NarumiPage />
-</ProtectedRouteComponent>
-    }
-  />
+    <main className="w-full">
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/tires" element={<TiresPage />} />
+        <Route path="/battery" element={<BatteryPage />} />
+        <Route path="/export" element={<ExportShopPage />} />
+        <Route path="/export-shop" element={<ExportShopPage />} />
+        <Route path="/finance" element={<FinancePage />} />
+        <Route path="/cargo-finance" element={<IndividualCargoFinancePage />} />
+        <Route path="/sitemap" element={<SitemapPage />} />
 
-  {/* BS_ON (public) */}
-  <Route path="/bson" element={<BsonWorkPage />} />
-  <Route path="/work/bson" element={<Navigate to="/bson" replace />} />
+        {/* Narumi */}
+        <Route path="/narumi/login" element={<NarumiLoginPage />} />
+        <Route
+          path="/narumi"
+          element={
+            <ProtectedRoute>
+              <NarumiPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/narumi/admin"
+          element={
+            <ProtectedRoute>
+              <NarumiPage />
+            </ProtectedRoute>
+          }
+        />
 
-  {/* legacy / redirect */}
-  <Route path="/Narumi" element={<Navigate to="/narumi" replace />} />
+        {/* BS_ON */}
+        <Route path="/bson" element={<BsonWorkPage />} />
+        <Route path="/work/bson" element={<Navigate to="/bson" replace />} />
 
-  {/* Shop */}
-  <Route path="/tires-shop" element={<TireShopPage />} />
-  <Route path="/tires-shop/:sku" element={<TireShopDetailPage />} />
-</Routes>
-        <Footer />
-            </BrowserRouter>
+        {/* legacy */}
+        <Route path="/Narumi" element={<Navigate to="/narumi" replace />} />
+
+        {/* Shop */}
+        <Route path="/tires-shop" element={<TireShopPage />} />
+        <Route path="/tires-shop/:sku" element={<TireShopDetailPage />} />
+      </Routes>
+    </main>
+
+    <Footer />
+  </div>
+</BrowserRouter>
     </AuthProvider>
     </LangContext.Provider>
   );
