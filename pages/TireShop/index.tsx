@@ -1,330 +1,565 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Search, Filter } from "lucide-react";
-import { fetchTireRows } from "../../lib/tiresCsv";
-import type { TireCsvRow } from "../../lib/tiresCsv";
-import { TIRE_CSV_URL, buildProductNoMap } from "./config";
 
-type VehicleTab = "ALL" | "CARGO" | "DUMP" | "BUS" | "TRAILER";
-type AxleTab = "ALL" | "STEER" | "DRIVE" | "TRAILER";
-
-/**
- * ✅ 톤급 버킷
- * - CARGO: 4버킷
- * - DUMP: 2버킷
- * - BUS/TRAILER: 없음
- */
-type TonBucket =
-  | "ALL"
-  | "LT3"
-  | "B3_5"
-  | "B5_10"
-  | "GE10"
-  | "DUMP_15"
-  | "DUMP_25P";
-
-function fmtKRW(n?: number) {
-  const v = Number(n ?? 0);
-  if (!Number.isFinite(v) || v <= 0) return "가격문의";
-  return `${new Intl.NumberFormat("ko-KR").format(v)}원`;
-}
-
-function parseTonValue(tonClass: any): number | null {
-  if (tonClass == null) return null;
-
-  if (typeof tonClass === "number") {
-    return Number.isFinite(tonClass) ? tonClass : null;
-  }
-
-  const s = String(tonClass).trim();
-  if (!s) return null;
-
-  const m = s.match(/(\d+(\.\d+)?)/);
-  if (!m) return null;
-
-  const v = Number(m[1]);
-  return Number.isFinite(v) ? v : null;
-}
-
-/**
- * ✅ 차종별 톤급 판정
- */
-function inTonBucketByVehicle(
-  tonClass: any,
-  vehicle: VehicleTab,
-  bucket: TonBucket
-): boolean {
-  if (bucket === "ALL") return true;
-  if (vehicle === "ALL") return true;
-
-  // BUS & TRAILER → 톤급 필터 없음
-  if (vehicle === "BUS" || vehicle === "TRAILER") return true;
-
-  const v = parseTonValue(tonClass);
-  if (v == null) return false;
-
-  if (vehicle === "DUMP") {
-    if (bucket === "DUMP_15") return v >= 15 && v < 25;
-    if (bucket === "DUMP_25P") return v >= 25;
-    return true;
-  }
-
-  if (vehicle === "CARGO") {
-    switch (bucket) {
-      case "LT3":
-        return v < 3;
-      case "B3_5":
-        return v >= 3 && v < 5;
-      case "B5_10":
-        return v >= 5 && v < 10;
-      case "GE10":
-        return v >= 10;
-      default:
-        return true;
-    }
-  }
-
-  return true;
-}
-
-/**
- * ✅ 차종별 톤 옵션
- */
-const TON_OPTIONS: Record<
-  Exclude<VehicleTab, "ALL">,
-  { value: TonBucket; label: string }[]
-> = {
-  CARGO: [
-    { value: "ALL", label: "전체" },
-    { value: "LT3", label: "3톤 미만" },
-    { value: "B3_5", label: "3~5톤" },
-    { value: "B5_10", label: "5~10톤" },
-    { value: "GE10", label: "10톤 이상" },
-  ],
-  DUMP: [
-    { value: "ALL", label: "전체" },
-    { value: "DUMP_15", label: "15톤" },
-    { value: "DUMP_25P", label: "25톤+" },
-  ],
-  BUS: [{ value: "ALL", label: "톤급 없음" }],
-  TRAILER: [{ value: "ALL", label: "톤급 없음" }],
+type TireRow = {
+  sku: string;
+  is_active: string;
+  brand: string;
+  model_line: string;
+  size: string;
+  axle: string;
+  position_type: string;
+  vehicle_type: string;
+  ton_class: string;
+  pattern_type: string;
+  season: string;
+  load_index: string;
+  speed_symbol: string;
+  pr: string;
+  tube_type: string;
+  oe_fitment: string;
+  main_thumb_url: string;
+  price: string;
+  supply_price: string;
+  shipping_type: string;
+  shipping_fee: string;
+  stock_qty: string;
+  lead_time_days: string;
+  tags: string;
+  keyword: string;
+  shop_title: string;
+  short_desc: string;
+  spec_summary: string;
+  features: string;
+  notes: string;
+  updated_at: string;
 };
 
-export default function TireShopPage() {
-  const [rows, setRows] = useState<TireCsvRow[]>([]);
-  const [productMap, setProductMap] = useState<Map<string, string>>(new Map());
+type VehicleGroup =
+  | "전체"
+  | "1톤~3.5톤 이하"
+  | "5톤~10톤 이하"
+  | "11톤 초과"
+  | "트레일러"
+  | "덤프"
+  | "버스";
 
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
+const CSV_URL =
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vStUJkHotLlVECjJPyaxIWnYTl45_0Fw9IAtgIUzkRjScPYWE_lYJfk2_38Uqn9Y40kP-5pv3UXeRJf/pub?gid=306191113&single=true&output=csv";
 
-  const [vehicle, setVehicle] = useState<VehicleTab>("ALL");
-  const [axle, setAxle] = useState<AxleTab>("ALL");
-  const [ton, setTon] = useState<TonBucket>("ALL");
-  const [q, setQ] = useState("");
+const pageWrap = "container mx-auto px-4 py-10 md:py-14 space-y-8";
+const sectionCard =
+  "rounded-[28px] border border-gray-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.06)]";
+const cardBase =
+  "overflow-hidden rounded-[26px] border border-gray-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.06)]";
+const badgeBase =
+  "inline-flex items-center rounded-full border px-3 py-1 text-xs font-extrabold";
+const tabBase =
+  "h-10 rounded-full px-4 text-sm font-extrabold transition-all border";
 
-  const [toast, setToast] = useState("");
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let inQuotes = false;
 
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(""), 1800);
-    return () => clearTimeout(t);
-  }, [toast]);
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    const next = line[i + 1];
 
-  async function copyToClipboard(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      setToast(`상품번호 복사됨: ${text}`);
-    } catch {
-      setToast("복사 실패 (브라우저 권한 확인)");
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === "," && !inQuotes) {
+      result.push(current);
+      current = "";
+    } else {
+      current += char;
     }
   }
 
-  const load = async () => {
-    setLoading(true);
-    setErr("");
-    try {
-      const data = await fetchTireRows(TIRE_CSV_URL);
-      const commercial = data.filter((x) => x.is_active);
-      setRows(commercial);
-      setProductMap(buildProductNoMap(commercial));
-    } catch (e: any) {
-      setErr(e?.message || "Load failed");
-    } finally {
-      setLoading(false);
+  result.push(current);
+  return result.map((v) => v.trim());
+}
+
+function parseCSV(text: string): TireRow[] {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length < 2) return [];
+
+  const headers = parseCSVLine(lines[0]);
+
+  return lines.slice(1).map((line) => {
+    const values = parseCSVLine(line);
+    const row: Record<string, string> = {};
+
+    headers.forEach((header, index) => {
+      row[header] = values[index] ?? "";
+    });
+
+    return row as TireRow;
+  });
+}
+
+function normalize(value: string) {
+  return String(value || "").trim();
+}
+
+function upper(value: string) {
+  return normalize(value).toUpperCase();
+}
+
+function cleanTonClass(value: string) {
+  return upper(value).replace(/\s+/g, "");
+}
+
+function formatPrice(value: string) {
+  const num = Number(String(value || "").replace(/,/g, ""));
+  if (!num || Number.isNaN(num)) return "문의";
+  return `${num.toLocaleString("ko-KR")}원`;
+}
+
+function getVehicleGroup(row: TireRow): Exclude<VehicleGroup, "전체"> {
+  const vehicleType = upper(row.vehicle_type);
+  const tonClass = cleanTonClass(row.ton_class);
+
+  if (vehicleType === "BUS") return "버스";
+  if (vehicleType === "TRAILER") return "트레일러";
+  if (vehicleType === "DUMP") return "덤프";
+
+  if (vehicleType === "TRACTOR") return "11톤 초과";
+
+  if (vehicleType === "CARGO") {
+    if (
+      tonClass === "1T" ||
+      tonClass === "1TON" ||
+      tonClass === "2.5T" ||
+      tonClass === "2.5TON" ||
+      tonClass === "2.5T이하" ||
+      tonClass === "3.5T" ||
+      tonClass === "3.5TON"
+    ) {
+      return "1톤~3.5톤 이하";
     }
+
+    if (
+      tonClass === "5T" ||
+      tonClass === "5TON" ||
+      tonClass === "8T" ||
+      tonClass === "8TON" ||
+      tonClass === "10T" ||
+      tonClass === "10TON"
+    ) {
+      return "5톤~10톤 이하";
+    }
+
+    return "11톤 초과";
+  }
+
+  return "11톤 초과";
+}
+
+function getVehicleLabel(row: TireRow) {
+  const vehicleType = upper(row.vehicle_type);
+  const tonClass = cleanTonClass(row.ton_class);
+
+  if (vehicleType === "BUS") return "버스";
+  if (vehicleType === "TRAILER") return "트레일러";
+  if (vehicleType === "DUMP") return "덤프";
+  if (vehicleType === "TRACTOR") return "트랙터";
+
+  if (vehicleType === "CARGO") {
+    if (tonClass === "2.5T" || tonClass === "2.5TON" || tonClass === "2.5T이하") {
+      return "2.5톤 이하";
+    }
+    if (tonClass === "3.5T" || tonClass === "3.5TON") return "3.5톤 카고";
+    if (tonClass === "5T" || tonClass === "5TON") return "5톤 카고";
+    if (tonClass === "8T" || tonClass === "8TON") return "8톤 카고";
+    if (tonClass === "10T" || tonClass === "10TON") return "10톤 카고";
+    if (tonClass === "11T" || tonClass === "11TON") return "11톤 카고";
+    return "카고";
+  }
+
+  return normalize(row.vehicle_type) || "기타";
+}
+
+function getAxleLabel(value: string) {
+  const axle = upper(value);
+  if (axle === "STEER") return "전륜";
+  if (axle === "DRIVE") return "후륜";
+  if (axle === "TRAILER") return "트레일러";
+  return normalize(value) || "-";
+}
+
+function getStockBadge(stockQty: string) {
+  const qty = Number(stockQty);
+
+  if (!Number.isNaN(qty) && qty > 0) {
+    return {
+      label: "재고 있음",
+      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    };
+  }
+
+  return {
+    label: "재고 문의",
+    className: "border-amber-200 bg-amber-50 text-amber-700",
   };
+}
+
+function getSizeBucket(size: string) {
+  return normalize(size) || "기타";
+}
+
+function makeDetailPath(row: TireRow) {
+  return `/tires-shop/${encodeURIComponent(normalize(row.sku))}`;
+}
+
+const TiresShopPage: React.FC = () => {
+  const [rows, setRows] = useState<TireRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [vehicleGroupFilter, setVehicleGroupFilter] =
+    useState<VehicleGroup>("전체");
+  const [sizeFilter, setSizeFilter] = useState("전체");
 
   useEffect(() => {
-    load();
+    let alive = true;
+
+    async function loadData() {
+      try {
+        setLoading(true);
+        const res = await fetch(CSV_URL, { cache: "no-store" });
+        const text = await res.text();
+        const parsed = parseCSV(text);
+
+        if (!alive) return;
+
+        const activeRows = parsed.filter((row) => upper(row.is_active) === "TRUE");
+        setRows(activeRows);
+      } catch (error) {
+        console.error("Failed to load tires CSV:", error);
+        if (alive) setRows([]);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }
+
+    loadData();
+
+    return () => {
+      alive = false;
+    };
   }, []);
 
-  // ✅ vehicle 변경 시 ton 자동 보정
+  const vehicleGroupOptions: VehicleGroup[] = [
+    "전체",
+    "1톤~3.5톤 이하",
+    "5톤~10톤 이하",
+    "11톤 초과",
+    "트레일러",
+    "덤프",
+    "버스",
+  ];
+
+  const sizeOptions = useMemo(() => {
+    const sourceRows =
+      vehicleGroupFilter === "전체"
+        ? rows
+        : rows.filter((row) => getVehicleGroup(row) === vehicleGroupFilter);
+
+    const sizes = Array.from(
+      new Set(sourceRows.map((row) => getSizeBucket(row.size)))
+    ).sort((a, b) => a.localeCompare(b, "ko"));
+
+    return ["전체", ...sizes];
+  }, [rows, vehicleGroupFilter]);
+
   useEffect(() => {
-    if (vehicle === "BUS" || vehicle === "TRAILER" || vehicle === "ALL") {
-      if (ton !== "ALL") setTon("ALL");
-      return;
+    if (!sizeOptions.includes(sizeFilter)) {
+      setSizeFilter("전체");
+    }
+  }, [sizeOptions, sizeFilter]);
+
+  const filteredRows = useMemo(() => {
+    let result = [...rows];
+
+    if (vehicleGroupFilter !== "전체") {
+      result = result.filter((row) => getVehicleGroup(row) === vehicleGroupFilter);
     }
 
-    const allowed = new Set((TON_OPTIONS[vehicle] ?? []).map((o) => o.value));
-    if (!allowed.has(ton)) setTon("ALL");
-  }, [vehicle, ton]);
+    if (sizeFilter !== "전체") {
+      result = result.filter((row) => getSizeBucket(row.size) === sizeFilter);
+    }
 
-  const filtered = useMemo(() => {
-    return rows.filter((r) => {
-      if (vehicle !== "ALL" && r.vehicle_type !== vehicle) return false;
-      if (axle !== "ALL" && r.axle !== axle) return false;
-      if (!inTonBucketByVehicle(r.ton_class, vehicle, ton)) return false;
+    result.sort((a, b) => {
+      const stockA = Number(a.stock_qty);
+      const stockB = Number(b.stock_qty);
 
-      if (q) {
-        const productNo = productMap.get(r.sku) ?? "";
-        const hay = `${productNo} ${r.model_line} ${r.size} ${r.tags ?? ""}`.toLowerCase();
-        if (!hay.includes(q.toLowerCase())) return false;
+      const hasStockA = !Number.isNaN(stockA) && stockA > 0 ? 1 : 0;
+      const hasStockB = !Number.isNaN(stockB) && stockB > 0 ? 1 : 0;
+
+      if (hasStockA !== hasStockB) return hasStockB - hasStockA;
+      if (!Number.isNaN(stockA) && !Number.isNaN(stockB) && stockA !== stockB) {
+        return stockB - stockA;
       }
 
-      return true;
+      return normalize(a.shop_title || a.model_line).localeCompare(
+        normalize(b.shop_title || b.model_line),
+        "ko"
+      );
     });
-  }, [rows, vehicle, axle, ton, q, productMap]);
+
+    return result;
+  }, [rows, vehicleGroupFilter, sizeFilter]);
 
   return (
-    <div className="container mx-auto px-4 py-16 space-y-10">
-      <h1 className="text-4xl font-extrabold text-navy-900">타이어 쇼핑몰</h1>
-
-      {/* 검색/필터/톤급 */}
-      {(() => {
-        const BOX_H = "h-[92px]";
-        const CONTROL_H = "h-12";
-
-        const box =
-          `${BOX_H} rounded-2xl border border-gray-200 bg-white ` +
-          `px-4 py-3 shadow-sm flex flex-col justify-between`;
-
-        const control =
-          `${CONTROL_H} w-full rounded-xl border border-gray-200 bg-white ` +
-          `px-3 text-sm font-bold text-navy-900 outline-none ` +
-          `focus:border-orange-400 focus:ring-4 focus:ring-orange-200/40`;
-
-        const tonDisabled =
-          vehicle === "BUS" || vehicle === "TRAILER" || vehicle === "ALL";
-
-        const tonOptions =
-          vehicle !== "ALL"
-            ? TON_OPTIONS[vehicle]
-            : [{ value: "ALL" as TonBucket, label: "차종 선택 필요" }];
-
-        return (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
-            {/* 검색 */}
-            <div className={box}>
-              <div className="text-xs font-extrabold text-gray-500">검색</div>
-              <div className="relative">
-                <Search
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                  size={18}
-                />
-                <input
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="모델/사이즈/상품번호"
-                  className={`${control} pl-10`}
-                />
-              </div>
-            </div>
-
-            {/* 차종 */}
-            <div className={box}>
-              <div className="text-xs font-extrabold text-gray-500">차종</div>
-              <select
-                value={vehicle}
-                onChange={(e) => setVehicle(e.target.value as VehicleTab)}
-                className={control}
-              >
-                <option value="ALL">전체</option>
-                <option value="CARGO">카고</option>
-                <option value="DUMP">덤프</option>
-                <option value="BUS">버스</option>
-                <option value="TRAILER">트레일러</option>
-              </select>
-            </div>
-
-            {/* 톤급 */}
-            <div className={box}>
-              <div className="text-xs font-extrabold text-gray-500">
-                {vehicle === "BUS" || vehicle === "TRAILER"
-                  ? "톤급 없음"
-                  : "톤급"}
-              </div>
-
-              <select
-                value={ton}
-                onChange={(e) => setTon(e.target.value as TonBucket)}
-                className={`${control} ${
-                  tonDisabled ? "bg-gray-50 text-gray-400" : ""
-                }`}
-                disabled={tonDisabled}
-              >
-                {tonOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+    <div className={pageWrap}>
+      <section className="rounded-[32px] border border-gray-200 bg-gradient-to-br from-white via-orange-50/40 to-white px-6 py-8 md:px-10 md:py-10">
+        <div className="max-w-4xl space-y-4">
+          <div className="inline-flex items-center rounded-full bg-orange-100 px-3 py-1 text-xs font-extrabold text-orange-700">
+            RNF KOREA TIRES SHOP
           </div>
-        );
-      })()}
 
-      {/* 상품 리스트 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        {filtered.map((p) => {
-          const productNo = productMap.get(p.sku) ?? p.sku;
-          const price = p.price ?? p.supply_price;
+          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-navy-900">
+            차종별 추천 상용 타이어
+          </h1>
 
-          return (
-            <Link
-              key={p.sku}
-              to={`/tires-shop/${encodeURIComponent(p.sku)}`}
-              className="group border border-gray-200 rounded-2xl bg-white overflow-hidden hover:shadow-md"
+          <p className="max-w-3xl text-sm md:text-base leading-7 text-gray-600">
+            차종군과 사이즈 기준으로 많이 찾는 규격과 대표 모델을 빠르게 확인할 수
+            있습니다.
+          </p>
+
+          <div className="flex flex-wrap gap-3 pt-1">
+            <a
+              href="tel:1551-1873"
+              className="inline-flex h-11 items-center justify-center rounded-xl bg-orange-500 px-5 text-sm font-extrabold text-white transition hover:bg-orange-600"
             >
-              <div className="relative h-44 bg-gray-50">
-                {p.main_thumb_url ? (
-                  <img src={p.main_thumb_url} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="flex items-center justify-center h-full text-gray-400 font-bold">
-                    NO IMAGE
-                  </div>
-                )}
-              </div>
+              상담문의 1551-1873
+            </a>
 
-              <div className="p-5 space-y-2">
-                <div className="text-lg font-extrabold text-navy-900">
-                  {p.model_line} ({p.size})
-                </div>
-                <div className="text-lg font-extrabold text-orange-600">
-                  {fmtKRW(price)}
-                </div>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    copyToClipboard(productNo);
-                  }}
-                  className="text-xs font-bold text-gray-500 hover:text-orange-600"
-                >
-                  상품번호: <span className="text-navy-900">{productNo}</span>
-                </button>
-              </div>
-            </Link>
-          );
-        })}
-      </div>
-
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-50">
-          <div className="px-4 py-3 rounded-xl bg-navy-900 text-white font-extrabold shadow-lg">
-            {toast}
+            <a
+              href="/contact"
+              className="inline-flex h-11 items-center justify-center rounded-xl border border-gray-300 bg-white px-5 text-sm font-extrabold text-gray-800 transition hover:border-orange-400 hover:text-orange-600"
+            >
+              재고 및 납기 문의
+            </a>
           </div>
         </div>
+      </section>
+
+      <section className={`${sectionCard} p-4 md:p-5 space-y-4`}>
+        <div className="flex flex-wrap gap-2">
+          {vehicleGroupOptions.map((item) => {
+            const active = vehicleGroupFilter === item;
+
+            return (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setVehicleGroupFilter(item)}
+                className={`${tabBase} ${
+                  active
+                    ? "border-orange-500 bg-orange-500 text-white"
+                    : "border-gray-200 bg-white text-gray-700 hover:border-orange-300 hover:text-orange-600"
+                }`}
+              >
+                {item}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {sizeOptions.map((item) => {
+            const active = sizeFilter === item;
+
+            return (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setSizeFilter(item)}
+                className={`${tabBase} ${
+                  active
+                    ? "border-orange-500 bg-orange-500 text-white"
+                    : "border-gray-200 bg-white text-gray-700 hover:border-orange-300 hover:text-orange-600"
+                }`}
+              >
+                {item}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-xl md:text-2xl font-extrabold text-navy-900">
+            추천 타이어
+          </h2>
+          <p className="mt-1 text-sm text-gray-500">
+            재고 있는 상품이 먼저 보이도록 정렬했습니다.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2 text-sm font-bold text-gray-500">
+          <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1">
+            총 {filteredRows.length}개
+          </span>
+          {vehicleGroupFilter !== "전체" && (
+            <span className="inline-flex items-center rounded-full bg-orange-50 px-3 py-1 text-orange-700">
+              차종군: {vehicleGroupFilter}
+            </span>
+          )}
+          {sizeFilter !== "전체" && (
+            <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-gray-700">
+              사이즈: {sizeFilter}
+            </span>
+          )}
+        </div>
+      </section>
+
+      {loading ? (
+        <section className={`${sectionCard} p-10 text-center text-gray-500`}>
+          데이터를 불러오는 중입니다.
+        </section>
+      ) : filteredRows.length === 0 ? (
+        <section className={`${sectionCard} p-10 text-center text-gray-500`}>
+          조건에 맞는 상품이 없습니다.
+        </section>
+      ) : (
+        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+          {filteredRows.map((row) => {
+            const vehicleLabel = getVehicleLabel(row);
+            const vehicleGroup = getVehicleGroup(row);
+            const axleLabel = getAxleLabel(row.axle);
+            const stockBadge = getStockBadge(row.stock_qty);
+            const showVehicleLabelBadge = vehicleGroup !== vehicleLabel;
+            const detailPath = makeDetailPath(row);
+
+            return (
+              <article key={row.sku} className={cardBase}>
+                <Link to={detailPath} className="block">
+                  <div className="aspect-[4/3] bg-gray-50">
+                    {normalize(row.main_thumb_url) ? (
+                      <img
+                        src={row.main_thumb_url}
+                        alt={row.shop_title || row.model_line}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-sm font-extrabold text-gray-400">
+                        NO IMAGE
+                      </div>
+                    )}
+                  </div>
+                </Link>
+
+                <div className="space-y-3 p-4">
+                  <div className="flex flex-wrap gap-2">
+                    <span
+                      className={`${badgeBase} border-orange-200 bg-orange-50 text-orange-700`}
+                    >
+                      {vehicleGroup}
+                    </span>
+
+                    {showVehicleLabelBadge && (
+                      <span
+                        className={`${badgeBase} border-gray-200 bg-gray-50 text-gray-700`}
+                      >
+                        {vehicleLabel}
+                      </span>
+                    )}
+
+                    <span
+                      className={`${badgeBase} border-gray-200 bg-gray-50 text-gray-700`}
+                    >
+                      {axleLabel}
+                    </span>
+
+                    <span
+                      className={`${badgeBase} border-gray-200 bg-gray-50 text-gray-700`}
+                    >
+                      {normalize(row.size)}
+                    </span>
+
+                    <span className={`${badgeBase} ${stockBadge.className}`}>
+                      {stockBadge.label}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Link to={detailPath} className="block">
+                      <h3 className="text-base font-extrabold leading-snug text-navy-900 hover:text-orange-600 transition">
+                        {row.shop_title ||
+                          `${vehicleLabel} ${axleLabel} ${normalize(row.size)} ${normalize(row.brand)} ${normalize(row.model_line)}`}
+                      </h3>
+                    </Link>
+
+                    <p className="text-sm leading-5 text-gray-600 line-clamp-2">
+                      {normalize(row.short_desc) || "-"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl bg-gray-50 p-3 text-sm text-gray-700 space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-gray-500">브랜드</span>
+                      <span className="font-bold text-right">
+                        {normalize(row.brand) || "-"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-gray-500">모델</span>
+                      <span className="font-bold text-right">
+                        {normalize(row.model_line) || "-"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-gray-500">적용차종</span>
+                      <span className="font-bold text-right">{vehicleLabel}</span>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-orange-100 bg-orange-50/60 p-3">
+                    <div className="text-xs font-extrabold text-orange-700">
+                      공급가 기준
+                    </div>
+                    <div className="mt-1 text-lg font-extrabold text-navy-900">
+                      {formatPrice(row.price)}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between gap-2">
+                    <Link
+                      to={detailPath}
+                      className="inline-flex h-10 items-center justify-center rounded-xl border border-gray-300 bg-white px-4 text-sm font-extrabold text-gray-800 transition hover:border-orange-400 hover:text-orange-600"
+                    >
+                      상세보기
+                    </Link>
+
+                    <a
+                      href="tel:1551-1873"
+                      className="inline-flex h-10 items-center justify-center rounded-xl bg-navy-900 px-4 text-sm font-extrabold text-white transition hover:opacity-90"
+                    >
+                      문의하기
+                    </a>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </section>
       )}
     </div>
   );
-}
+};
+
+export default TiresShopPage;

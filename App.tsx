@@ -58,9 +58,12 @@ import IndividualCargoFinancePage from "./pages/IndividualCargoFinance/index";
 import TireShopPage from "./pages/TireShop/index";
 import TireShopDetailPage from "./pages/TireShop/detail";
 
+
 /* utils / config */
 import { fetchTireRows } from "./lib/tiresCsv";
 import { TIRE_CSV_URL } from "./pages/TireShop/config";
+
+import TiresShopPage from "./pages/TireShop";
 
 const CARD_H = "h-[168px] md:h-[176px]"; // ✅ 완전 고정 높이 (원하면 숫자만 조절)
 
@@ -4636,6 +4639,9 @@ const App = () => {
         <Route path="/finance" element={<FinancePage />} />
         <Route path="/cargo-finance" element={<IndividualCargoFinancePage />} />
         <Route path="/sitemap" element={<SitemapPage />} />
+        <Route path="/tires-shop" element={<TiresShopPage />} />
+        <Route path="/tires-shop/:sku" element={<div>상세 페이지 준비중</div>} />
+        
 
         {/* Narumi */}
         <Route path="/narumi/login" element={<NarumiLoginPage />} />
