@@ -24,11 +24,14 @@ const underlineActive = "text-orange-600 after:scale-x-100";
 
 const dropItem =
   "block w-full text-left px-4 py-3 text-sm font-extrabold text-navy-900 " +
-  "hover:bg-gray-50 transition-all whitespace-nowrap";
+  "hover:bg-gray-50 transition-all break-keep";
 
 const dropBoxBase =
-  "absolute right-0 top-full mt-1 w-[240px] rounded-2xl border border-gray-200 bg-white " +
-  "shadow-[0_18px_50px_rgba(15,23,42,0.10)] z-[9999] pointer-events-auto " +
+  "absolute top-full mt-1 z-[9999] pointer-events-auto " +
+  "right-0 md:left-0 md:right-auto " +
+  "w-[min(92vw,18rem)] md:w-[240px] max-w-[18rem] " +
+  "rounded-2xl border border-gray-200 bg-white " +
+  "shadow-[0_18px_50px_rgba(15,23,42,0.10)] " +
   "opacity-100 translate-y-0 transition-all duration-180 ease-out";
 
 function useDropdownTimers() {
@@ -87,13 +90,11 @@ export default function PageHeader() {
     closeAll();
   };
 
-  // 라우트가 바뀌면 드롭다운 자동 닫기
   useEffect(() => {
     closeAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
-  // 헤더 밖 클릭/터치 시 닫기
   useEffect(() => {
     const onDown = (e: MouseEvent | TouchEvent) => {
       const el = headerRef.current;
@@ -193,7 +194,7 @@ export default function PageHeader() {
         ref={headerRef}
         className="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 h-16 md:h-20 flex items-center justify-between overflow-visible"
       >
-        {/* 로고만 노출 / 클릭 시 홈 */}
+        {/* 로고 */}
         <Link
           to="/"
           className="flex items-center shrink-0"
@@ -234,7 +235,7 @@ export default function PageHeader() {
               <>
                 {!isMobileMenuMode && (
                   <div
-                    className={`absolute right-0 top-full w-[240px] ${BRIDGE_H} pointer-events-auto`}
+                    className={`absolute left-0 top-full w-[240px] ${BRIDGE_H} pointer-events-auto`}
                     onMouseEnter={() => timers.clearClose()}
                     onMouseLeave={() => hoverClose(setOpenBiz)}
                   />
@@ -299,7 +300,7 @@ export default function PageHeader() {
               <>
                 {!isMobileMenuMode && (
                   <div
-                    className={`absolute right-0 top-full w-[240px] ${BRIDGE_H} pointer-events-auto`}
+                    className={`absolute left-0 top-full w-[240px] ${BRIDGE_H} pointer-events-auto`}
                     onMouseEnter={() => timers.clearClose()}
                     onMouseLeave={() => hoverClose(setOpenShop)}
                   />
@@ -317,9 +318,11 @@ export default function PageHeader() {
                   <Link to="/tires-shop" className={dropItem} onClick={handleMenuNavigate}>
                     타이어 쇼핑몰
                   </Link>
+
                   <Link to="/export-shop" className={dropItem} onClick={handleMenuNavigate}>
                     수출용 쇼핑몰
                   </Link>
+
                   <Link to="/battery-shop" className={dropItem} onClick={handleMenuNavigate}>
                     배터리 쇼핑몰 (준비중)
                   </Link>
@@ -354,7 +357,7 @@ export default function PageHeader() {
               <>
                 {!isMobileMenuMode && (
                   <div
-                    className={`absolute right-0 top-full w-[240px] ${BRIDGE_H} pointer-events-auto`}
+                    className={`absolute left-0 top-full w-[240px] ${BRIDGE_H} pointer-events-auto`}
                     onMouseEnter={() => timers.clearClose()}
                     onMouseLeave={() => hoverClose(setOpenWork)}
                   />
