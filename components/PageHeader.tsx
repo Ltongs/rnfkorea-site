@@ -1,5 +1,5 @@
 // components/PageHeader.tsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ChevronDown, Phone } from "lucide-react";
 import { useAuth } from "../lib/auth";
@@ -26,12 +26,14 @@ const dropItem =
   "block w-full text-left px-4 py-3 text-sm font-extrabold text-navy-900 " +
   "hover:bg-gray-50 transition-all break-keep";
 
-const dropBoxBase =
-  "absolute top-full mt-1 z-[9999] pointer-events-auto " +
-  "right-0 md:left-0 md:right-auto " +
-  "w-[min(92vw,18rem)] md:w-[240px] max-w-[18rem] " +
-  "rounded-2xl border border-gray-200 bg-white " +
-  "shadow-[0_18px_50px_rgba(15,23,42,0.10)] " +
+const desktopDropBoxBase =
+  "absolute left-0 top-full mt-1 w-[240px] rounded-2xl border border-gray-200 bg-white " +
+  "shadow-[0_18px_50px_rgba(15,23,42,0.10)] z-[9999] pointer-events-auto " +
+  "opacity-100 translate-y-0 transition-all duration-180 ease-out";
+
+const mobileDropBoxBase =
+  "fixed rounded-2xl border border-gray-200 bg-white " +
+  "shadow-[0_18px_50px_rgba(15,23,42,0.18)] z-[10000] pointer-events-auto " +
   "opacity-100 translate-y-0 transition-all duration-180 ease-out";
 
 function useDropdownTimers() {
@@ -56,6 +58,36 @@ function useDropdownTimers() {
   return { openTimer, closeTimer, clearOpen, clearClose, clearAll };
 }
 
+type MobileMenuStyle = React.CSSProperties;
+
+function calcMobileMenuStyle(btnEl: HTMLButtonElement | null): MobileMenuStyle {
+  const vw = window.innerWidth;
+  const gutter = 8;
+  const maxWidth = 288; // 18rem
+  const width = Math.min(maxWidth, vw - gutter * 2);
+
+  if (!btnEl) {
+    return {
+      top: 68,
+      left: gutter,
+      width,
+    };
+  }
+
+  const rect = btnEl.getBoundingClientRect();
+  const top = rect.bottom + 6;
+
+  // 버튼의 왼쪽 기준으로 열되, 화면 밖으로 나가지 않도록 clamp
+  const desiredLeft = rect.left;
+  const clampedLeft = Math.max(gutter, Math.min(desiredLeft, vw - width - gutter));
+
+  return {
+    top,
+    left: clampedLeft,
+    width,
+  };
+}
+
 export default function PageHeader() {
   const { pathname } = useLocation();
   const nav = useNavigate();
@@ -66,7 +98,15 @@ export default function PageHeader() {
   const [openWork, setOpenWork] = useState(false);
   const [isMobileMenuMode, setIsMobileMenuMode] = useState(false);
 
+  const [bizMenuStyle, setBizMenuStyle] = useState<MobileMenuStyle>({});
+  const [shopMenuStyle, setShopMenuStyle] = useState<MobileMenuStyle>({});
+  const [workMenuStyle, setWorkMenuStyle] = useState<MobileMenuStyle>({});
+
   const headerRef = useRef<HTMLDivElement | null>(null);
+  const bizBtnRef = useRef<HTMLButtonElement | null>(null);
+  const shopBtnRef = useRef<HTMLButtonElement | null>(null);
+  const workBtnRef = useRef<HTMLButtonElement | null>(null);
+
   const timers = useDropdownTimers();
 
   useEffect(() => {
@@ -112,6 +152,26 @@ export default function PageHeader() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 모바일에서 열려 있는 메뉴 위치를 항상 다시 계산
+  useLayoutEffect(() => {
+    if (!isMobileMenuMode) return;
+
+    const updatePositions = () => {
+      if (openBiz) setBizMenuStyle(calcMobileMenuStyle(bizBtnRef.current));
+      if (openShop) setShopMenuStyle(calcMobileMenuStyle(shopBtnRef.current));
+      if (openWork) setWorkMenuStyle(calcMobileMenuStyle(workBtnRef.current));
+    };
+
+    updatePositions();
+    window.addEventListener("resize", updatePositions);
+    window.addEventListener("scroll", updatePositions, true);
+
+    return () => {
+      window.removeEventListener("resize", updatePositions);
+      window.removeEventListener("scroll", updatePositions, true);
+    };
+  }, [isMobileMenuMode, openBiz, openShop, openWork]);
 
   const bizActive = ["/tires", "/battery", "/export", "/finance", "/cargo-finance"].includes(pathname);
 
@@ -161,19 +221,33 @@ export default function PageHeader() {
     timers.clearAll();
 
     if (which === "biz") {
-      setOpenBiz((v) => !v);
+      const next = !openBiz;
+      setOpenBiz(next);
       setOpenShop(false);
       setOpenWork(false);
+      if (isMobileMenuMode && next) {
+        setBizMenuStyle(calcMobileMenuStyle(bizBtnRef.current));
+      }
     }
+
     if (which === "shop") {
-      setOpenShop((v) => !v);
+      const next = !openShop;
+      setOpenShop(next);
       setOpenBiz(false);
       setOpenWork(false);
+      if (isMobileMenuMode && next) {
+        setShopMenuStyle(calcMobileMenuStyle(shopBtnRef.current));
+      }
     }
+
     if (which === "work") {
-      setOpenWork((v) => !v);
+      const next = !openWork;
+      setOpenWork(next);
       setOpenBiz(false);
       setOpenShop(false);
+      if (isMobileMenuMode && next) {
+        setWorkMenuStyle(calcMobileMenuStyle(workBtnRef.current));
+      }
     }
   };
 
@@ -194,7 +268,6 @@ export default function PageHeader() {
         ref={headerRef}
         className="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 h-16 md:h-20 flex items-center justify-between overflow-visible"
       >
-        {/* 로고 */}
         <Link
           to="/"
           className="flex items-center shrink-0"
@@ -216,6 +289,7 @@ export default function PageHeader() {
             onMouseLeave={() => hoverClose(setOpenBiz)}
           >
             <button
+              ref={bizBtnRef}
               type="button"
               className={`${topBtnBase} ${underlineHover} ${bizActive ? underlineActive : ""}`}
               aria-expanded={openBiz}
@@ -242,7 +316,8 @@ export default function PageHeader() {
                 )}
 
                 <div
-                  className={dropBoxBase}
+                  className={isMobileMenuMode ? mobileDropBoxBase : desktopDropBoxBase}
+                  style={isMobileMenuMode ? bizMenuStyle : undefined}
                   role="menu"
                   onMouseEnter={() => {
                     if (!isMobileMenuMode) timers.clearClose();
@@ -281,6 +356,7 @@ export default function PageHeader() {
             onMouseLeave={() => hoverClose(setOpenShop)}
           >
             <button
+              ref={shopBtnRef}
               type="button"
               className={`${topBtnBase} ${underlineHover} ${shopActive ? underlineActive : ""}`}
               aria-expanded={openShop}
@@ -307,7 +383,8 @@ export default function PageHeader() {
                 )}
 
                 <div
-                  className={dropBoxBase}
+                  className={isMobileMenuMode ? mobileDropBoxBase : desktopDropBoxBase}
+                  style={isMobileMenuMode ? shopMenuStyle : undefined}
                   role="menu"
                   onMouseEnter={() => {
                     if (!isMobileMenuMode) timers.clearClose();
@@ -318,11 +395,9 @@ export default function PageHeader() {
                   <Link to="/tires-shop" className={dropItem} onClick={handleMenuNavigate}>
                     타이어 쇼핑몰
                   </Link>
-
                   <Link to="/export-shop" className={dropItem} onClick={handleMenuNavigate}>
                     수출용 쇼핑몰
                   </Link>
-
                   <Link to="/battery-shop" className={dropItem} onClick={handleMenuNavigate}>
                     배터리 쇼핑몰 (준비중)
                   </Link>
@@ -338,6 +413,7 @@ export default function PageHeader() {
             onMouseLeave={() => hoverClose(setOpenWork)}
           >
             <button
+              ref={workBtnRef}
               type="button"
               className={`${topBtnBase} ${underlineHover} ${workActive ? underlineActive : ""}`}
               aria-expanded={openWork}
@@ -364,7 +440,8 @@ export default function PageHeader() {
                 )}
 
                 <div
-                  className={dropBoxBase}
+                  className={isMobileMenuMode ? mobileDropBoxBase : desktopDropBoxBase}
+                  style={isMobileMenuMode ? workMenuStyle : undefined}
                   role="menu"
                   onMouseEnter={() => {
                     if (!isMobileMenuMode) timers.clearClose();
@@ -380,11 +457,7 @@ export default function PageHeader() {
                     나르미업무
                   </button>
 
-                  <button
-                    type="button"
-                    className={dropItem}
-                    onClick={goBsonPublic}
-                  >
+                  <button type="button" className={dropItem} onClick={goBsonPublic}>
                     BS_ON 업무
                   </button>
                 </div>
@@ -392,7 +465,6 @@ export default function PageHeader() {
             )}
           </div>
 
-          {/* 전화 */}
           <a
             href="tel:1551-1873"
             className="ml-1 md:ml-2 hidden md:inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-navy-900 text-navy-900 font-extrabold text-sm hover:bg-navy-900 hover:text-white transition-all"
