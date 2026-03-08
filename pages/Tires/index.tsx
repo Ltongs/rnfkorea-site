@@ -444,7 +444,7 @@ const TiresPage: React.FC = () => {
             <div className="rounded-2xl bg-orange-50 border border-orange-200 p-6">
               <p className="text-navy-900 font-extrabold text-lg break-keep">
                 화물차 타이어도 “렌탈”이 가능합니다. <br />
-                몫돈 아끼시고 1년으로 나눠내세요.
+                목돈 아끼시고 1년으로 나눠내세요.
               </p>
               <p className="text-sm text-gray-600 mt-2 break-keep">
                 교체주기, 현금흐름까지 포함해 가장 유리한 구조로 설계합니다.
