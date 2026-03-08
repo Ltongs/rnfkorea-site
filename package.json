@@ -8,6 +8,8 @@
     "build": "vite build",
     "img:samwoo": "node scripts/optimize-samwoo.cjs",
     "dng:samwoo": "node scripts/convert-dng-to-jpg.cjs",
+    "deploy:samwoo": "bash scripts/deploy-samwoo.sh",
+    "deploy:samwoo": "bash scripts/deploy-samwoo.sh",
     "preview": "vite preview"
   },
   "dependencies": {
