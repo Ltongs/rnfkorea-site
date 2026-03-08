@@ -20,7 +20,7 @@ const CSV_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vStUJkHotLlVECjJPyaxIWnYTl45_0Fw9IAtgIUzkRjScPYWE_lYJfk2_38Uqn9Y40kP-5pv3UXeRJf/pub?gid=347572598&single=true&output=csv";
 
 const PHOTO_BASE = "/asset/samwoo"; // public/asset/samwoo
-const EXT = "DNG" as const;
+const EXT = "webp" as const;
 
 // -------------------------
 // CSV Parser (quotes/commas 지원)
@@ -482,7 +482,7 @@ export default function BsonWorkPage() {
           </div>
 
           <div className="px-5 py-4 text-[12px] text-gray-500 bg-white border-t border-gray-100">
-            사진 파일은 <b>{PHOTO_BASE}</b> 아래에 <b>VIN끝4자리(1).DNG</b>, <b>VIN끝4자리(2).DNG</b> 규칙으로 두면 자동 연결됩니다.
+            사진 파일은 <b>{PHOTO_BASE}</b> 아래에 <b>VIN끝4자리(1).webp</b>, <b>VIN끝4자리(2).webp</b> 규칙으로 두면 자동 연결됩니다.
           </div>
         </div>
       )}
