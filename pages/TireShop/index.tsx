@@ -1,9 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 
 type TireRow = {
-  sku: string;
-  is_active: string;
   brand: string;
   model_line: string;
   size: string;
@@ -25,6 +22,8 @@ type TireRow = {
   shipping_fee: string;
   stock_qty: string;
   lead_time_days: string;
+  sku: string;
+  position_image_url: string;
   tags: string;
   keyword: string;
   shop_title: string;
@@ -46,12 +45,11 @@ type VehicleGroup =
 const CSV_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vStUJkHotLlVECjJPyaxIWnYTl45_0Fw9IAtgIUzkRjScPYWE_lYJfk2_38Uqn9Y40kP-5pv3UXeRJf/pub?gid=306191113&single=true&output=csv";
 
-// ✅ 실제 보유한 타이어 위치정보 이미지 경로로 교체하세요.
-const POSITION_IMAGE_MAP: Record<string, string> = {
-  STEER: "/asset/tire-position/steer.png",
-  DRIVE: "/asset/tire-position/drive.png",
-  TRAILER: "/asset/tire-position/trailer.png",
-  ALL: "/asset/tire-position/all.png",
+const FALLBACK_POSITION_IMAGE_MAP: Record<string, string> = {
+  STEER: "https://www.rnfkorea.co.kr/asset/tire-position/steer.png",
+  DRIVE: "https://www.rnfkorea.co.kr/asset/tire-position/drive.png",
+  TRAILER: "https://www.rnfkorea.co.kr/asset/tire-position/trailer.png",
+  ALL: "https://www.rnfkorea.co.kr/asset/tire-position/all.png",
 };
 
 const pageWrap = "container mx-auto px-4 py-10 md:py-14 space-y-8";
@@ -171,38 +169,6 @@ function getVehicleGroup(row: TireRow): Exclude<VehicleGroup, "전체"> {
   return "11톤 초과";
 }
 
-function getVehicleLabel(row: TireRow) {
-  const vehicleType = upper(row.vehicle_type);
-  const tonClass = cleanTonClass(row.ton_class);
-
-  if (vehicleType === "BUS") return "버스";
-  if (vehicleType === "TRAILER") return "트레일러";
-  if (vehicleType === "DUMP") return "덤프";
-  if (vehicleType === "TRACTOR") return "트랙터";
-
-  if (vehicleType === "CARGO") {
-    if (tonClass === "2.5T" || tonClass === "2.5TON" || tonClass === "2.5T이하") {
-      return "2.5톤 이하";
-    }
-    if (tonClass === "3.5T" || tonClass === "3.5TON") return "3.5톤 카고";
-    if (tonClass === "5T" || tonClass === "5TON") return "5톤 카고";
-    if (tonClass === "8T" || tonClass === "8TON") return "8톤 카고";
-    if (tonClass === "10T" || tonClass === "10TON") return "10톤 카고";
-    if (tonClass === "11T" || tonClass === "11TON") return "11톤 카고";
-    return "카고";
-  }
-
-  return normalize(row.vehicle_type) || "기타";
-}
-
-function getAxleCode(row: TireRow) {
-  const axle = upper(row.axle);
-  if (axle === "STEER" || axle === "DRIVE" || axle === "TRAILER" || axle === "ALL") {
-    return axle;
-  }
-  return axle || "ALL";
-}
-
 function getAxleLabel(value: string) {
   const axle = upper(value);
   if (axle === "STEER") return "전륜";
@@ -212,12 +178,12 @@ function getAxleLabel(value: string) {
   return normalize(value) || "-";
 }
 
-function getBrandShortName(brand: string) {
-  const v = normalize(brand);
-  if (v.includes("금호")) return "금호";
-  if (v.includes("MAXAM")) return "MAXAM";
-  if (v.includes("KENEX")) return "KENEX";
-  return v;
+function getAxleCode(value: string) {
+  const axle = upper(value);
+  if (axle === "STEER" || axle === "DRIVE" || axle === "TRAILER" || axle === "ALL") {
+    return axle;
+  }
+  return "ALL";
 }
 
 function getStockBadge(stockQty: string) {
@@ -240,13 +206,26 @@ function getSizeBucket(size: string) {
   return normalize(size) || "기타";
 }
 
-function makeDetailPath(row: TireRow) {
-  return `/tires-shop/${encodeURIComponent(normalize(row.sku))}`;
+function getBrandShortName(brand: string) {
+  const v = normalize(brand);
+  if (v.includes("금호")) return "금호";
+  return v;
 }
 
 function getPositionImage(row: TireRow) {
-  const axleCode = getAxleCode(row);
-  return POSITION_IMAGE_MAP[axleCode] || POSITION_IMAGE_MAP.ALL;
+  const explicit = normalize(row.position_image_url);
+  if (explicit) return explicit;
+
+  return (
+    FALLBACK_POSITION_IMAGE_MAP[getAxleCode(row.axle)] ||
+    FALLBACK_POSITION_IMAGE_MAP.ALL
+  );
+}
+
+function normalizeFitmentText(value: string) {
+  return normalize(value)
+    .replace(/^11T\s*카고/i, "11~25T 카고")
+    .replace(/^11톤\s*카고/i, "11~25T 카고");
 }
 
 const TiresShopPage: React.FC = () => {
@@ -268,18 +247,15 @@ const TiresShopPage: React.FC = () => {
 
         if (!alive) return;
 
-        const activeRows = parsed.filter((row) => {
-          if (upper(row.is_active) !== "TRUE") return false;
-
+        const validRows = parsed.filter((row) => {
           const hasModel = normalize(row.model_line) !== "";
           const hasSize = normalize(row.size) !== "";
           const hasVehicleType = normalize(row.vehicle_type) !== "";
           const hasTonClass = normalize(row.ton_class) !== "";
-
           return hasModel && hasSize && hasVehicleType && hasTonClass;
         });
 
-        setRows(activeRows);
+        setRows(validRows);
       } catch (error) {
         console.error("Failed to load tires CSV:", error);
         if (alive) setRows([]);
@@ -338,7 +314,6 @@ const TiresShopPage: React.FC = () => {
     result.sort((a, b) => {
       const stockA = Number(a.stock_qty);
       const stockB = Number(b.stock_qty);
-
       const hasStockA = !Number.isNaN(stockA) && stockA > 0 ? 1 : 0;
       const hasStockB = !Number.isNaN(stockB) && stockB > 0 ? 1 : 0;
 
@@ -473,30 +448,45 @@ const TiresShopPage: React.FC = () => {
             const axleLabel = getAxleLabel(row.axle);
             const stockBadge = getStockBadge(row.stock_qty);
             const brandShort = getBrandShortName(row.brand);
-            const detailPath = makeDetailPath(row);
             const positionImage = getPositionImage(row);
 
             return (
-              <article key={normalize(row.sku) || `${row.model_line}-${row.size}-${row.axle}`} className={cardBase}>
-                <Link to={detailPath} className="block">
-                  <div className="aspect-[4/3] bg-gray-50">
-                    {normalize(row.main_thumb_url) ? (
-                      <img
-                        src={row.main_thumb_url}
-                        alt={row.shop_title || row.model_line}
-                        className="h-full w-full object-cover"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-sm font-extrabold text-gray-400">
-                        NO IMAGE
-                      </div>
-                    )}
-                  </div>
-                </Link>
+              <article
+                key={
+                  normalize(row.sku) ||
+                  `${normalize(row.model_line)}-${normalize(row.size)}-${normalize(row.axle)}`
+                }
+                className={cardBase}
+              >
+                <div className="group relative aspect-[4/3] overflow-hidden bg-gray-50">
+  {normalize(row.main_thumb_url) ? (
+    <>
+      {/* 기본 썸네일 */}
+      <img
+        src={row.main_thumb_url}
+        alt={normalize(row.shop_title) || normalize(row.model_line)}
+        className="h-full w-full object-contain p-3 transition duration-300"
+        loading="lazy"
+      />
+
+      {/* hover 확대 */}
+      <div className="pointer-events-none absolute inset-0 z-10 hidden items-center justify-center bg-white/95 group-hover:flex">
+        <img
+          src={row.main_thumb_url}
+          alt={normalize(row.shop_title) || normalize(row.model_line)}
+          className="h-full w-full object-cover"
+          loading="lazy"
+        />
+      </div>
+    </>
+  ) : (
+    <div className="flex h-full w-full items-center justify-center text-sm font-extrabold text-gray-400">
+      NO IMAGE
+    </div>
+  )}
+</div>
 
                 <div className="space-y-3 p-4">
-                  {/* 1행: 차종군 + 재고 */}
                   <div className="flex flex-wrap gap-2">
                     <span className={`${badgeBase} border-orange-200 bg-orange-50 text-orange-700`}>
                       {vehicleGroup}
@@ -506,14 +496,12 @@ const TiresShopPage: React.FC = () => {
                     </span>
                   </div>
 
-                  {/* 2행: 위치 · 사이즈 · 브랜드 · 모델 */}
                   <div className="rounded-2xl border border-gray-200 bg-white p-3">
                     <div className="text-sm font-extrabold leading-6 text-navy-900">
                       {axleLabel} · {normalize(row.size)} · {brandShort} · {normalize(row.model_line)}
                     </div>
                   </div>
 
-                  {/* 3행: 브랜드 / 모델 / 적용차종 */}
                   <div className="rounded-2xl bg-gray-50 p-3 text-sm text-gray-700 space-y-2">
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-gray-500">브랜드</span>
@@ -527,45 +515,42 @@ const TiresShopPage: React.FC = () => {
 
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-gray-500">적용차종</span>
-                      <span className="font-bold text-right">{normalize(row.oe_fitment) || "-"}</span>
+                      <span className="font-bold text-right">
+                        {normalizeFitmentText(row.oe_fitment) || "-"}
+                      </span>
                     </div>
                   </div>
 
-                  {/* 4행: 가격 */}
                   <div className="rounded-2xl border border-orange-100 bg-orange-50/60 p-3">
-                    <div className="text-xs font-extrabold text-orange-700">공급가 기준</div>
+                    <div className="text-xs font-extrabold text-orange-700">
+                      공급가 기준
+                    </div>
                     <div className="mt-1 text-lg font-extrabold text-navy-900">
                       {formatPrice(row.price)}
                     </div>
                   </div>
 
-                  {/* 5행: 위치정보 */}
                   <div className="rounded-2xl border border-gray-200 bg-white p-3">
                     <div className="mb-2 text-xs font-extrabold text-gray-500">
                       타이어 위치정보
                     </div>
                     {positionImage ? (
-                      <img
-                        src={positionImage}
-                        alt={`${axleLabel} 위치정보`}
-                        className="h-20 w-full object-contain"
-                        loading="lazy"
-                      />
+                      <div className="h-24 w-full overflow-hidden rounded-xl bg-gray-50">
+                        <img
+                          src={positionImage}
+                          alt={`${axleLabel} 위치정보`}
+                          className="h-full w-full object-contain"
+                          loading="lazy"
+                        />
+                      </div>
                     ) : (
-                      <div className="flex h-20 items-center justify-center rounded-xl bg-gray-50 text-xs font-bold text-gray-400">
+                      <div className="flex h-24 items-center justify-center rounded-xl bg-gray-50 text-xs font-bold text-gray-400">
                         위치 이미지 없음
                       </div>
                     )}
                   </div>
 
-                  <div className="flex justify-between gap-2">
-                    <Link
-                      to={detailPath}
-                      className="inline-flex h-10 items-center justify-center rounded-xl border border-gray-300 bg-white px-4 text-sm font-extrabold text-gray-800 transition hover:border-orange-400 hover:text-orange-600"
-                    >
-                      상세보기
-                    </Link>
-
+                  <div className="flex justify-end">
                     <a
                       href="tel:1551-1873"
                       className="inline-flex h-10 items-center justify-center rounded-xl bg-navy-900 px-4 text-sm font-extrabold text-white transition hover:opacity-90"
