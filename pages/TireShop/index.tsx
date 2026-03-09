@@ -32,7 +32,6 @@ type TireRow = {
   spec_summary: string;
   features: string;
   notes: string;
-  updated_at: string;
 };
 
 type VehicleGroup =
@@ -46,6 +45,14 @@ type VehicleGroup =
 
 const CSV_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vStUJkHotLlVECjJPyaxIWnYTl45_0Fw9IAtgIUzkRjScPYWE_lYJfk2_38Uqn9Y40kP-5pv3UXeRJf/pub?gid=306191113&single=true&output=csv";
+
+// ✅ 실제 보유한 타이어 위치정보 이미지 경로로 교체하세요.
+const POSITION_IMAGE_MAP: Record<string, string> = {
+  STEER: "/asset/tire-position/steer.png",
+  DRIVE: "/asset/tire-position/drive.png",
+  TRAILER: "/asset/tire-position/trailer.png",
+  ALL: "/asset/tire-position/all.png",
+};
 
 const pageWrap = "container mx-auto px-4 py-10 md:py-14 space-y-8";
 const sectionCard =
@@ -132,7 +139,6 @@ function getVehicleGroup(row: TireRow): Exclude<VehicleGroup, "전체"> {
   if (vehicleType === "BUS") return "버스";
   if (vehicleType === "TRAILER") return "트레일러";
   if (vehicleType === "DUMP") return "덤프";
-
   if (vehicleType === "TRACTOR") return "11톤 초과";
 
   if (vehicleType === "CARGO") {
@@ -189,12 +195,29 @@ function getVehicleLabel(row: TireRow) {
   return normalize(row.vehicle_type) || "기타";
 }
 
+function getAxleCode(row: TireRow) {
+  const axle = upper(row.axle);
+  if (axle === "STEER" || axle === "DRIVE" || axle === "TRAILER" || axle === "ALL") {
+    return axle;
+  }
+  return axle || "ALL";
+}
+
 function getAxleLabel(value: string) {
   const axle = upper(value);
   if (axle === "STEER") return "전륜";
   if (axle === "DRIVE") return "후륜";
   if (axle === "TRAILER") return "트레일러";
+  if (axle === "ALL") return "전체";
   return normalize(value) || "-";
+}
+
+function getBrandShortName(brand: string) {
+  const v = normalize(brand);
+  if (v.includes("금호")) return "금호";
+  if (v.includes("MAXAM")) return "MAXAM";
+  if (v.includes("KENEX")) return "KENEX";
+  return v;
 }
 
 function getStockBadge(stockQty: string) {
@@ -221,6 +244,11 @@ function makeDetailPath(row: TireRow) {
   return `/tires-shop/${encodeURIComponent(normalize(row.sku))}`;
 }
 
+function getPositionImage(row: TireRow) {
+  const axleCode = getAxleCode(row);
+  return POSITION_IMAGE_MAP[axleCode] || POSITION_IMAGE_MAP.ALL;
+}
+
 const TiresShopPage: React.FC = () => {
   const [rows, setRows] = useState<TireRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -240,7 +268,17 @@ const TiresShopPage: React.FC = () => {
 
         if (!alive) return;
 
-        const activeRows = parsed.filter((row) => upper(row.is_active) === "TRUE");
+        const activeRows = parsed.filter((row) => {
+          if (upper(row.is_active) !== "TRUE") return false;
+
+          const hasModel = normalize(row.model_line) !== "";
+          const hasSize = normalize(row.size) !== "";
+          const hasVehicleType = normalize(row.vehicle_type) !== "";
+          const hasTonClass = normalize(row.ton_class) !== "";
+
+          return hasModel && hasSize && hasVehicleType && hasTonClass;
+        });
+
         setRows(activeRows);
       } catch (error) {
         console.error("Failed to load tires CSV:", error);
@@ -309,10 +347,7 @@ const TiresShopPage: React.FC = () => {
         return stockB - stockA;
       }
 
-      return normalize(a.shop_title || a.model_line).localeCompare(
-        normalize(b.shop_title || b.model_line),
-        "ko"
-      );
+      return normalize(a.model_line).localeCompare(normalize(b.model_line), "ko");
     });
 
     return result;
@@ -331,8 +366,7 @@ const TiresShopPage: React.FC = () => {
           </h1>
 
           <p className="max-w-3xl text-sm md:text-base leading-7 text-gray-600">
-            차종군과 사이즈 기준으로 많이 찾는 규격과 대표 모델을 빠르게 확인할 수
-            있습니다.
+            차종군과 사이즈 기준으로 많이 찾는 규격과 대표 모델을 빠르게 확인할 수 있습니다.
           </p>
 
           <div className="flex flex-wrap gap-3 pt-1">
@@ -435,15 +469,15 @@ const TiresShopPage: React.FC = () => {
       ) : (
         <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
           {filteredRows.map((row) => {
-            const vehicleLabel = getVehicleLabel(row);
             const vehicleGroup = getVehicleGroup(row);
             const axleLabel = getAxleLabel(row.axle);
             const stockBadge = getStockBadge(row.stock_qty);
-            const showVehicleLabelBadge = vehicleGroup !== vehicleLabel;
+            const brandShort = getBrandShortName(row.brand);
             const detailPath = makeDetailPath(row);
+            const positionImage = getPositionImage(row);
 
             return (
-              <article key={row.sku} className={cardBase}>
+              <article key={normalize(row.sku) || `${row.model_line}-${row.size}-${row.axle}`} className={cardBase}>
                 <Link to={detailPath} className="block">
                   <div className="aspect-[4/3] bg-gray-50">
                     {normalize(row.main_thumb_url) ? (
@@ -462,79 +496,66 @@ const TiresShopPage: React.FC = () => {
                 </Link>
 
                 <div className="space-y-3 p-4">
+                  {/* 1행: 차종군 + 재고 */}
                   <div className="flex flex-wrap gap-2">
-                    <span
-                      className={`${badgeBase} border-orange-200 bg-orange-50 text-orange-700`}
-                    >
+                    <span className={`${badgeBase} border-orange-200 bg-orange-50 text-orange-700`}>
                       {vehicleGroup}
                     </span>
-
-                    {showVehicleLabelBadge && (
-                      <span
-                        className={`${badgeBase} border-gray-200 bg-gray-50 text-gray-700`}
-                      >
-                        {vehicleLabel}
-                      </span>
-                    )}
-
-                    <span
-                      className={`${badgeBase} border-gray-200 bg-gray-50 text-gray-700`}
-                    >
-                      {axleLabel}
-                    </span>
-
-                    <span
-                      className={`${badgeBase} border-gray-200 bg-gray-50 text-gray-700`}
-                    >
-                      {normalize(row.size)}
-                    </span>
-
                     <span className={`${badgeBase} ${stockBadge.className}`}>
                       {stockBadge.label}
                     </span>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <Link to={detailPath} className="block">
-                      <h3 className="text-base font-extrabold leading-snug text-navy-900 hover:text-orange-600 transition">
-                        {row.shop_title ||
-                          `${vehicleLabel} ${axleLabel} ${normalize(row.size)} ${normalize(row.brand)} ${normalize(row.model_line)}`}
-                      </h3>
-                    </Link>
-
-                    <p className="text-sm leading-5 text-gray-600 line-clamp-2">
-                      {normalize(row.short_desc) || "-"}
-                    </p>
+                  {/* 2행: 위치 · 사이즈 · 브랜드 · 모델 */}
+                  <div className="rounded-2xl border border-gray-200 bg-white p-3">
+                    <div className="text-sm font-extrabold leading-6 text-navy-900">
+                      {axleLabel} · {normalize(row.size)} · {brandShort} · {normalize(row.model_line)}
+                    </div>
                   </div>
 
+                  {/* 3행: 브랜드 / 모델 / 적용차종 */}
                   <div className="rounded-2xl bg-gray-50 p-3 text-sm text-gray-700 space-y-2">
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-gray-500">브랜드</span>
-                      <span className="font-bold text-right">
-                        {normalize(row.brand) || "-"}
-                      </span>
+                      <span className="font-bold text-right">{normalize(row.brand) || "-"}</span>
                     </div>
 
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-gray-500">모델</span>
-                      <span className="font-bold text-right">
-                        {normalize(row.model_line) || "-"}
-                      </span>
+                      <span className="font-bold text-right">{normalize(row.model_line) || "-"}</span>
                     </div>
 
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-gray-500">적용차종</span>
-                      <span className="font-bold text-right">{vehicleLabel}</span>
+                      <span className="font-bold text-right">{normalize(row.oe_fitment) || "-"}</span>
                     </div>
                   </div>
 
+                  {/* 4행: 가격 */}
                   <div className="rounded-2xl border border-orange-100 bg-orange-50/60 p-3">
-                    <div className="text-xs font-extrabold text-orange-700">
-                      공급가 기준
-                    </div>
+                    <div className="text-xs font-extrabold text-orange-700">공급가 기준</div>
                     <div className="mt-1 text-lg font-extrabold text-navy-900">
                       {formatPrice(row.price)}
                     </div>
+                  </div>
+
+                  {/* 5행: 위치정보 */}
+                  <div className="rounded-2xl border border-gray-200 bg-white p-3">
+                    <div className="mb-2 text-xs font-extrabold text-gray-500">
+                      타이어 위치정보
+                    </div>
+                    {positionImage ? (
+                      <img
+                        src={positionImage}
+                        alt={`${axleLabel} 위치정보`}
+                        className="h-20 w-full object-contain"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="flex h-20 items-center justify-center rounded-xl bg-gray-50 text-xs font-bold text-gray-400">
+                        위치 이미지 없음
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex justify-between gap-2">
