@@ -42,25 +42,30 @@ type VehicleGroup =
   | "덤프"
   | "버스";
 
+type AxleFilter = "전체" | "전륜" | "후륜" | "All";
+
 const CSV_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vStUJkHotLlVECjJPyaxIWnYTl45_0Fw9IAtgIUzkRjScPYWE_lYJfk2_38Uqn9Y40kP-5pv3UXeRJf/pub?gid=306191113&single=true&output=csv";
+
+const vehicleGroups: VehicleGroup[] = [
+  "전체",
+  "1톤~3.5톤 이하",
+  "5톤~10톤 이하",
+  "11톤 초과",
+  "트레일러",
+  "덤프",
+  "버스",
+];
+
+const axleOptions: AxleFilter[] = ["전체", "전륜", "후륜", "All"];
+
+const popularSizes = ["12R22.5", "385/65R22.5"];
 
 const FALLBACK_POSITION_IMAGE_MAP: Record<string, string> = {
   STEER: "https://www.rnfkorea.co.kr/asset/tire-position/steer.png",
   DRIVE: "https://www.rnfkorea.co.kr/asset/tire-position/drive.png",
-  TRAILER: "https://www.rnfkorea.co.kr/asset/tire-position/trailer.png",
   ALL: "https://www.rnfkorea.co.kr/asset/tire-position/all.png",
 };
-
-const pageWrap = "container mx-auto px-4 py-10 md:py-14 space-y-8";
-const sectionCard =
-  "rounded-[28px] border border-gray-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.06)]";
-const cardBase =
-  "overflow-hidden rounded-[26px] border border-gray-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.06)]";
-const badgeBase =
-  "inline-flex items-center rounded-full border px-3 py-1 text-xs font-extrabold";
-const tabBase =
-  "h-10 rounded-full px-4 text-sm font-extrabold transition-all border";
 
 function parseCSVLine(line: string): string[] {
   const result: string[] = [];
@@ -169,21 +174,18 @@ function getVehicleGroup(row: TireRow): Exclude<VehicleGroup, "전체"> {
   return "11톤 초과";
 }
 
-function getAxleLabel(value: string) {
-  const axle = upper(value);
-  if (axle === "STEER") return "전륜";
-  if (axle === "DRIVE") return "후륜";
-  if (axle === "TRAILER") return "트레일러";
-  if (axle === "ALL") return "전체";
-  return normalize(value) || "-";
-}
-
 function getAxleCode(value: string) {
   const axle = upper(value);
-  if (axle === "STEER" || axle === "DRIVE" || axle === "TRAILER" || axle === "ALL") {
-    return axle;
-  }
+  if (axle === "STEER") return "STEER";
+  if (axle === "DRIVE") return "DRIVE";
   return "ALL";
+}
+
+function getAxleLabel(value: string) {
+  const axle = getAxleCode(value);
+  if (axle === "STEER") return "전륜";
+  if (axle === "DRIVE") return "후륜";
+  return "All";
 }
 
 function getStockBadge(stockQty: string) {
@@ -202,10 +204,6 @@ function getStockBadge(stockQty: string) {
   };
 }
 
-function getSizeBucket(size: string) {
-  return normalize(size) || "기타";
-}
-
 function getBrandShortName(brand: string) {
   const v = normalize(brand);
   if (v.includes("금호")) return "금호";
@@ -215,11 +213,7 @@ function getBrandShortName(brand: string) {
 function getPositionImage(row: TireRow) {
   const explicit = normalize(row.position_image_url);
   if (explicit) return explicit;
-
-  return (
-    FALLBACK_POSITION_IMAGE_MAP[getAxleCode(row.axle)] ||
-    FALLBACK_POSITION_IMAGE_MAP.ALL
-  );
+  return FALLBACK_POSITION_IMAGE_MAP[getAxleCode(row.axle)] || FALLBACK_POSITION_IMAGE_MAP.ALL;
 }
 
 function normalizeFitmentText(value: string) {
@@ -228,71 +222,68 @@ function normalizeFitmentText(value: string) {
     .replace(/^11톤\s*카고/i, "11~25T 카고");
 }
 
-const TiresShopPage: React.FC = () => {
+function matchesAxleFilter(row: TireRow, axleFilter: AxleFilter) {
+  if (axleFilter === "전체") return true;
+
+  const axleCode = getAxleCode(row.axle);
+
+  if (axleFilter === "전륜") return axleCode === "STEER";
+  if (axleFilter === "후륜") return axleCode === "DRIVE";
+  return axleCode === "ALL";
+}
+
+export default function TiresShop() {
   const [rows, setRows] = useState<TireRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [vehicleGroupFilter, setVehicleGroupFilter] =
-    useState<VehicleGroup>("전체");
+
+  const [vehicleFilter, setVehicleFilter] = useState<VehicleGroup>("전체");
+  const [axleFilter, setAxleFilter] = useState<AxleFilter>("전체");
   const [sizeFilter, setSizeFilter] = useState("전체");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     let alive = true;
 
-    async function loadData() {
-      try {
-        setLoading(true);
-        const res = await fetch(CSV_URL, { cache: "no-store" });
-        const text = await res.text();
-        const parsed = parseCSV(text);
-
+    fetch(CSV_URL)
+      .then((res) => res.text())
+      .then((text) => {
         if (!alive) return;
-
-        const validRows = parsed.filter((row) => {
-          const hasModel = normalize(row.model_line) !== "";
-          const hasSize = normalize(row.size) !== "";
-          const hasVehicleType = normalize(row.vehicle_type) !== "";
-          const hasTonClass = normalize(row.ton_class) !== "";
-          return hasModel && hasSize && hasVehicleType && hasTonClass;
+        const data = parseCSV(text).filter((row) => {
+          return (
+            normalize(row.model_line) !== "" &&
+            normalize(row.size) !== "" &&
+            normalize(row.vehicle_type) !== "" &&
+            normalize(row.ton_class) !== ""
+          );
         });
-
-        setRows(validRows);
-      } catch (error) {
-        console.error("Failed to load tires CSV:", error);
+        setRows(data);
+      })
+      .catch((err) => {
+        console.error("CSV load error:", err);
         if (alive) setRows([]);
-      } finally {
+      })
+      .finally(() => {
         if (alive) setLoading(false);
-      }
-    }
-
-    loadData();
+      });
 
     return () => {
       alive = false;
     };
   }, []);
 
-  const vehicleGroupOptions: VehicleGroup[] = [
-    "전체",
-    "1톤~3.5톤 이하",
-    "5톤~10톤 이하",
-    "11톤 초과",
-    "트레일러",
-    "덤프",
-    "버스",
-  ];
-
   const sizeOptions = useMemo(() => {
-    const sourceRows =
-      vehicleGroupFilter === "전체"
-        ? rows
-        : rows.filter((row) => getVehicleGroup(row) === vehicleGroupFilter);
+    const scoped = rows.filter((row) => {
+      if (vehicleFilter !== "전체" && getVehicleGroup(row) !== vehicleFilter) return false;
+      if (!matchesAxleFilter(row, axleFilter)) return false;
+      return true;
+    });
 
-    const sizes = Array.from(
-      new Set(sourceRows.map((row) => getSizeBucket(row.size)))
-    ).sort((a, b) => a.localeCompare(b, "ko"));
+    const sizes = Array.from(new Set(scoped.map((row) => normalize(row.size)))).sort((a, b) =>
+      a.localeCompare(b, "ko")
+    );
 
     return ["전체", ...sizes];
-  }, [rows, vehicleGroupFilter]);
+  }, [rows, vehicleFilter, axleFilter]);
 
   useEffect(() => {
     if (!sizeOptions.includes(sizeFilter)) {
@@ -303,217 +294,211 @@ const TiresShopPage: React.FC = () => {
   const filteredRows = useMemo(() => {
     let result = [...rows];
 
-    if (vehicleGroupFilter !== "전체") {
-      result = result.filter((row) => getVehicleGroup(row) === vehicleGroupFilter);
+    if (vehicleFilter !== "전체") {
+      result = result.filter((row) => getVehicleGroup(row) === vehicleFilter);
     }
 
+    result = result.filter((row) => matchesAxleFilter(row, axleFilter));
+
     if (sizeFilter !== "전체") {
-      result = result.filter((row) => getSizeBucket(row.size) === sizeFilter);
+      result = result.filter((row) => normalize(row.size) === sizeFilter);
+    }
+
+    if (search.trim()) {
+      const keyword = search.toLowerCase();
+      result = result.filter(
+        (row) =>
+          normalize(row.size).toLowerCase().includes(keyword) ||
+          normalize(row.model_line).toLowerCase().includes(keyword)
+      );
     }
 
     result.sort((a, b) => {
       const stockA = Number(a.stock_qty);
       const stockB = Number(b.stock_qty);
-      const hasStockA = !Number.isNaN(stockA) && stockA > 0 ? 1 : 0;
-      const hasStockB = !Number.isNaN(stockB) && stockB > 0 ? 1 : 0;
 
-      if (hasStockA !== hasStockB) return hasStockB - hasStockA;
-      if (!Number.isNaN(stockA) && !Number.isNaN(stockB) && stockA !== stockB) {
-        return stockB - stockA;
-      }
+      if (stockA > 0 && stockB === 0) return -1;
+      if (stockB > 0 && stockA === 0) return 1;
 
-      return normalize(a.model_line).localeCompare(normalize(b.model_line), "ko");
+      return stockB - stockA;
     });
 
     return result;
-  }, [rows, vehicleGroupFilter, sizeFilter]);
+  }, [rows, vehicleFilter, axleFilter, sizeFilter, search]);
 
   return (
-    <div className={pageWrap}>
-      <section className="rounded-[32px] border border-gray-200 bg-gradient-to-br from-white via-orange-50/40 to-white px-6 py-8 md:px-10 md:py-10">
-        <div className="max-w-4xl space-y-4">
-          <div className="inline-flex items-center rounded-full bg-orange-100 px-3 py-1 text-xs font-extrabold text-orange-700">
-            RNF KOREA TIRES SHOP
-          </div>
+    <div className="container mx-auto px-4 py-10 space-y-8">
+      <h1 className="text-3xl font-extrabold">RNF 타이어 쇼핑몰</h1>
 
-          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-navy-900">
-            차종별 추천 상용 타이어
-          </h1>
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="text-sm font-extrabold text-gray-600">🔥 인기 사이즈</span>
 
-          <p className="max-w-3xl text-sm md:text-base leading-7 text-gray-600">
-            차종군과 사이즈 기준으로 많이 찾는 규격과 대표 모델을 빠르게 확인할 수 있습니다.
-          </p>
+        {popularSizes.map((size) => (
+          <button
+            key={size}
+            type="button"
+            onClick={() => setSizeFilter(size)}
+            className="h-10 px-4 rounded-full border border-orange-300 bg-orange-50 text-orange-700 font-extrabold hover:bg-orange-500 hover:text-white"
+          >
+            {size}
+          </button>
+        ))}
+      </div>
 
-          <div className="flex flex-wrap gap-3 pt-1">
-            <a
-              href="tel:1551-1873"
-              className="inline-flex h-11 items-center justify-center rounded-xl bg-orange-500 px-5 text-sm font-extrabold text-white transition hover:bg-orange-600"
+      <div className="flex flex-wrap items-center gap-2">
+        {vehicleGroups.map((v) => {
+          const active = vehicleFilter === v;
+
+          return (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setVehicleFilter(v)}
+              className={`h-10 px-4 rounded-full text-sm font-extrabold border ${
+                active
+                  ? "border-orange-500 bg-orange-500 text-white"
+                  : "border-gray-200 bg-white text-gray-700 hover:border-orange-300"
+              }`}
             >
-              상담문의 1551-1873
-            </a>
+              {v}
+            </button>
+          );
+        })}
 
-            <a
-              href="/contact"
-              className="inline-flex h-11 items-center justify-center rounded-xl border border-gray-300 bg-white px-5 text-sm font-extrabold text-gray-800 transition hover:border-orange-400 hover:text-orange-600"
+        <div className="w-px h-6 bg-gray-300 mx-2" />
+
+        {axleOptions.map((v) => {
+          const active = axleFilter === v;
+
+          return (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setAxleFilter(v)}
+              className={`h-10 px-4 rounded-full text-sm font-extrabold border ${
+                active
+                  ? "border-orange-500 bg-orange-500 text-white"
+                  : "border-gray-200 bg-white text-gray-700 hover:border-orange-300"
+              }`}
             >
-              재고 및 납기 문의
-            </a>
-          </div>
-        </div>
-      </section>
+              {v}
+            </button>
+          );
+        })}
+      </div>
 
-      <section className={`${sectionCard} p-4 md:p-5 space-y-4`}>
-        <div className="flex flex-wrap gap-2">
-          {vehicleGroupOptions.map((item) => {
-            const active = vehicleGroupFilter === item;
+      <div className="flex flex-wrap gap-2">
+        {sizeOptions.map((size) => {
+          const active = sizeFilter === size;
 
-            return (
-              <button
-                key={item}
-                type="button"
-                onClick={() => setVehicleGroupFilter(item)}
-                className={`${tabBase} ${
-                  active
-                    ? "border-orange-500 bg-orange-500 text-white"
-                    : "border-gray-200 bg-white text-gray-700 hover:border-orange-300 hover:text-orange-600"
-                }`}
-              >
-                {item}
-              </button>
-            );
-          })}
-        </div>
+          return (
+            <button
+              key={size}
+              type="button"
+              onClick={() => setSizeFilter(size)}
+              className={`h-10 px-4 rounded-full text-sm font-extrabold border ${
+                active
+                  ? "border-orange-500 bg-orange-500 text-white"
+                  : "border-gray-200 bg-white text-gray-700 hover:border-orange-300"
+              }`}
+            >
+              {size}
+            </button>
+          );
+        })}
+      </div>
 
-        <div className="flex flex-wrap gap-2">
-          {sizeOptions.map((item) => {
-            const active = sizeFilter === item;
-
-            return (
-              <button
-                key={item}
-                type="button"
-                onClick={() => setSizeFilter(item)}
-                className={`${tabBase} ${
-                  active
-                    ? "border-orange-500 bg-orange-500 text-white"
-                    : "border-gray-200 bg-white text-gray-700 hover:border-orange-300 hover:text-orange-600"
-                }`}
-              >
-                {item}
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h2 className="text-xl md:text-2xl font-extrabold text-navy-900">
-            추천 타이어
-          </h2>
-          <p className="mt-1 text-sm text-gray-500">
-            재고 있는 상품이 먼저 보이도록 정렬했습니다.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2 text-sm font-bold text-gray-500">
-          <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1">
-            총 {filteredRows.length}개
-          </span>
-          {vehicleGroupFilter !== "전체" && (
-            <span className="inline-flex items-center rounded-full bg-orange-50 px-3 py-1 text-orange-700">
-              차종군: {vehicleGroupFilter}
-            </span>
-          )}
-          {sizeFilter !== "전체" && (
-            <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-gray-700">
-              사이즈: {sizeFilter}
-            </span>
-          )}
-        </div>
-      </section>
+      <input
+        type="text"
+        placeholder="사이즈 또는 모델 검색"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="w-full md:w-96 h-11 px-4 border rounded-xl"
+      />
 
       {loading ? (
-        <section className={`${sectionCard} p-10 text-center text-gray-500`}>
-          데이터를 불러오는 중입니다.
-        </section>
-      ) : filteredRows.length === 0 ? (
-        <section className={`${sectionCard} p-10 text-center text-gray-500`}>
-          조건에 맞는 상품이 없습니다.
-        </section>
+        <div>loading...</div>
       ) : (
-        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-          {filteredRows.map((row) => {
-            const vehicleGroup = getVehicleGroup(row);
-            const axleLabel = getAxleLabel(row.axle);
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+          {filteredRows.map((row, i) => {
+            const isBestModel = upper(row.model_line) === "KRS55";
+            const isHotSize = popularSizes.includes(normalize(row.size));
             const stockBadge = getStockBadge(row.stock_qty);
             const brandShort = getBrandShortName(row.brand);
             const positionImage = getPositionImage(row);
 
             return (
-              <article
-                key={
-                  normalize(row.sku) ||
-                  `${normalize(row.model_line)}-${normalize(row.size)}-${normalize(row.axle)}`
-                }
-                className={cardBase}
+              <div
+                key={normalize(row.sku) || `${normalize(row.model_line)}-${i}`}
+                className="rounded-2xl border bg-white shadow transition hover:shadow-xl hover:-translate-y-1"
               >
                 <div className="group relative aspect-[4/3] overflow-hidden bg-gray-50">
-  {normalize(row.main_thumb_url) ? (
-    <>
-      {/* 기본 썸네일 */}
-      <img
-        src={row.main_thumb_url}
-        alt={normalize(row.shop_title) || normalize(row.model_line)}
-        className="h-full w-full object-contain p-3 transition duration-300"
-        loading="lazy"
-      />
+                  {normalize(row.main_thumb_url) ? (
+                    <>
+                      <img
+                        src={row.main_thumb_url}
+                        alt={normalize(row.shop_title) || normalize(row.model_line)}
+                        className="h-full w-full object-contain p-3"
+                      />
 
-      {/* hover 확대 */}
-      <div className="pointer-events-none absolute inset-0 z-10 hidden items-center justify-center bg-white/95 group-hover:flex">
-        <img
-          src={row.main_thumb_url}
-          alt={normalize(row.shop_title) || normalize(row.model_line)}
-          className="h-full w-full object-cover"
-          loading="lazy"
-        />
-      </div>
-    </>
-  ) : (
-    <div className="flex h-full w-full items-center justify-center text-sm font-extrabold text-gray-400">
-      NO IMAGE
-    </div>
-  )}
-</div>
+                      <div className="absolute inset-0 hidden group-hover:flex items-center justify-center bg-white">
+                        <img
+                          src={row.main_thumb_url}
+                          alt={normalize(row.shop_title) || normalize(row.model_line)}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-sm font-extrabold text-gray-400">
+                      NO IMAGE
+                    </div>
+                  )}
+                </div>
 
-                <div className="space-y-3 p-4">
+                <div className="p-4 space-y-3">
                   <div className="flex flex-wrap gap-2">
-                    <span className={`${badgeBase} border-orange-200 bg-orange-50 text-orange-700`}>
-                      {vehicleGroup}
+                    {isBestModel && (
+                      <span className="px-3 py-1 text-xs font-bold bg-red-50 border border-red-200 text-red-600 rounded-full">
+                        BEST
+                      </span>
+                    )}
+
+                    {!isBestModel && isHotSize && (
+                      <span className="px-3 py-1 text-xs font-bold bg-orange-50 border border-orange-200 text-orange-600 rounded-full">
+                        HOT
+                      </span>
+                    )}
+
+                    <span className="px-3 py-1 text-xs font-bold bg-orange-50 border border-orange-200 text-orange-600 rounded-full">
+                      {getVehicleGroup(row)}
                     </span>
-                    <span className={`${badgeBase} ${stockBadge.className}`}>
+
+                    <span
+                      className={`px-3 py-1 text-xs font-bold rounded-full border ${stockBadge.className}`}
+                    >
                       {stockBadge.label}
                     </span>
                   </div>
 
-                  <div className="rounded-2xl border border-gray-200 bg-white p-3">
-                    <div className="text-sm font-extrabold leading-6 text-navy-900">
-                      {axleLabel} · {normalize(row.size)} · {brandShort} · {normalize(row.model_line)}
-                    </div>
+                  <div className="text-lg font-extrabold text-navy-900">{normalize(row.size)}</div>
+
+                  <div className="text-sm font-bold text-gray-600">
+                    {getAxleLabel(row.axle)} · {brandShort} · {normalize(row.model_line)}
                   </div>
 
                   <div className="rounded-2xl bg-gray-50 p-3 text-sm text-gray-700 space-y-2">
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex justify-between gap-3">
                       <span className="text-gray-500">브랜드</span>
                       <span className="font-bold text-right">{normalize(row.brand) || "-"}</span>
                     </div>
 
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex justify-between gap-3">
                       <span className="text-gray-500">모델</span>
                       <span className="font-bold text-right">{normalize(row.model_line) || "-"}</span>
                     </div>
 
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex justify-between gap-3">
                       <span className="text-gray-500">적용차종</span>
                       <span className="font-bold text-right">
                         {normalizeFitmentText(row.oe_fitment) || "-"}
@@ -521,51 +506,35 @@ const TiresShopPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-orange-100 bg-orange-50/60 p-3">
-                    <div className="text-xs font-extrabold text-orange-700">
-                      공급가 기준
-                    </div>
-                    <div className="mt-1 text-lg font-extrabold text-navy-900">
-                      {formatPrice(row.price)}
-                    </div>
+                  <div className="text-center bg-orange-50 border border-orange-100 rounded-xl p-3">
+                    <div className="text-xs font-bold text-orange-700">공급가 기준</div>
+                    <div className="text-xl font-extrabold">{formatPrice(row.price)}</div>
+                    <div className="text-xs text-gray-500">배송비 별도 / 장착비 별도</div>
                   </div>
 
                   <div className="rounded-2xl border border-gray-200 bg-white p-3">
-                    <div className="mb-2 text-xs font-extrabold text-gray-500">
-                      타이어 위치정보
+                    <div className="mb-2 text-xs font-extrabold text-gray-500">타이어 위치정보</div>
+                    <div className="flex justify-center">
+                      <img
+                        src={positionImage}
+                        alt={`${getAxleLabel(row.axle)} 위치정보`}
+                        className="h-14 object-contain"
+                      />
                     </div>
-                    {positionImage ? (
-                      <div className="h-24 w-full overflow-hidden rounded-xl bg-gray-50">
-                        <img
-                          src={positionImage}
-                          alt={`${axleLabel} 위치정보`}
-                          className="h-full w-full object-contain"
-                          loading="lazy"
-                        />
-                      </div>
-                    ) : (
-                      <div className="flex h-24 items-center justify-center rounded-xl bg-gray-50 text-xs font-bold text-gray-400">
-                        위치 이미지 없음
-                      </div>
-                    )}
                   </div>
 
-                  <div className="flex justify-end">
-                    <a
-                      href="tel:1551-1873"
-                      className="inline-flex h-10 items-center justify-center rounded-xl bg-navy-900 px-4 text-sm font-extrabold text-white transition hover:opacity-90"
-                    >
-                      문의하기
-                    </a>
-                  </div>
+                  <a
+                    href="tel:1551-1873"
+                    className="block text-center bg-navy-900 text-white rounded-xl py-3 font-extrabold text-lg"
+                  >
+                    ☎ 타이어 상담 1551-1873
+                  </a>
                 </div>
-              </article>
+              </div>
             );
           })}
-        </section>
+        </div>
       )}
     </div>
   );
-};
-
-export default TiresShopPage;
+}

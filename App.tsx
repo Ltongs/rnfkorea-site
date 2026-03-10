@@ -4431,12 +4431,13 @@ const FinancePage: React.FC = () => {
 const Footer: React.FC = () => {
   const nav = useNavigate();
   const { user, isInternal } = useAuth() as any;
-const goNarumi = () => {
-  if (user && isInternal) nav("/work/narumi");
-  else nav("/narumi/login");
-};
+
+  const goNarumi = () => {
+    if (user && isInternal) nav("/work/narumi");
+    else nav("/narumi/login");
+  };
+
   const goWork = (path: string) => {
-    // ✅ BS_ON은 당분간 로그인 없이 열람 허용
     if (path === "/work/bson") {
       nav(path);
       return;
@@ -4529,6 +4530,14 @@ const goNarumi = () => {
                   - 금융솔루션
                 </Link>
               </li>
+              <li>
+                <Link
+                  to="/cargo-finance"
+                  className="font-bold text-orange-600 hover:text-orange-500 transition-colors"
+                >
+                  - 개인(개별)협회 전용 금융상품
+                </Link>
+              </li>
             </ul>
           </div>
 
@@ -4547,7 +4556,6 @@ const goNarumi = () => {
                 </Link>
               </li>
 
-              {/* 준비중 */}
               <li className="flex items-center gap-2">
                 <span className="text-gray-400 font-bold">- 배터리 쇼핑몰</span>
                 <span className="text-[10px] font-extrabold px-2 py-1 rounded-full bg-gray-100 text-gray-500">
@@ -4631,48 +4639,45 @@ const App = () => {
 
     <main className="w-full">
       <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/tires" element={<TiresPage />} />
-        <Route path="/battery" element={<BatteryPage />} />
-        <Route path="/export" element={<ExportShopPage />} />
-        <Route path="/export-shop" element={<ExportShopPage />} />
-        <Route path="/finance" element={<FinancePage />} />
-        <Route path="/cargo-finance" element={<IndividualCargoFinancePage />} />
-        <Route path="/sitemap" element={<SitemapPage />} />
-        <Route path="/tires-shop" element={<TiresShopPage />} />
-        <Route path="/tires-shop/:sku" element={<div>상세 페이지 준비중</div>} />
-        
+  <Route path="/" element={<HomePage />} />
+  <Route path="/tires" element={<TiresPage />} />
+  <Route path="/battery" element={<BatteryPage />} />
+  <Route path="/export" element={<ExportShopPage />} />
+  <Route path="/export-shop" element={<ExportShopPage />} />
+  <Route path="/finance" element={<FinancePage />} />
+  <Route path="/cargo-finance" element={<IndividualCargoFinancePage />} />
+  <Route path="/sitemap" element={<SitemapPage />} />
 
-        {/* Narumi */}
-        <Route path="/narumi/login" element={<NarumiLoginPage />} />
-        <Route
-          path="/narumi"
-          element={
-            <ProtectedRoute>
-              <NarumiPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/narumi/admin"
-          element={
-            <ProtectedRoute>
-              <NarumiPage />
-            </ProtectedRoute>
-          }
-        />
+  {/* Shop */}
+  <Route path="/tires-shop" element={<TireShopPage />} />
+  <Route path="/tires-shop/:sku" element={<TireShopDetailPage />} />
 
-        {/* BS_ON */}
-        <Route path="/bson" element={<BsonWorkPage />} />
-        <Route path="/work/bson" element={<Navigate to="/bson" replace />} />
+  {/* Narumi */}
+  <Route path="/narumi/login" element={<NarumiLoginPage />} />
+  <Route
+    path="/narumi"
+    element={
+      <ProtectedRoute>
+        <NarumiPage />
+      </ProtectedRoute>
+    }
+  />
+  <Route
+    path="/narumi/admin"
+    element={
+      <ProtectedRoute>
+        <NarumiPage />
+      </ProtectedRoute>
+    }
+  />
 
-        {/* legacy */}
-        <Route path="/Narumi" element={<Navigate to="/narumi" replace />} />
+  {/* BS_ON */}
+  <Route path="/bson" element={<BsonWorkPage />} />
+  <Route path="/work/bson" element={<Navigate to="/bson" replace />} />
 
-        {/* Shop */}
-        <Route path="/tires-shop" element={<TireShopPage />} />
-        <Route path="/tires-shop/:sku" element={<TireShopDetailPage />} />
-      </Routes>
+  {/* legacy */}
+  <Route path="/Narumi" element={<Navigate to="/narumi" replace />} />
+</Routes>
     </main>
 
     <Footer />
