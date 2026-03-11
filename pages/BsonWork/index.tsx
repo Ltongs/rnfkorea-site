@@ -7,6 +7,8 @@ type Row = {
   equipNo?: string; // 장비번호
   model?: string; // 모델명
   vin?: string; // 차대번호
+  siteName?: string; // 현장명
+  siteAddress?: string; // 현장주소
 };
 
 /**
@@ -155,11 +157,18 @@ export default function BsonWorkPage() {
 
         const headers = grid[0].map((x) => norm(x));
 
-        const idxNo = pickIndex(headers, ["순번", "No", "번호"]);
-        const idxAsset = pickIndex(headers, ["자산번호", "장비번호", "자산번호(장비번호)", "AssetNo"]);
+        const idxNo = pickIndex(headers, ["순번", "No", "No.", "번호"]);
+        const idxAsset = pickIndex(headers, [
+          "자산번호",
+          "장비번호",
+          "자산번호(장비번호)",
+          "AssetNo",
+        ]);
         const idxEquip = pickIndex(headers, ["장비번호", "EquipmentNo"]);
         const idxModel = pickIndex(headers, ["모델명", "모델", "Model"]);
         const idxVin = pickIndex(headers, ["차대번호", "VIN", "vin"]);
+        const idxSiteName = pickIndex(headers, ["현장명", "현장"]);
+        const idxSiteAddress = pickIndex(headers, ["현장주소", "주소"]);
 
         const out: Row[] = [];
         for (let i = 1; i < grid.length; i++) {
@@ -169,9 +178,20 @@ export default function BsonWorkPage() {
           const equipNo = idxEquip >= 0 ? (r[idxEquip] ?? "") : "";
           const model = idxModel >= 0 ? (r[idxModel] ?? "") : "";
           const vin = idxVin >= 0 ? (r[idxVin] ?? "") : "";
+          const siteName = idxSiteName >= 0 ? (r[idxSiteName] ?? "") : "";
+          const siteAddress = idxSiteAddress >= 0 ? (r[idxSiteAddress] ?? "") : "";
 
-          if (!assetNo && !equipNo && !vin && !model) continue;
-          out.push({ no, assetNo, equipNo, model, vin });
+          if (!assetNo && !equipNo && !vin && !model && !siteName && !siteAddress) continue;
+
+          out.push({
+            no,
+            assetNo,
+            equipNo,
+            model,
+            vin,
+            siteName,
+            siteAddress,
+          });
         }
 
         if (!alive) return;
@@ -272,22 +292,19 @@ export default function BsonWorkPage() {
     "bg-gray-100 border border-gray-200 text-gray-400 font-extrabold cursor-not-allowed";
 
   return (
-  <div className="container mx-auto px-4 py-10 space-y-6">
-    <PageTitle
-  title="BS_ON 업무"
-  desc="RNF KOREA 내부 자산 및 딜 관리 페이지입니다. 사진 업로드 진행 상태와 자산 정보를 관리합니다."
-/>
+    <div className="container mx-auto px-4 py-10 space-y-6">
+      <PageTitle
+        title="BS_ON 업무"
+        desc="RNF KOREA 내부 자산 및 딜 관리 페이지입니다. 사진 업로드 진행 상태와 자산 정보를 관리합니다."
+      />
 
-   
-
-    {/* 상단 */}
+      {/* 상단 */}
       <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
         <div>
           <div className="text-sm font-bold text-gray-500">BS_ON · 렌탈 딜 자산 관리</div>
           <h1 className="text-2xl md:text-3xl font-extrabold text-navy-900 mt-1">
             딜: {dealName || "—"}
           </h1>
-          
         </div>
 
         <div className="flex flex-col sm:flex-row sm:items-end gap-3">
@@ -300,7 +317,7 @@ export default function BsonWorkPage() {
               value={dealName}
               onChange={(e) => setDealName(e.target.value)}
               className="mt-1 w-[260px] outline-none font-extrabold text-navy-900"
-              placeholder={`딜 이름`}
+              placeholder="딜 이름"
             />
             <div className="mt-2 text-[11px] font-bold">
               {isUnlocked ? (
@@ -353,7 +370,6 @@ export default function BsonWorkPage() {
           <div className="text-lg font-extrabold text-navy-900">딜 이름 입력 필요</div>
           <div className="mt-2 text-sm text-gray-600 leading-relaxed">
             딜 이름(=시트명)을 정확히 입력하면 자산 목록이 표시됩니다.
-           
           </div>
           <div className="mt-4 text-[12px] text-gray-500">
             * 목록은 숨기지만, CSV는 내부적으로 로드될 수 있습니다(표시/검증 로직만 잠금).
@@ -373,13 +389,15 @@ export default function BsonWorkPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="min-w-[1150px] w-full text-sm">
+            <table className="min-w-[1550px] w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr className="text-left text-gray-600">
                   <th className="px-4 py-3 font-extrabold w-[70px]">순번</th>
                   <th className="px-4 py-3 font-extrabold w-[180px]">장비번호</th>
                   <th className="px-4 py-3 font-extrabold w-[240px]">모델명</th>
                   <th className="px-4 py-3 font-extrabold w-[240px]">차대번호</th>
+                  <th className="px-4 py-3 font-extrabold w-[180px]">현장명</th>
+                  <th className="px-4 py-3 font-extrabold w-[320px]">현장주소</th>
                   <th className="px-4 py-3 font-extrabold w-[140px]">사진1</th>
                   <th className="px-4 py-3 font-extrabold w-[180px]">다운로드1</th>
                   <th className="px-4 py-3 font-extrabold w-[140px]">사진2</th>
@@ -398,11 +416,18 @@ export default function BsonWorkPage() {
                   const p2 = !!ex?.p2;
 
                   return (
-                    <tr key={`${r.vin ?? ""}-${idx}`} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="px-4 py-3 font-extrabold text-gray-700">{r.no ?? idx + 1}</td>
+                    <tr
+                      key={`${r.vin ?? ""}-${idx}`}
+                      className="border-b border-gray-100 hover:bg-gray-50"
+                    >
+                      <td className="px-4 py-3 font-extrabold text-gray-700">
+                        {r.no ?? idx + 1}
+                      </td>
 
                       <td className="px-4 py-3">
-                        <div className="font-extrabold text-navy-900">{r.equipNo || r.assetNo || "-"}</div>
+                        <div className="font-extrabold text-navy-900">
+                          {r.equipNo || r.assetNo || "-"}
+                        </div>
                         <div className="text-[11px] text-gray-500 mt-0.5">
                           파일키(VIN끝4): <span className="font-bold">{last4 || "—"}</span>
                         </div>
@@ -410,11 +435,21 @@ export default function BsonWorkPage() {
 
                       <td className="px-4 py-3 font-bold text-gray-700">{r.model || "-"}</td>
                       <td className="px-4 py-3 font-bold text-gray-700">{r.vin || "-"}</td>
+                      <td className="px-4 py-3 font-bold text-gray-700">
+                        {r.siteName || "-"}
+                      </td>
+                      <td className="px-4 py-3 font-bold text-gray-700">
+                        {r.siteAddress || "-"}
+                      </td>
 
                       {/* 사진1 */}
                       <td className="px-4 py-3">
                         {last4 ? (
-                          <span className={`inline-flex items-center px-3 py-1 rounded-full border text-xs font-extrabold ${badge(p1)}`}>
+                          <span
+                            className={`inline-flex items-center px-3 py-1 rounded-full border text-xs font-extrabold ${badge(
+                              p1
+                            )}`}
+                          >
                             {p1 ? "있음" : "없음"}
                           </span>
                         ) : (
@@ -426,11 +461,21 @@ export default function BsonWorkPage() {
                       <td className="px-4 py-3">
                         {last4 ? (
                           p1 ? (
-                            <a href={u1} download={downloadName(last4, 1)} className={dlBtnEnabled} title="다운로드">
+                            <a
+                              href={u1}
+                              download={downloadName(last4, 1)}
+                              className={dlBtnEnabled}
+                              title="다운로드"
+                            >
                               다운로드
                             </a>
                           ) : (
-                            <button type="button" disabled className={dlBtnDisabled} title="파일이 없습니다">
+                            <button
+                              type="button"
+                              disabled
+                              className={dlBtnDisabled}
+                              title="파일이 없습니다"
+                            >
                               다운로드
                             </button>
                           )
@@ -442,7 +487,11 @@ export default function BsonWorkPage() {
                       {/* 사진2 */}
                       <td className="px-4 py-3">
                         {last4 ? (
-                          <span className={`inline-flex items-center px-3 py-1 rounded-full border text-xs font-extrabold ${badge(p2)}`}>
+                          <span
+                            className={`inline-flex items-center px-3 py-1 rounded-full border text-xs font-extrabold ${badge(
+                              p2
+                            )}`}
+                          >
                             {p2 ? "있음" : "없음"}
                           </span>
                         ) : (
@@ -454,11 +503,21 @@ export default function BsonWorkPage() {
                       <td className="px-4 py-3">
                         {last4 ? (
                           p2 ? (
-                            <a href={u2} download={downloadName(last4, 2)} className={dlBtnEnabled} title="다운로드">
+                            <a
+                              href={u2}
+                              download={downloadName(last4, 2)}
+                              className={dlBtnEnabled}
+                              title="다운로드"
+                            >
                               다운로드
                             </a>
                           ) : (
-                            <button type="button" disabled className={dlBtnDisabled} title="파일이 없습니다">
+                            <button
+                              type="button"
+                              disabled
+                              className={dlBtnDisabled}
+                              title="파일이 없습니다"
+                            >
                               다운로드
                             </button>
                           )
@@ -472,7 +531,10 @@ export default function BsonWorkPage() {
 
                 {!loading && !err && visibleRows.length === 0 && (
                   <tr>
-                    <td className="px-4 py-10 text-center text-gray-500 font-bold" colSpan={8}>
+                    <td
+                      className="px-4 py-10 text-center text-gray-500 font-bold"
+                      colSpan={10}
+                    >
                       표시할 자산이 없습니다.
                     </td>
                   </tr>
@@ -482,7 +544,8 @@ export default function BsonWorkPage() {
           </div>
 
           <div className="px-5 py-4 text-[12px] text-gray-500 bg-white border-t border-gray-100">
-            사진 파일은 <b>{PHOTO_BASE}</b> 아래에 <b>VIN끝4자리(1).webp</b>, <b>VIN끝4자리(2).webp</b> 규칙으로 두면 자동 연결됩니다.
+            사진 파일은 <b>{PHOTO_BASE}</b> 아래에 <b>VIN끝4자리(1).webp</b>,{" "}
+            <b>VIN끝4자리(2).webp</b> 규칙으로 두면 자동 연결됩니다.
           </div>
         </div>
       )}
