@@ -1,30 +1,55 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { supabase } from "./supabase";
 
-type Role = "internal" | "external";
+type Role = "admin" | "narumi" | "lotte";
 
 export type User = {
   email: string;
   role: Role;
 };
 
+type LoginResult = {
+  ok: boolean;
+  role?: Role;
+  message?: string;
+};
+
 type AuthContextType = {
   user: User | null;
   loading: boolean;
-  login: (email: string) => { ok: boolean; role: Role };
-  logout: () => void;
-  isInternal: boolean;
+  login: (email: string, password: string) => Promise<LoginResult>;
+  logout: () => Promise<void>;
+
+  isAdmin: boolean;
+  isNarumi: boolean;
+  isLotte: boolean;
+
+  canViewAll: boolean;
+  canCreate: boolean;
+  canEditExisting: boolean;
+  canDelete: boolean;
+  canChangeStatus: boolean;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// ✅ 내부 사용자 화이트리스트 (여기에 추가)
-const INTERNAL_USERS = [
-  "admin@rnfkorea.co.kr",
-  "ltongs7@gmail.com",
-].map((x) => x.toLowerCase().trim());
-
 function normalizeEmail(email: string) {
   return (email || "").toLowerCase().trim();
+}
+
+const USER_ROLE_MAP: Record<string, Role> = {
+  "admin@rnfkorea.co.kr": "admin",
+  "ltongs7@gmail.com": "admin",
+  "sales@narmimotors.com": "narumi",
+  "youngjin.heo@lotte.net": "lotte",
+};
+
+function getRoleByEmail(email: string): Role | null {
+  return USER_ROLE_MAP[normalizeEmail(email)] ?? null;
+}
+
+function isValidRole(role: unknown): role is Role {
+  return role === "admin" || role === "narumi" || role === "lotte";
 }
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -32,44 +57,98 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const saved = localStorage.getItem("narumi_user");
-    if (saved) {
+    let mounted = true;
+
+    const init = async () => {
       try {
-        const parsed = JSON.parse(saved);
-        if (parsed?.email && parsed?.role) setUser(parsed);
-      } catch {
-        // ignore
+        const { data } = await supabase.auth.getUser();
+        const email = normalizeEmail(data?.user?.email || "");
+        const role = getRoleByEmail(email);
+
+        if (mounted && email && role) {
+          setUser({ email, role });
+        } else if (mounted) {
+          setUser(null);
+        }
+      } finally {
+        if (mounted) setLoading(false);
       }
-    }
-    setLoading(false);
+    };
+
+    init();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const email = normalizeEmail(session?.user?.email || "");
+      const role = getRoleByEmail(email);
+
+      if (email && role) {
+        setUser({ email, role });
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
-  const login = (email: string) => {
-  const e = normalizeEmail(email);
-  const role: Role = INTERNAL_USERS.includes(e) ? "internal" : "external";
+  const login = async (email: string, password: string): Promise<LoginResult> => {
+    const normalized = normalizeEmail(email);
+    const role = getRoleByEmail(normalized);
 
-  // ✅ 외부 이메일이면 상태 저장 자체를 하지 않음 (핵심)
-  if (role !== "internal") {
-    return { ok: false, role };
-  }
+    if (!role) {
+      return { ok: false, message: "허용되지 않은 계정입니다." };
+    }
 
-  const newUser: User = { email: e, role };
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: normalized,
+      password,
+    });
 
-  localStorage.setItem("narumi_user", JSON.stringify(newUser));
-  setUser(newUser);
+    if (error || !data.user) {
+      return { ok: false, message: error?.message || "로그인 실패" };
+    }
 
-  return { ok: true, role };
-};
+    setUser({ email: normalized, role });
+    return { ok: true, role };
+  };
 
-  const logout = () => {
-    localStorage.removeItem("narumi_user");
+  const logout = async () => {
+    await supabase.auth.signOut();
     setUser(null);
   };
 
-  const isInternal = useMemo(() => user?.role === "internal", [user]);
+  const isAdmin = useMemo(() => user?.role === "admin", [user]);
+  const isNarumi = useMemo(() => user?.role === "narumi", [user]);
+  const isLotte = useMemo(() => user?.role === "lotte", [user]);
+
+  const canViewAll = useMemo(() => isAdmin || isNarumi || isLotte, [isAdmin, isNarumi, isLotte]);
+  const canCreate = useMemo(() => isAdmin || isNarumi, [isAdmin, isNarumi]);
+  const canEditExisting = useMemo(() => isAdmin, [isAdmin]);
+  const canDelete = useMemo(() => isAdmin, [isAdmin]);
+  const canChangeStatus = useMemo(() => isAdmin, [isAdmin]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, isInternal }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        login,
+        logout,
+        isAdmin,
+        isNarumi,
+        isLotte,
+        canViewAll,
+        canCreate,
+        canEditExisting,
+        canDelete,
+        canChangeStatus,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

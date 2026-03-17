@@ -3,8 +3,6 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 import PageTitle from "../../components/PageTitle";
 
-const ADMIN_EMAIL = "admin@rnfkorea.co.kr";
-
 // 정책
 const UI_MASK_AFTER_HOURS = 24;
 const DB_SCRUB_AFTER_HOURS = 120;
@@ -189,7 +187,18 @@ const infoLabel = "text-xs font-extrabold text-gray-400";
 const infoValue = "mt-1 text-sm font-extrabold text-navy-900 break-all";
 
 export default function NarumiPage() {
-  const { user, isInternal, logout } = useAuth();
+  const {
+    user,
+    logout,
+    isAdmin,
+    isNarumi,
+    isLotte,
+    canViewAll,
+    canCreate,
+    canEditExisting,
+    canDelete,
+    canChangeStatus,
+  } = useAuth();
 
   const [vin, setVin] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -203,8 +212,6 @@ export default function NarumiPage() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string>("");
 
-  const [isAdmin, setIsAdmin] = useState(false);
-
   const [searchText, setSearchText] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | TaskStatus>("all");
   const [showOldUploaded, setShowOldUploaded] = useState(false);
@@ -214,40 +221,32 @@ export default function NarumiPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [pendingUploadRowId, setPendingUploadRowId] = useState<string | number | null>(null);
 
-  const resolveAdmin = async () => {
-    const localEmail = (user?.email ?? "").toLowerCase();
-    const byLocalAuth = !!isInternal && localEmail === ADMIN_EMAIL.toLowerCase();
-
-    try {
-      const { data } = await supabase.auth.getUser();
-      const supabaseEmail = (data?.user?.email ?? "").toLowerCase();
-      const bySupabaseAuth = supabaseEmail === ADMIN_EMAIL.toLowerCase();
-      const admin = byLocalAuth || bySupabaseAuth;
-      setIsAdmin(admin);
-      return admin;
-    } catch {
-      setIsAdmin(byLocalAuth);
-      return byLocalAuth;
-    }
-  };
-
   const fetchRows = async () => {
     setLoading(true);
     setErr("");
 
     try {
-      const admin = await resolveAdmin();
-
       const cutoffISO = new Date(
         Date.now() - HIDE_UPLOADED_AFTER_DAYS_FOR_NON_ADMIN * 24 * 60 * 60 * 1000
       ).toISOString();
 
       let q = supabase.from("narumi_tasks").select("*");
 
-      if (!admin) {
+      // 권한별 행 조회 제한
+      if (isAdmin) {
+        if (!showOldUploaded) {
+          q = q.or(`vehicle_doc_path.is.null,created_at.gte.${cutoffISO}`);
+        }
+      } else if (isNarumi) {
         q = q.or(`vehicle_doc_path.is.null,created_at.gte.${cutoffISO}`);
-      } else if (!showOldUploaded) {
-        q = q.or(`vehicle_doc_path.is.null,created_at.gte.${cutoffISO}`);
+      } else if (isLotte) {
+        q = q
+          .eq("is_lotte_autolease", true)
+          .or(`vehicle_doc_path.is.null,created_at.gte.${cutoffISO}`);
+      } else {
+        setRows([]);
+        setLoading(false);
+        return;
       }
 
       const { data, error } = await q.order("created_at", { ascending: false });
@@ -264,10 +263,15 @@ export default function NarumiPage() {
   useEffect(() => {
     fetchRows();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showOldUploaded]);
+  }, [showOldUploaded, isAdmin, isNarumi, isLotte]);
 
   const filteredRows = useMemo(() => {
     let result = [...rows];
+
+    // 프론트 2차 방어: 롯데 계정은 롯데 건만
+    if (isLotte) {
+      result = result.filter((r) => r.is_lotte_autolease === true);
+    }
 
     const q = searchText.trim().toLowerCase();
     if (q) {
@@ -290,7 +294,7 @@ export default function NarumiPage() {
     }
 
     return result;
-  }, [rows, searchText, statusFilter]);
+  }, [rows, searchText, statusFilter, isLotte]);
 
   const onReset = () => {
     setVin("");
@@ -301,6 +305,11 @@ export default function NarumiPage() {
   };
 
   const onAdd = async () => {
+    if (!canCreate) {
+      alert("신규 입력 권한이 없습니다.");
+      return;
+    }
+
     const vinTrim = normalizeVin(vin);
     const dtTrim = deliveryText.trim();
     const phoneTrim = customerPhone.trim();
@@ -366,12 +375,18 @@ export default function NarumiPage() {
   };
 
   const isLockedAfterUpload = (r: NarumiTask) => !!r.vehicle_doc_path;
-  const isVehicleDocKeyEnabled = (r: NarumiTask) => isAllDone(r) && !isLockedAfterUpload(r);
+  const isVehicleDocKeyEnabled = (r: NarumiTask) =>
+    canChangeStatus && isAllDone(r) && !isLockedAfterUpload(r);
 
   const toggleStage = async (
     id: NarumiTask["id"],
     key: keyof Pick<NarumiTask, "has_insurance" | "docs_ready" | "is_registering" | "is_registered">
   ) => {
+    if (!canChangeStatus) {
+      alert("상태 변경 권한이 없습니다.");
+      return;
+    }
+
     const target = rows.find((rr) => String(rr.id) === String(id));
     if (!target) return;
 
@@ -407,12 +422,21 @@ export default function NarumiPage() {
   };
 
   const onClickVehicleDocUpload = (r: NarumiTask) => {
+    if (!canChangeStatus) {
+      alert("차량등록증 업로드 권한이 없습니다.");
+      return;
+    }
     if (!isVehicleDocKeyEnabled(r)) return;
     setPendingUploadRowId(r.id);
     fileInputRef.current?.click();
   };
 
   const uploadVehicleDoc = async (row: NarumiTask, file: File) => {
+    if (!canChangeStatus) {
+      alert("차량등록증 업로드 권한이 없습니다.");
+      return;
+    }
+
     if (!isAllDone(row)) {
       alert("완결 상태에서만 차량등록증 업로드가 가능합니다.");
       return;
@@ -489,6 +513,13 @@ export default function NarumiPage() {
     setPendingUploadRowId(null);
   };
 
+  const loginRoleLabel = useMemo(() => {
+    if (isAdmin) return "관리자";
+    if (isNarumi) return "나르미모터스";
+    if (isLotte) return "롯데오토리스 조회";
+    return "일반";
+  }, [isAdmin, isNarumi, isLotte]);
+
   return (
     <div className="container mx-auto px-4 py-10 space-y-6">
       <PageTitle
@@ -509,8 +540,18 @@ export default function NarumiPage() {
 
             <div className="text-xs font-extrabold text-gray-500">
               로그인:{" "}
-              <span className={isAdmin ? "text-emerald-700" : "text-gray-700"}>
-                {isAdmin ? "관리자" : "일반"}
+              <span
+                className={
+                  isAdmin
+                    ? "text-emerald-700"
+                    : isNarumi
+                      ? "text-orange-700"
+                      : isLotte
+                        ? "text-blue-700"
+                        : "text-gray-700"
+                }
+              >
+                {loginRoleLabel}
               </span>
               {user?.email ? (
                 <span className="ml-2 text-gray-400 font-bold">({user.email})</span>
@@ -543,123 +584,131 @@ export default function NarumiPage() {
         )}
       </div>
 
-      {/* 신규 입력 (나르미모터스) */}
-      <section className={`${cardClass} p-5`}>
-        <div className="flex items-start gap-3 mb-4">
-          <div className="mt-1 h-5 w-1.5 rounded bg-orange-500" />
-          <div>
-            <div className="text-lg font-extrabold text-navy-900">
-              신규 입력 (나르미모터스)
-            </div>
-            <div className="text-sm text-gray-500 mt-1">
-              차대번호/고객전화번호/출고일자/롯데오토리스 여부를 먼저 입력합니다.
+      {(isAdmin || isNarumi) && (
+        <section className={`${cardClass} p-5`}>
+          <div className="flex items-start gap-3 mb-4">
+            <div className="mt-1 h-5 w-1.5 rounded bg-orange-500" />
+            <div>
+              <div className="text-lg font-extrabold text-navy-900">
+                신규 입력 (나르미모터스)
+              </div>
+              <div className="text-sm text-gray-500 mt-1">
+                차대번호/고객전화번호/출고일자/롯데오토리스 여부를 먼저 입력합니다.
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="grid md:grid-cols-12 gap-4 items-end">
-          <div className="md:col-span-5 relative">
-            <label className={labelClass}>차대번호(VIN) *</label>
-            <input
-              value={vin}
-              onChange={(e) => setVin(normalizeVin(e.target.value))}
-              placeholder="예: KMH..."
-              className={inputClass}
+          <div className="grid md:grid-cols-12 gap-4 items-end">
+            <div className="md:col-span-5 relative">
+              <label className={labelClass}>차대번호(VIN) *</label>
+              <input
+                value={vin}
+                onChange={(e) => setVin(normalizeVin(e.target.value))}
+                placeholder="예: KMH..."
+                className={inputClass}
+                disabled={!canCreate}
+              />
+              <div className="absolute -bottom-5 left-0 text-xs text-gray-400">
+                VIN 끝6자리(참고):
+                <span className="font-extrabold text-gray-600 ml-1">
+                  {last6 || "------"}
+                </span>
+              </div>
+            </div>
+
+            <div className="md:col-span-3">
+              <label className={labelClass}>전화번호 *</label>
+              <input
+                value={customerPhone}
+                onChange={(e) => setCustomerPhone(formatPhoneKR(e.target.value))}
+                placeholder="010-1234-5678"
+                inputMode="tel"
+                className={inputClass}
+                disabled={!canCreate}
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className={labelClass}>출고일자 *</label>
+              <input
+                value={deliveryText}
+                onChange={(e) => setDeliveryText(formatYYYYMMDDToDots(e.target.value))}
+                placeholder="YYYY.MM.DD"
+                inputMode="numeric"
+                className={inputClass}
+                disabled={!canCreate}
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className={labelClass}>롯데오토리스(Y/N)</label>
+              <div className="h-[52px] w-full rounded-xl border border-gray-200 bg-white flex items-center gap-6 px-4">
+                <label className="inline-flex items-center gap-2 font-extrabold text-sm text-navy-900 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="lotte"
+                    checked={lotte === true}
+                    onChange={() => setLotte(true)}
+                    className="h-4 w-4 accent-orange-500"
+                    disabled={!canCreate}
+                  />
+                  Y
+                </label>
+                <label className="inline-flex items-center gap-2 font-extrabold text-sm text-navy-900 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="lotte"
+                    checked={lotte === false}
+                    onChange={() => setLotte(false)}
+                    className="h-4 w-4 accent-orange-500"
+                    disabled={!canCreate}
+                  />
+                  N
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5">
+            <label className={labelClass}>특이사항 (긴 내용 가능)</label>
+            <textarea
+              value={specialNote}
+              onChange={(e) => setSpecialNote(e.target.value)}
+              placeholder="예: 고객 요청사항 / 특이사항 / 보험사 정보 / 등록 관련 메모 ..."
+              className="w-full min-h-[84px] px-4 py-3 rounded-xl border border-gray-200 focus:border-orange-400 focus:ring-4 focus:ring-orange-200/40 outline-none whitespace-pre-wrap"
+              disabled={!canCreate}
             />
-            <div className="absolute -bottom-5 left-0 text-xs text-gray-400">
-              VIN 끝6자리(참고):
-              <span className="font-extrabold text-gray-600 ml-1">
-                {last6 || "------"}
-              </span>
-            </div>
           </div>
 
-          <div className="md:col-span-3">
-            <label className={labelClass}>전화번호 *</label>
-            <input
-              value={customerPhone}
-              onChange={(e) => setCustomerPhone(formatPhoneKR(e.target.value))}
-              placeholder="010-1234-5678"
-              inputMode="tel"
-              className={inputClass}
-            />
+          <div className="mt-5 flex items-center gap-3 flex-wrap">
+            <button
+              type="button"
+              onClick={onAdd}
+              disabled={saving || !canCreate}
+              className="px-6 py-3 rounded-xl bg-orange-500 text-white font-extrabold hover:bg-orange-600 disabled:opacity-60 whitespace-nowrap"
+            >
+              {saving ? "추가 중..." : "추가"}
+            </button>
+
+            <button
+              type="button"
+              onClick={onReset}
+              disabled={!canCreate}
+              className="px-6 py-3 rounded-xl border border-gray-200 text-navy-900 font-extrabold hover:border-gray-300 whitespace-nowrap disabled:opacity-60"
+            >
+              입력 초기화
+            </button>
           </div>
+        </section>
+      )}
 
-          <div className="md:col-span-2">
-            <label className={labelClass}>출고일자 *</label>
-            <input
-              value={deliveryText}
-              onChange={(e) => setDeliveryText(formatYYYYMMDDToDots(e.target.value))}
-              placeholder="YYYY.MM.DD"
-              inputMode="numeric"
-              className={inputClass}
-            />
-          </div>
-
-          <div className="md:col-span-2">
-            <label className={labelClass}>롯데오토리스(Y/N)</label>
-            <div className="h-[52px] w-full rounded-xl border border-gray-200 bg-white flex items-center gap-6 px-4">
-              <label className="inline-flex items-center gap-2 font-extrabold text-sm text-navy-900 cursor-pointer">
-                <input
-                  type="radio"
-                  name="lotte"
-                  checked={lotte === true}
-                  onChange={() => setLotte(true)}
-                  className="h-4 w-4 accent-orange-500"
-                />
-                Y
-              </label>
-              <label className="inline-flex items-center gap-2 font-extrabold text-sm text-navy-900 cursor-pointer">
-                <input
-                  type="radio"
-                  name="lotte"
-                  checked={lotte === false}
-                  onChange={() => setLotte(false)}
-                  className="h-4 w-4 accent-orange-500"
-                />
-                N
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-5">
-          <label className={labelClass}>특이사항 (긴 내용 가능)</label>
-          <textarea
-            value={specialNote}
-            onChange={(e) => setSpecialNote(e.target.value)}
-            placeholder="예: 고객 요청사항 / 특이사항 / 보험사 정보 / 등록 관련 메모 ..."
-            className="w-full min-h-[84px] px-4 py-3 rounded-xl border border-gray-200 focus:border-orange-400 focus:ring-4 focus:ring-orange-200/40 outline-none whitespace-pre-wrap"
-          />
-        </div>
-
-        <div className="mt-5 flex items-center gap-3 flex-wrap">
-          <button
-            type="button"
-            onClick={onAdd}
-            disabled={saving}
-            className="px-6 py-3 rounded-xl bg-orange-500 text-white font-extrabold hover:bg-orange-600 disabled:opacity-60 whitespace-nowrap"
-          >
-            {saving ? "추가 중..." : "추가"}
-          </button>
-
-          <button
-            type="button"
-            onClick={onReset}
-            className="px-6 py-3 rounded-xl border border-gray-200 text-navy-900 font-extrabold hover:border-gray-300 whitespace-nowrap"
-          >
-            입력 초기화
-          </button>
-        </div>
-      </section>
-
-      {isAdmin && (
+      {canViewAll && (
         <section className={`${cardClass} p-5`}>
           <div className="flex items-start gap-3 mb-4">
             <div className="mt-1 h-5 w-1.5 rounded bg-navy-900" />
             <div>
               <div className="text-lg font-extrabold text-navy-900">
-                관리자 조회
+                조회 / 검색
               </div>
               <div className="text-sm text-gray-500 mt-1">
                 VIN / 전화번호 / 특이사항 / ID 검색 및 상태별 필터
@@ -703,6 +752,7 @@ export default function NarumiPage() {
                   checked={showOldUploaded}
                   onChange={(e) => setShowOldUploaded(e.target.checked)}
                   className="h-4 w-4 accent-orange-500"
+                  disabled={!isAdmin}
                 />
                 30일 초과도 포함
               </label>
@@ -719,7 +769,6 @@ export default function NarumiPage() {
         onChange={onFilePicked}
       />
 
-      {/* 업무 목록 */}
       <section className={`${cardClass} p-5`}>
         <div className="flex items-start gap-3 mb-4">
           <div className="mt-1 h-5 w-1.5 rounded bg-orange-500" />
@@ -737,6 +786,12 @@ export default function NarumiPage() {
                 <>
                   <br />
                   * 업로드 완료 건은 최근 {HIDE_UPLOADED_AFTER_DAYS_FOR_NON_ADMIN}일만 표시됩니다.
+                </>
+              )}
+              {isLotte && (
+                <>
+                  <br />
+                  * 롯데오토리스 계정은 롯데오토리스 대상 건만 조회할 수 있습니다.
                 </>
               )}
             </div>
@@ -831,10 +886,14 @@ export default function NarumiPage() {
                       <div className="grid grid-cols-2 xl:grid-cols-3 gap-2">
                         <button
                           type="button"
-                          disabled={locked}
+                          disabled={locked || !canChangeStatus}
                           className={[
                             btnBase,
-                            locked ? btnDisabled : r.has_insurance ? btnOn : btnOff,
+                            locked || !canChangeStatus
+                              ? btnDisabled
+                              : r.has_insurance
+                                ? btnOn
+                                : btnOff,
                           ].join(" ")}
                           onClick={() => toggleStage(r.id, "has_insurance")}
                         >
@@ -843,10 +902,14 @@ export default function NarumiPage() {
 
                         <button
                           type="button"
-                          disabled={locked}
+                          disabled={locked || !canChangeStatus}
                           className={[
                             btnBase,
-                            locked ? btnDisabled : r.docs_ready ? btnOn : btnOff,
+                            locked || !canChangeStatus
+                              ? btnDisabled
+                              : r.docs_ready
+                                ? btnOn
+                                : btnOff,
                           ].join(" ")}
                           onClick={() => toggleStage(r.id, "docs_ready")}
                         >
@@ -855,10 +918,14 @@ export default function NarumiPage() {
 
                         <button
                           type="button"
-                          disabled={locked}
+                          disabled={locked || !canChangeStatus}
                           className={[
                             btnBase,
-                            locked ? btnDisabled : r.is_registering ? btnOn : btnOff,
+                            locked || !canChangeStatus
+                              ? btnDisabled
+                              : r.is_registering
+                                ? btnOn
+                                : btnOff,
                           ].join(" ")}
                           onClick={() => toggleStage(r.id, "is_registering")}
                         >
@@ -867,10 +934,14 @@ export default function NarumiPage() {
 
                         <button
                           type="button"
-                          disabled={locked}
+                          disabled={locked || !canChangeStatus}
                           className={[
                             btnBase,
-                            locked ? btnDisabled : r.is_registered ? btnOn : btnOff,
+                            locked || !canChangeStatus
+                              ? btnDisabled
+                              : r.is_registered
+                                ? btnOn
+                                : btnOff,
                           ].join(" ")}
                           onClick={() => toggleStage(r.id, "is_registered")}
                         >
@@ -891,11 +962,13 @@ export default function NarumiPage() {
                           title={
                             hasVehicleDoc
                               ? "업로드 완료"
-                              : !isAllDone(r)
-                                ? "등록완료까지 처리된 후 업로드 가능"
-                                : locked
-                                  ? "업로드 후 잠금"
-                                  : "차량등록증 업로드"
+                              : !canChangeStatus
+                                ? "업로드 권한 없음"
+                                : !isAllDone(r)
+                                  ? "등록완료까지 처리된 후 업로드 가능"
+                                  : locked
+                                    ? "업로드 후 잠금"
+                                    : "차량등록증 업로드"
                           }
                         >
                           {uploadingId === r.id
@@ -908,10 +981,7 @@ export default function NarumiPage() {
                         <button
                           type="button"
                           disabled={!hasVehicleDoc}
-                          className={[
-                            btnBase,
-                            hasVehicleDoc ? btnOff : btnDisabled,
-                          ].join(" ")}
+                          className={[btnBase, hasVehicleDoc ? btnOff : btnDisabled].join(" ")}
                           onClick={() => downloadVehicleDoc(r)}
                         >
                           다운로드
@@ -922,6 +992,12 @@ export default function NarumiPage() {
                         * 등록완료까지 처리된 후 차량등록증 업로드 가능
                         <br />
                         * 업로드 완료 후 단계 변경 불가
+                        {!canEditExisting && (
+                          <>
+                            <br />
+                            * 현재 계정은 기존 데이터 상태 변경 권한이 없습니다.
+                          </>
+                        )}
                       </div>
                     </div>
 

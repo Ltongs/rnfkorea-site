@@ -63,7 +63,7 @@ type MobileMenuStyle = React.CSSProperties;
 function calcMobileMenuStyle(btnEl: HTMLButtonElement | null): MobileMenuStyle {
   const vw = window.innerWidth;
   const gutter = 8;
-  const maxWidth = 288; // 18rem
+  const maxWidth = 288;
   const width = Math.min(maxWidth, vw - gutter * 2);
 
   if (!btnEl) {
@@ -77,7 +77,6 @@ function calcMobileMenuStyle(btnEl: HTMLButtonElement | null): MobileMenuStyle {
   const rect = btnEl.getBoundingClientRect();
   const top = rect.bottom + 6;
 
-  // 버튼의 왼쪽 기준으로 열되, 화면 밖으로 나가지 않도록 clamp
   const desiredLeft = rect.left;
   const clampedLeft = Math.max(gutter, Math.min(desiredLeft, vw - width - gutter));
 
@@ -91,7 +90,7 @@ function calcMobileMenuStyle(btnEl: HTMLButtonElement | null): MobileMenuStyle {
 export default function PageHeader() {
   const { pathname } = useLocation();
   const nav = useNavigate();
-  const { user, isInternal } = useAuth() as any;
+  const { user, canViewAll } = useAuth() as any;
 
   const [openBiz, setOpenBiz] = useState(false);
   const [openShop, setOpenShop] = useState(false);
@@ -153,7 +152,6 @@ export default function PageHeader() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 모바일에서 열려 있는 메뉴 위치를 항상 다시 계산
   useLayoutEffect(() => {
     if (!isMobileMenuMode) return;
 
@@ -253,7 +251,14 @@ export default function PageHeader() {
 
   const goWorkInternalOnly = (path: string) => {
     handleMenuNavigate();
-    if (user && isInternal) nav(path);
+
+    if (path === "/work/narumi" || path === "/narumi") {
+      if (user && canViewAll) nav("/narumi");
+      else nav("/narumi/login");
+      return;
+    }
+
+    if (user && canViewAll) nav(path);
     else nav("/narumi/login");
   };
 

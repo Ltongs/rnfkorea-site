@@ -46,7 +46,6 @@ import { AuthProvider, useAuth } from "./lib/auth";
 
 /* components */
 import PageHeader from "./components/PageHeader";
-import ProtectedRouteGuard from "./components/ProtectedRoute";
 import { ProjectConsultForm } from "./components/ProjectConsultForm";
 
 /* pages */
@@ -454,7 +453,7 @@ function useLang() {
 const Header: React.FC = () => {
   const { lang } = useLang();
   const nav = useNavigate();
-  const { user, isInternal, logout } = useAuth() as any;
+  const { user, canViewAll, logout } = useAuth() as any;
   const { pathname } = useLocation();
 
   const [isScrolled, setIsScrolled] = useState(false);
@@ -483,14 +482,22 @@ const Header: React.FC = () => {
   };
 
   const goWork = (path: string) => {
-    // ✅ BS_ON은 당분간 로그인 없이 열람 허용
-    if (path === "/work/bson") {
-      nav(path);
-      return;
-    }
-    if (user && isInternal) nav(path);
+  // ✅ BS_ON은 당분간 로그인 없이 열람 허용
+  if (path === "/work/bson") {
+    nav(path);
+    return;
+  }
+
+  // 나르미는 새 경로로 이동
+  if (path === "/work/narumi") {
+    if (user && canViewAll) nav("/narumi");
     else nav("/narumi/login");
-  };
+    return;
+  }
+
+  if (user && canViewAll) nav(path);
+  else nav("/narumi/login");
+};
 
   const closeAll = () => {
     setBizOpen(false);
@@ -562,7 +569,7 @@ const Header: React.FC = () => {
 
             {/* Mobile Right */}
             <div className="md:hidden flex items-center justify-end gap-2 flex-wrap">
-              {user && isInternal && (
+              {user && canViewAll && (
                 <button
                   type="button"
                   onClick={() => {
@@ -833,13 +840,13 @@ const Header: React.FC = () => {
               사이트맵
             </Link>
 
-            {user && isInternal && (
+            {user && canViewAll && (
               <div className="text-xs font-bold text-gray-500 px-3 py-2 rounded-lg bg-white border border-gray-200">
                 로그인: <span className="text-navy-900">{user.email}</span>
               </div>
             )}
 
-            {user && isInternal && (
+            {user && canViewAll && (
               <button
                 type="button"
                 onClick={() => {
@@ -4430,21 +4437,23 @@ const FinancePage: React.FC = () => {
 
 const Footer: React.FC = () => {
   const nav = useNavigate();
-  const { user, isInternal } = useAuth() as any;
+  const { user, canViewAll } = useAuth() as any;
 
-  const goNarumi = () => {
-    if (user && isInternal) nav("/work/narumi");
-    else nav("/narumi/login");
-  };
+const goNarumi = () => {
+  if (user && canViewAll) nav("/narumi");
+  else nav("/narumi/login");
+};
 
-  const goWork = (path: string) => {
-    if (path === "/work/bson") {
-      nav(path);
-      return;
-    }
-    if (user && isInternal) nav(path);
+const goWork = (path: string) => {
+  if (path === "/work/narumi") {
+    if (user && canViewAll) nav("/narumi");
     else nav("/narumi/login");
-  };
+    return;
+  }
+
+  if (user && canViewAll) nav(path);
+  else nav("/narumi/login");
+};
 
   return (
     <footer id="company" className="bg-white text-navy-900 py-16 border-t border-gray-100">
@@ -4600,7 +4609,7 @@ const Footer: React.FC = () => {
 // Narumi (Protected Route)
 // =========================
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, loading, isInternal } = useAuth() as any;
+  const { user, loading, canViewAll } = useAuth() as any;
 
   if (loading) {
     return (
@@ -4610,8 +4619,9 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
     );
   }
 
-  // ✅ 로그인 안했거나, 내부사용자 아니면 차단
-  if (!user || !isInternal) return <Navigate to="/narumi/login" replace />;
+  if (!user || !canViewAll) {
+    return <Navigate to="/narumi/login" replace />;
+  }
 
   return <>{children}</>;
 };
