@@ -30,6 +30,7 @@ type NarumiTask = {
   special_note: string | null;
   created_at?: string;
   vehicle_doc_path?: string | null;
+  manufacture_doc_path?: string | null;
   customer_phone?: string | null;
   customer_phone_set_at?: string | null;
   customer_phone_scrubbed_at?: string | null;
@@ -205,6 +206,8 @@ export default function NarumiPage() {
   const [specialNote, setSpecialNote] = useState("");
   const last6 = useMemo(() => vinLast6(vin), [vin]);
 
+  const [manufactureImageFile, setManufactureImageFile] = useState<File | null>(null);
+
   const [rows, setRows] = useState<NarumiTask[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -217,6 +220,8 @@ export default function NarumiPage() {
   const [uploadingId, setUploadingId] = useState<string | number | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const manufactureInputRef = useRef<HTMLInputElement | null>(null);
+
   const [pendingUploadRowId, setPendingUploadRowId] = useState<string | number | null>(null);
 
   const [memoDrafts, setMemoDrafts] = useState<Record<string, string>>({});
@@ -308,6 +313,29 @@ export default function NarumiPage() {
     setDeliveryText("");
     setLotte(false);
     setSpecialNote("");
+    setManufactureImageFile(null);
+    if (manufactureInputRef.current) manufactureInputRef.current.value = "";
+  };
+
+  const uploadManufactureDocForRow = async (rowId: string | number, file: File) => {
+    const ext = extFromName(file.name) || "jpg";
+    const path = `${String(rowId)}/manufacture_certificate.${ext}`;
+
+    const { error: upErr } = await supabase.storage
+      .from("vehicle_docs")
+      .upload(path, file, {
+        upsert: true,
+        contentType: file.type || undefined,
+      });
+
+    if (upErr) throw upErr;
+
+    const { error: dbErr } = await supabase
+      .from("narumi_tasks")
+      .update({ manufacture_doc_path: path })
+      .eq("id", rowId as any);
+
+    if (dbErr) throw dbErr;
   };
 
   const onAdd = async () => {
@@ -365,10 +393,20 @@ export default function NarumiPage() {
         is_registered: false,
         status: "todo" as TaskStatus,
         vehicle_doc_path: null,
+        manufacture_doc_path: null,
       };
 
-      const { error } = await supabase.from("narumi_tasks").insert(payload);
+      const { data: inserted, error } = await supabase
+        .from("narumi_tasks")
+        .insert(payload)
+        .select("id")
+        .single();
+
       if (error) throw error;
+
+      if (manufactureImageFile && inserted?.id != null) {
+        await uploadManufactureDocForRow(inserted.id, manufactureImageFile);
+      }
 
       onReset();
       await fetchRows();
@@ -433,7 +471,7 @@ export default function NarumiPage() {
   };
 
   const onClickVehicleDocUpload = (r: NarumiTask) => {
-    if (!canUploadVehicleDoc) {
+    if (!canChangeStatus) {
       alert("차량등록증 업로드 권한이 없습니다.");
       return;
     }
@@ -489,24 +527,64 @@ export default function NarumiPage() {
     }
   };
 
+  const downloadStorageFile = async (path: string, fallbackName: string) => {
+    const { data, error } = await supabase.storage.from("vehicle_docs").download(path);
+    if (error) throw error;
+
+    const url = URL.createObjectURL(data);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = safeFileBase(path.split("/").pop() || fallbackName);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const openStorageFile = async (path: string) => {
+    const { data, error } = await supabase.storage.from("vehicle_docs").download(path);
+    if (error) throw error;
+
+    const url = URL.createObjectURL(data);
+    window.open(url, "_blank", "noopener,noreferrer");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  };
+
   const downloadVehicleDoc = async (row: NarumiTask) => {
     const path = row.vehicle_doc_path;
     if (!path) return;
 
     try {
-      const { data, error } = await supabase.storage.from("vehicle_docs").download(path);
-      if (error) throw error;
-
-      const url = URL.createObjectURL(data);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = safeFileBase(path.split("/").pop() || "vehicle_registration");
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      await downloadStorageFile(path, "vehicle_registration");
     } catch (e: any) {
       alert(e?.message || "다운로드 실패");
+    }
+  };
+
+  const downloadManufactureDoc = async (row: NarumiTask) => {
+    const path = row.manufacture_doc_path;
+    if (!path) return;
+
+    try {
+      await downloadStorageFile(path, "manufacture_certificate");
+    } catch (e: any) {
+      alert(e?.message || "다운로드 실패");
+    }
+  };
+
+  const viewManufactureDoc = async (row: NarumiTask) => {
+    if (!isAdmin) {
+      alert("제작증 보기 권한은 관리자만 가능합니다.");
+      return;
+    }
+
+    const path = row.manufacture_doc_path;
+    if (!path) return;
+
+    try {
+      await openStorageFile(path);
+    } catch (e: any) {
+      alert(e?.message || "보기 실패");
     }
   };
 
@@ -562,6 +640,19 @@ export default function NarumiPage() {
 
     await uploadVehicleDoc(row, file);
     setPendingUploadRowId(null);
+  };
+
+  const onManufacturePicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert("제작증은 이미지 파일만 첨부 가능합니다.");
+      e.target.value = "";
+      return;
+    }
+
+    setManufactureImageFile(file);
   };
 
   const loginRoleLabel = useMemo(() => {
@@ -644,13 +735,13 @@ export default function NarumiPage() {
                 신규 입력 (나르미모터스)
               </div>
               <div className="text-sm text-gray-500 mt-1">
-                차대번호/고객전화번호/출고일자/롯데오토리스 여부를 먼저 입력합니다.
+                차대번호/제작증 이미지/고객전화번호/출고일자/롯데오토리스 여부를 먼저 입력합니다.
               </div>
             </div>
           </div>
 
           <div className="grid md:grid-cols-12 gap-4 items-end">
-            <div className="md:col-span-5 relative">
+            <div className="md:col-span-4 relative">
               <label className={labelClass}>차대번호(VIN) *</label>
               <input
                 value={vin}
@@ -659,15 +750,44 @@ export default function NarumiPage() {
                 className={inputClass}
                 disabled={!canCreate}
               />
-              <div className="absolute -bottom-5 left-0 text-xs text-gray-400">
-                VIN 끝6자리(참고):
-                <span className="font-extrabold text-gray-600 ml-1">
-                  {last6 || "------"}
-                </span>
-              </div>
+              
             </div>
 
-            <div className="md:col-span-3">
+            <div className="md:col-span-2">
+              <label className={labelClass}>제작증 이미지</label>
+              <input
+                ref={manufactureInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={onManufacturePicked}
+              />
+              <button
+                type="button"
+                onClick={() => manufactureInputRef.current?.click()}
+                disabled={!canCreate}
+                className="h-[52px] w-full px-4 rounded-xl border border-gray-200 bg-white text-navy-900 font-extrabold hover:border-orange-300 disabled:opacity-60"
+              >
+                {manufactureImageFile ? "제작증 변경" : "제작증 첨부"}
+              </button>
+
+
+              {manufactureImageFile && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setManufactureImageFile(null);
+                    if (manufactureInputRef.current) manufactureInputRef.current.value = "";
+                  }}
+                  disabled={!canCreate}
+                  className="mt-1 text-xs font-extrabold text-red-600 hover:underline disabled:opacity-60"
+                >
+                  첨부 제거
+                </button>
+              )}
+            </div>
+
+            <div className="md:col-span-2">
               <label className={labelClass}>전화번호 *</label>
               <input
                 value={customerPhone}
@@ -854,14 +974,15 @@ export default function NarumiPage() {
           {filteredRows.map((r) => {
             const locked = !!r.vehicle_doc_path;
             const hasVehicleDoc = !!r.vehicle_doc_path;
+            const hasManufactureDoc = !!r.manufacture_doc_path;
             const vehicleDocCanUpload = isVehicleDocKeyEnabled(r);
             const currentStatus = deriveStatus(r);
             const memoValue = memoDrafts[String(r.id)] ?? "";
 
             return (
               <div key={String(r.id)} className="overflow-x-auto">
-                <div className="min-w-[980px] border border-gray-200 rounded-2xl bg-white overflow-hidden">
-                  <div className="grid xl:grid-cols-[1.1fr_1.4fr]">
+                <div className="min-w-[1180px] border border-gray-200 rounded-2xl bg-white overflow-hidden">
+                  <div className="grid xl:grid-cols-[1.1fr_1.55fr]">
                     <div className="p-3 xl:border-r border-gray-200">
                       <div className="flex items-center gap-2 flex-wrap mb-3">
                         <span
@@ -924,6 +1045,11 @@ export default function NarumiPage() {
                         <div>
                           <div className={infoLabel}>롯데오토리스</div>
                           <div className={infoValue}>{r.is_lotte_autolease ? "Y" : "N"}</div>
+                        </div>
+
+                        <div>
+                          <div className={infoLabel}>제작증</div>
+                          <div className={infoValue}>{hasManufactureDoc ? "첨부됨" : "-"}</div>
                         </div>
                       </div>
                     </div>
@@ -1021,11 +1147,32 @@ export default function NarumiPage() {
                           >
                             다운로드
                           </button>
+
+                          <button
+                            type="button"
+                            disabled={!hasManufactureDoc}
+                            className={[btnBase, hasManufactureDoc ? btnOff : btnDisabled].join(" ")}
+                            onClick={() => downloadManufactureDoc(r)}
+                          >
+                            제작증 다운로드
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={!hasManufactureDoc || !isAdmin}
+                            className={[
+                              btnBase,
+                              hasManufactureDoc && isAdmin ? btnOff : btnDisabled,
+                            ].join(" ")}
+                            onClick={() => viewManufactureDoc(r)}
+                          >
+                            제작증 보기
+                          </button>
                         </div>
                       </div>
 
                       <div className="text-xs text-gray-400 leading-relaxed whitespace-nowrap overflow-x-auto">
-                        * 등록완료까지 처리된 후 차량등록증 업로드 가능 / * 업로드 완료 후 단계 변경 불가
+                        * 등록완료까지 처리된 후 차량등록증 업로드 가능 / * 업로드 완료 후 단계 변경 불가 / * 제작증 보기는 관리자 전용
                         {!canEditExisting && (
                           <span> / * 현재 계정은 기존 데이터 상태 변경 권한이 없습니다.</span>
                         )}
@@ -1066,10 +1213,10 @@ export default function NarumiPage() {
                               }))
                             }
                             placeholder="관리자만 메모 입력/수정 가능"
-                            className="w-full h-[88px] text-sm text-gray-700 whitespace-pre-wrap break-words rounded-xl bg-white border border-gray-200 px-3 py-2 focus:border-orange-400 focus:ring-4 focus:ring-orange-200/40 outline-none resize-none overflow-y-auto"
+                            className="w-full h-[88px] text-[13px] text-gray-700 whitespace-pre-wrap break-words rounded-xl bg-white border border-gray-200 px-3 py-2 focus:border-orange-400 focus:ring-4 focus:ring-orange-200/40 outline-none resize-none overflow-y-auto"
                           />
                         ) : (
-                          <div className="h-[88px] overflow-y-auto text-sm text-gray-700 whitespace-pre-wrap break-words rounded-xl bg-gray-50 border border-gray-200 px-3 py-2">
+                          <div className="h-[88px] overflow-y-auto text-[13px] text-gray-700 whitespace-pre-wrap break-words rounded-xl bg-gray-50 border border-gray-200 px-3 py-2">
                             {r.special_note?.trim() ? (
                               r.special_note
                             ) : (
