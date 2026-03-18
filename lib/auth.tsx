@@ -1,93 +1,110 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import type { User, Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
-
-type Role = "admin" | "narumi" | "lotte";
-
-export type User = {
-  email: string;
-  role: Role;
-};
-
-type LoginResult = {
-  ok: boolean;
-  role?: Role;
-  message?: string;
-};
 
 type AuthContextType = {
   user: User | null;
+  session: Session | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<LoginResult>;
-  logout: () => Promise<void>;
 
+  // role flags
   isAdmin: boolean;
   isNarumi: boolean;
   isLotte: boolean;
+  isInternal: boolean;
 
+  // page permissions
   canViewAll: boolean;
   canCreate: boolean;
   canEditExisting: boolean;
   canDelete: boolean;
   canChangeStatus: boolean;
+
+  // auth actions
+  login: (email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
 };
 
-const AuthContext = createContext<AuthContextType | null>(null);
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function normalizeEmail(email: string) {
-  return (email || "").toLowerCase().trim();
+function normalizeEmail(email?: string | null) {
+  return (email ?? "").trim().toLowerCase();
 }
 
-const USER_ROLE_MAP: Record<string, Role> = {
-  "admin@rnfkorea.co.kr": "admin",
-  "ltongs7@gmail.com": "admin",
-  "sales@narmimotors.com": "narumi",
-  "youngjin.heo@lotte.net": "lotte",
-};
+function getRoleFlags(emailRaw?: string | null) {
+  const email = normalizeEmail(emailRaw);
 
-function getRoleByEmail(email: string): Role | null {
-  return USER_ROLE_MAP[normalizeEmail(email)] ?? null;
+  const isAdmin = email === "admin@rnfkorea.co.kr";
+  const isNarumi = email.endsWith("@narmimotors.com");
+  const isLotte = email.endsWith("@lotte.net");
+
+  const isInternal = isAdmin || isNarumi || isLotte;
+
+  return {
+    email,
+    isAdmin,
+    isNarumi,
+    isLotte,
+    isInternal,
+  };
 }
 
-function isValidRole(role: unknown): role is Role {
-  return role === "admin" || role === "narumi" || role === "lotte";
+function getPermissions(emailRaw?: string | null) {
+  const { isAdmin, isNarumi, isLotte, isInternal } = getRoleFlags(emailRaw);
+
+  return {
+    isAdmin,
+    isNarumi,
+    isLotte,
+    isInternal,
+
+    canViewAll: isInternal,
+    canCreate: isAdmin || isNarumi,
+    canEditExisting: isAdmin,
+    canDelete: isAdmin,
+    canChangeStatus: isAdmin,
+  };
 }
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let mounted = true;
 
-    const init = async () => {
-      try {
-        const { data } = await supabase.auth.getUser();
-        const email = normalizeEmail(data?.user?.email || "");
-        const role = getRoleByEmail(email);
+    const bootstrap = async () => {
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
 
-        if (mounted && email && role) {
-          setUser({ email, role });
-        } else if (mounted) {
-          setUser(null);
-        }
-      } finally {
-        if (mounted) setLoading(false);
+      if (!mounted) return;
+
+      if (error) {
+        console.error("[auth] getSession error:", error.message);
       }
+
+      setSession(session ?? null);
+      setUser(session?.user ?? null);
+      setLoading(false);
     };
 
-    init();
+    bootstrap();
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const email = normalizeEmail(session?.user?.email || "");
-      const role = getRoleByEmail(email);
-
-      if (email && role) {
-        setUser({ email, role });
-      } else {
-        setUser(null);
-      }
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession ?? null);
+      setUser(nextSession?.user ?? null);
+      setLoading(false);
     });
 
     return () => {
@@ -96,66 +113,60 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const login = async (email: string, password: string): Promise<LoginResult> => {
-    const normalized = normalizeEmail(email);
-    const role = getRoleByEmail(normalized);
+  const permissionState = useMemo(() => {
+    return getPermissions(user?.email);
+  }, [user?.email]);
 
-    if (!role) {
-      return { ok: false, message: "허용되지 않은 계정입니다." };
-    }
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: normalized,
+  const login = async (email: string, password: string) => {
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
       password,
     });
 
-    if (error || !data.user) {
-      return { ok: false, message: error?.message || "로그인 실패" };
+    if (error) {
+      console.error("[auth] signInWithPassword error:", error.message);
+      throw error;
     }
-
-    setUser({ email: normalized, role });
-    return { ok: true, role };
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error("[auth] signOut error:", error.message);
+      throw error;
+    }
   };
 
-  const isAdmin = useMemo(() => user?.role === "admin", [user]);
-  const isNarumi = useMemo(() => user?.role === "narumi", [user]);
-  const isLotte = useMemo(() => user?.role === "lotte", [user]);
+  const value = useMemo<AuthContextType>(
+    () => ({
+      user,
+      session,
+      loading,
 
-  const canViewAll = useMemo(() => isAdmin || isNarumi || isLotte, [isAdmin, isNarumi, isLotte]);
-  const canCreate = useMemo(() => isAdmin || isNarumi, [isAdmin, isNarumi]);
-  const canEditExisting = useMemo(() => isAdmin, [isAdmin]);
-  const canDelete = useMemo(() => isAdmin, [isAdmin]);
-  const canChangeStatus = useMemo(() => isAdmin, [isAdmin]);
+      isAdmin: permissionState.isAdmin,
+      isNarumi: permissionState.isNarumi,
+      isLotte: permissionState.isLotte,
+      isInternal: permissionState.isInternal,
 
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        loading,
-        login,
-        logout,
-        isAdmin,
-        isNarumi,
-        isLotte,
-        canViewAll,
-        canCreate,
-        canEditExisting,
-        canDelete,
-        canChangeStatus,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+      canViewAll: permissionState.canViewAll,
+      canCreate: permissionState.canCreate,
+      canEditExisting: permissionState.canEditExisting,
+      canDelete: permissionState.canDelete,
+      canChangeStatus: permissionState.canChangeStatus,
+
+      login,
+      logout,
+    }),
+    [user, session, loading, permissionState]
   );
-};
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  if (!ctx) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
   return ctx;
 }

@@ -12,7 +12,6 @@ type TaskStatus =
   | "todo"
   | "insurance"
   | "docs"
-  | "registering"
   | "registered"
   | "completed";
 
@@ -62,7 +61,7 @@ function vinLast6(vin: string) {
 }
 
 function isAllDone(t: NarumiTask) {
-  return !!(t.has_insurance && t.docs_ready && t.is_registering && t.is_registered);
+  return !!(t.has_insurance && t.docs_ready && t.is_registered);
 }
 
 function extFromName(name: string) {
@@ -123,12 +122,11 @@ function getDisplayPhone(r: NarumiTask) {
 function deriveStatus(
   row: Pick<
     NarumiTask,
-    "has_insurance" | "docs_ready" | "is_registering" | "is_registered" | "vehicle_doc_path"
+    "has_insurance" | "docs_ready" | "is_registered" | "vehicle_doc_path"
   >
 ): TaskStatus {
   if (row.vehicle_doc_path) return "completed";
   if (row.is_registered) return "registered";
-  if (row.is_registering) return "registering";
   if (row.docs_ready) return "docs";
   if (row.has_insurance) return "insurance";
   return "todo";
@@ -139,13 +137,11 @@ function statusLabel(status?: string | null) {
     case "insurance":
       return "보험서류";
     case "docs":
-      return "등록서류";
-    case "registering":
-      return "등록접수";
+      return "등록서류수령";
     case "registered":
       return "등록완료";
     case "completed":
-      return "완결";
+      return "차량등록증 완료";
     case "todo":
     default:
       return "접수";
@@ -170,7 +166,8 @@ const pillDone = "bg-emerald-50 text-emerald-700 border-emerald-200";
 const pillProg = "bg-orange-50 text-orange-700 border-orange-200";
 const pillGray = "bg-gray-50 text-gray-700 border-gray-200";
 
-const btnBase = "px-3 py-2 rounded-lg text-sm font-extrabold border transition-all";
+const btnBase =
+  "h-[44px] px-3 rounded-lg text-sm font-extrabold border transition-all whitespace-nowrap";
 const btnOn = "bg-navy-900 text-white border-navy-900";
 const btnOff =
   "bg-white text-navy-900 border-gray-200 hover:border-orange-300 hover:text-orange-600";
@@ -198,7 +195,9 @@ export default function NarumiPage() {
     canEditExisting,
     canDelete,
     canChangeStatus,
-  } = useAuth();
+    canEditMemo,
+    canUploadVehicleDoc,
+  } = useAuth() as any;
 
   const [vin, setVin] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -221,6 +220,9 @@ export default function NarumiPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [pendingUploadRowId, setPendingUploadRowId] = useState<string | number | null>(null);
 
+  const [memoDrafts, setMemoDrafts] = useState<Record<string, string>>({});
+  const [memoSavingId, setMemoSavingId] = useState<string | number | null>(null);
+
   const fetchRows = async () => {
     setLoading(true);
     setErr("");
@@ -232,7 +234,6 @@ export default function NarumiPage() {
 
       let q = supabase.from("narumi_tasks").select("*");
 
-      // 권한별 행 조회 제한
       if (isAdmin) {
         if (!showOldUploaded) {
           q = q.or(`vehicle_doc_path.is.null,created_at.gte.${cutoffISO}`);
@@ -252,7 +253,14 @@ export default function NarumiPage() {
       const { data, error } = await q.order("created_at", { ascending: false });
       if (error) throw error;
 
-      setRows((data ?? []) as NarumiTask[]);
+      const nextRows = (data ?? []) as NarumiTask[];
+      setRows(nextRows);
+
+      const nextDrafts: Record<string, string> = {};
+      nextRows.forEach((row) => {
+        nextDrafts[String(row.id)] = row.special_note ?? "";
+      });
+      setMemoDrafts(nextDrafts);
     } catch (e: any) {
       setErr(e?.message || "Load failed");
     } finally {
@@ -268,7 +276,6 @@ export default function NarumiPage() {
   const filteredRows = useMemo(() => {
     let result = [...rows];
 
-    // 프론트 2차 방어: 롯데 계정은 롯데 건만
     if (isLotte) {
       result = result.filter((r) => r.is_lotte_autolease === true);
     }
@@ -376,11 +383,11 @@ export default function NarumiPage() {
 
   const isLockedAfterUpload = (r: NarumiTask) => !!r.vehicle_doc_path;
   const isVehicleDocKeyEnabled = (r: NarumiTask) =>
-    canChangeStatus && isAllDone(r) && !isLockedAfterUpload(r);
+    canUploadVehicleDoc && isAllDone(r) && !isLockedAfterUpload(r);
 
   const toggleStage = async (
     id: NarumiTask["id"],
-    key: keyof Pick<NarumiTask, "has_insurance" | "docs_ready" | "is_registering" | "is_registered">
+    key: keyof Pick<NarumiTask, "has_insurance" | "docs_ready" | "is_registered">
   ) => {
     if (!canChangeStatus) {
       alert("상태 변경 권한이 없습니다.");
@@ -404,9 +411,14 @@ export default function NarumiPage() {
       )
     );
 
+    const patch: Partial<NarumiTask> = {
+      [key]: nextVal,
+      status: nextStatus,
+    };
+
     const { error } = await supabase
       .from("narumi_tasks")
-      .update({ [key]: nextVal, status: nextStatus })
+      .update(patch)
       .eq("id", id as any);
 
     if (error) {
@@ -422,7 +434,7 @@ export default function NarumiPage() {
   };
 
   const onClickVehicleDocUpload = (r: NarumiTask) => {
-    if (!canChangeStatus) {
+    if (!canUploadVehicleDoc) {
       alert("차량등록증 업로드 권한이 없습니다.");
       return;
     }
@@ -432,13 +444,13 @@ export default function NarumiPage() {
   };
 
   const uploadVehicleDoc = async (row: NarumiTask, file: File) => {
-    if (!canChangeStatus) {
+    if (!canUploadVehicleDoc) {
       alert("차량등록증 업로드 권한이 없습니다.");
       return;
     }
 
     if (!isAllDone(row)) {
-      alert("완결 상태에서만 차량등록증 업로드가 가능합니다.");
+      alert("등록완료 상태에서만 차량등록증 업로드가 가능합니다.");
       return;
     }
     if (isLockedAfterUpload(row)) {
@@ -497,6 +509,46 @@ export default function NarumiPage() {
     } catch (e: any) {
       alert(e?.message || "다운로드 실패");
     }
+  };
+
+  const saveMemo = async (rowId: string | number) => {
+    if (!canEditMemo) {
+      alert("메모 저장 권한이 없습니다.");
+      return;
+    }
+
+    const draft = memoDrafts[String(rowId)] ?? "";
+
+    setMemoSavingId(rowId);
+    try {
+      const { error } = await supabase
+        .from("narumi_tasks")
+        .update({ special_note: draft.trim() ? draft : null })
+        .eq("id", rowId as any);
+
+      if (error) throw error;
+
+      setRows((prev) =>
+        prev.map((row) =>
+          String(row.id) === String(rowId)
+            ? { ...row, special_note: draft.trim() ? draft : null }
+            : row
+        )
+      );
+
+      alert("메모가 저장되었습니다.");
+    } catch (e: any) {
+      alert(e?.message || "메모 저장 실패");
+    } finally {
+      setMemoSavingId(null);
+    }
+  };
+
+  const resetMemoDraft = (row: NarumiTask) => {
+    setMemoDrafts((prev) => ({
+      ...prev,
+      [String(row.id)]: row.special_note ?? "",
+    }));
   };
 
   const onFilePicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -737,10 +789,9 @@ export default function NarumiPage() {
                 <option value="all">전체</option>
                 <option value="todo">접수</option>
                 <option value="insurance">보험서류</option>
-                <option value="docs">등록서류</option>
-                <option value="registering">등록접수</option>
+                <option value="docs">등록서류수령</option>
                 <option value="registered">등록완료</option>
-                <option value="completed">완결</option>
+                <option value="completed">차량등록증 완료</option>
               </select>
             </div>
 
@@ -781,7 +832,7 @@ export default function NarumiPage() {
             </div>
 
             <div className="text-sm text-gray-500 mt-1 leading-relaxed">
-              차량등록증 업로드 완료 후에는 보험~차량등록증 키가 모두 잠금됩니다.
+              차량등록증 업로드 완료 후에는 RNF 단계 버튼이 잠금됩니다.
               {!isAdmin && (
                 <>
                   <br />
@@ -794,6 +845,8 @@ export default function NarumiPage() {
                   * 롯데오토리스 계정은 롯데오토리스 대상 건만 조회할 수 있습니다.
                 </>
               )}
+              <br />
+              * 메모 입력/수정/저장은 관리자(admin)만 가능합니다.
             </div>
           </div>
         </div>
@@ -804,14 +857,15 @@ export default function NarumiPage() {
             const hasVehicleDoc = !!r.vehicle_doc_path;
             const vehicleDocCanUpload = isVehicleDocKeyEnabled(r);
             const currentStatus = deriveStatus(r);
+            const memoValue = memoDrafts[String(r.id)] ?? "";
 
             return (
               <div
                 key={String(r.id)}
                 className="border border-gray-200 rounded-2xl bg-white overflow-hidden"
               >
-                <div className="grid lg:grid-cols-2">
-                  <div className="p-3 border-b lg:border-b-0 lg:border-r border-gray-200">
+                <div className="grid xl:grid-cols-[1.1fr_1.4fr]">
+                  <div className="p-3 xl:border-r border-gray-200">
                     <div className="flex items-center gap-2 flex-wrap mb-3">
                       <span
                         className={`${pillBase} ${
@@ -883,7 +937,7 @@ export default function NarumiPage() {
                         RNF 단계
                       </div>
 
-                      <div className="grid grid-cols-2 xl:grid-cols-3 gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
                           disabled={locked || !canChangeStatus}
@@ -913,23 +967,7 @@ export default function NarumiPage() {
                           ].join(" ")}
                           onClick={() => toggleStage(r.id, "docs_ready")}
                         >
-                          등록서류
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={locked || !canChangeStatus}
-                          className={[
-                            btnBase,
-                            locked || !canChangeStatus
-                              ? btnDisabled
-                              : r.is_registering
-                                ? btnOn
-                                : btnOff,
-                          ].join(" ")}
-                          onClick={() => toggleStage(r.id, "is_registering")}
-                        >
-                          등록접수
+                          등록서류수령
                         </button>
 
                         <button
@@ -962,7 +1000,7 @@ export default function NarumiPage() {
                           title={
                             hasVehicleDoc
                               ? "업로드 완료"
-                              : !canChangeStatus
+                              : !canUploadVehicleDoc
                                 ? "업로드 권한 없음"
                                 : !isAllDone(r)
                                   ? "등록완료까지 처리된 후 업로드 가능"
@@ -987,31 +1025,60 @@ export default function NarumiPage() {
                           다운로드
                         </button>
                       </div>
+                    </div>
 
-                      <div className="mt-2 text-xs text-gray-400 leading-relaxed">
-                        * 등록완료까지 처리된 후 차량등록증 업로드 가능
-                        <br />
-                        * 업로드 완료 후 단계 변경 불가
-                        {!canEditExisting && (
-                          <>
-                            <br />
-                            * 현재 계정은 기존 데이터 상태 변경 권한이 없습니다.
-                          </>
-                        )}
-                      </div>
+                    <div className="text-xs text-gray-400 leading-relaxed whitespace-nowrap overflow-x-auto">
+                      * 등록완료까지 처리된 후 차량등록증 업로드 가능 / * 업로드 완료 후 단계 변경 불가
+                      {!canEditExisting && (
+                        <span> / * 현재 계정은 기존 데이터 상태 변경 권한이 없습니다.</span>
+                      )}
                     </div>
 
                     <div>
-                      <div className="text-sm font-extrabold text-gray-500 mb-2">
-                        메모
-                      </div>
-                      <div className="min-h-[56px] text-sm text-gray-700 whitespace-pre-wrap break-words rounded-xl bg-gray-50 border border-gray-200 px-3 py-2">
-                        {r.special_note?.trim() ? (
-                          r.special_note
-                        ) : (
-                          <span className="text-gray-400">-</span>
+                      <div className="flex items-center justify-between gap-3 mb-2">
+                        <div className="text-sm font-extrabold text-gray-500">메모</div>
+                        {canEditMemo && (
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => resetMemoDraft(r)}
+                              className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-extrabold text-gray-700 hover:border-gray-300"
+                            >
+                              되돌리기
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => saveMemo(r.id)}
+                              disabled={memoSavingId === r.id}
+                              className="px-3 py-1.5 rounded-lg bg-orange-500 text-white text-xs font-extrabold hover:bg-orange-600 disabled:opacity-60"
+                            >
+                              {memoSavingId === r.id ? "저장중..." : "저장"}
+                            </button>
+                          </div>
                         )}
                       </div>
+
+                      {canEditMemo ? (
+                        <textarea
+                          value={memoValue}
+                          onChange={(e) =>
+                            setMemoDrafts((prev) => ({
+                              ...prev,
+                              [String(r.id)]: e.target.value,
+                            }))
+                          }
+                          placeholder="관리자만 메모 입력/수정 가능"
+                          className="w-full h-[88px] text-sm text-gray-700 whitespace-pre-wrap break-words rounded-xl bg-white border border-gray-200 px-3 py-2 focus:border-orange-400 focus:ring-4 focus:ring-orange-200/40 outline-none resize-none overflow-y-auto"
+                        />
+                      ) : (
+                        <div className="h-[88px] overflow-y-auto text-sm text-gray-700 whitespace-pre-wrap break-words rounded-xl bg-gray-50 border border-gray-200 px-3 py-2">
+                          {r.special_note?.trim() ? (
+                            r.special_note
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
