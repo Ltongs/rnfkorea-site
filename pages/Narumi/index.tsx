@@ -193,7 +193,6 @@ export default function NarumiPage() {
     canViewAll,
     canCreate,
     canEditExisting,
-    canDelete,
     canChangeStatus,
     canEditMemo,
     canUploadVehicleDoc,
@@ -860,225 +859,225 @@ export default function NarumiPage() {
             const memoValue = memoDrafts[String(r.id)] ?? "";
 
             return (
-              <div
-                key={String(r.id)}
-                className="border border-gray-200 rounded-2xl bg-white overflow-hidden"
-              >
-                <div className="grid xl:grid-cols-[1.1fr_1.4fr]">
-                  <div className="p-3 xl:border-r border-gray-200">
-                    <div className="flex items-center gap-2 flex-wrap mb-3">
-                      <span
-                        className={`${pillBase} ${
-                          currentStatus === "completed"
-                            ? pillDone
-                            : currentStatus === "todo"
-                              ? pillGray
-                              : pillProg
-                        }`}
-                      >
-                        {statusLabel(currentStatus)}
-                      </span>
-
-                      <span className="text-xs font-extrabold text-gray-500">
-                        ID {String(r.id)}
-                      </span>
-
-                      {locked && (
-                        <span className="text-xs font-bold text-gray-400">
-                          업로드 완료(잠금)
+              <div key={String(r.id)} className="overflow-x-auto">
+                <div className="min-w-[980px] border border-gray-200 rounded-2xl bg-white overflow-hidden">
+                  <div className="grid xl:grid-cols-[1.1fr_1.4fr]">
+                    <div className="p-3 xl:border-r border-gray-200">
+                      <div className="flex items-center gap-2 flex-wrap mb-3">
+                        <span
+                          className={`${pillBase} ${
+                            currentStatus === "completed"
+                              ? pillDone
+                              : currentStatus === "todo"
+                                ? pillGray
+                                : pillProg
+                          }`}
+                        >
+                          {statusLabel(currentStatus)}
                         </span>
-                      )}
-                    </div>
 
-                    <div className="grid sm:grid-cols-2 gap-x-5 gap-y-3">
-                      <div>
-                        <div className={infoLabel}>차대번호(VIN)</div>
-                        <div className={infoValue}>{r.vin}</div>
-                        <div className="mt-1 text-xs text-gray-400">
-                          끝6자리:{" "}
-                          <span className="font-extrabold text-gray-600">
-                            {r.vin_last6 || vinLast6(r.vin) || "-"}
+                        <span className="text-xs font-extrabold text-gray-500">
+                          ID {String(r.id)}
+                        </span>
+
+                        {locked && (
+                          <span className="text-xs font-bold text-gray-400">
+                            업로드 완료(잠금)
                           </span>
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className={infoLabel}>전화번호</div>
-                        <div className={infoValue}>{getDisplayPhone(r)}</div>
-                        <div className="mt-1 text-xs text-gray-400">
-                          {r.customer_phone_scrubbed_at
-                            ? "DB 영구 마스킹됨"
-                            : r.customer_phone_set_at
-                              ? `${UI_MASK_AFTER_HOURS}h 후 화면 마스킹`
-                              : ""}
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className={infoLabel}>출고일자</div>
-                        <div className={infoValue}>{r.delivery_date_text || "-"}</div>
-                      </div>
-
-                      <div>
-                        <div className={infoLabel}>생성일시</div>
-                        <div className={infoValue}>{formatCreatedAt(r.created_at)}</div>
-                      </div>
-
-                      <div>
-                        <div className={infoLabel}>롯데오토리스</div>
-                        <div className={infoValue}>{r.is_lotte_autolease ? "Y" : "N"}</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="p-3 flex flex-col gap-3">
-                    <div>
-                      <div className="text-sm font-extrabold text-gray-500 mb-2">
-                        RNF 단계
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          disabled={locked || !canChangeStatus}
-                          className={[
-                            btnBase,
-                            locked || !canChangeStatus
-                              ? btnDisabled
-                              : r.has_insurance
-                                ? btnOn
-                                : btnOff,
-                          ].join(" ")}
-                          onClick={() => toggleStage(r.id, "has_insurance")}
-                        >
-                          보험서류
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={locked || !canChangeStatus}
-                          className={[
-                            btnBase,
-                            locked || !canChangeStatus
-                              ? btnDisabled
-                              : r.docs_ready
-                                ? btnOn
-                                : btnOff,
-                          ].join(" ")}
-                          onClick={() => toggleStage(r.id, "docs_ready")}
-                        >
-                          등록서류수령
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={locked || !canChangeStatus}
-                          className={[
-                            btnBase,
-                            locked || !canChangeStatus
-                              ? btnDisabled
-                              : r.is_registered
-                                ? btnOn
-                                : btnOff,
-                          ].join(" ")}
-                          onClick={() => toggleStage(r.id, "is_registered")}
-                        >
-                          등록완료
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={!vehicleDocCanUpload || uploadingId === r.id || locked}
-                          className={[
-                            btnBase,
-                            hasVehicleDoc ? btnOn : btnOff,
-                            (!vehicleDocCanUpload || uploadingId === r.id || locked) && !hasVehicleDoc
-                              ? btnDisabled
-                              : "",
-                          ].join(" ")}
-                          onClick={() => onClickVehicleDocUpload(r)}
-                          title={
-                            hasVehicleDoc
-                              ? "업로드 완료"
-                              : !canUploadVehicleDoc
-                                ? "업로드 권한 없음"
-                                : !isAllDone(r)
-                                  ? "등록완료까지 처리된 후 업로드 가능"
-                                  : locked
-                                    ? "업로드 후 잠금"
-                                    : "차량등록증 업로드"
-                          }
-                        >
-                          {uploadingId === r.id
-                            ? "업로드중…"
-                            : hasVehicleDoc
-                              ? "차량등록증(완료)"
-                              : "차량등록증"}
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={!hasVehicleDoc}
-                          className={[btnBase, hasVehicleDoc ? btnOff : btnDisabled].join(" ")}
-                          onClick={() => downloadVehicleDoc(r)}
-                        >
-                          다운로드
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="text-xs text-gray-400 leading-relaxed whitespace-nowrap overflow-x-auto">
-                      * 등록완료까지 처리된 후 차량등록증 업로드 가능 / * 업로드 완료 후 단계 변경 불가
-                      {!canEditExisting && (
-                        <span> / * 현재 계정은 기존 데이터 상태 변경 권한이 없습니다.</span>
-                      )}
-                    </div>
-
-                    <div>
-                      <div className="flex items-center justify-between gap-3 mb-2">
-                        <div className="text-sm font-extrabold text-gray-500">메모</div>
-                        {canEditMemo && (
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => resetMemoDraft(r)}
-                              className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-extrabold text-gray-700 hover:border-gray-300"
-                            >
-                              되돌리기
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => saveMemo(r.id)}
-                              disabled={memoSavingId === r.id}
-                              className="px-3 py-1.5 rounded-lg bg-orange-500 text-white text-xs font-extrabold hover:bg-orange-600 disabled:opacity-60"
-                            >
-                              {memoSavingId === r.id ? "저장중..." : "저장"}
-                            </button>
-                          </div>
                         )}
                       </div>
 
-                      {canEditMemo ? (
-                        <textarea
-                          value={memoValue}
-                          onChange={(e) =>
-                            setMemoDrafts((prev) => ({
-                              ...prev,
-                              [String(r.id)]: e.target.value,
-                            }))
-                          }
-                          placeholder="관리자만 메모 입력/수정 가능"
-                          className="w-full h-[88px] text-sm text-gray-700 whitespace-pre-wrap break-words rounded-xl bg-white border border-gray-200 px-3 py-2 focus:border-orange-400 focus:ring-4 focus:ring-orange-200/40 outline-none resize-none overflow-y-auto"
-                        />
-                      ) : (
-                        <div className="h-[88px] overflow-y-auto text-sm text-gray-700 whitespace-pre-wrap break-words rounded-xl bg-gray-50 border border-gray-200 px-3 py-2">
-                          {r.special_note?.trim() ? (
-                            r.special_note
-                          ) : (
-                            <span className="text-gray-400">-</span>
+                      <div className="grid sm:grid-cols-2 gap-x-5 gap-y-3">
+                        <div>
+                          <div className={infoLabel}>차대번호(VIN)</div>
+                          <div className={infoValue}>{r.vin}</div>
+                          <div className="mt-1 text-xs text-gray-400">
+                            끝6자리:{" "}
+                            <span className="font-extrabold text-gray-600">
+                              {r.vin_last6 || vinLast6(r.vin) || "-"}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className={infoLabel}>전화번호</div>
+                          <div className={infoValue}>{getDisplayPhone(r)}</div>
+                          <div className="mt-1 text-xs text-gray-400">
+                            {r.customer_phone_scrubbed_at
+                              ? "DB 영구 마스킹됨"
+                              : r.customer_phone_set_at
+                                ? `${UI_MASK_AFTER_HOURS}h 후 화면 마스킹`
+                                : ""}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className={infoLabel}>출고일자</div>
+                          <div className={infoValue}>{r.delivery_date_text || "-"}</div>
+                        </div>
+
+                        <div>
+                          <div className={infoLabel}>생성일시</div>
+                          <div className={infoValue}>{formatCreatedAt(r.created_at)}</div>
+                        </div>
+
+                        <div>
+                          <div className={infoLabel}>롯데오토리스</div>
+                          <div className={infoValue}>{r.is_lotte_autolease ? "Y" : "N"}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-3 flex flex-col gap-3">
+                      <div>
+                        <div className="text-sm font-extrabold text-gray-500 mb-2">
+                          RNF 단계
+                        </div>
+
+                        <div className="flex items-center gap-2 min-w-max">
+                          <button
+                            type="button"
+                            disabled={locked || !canChangeStatus}
+                            className={[
+                              btnBase,
+                              locked || !canChangeStatus
+                                ? btnDisabled
+                                : r.has_insurance
+                                  ? btnOn
+                                  : btnOff,
+                            ].join(" ")}
+                            onClick={() => toggleStage(r.id, "has_insurance")}
+                          >
+                            보험서류
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={locked || !canChangeStatus}
+                            className={[
+                              btnBase,
+                              locked || !canChangeStatus
+                                ? btnDisabled
+                                : r.docs_ready
+                                  ? btnOn
+                                  : btnOff,
+                            ].join(" ")}
+                            onClick={() => toggleStage(r.id, "docs_ready")}
+                          >
+                            등록서류수령
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={locked || !canChangeStatus}
+                            className={[
+                              btnBase,
+                              locked || !canChangeStatus
+                                ? btnDisabled
+                                : r.is_registered
+                                  ? btnOn
+                                  : btnOff,
+                            ].join(" ")}
+                            onClick={() => toggleStage(r.id, "is_registered")}
+                          >
+                            등록완료
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={!vehicleDocCanUpload || uploadingId === r.id || locked}
+                            className={[
+                              btnBase,
+                              hasVehicleDoc ? btnOn : btnOff,
+                              (!vehicleDocCanUpload || uploadingId === r.id || locked) && !hasVehicleDoc
+                                ? btnDisabled
+                                : "",
+                            ].join(" ")}
+                            onClick={() => onClickVehicleDocUpload(r)}
+                            title={
+                              hasVehicleDoc
+                                ? "업로드 완료"
+                                : !canUploadVehicleDoc
+                                  ? "업로드 권한 없음"
+                                  : !isAllDone(r)
+                                    ? "등록완료까지 처리된 후 업로드 가능"
+                                    : locked
+                                      ? "업로드 후 잠금"
+                                      : "차량등록증 업로드"
+                            }
+                          >
+                            {uploadingId === r.id
+                              ? "업로드중…"
+                              : hasVehicleDoc
+                                ? "차량등록증(완료)"
+                                : "차량등록증"}
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={!hasVehicleDoc}
+                            className={[btnBase, hasVehicleDoc ? btnOff : btnDisabled].join(" ")}
+                            onClick={() => downloadVehicleDoc(r)}
+                          >
+                            다운로드
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="text-xs text-gray-400 leading-relaxed whitespace-nowrap overflow-x-auto">
+                        * 등록완료까지 처리된 후 차량등록증 업로드 가능 / * 업로드 완료 후 단계 변경 불가
+                        {!canEditExisting && (
+                          <span> / * 현재 계정은 기존 데이터 상태 변경 권한이 없습니다.</span>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between gap-3 mb-2 min-w-0">
+                          <div className="text-sm font-extrabold text-gray-500">메모</div>
+
+                          {canEditMemo && (
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => resetMemoDraft(r)}
+                                className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-extrabold text-gray-700 hover:border-gray-300"
+                              >
+                                되돌리기
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => saveMemo(r.id)}
+                                disabled={memoSavingId === r.id}
+                                className="px-3 py-1.5 rounded-lg bg-orange-500 text-white text-xs font-extrabold hover:bg-orange-600 disabled:opacity-60"
+                              >
+                                {memoSavingId === r.id ? "저장중..." : "저장"}
+                              </button>
+                            </div>
                           )}
                         </div>
-                      )}
+
+                        {canEditMemo ? (
+                          <textarea
+                            value={memoValue}
+                            onChange={(e) =>
+                              setMemoDrafts((prev) => ({
+                                ...prev,
+                                [String(r.id)]: e.target.value,
+                              }))
+                            }
+                            placeholder="관리자만 메모 입력/수정 가능"
+                            className="w-full h-[88px] text-sm text-gray-700 whitespace-pre-wrap break-words rounded-xl bg-white border border-gray-200 px-3 py-2 focus:border-orange-400 focus:ring-4 focus:ring-orange-200/40 outline-none resize-none overflow-y-auto"
+                          />
+                        ) : (
+                          <div className="h-[88px] overflow-y-auto text-sm text-gray-700 whitespace-pre-wrap break-words rounded-xl bg-gray-50 border border-gray-200 px-3 py-2">
+                            {r.special_note?.trim() ? (
+                              r.special_note
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

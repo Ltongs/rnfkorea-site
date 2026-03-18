@@ -25,6 +25,8 @@ type AuthContextType = {
   canEditExisting: boolean;
   canDelete: boolean;
   canChangeStatus: boolean;
+  canEditMemo: boolean;
+  canUploadVehicleDoc: boolean;
 
   // auth actions
   login: (email: string, password: string) => Promise<void>;
@@ -69,6 +71,8 @@ function getPermissions(emailRaw?: string | null) {
     canEditExisting: isAdmin,
     canDelete: isAdmin,
     canChangeStatus: isAdmin,
+    canEditMemo: isAdmin,
+    canUploadVehicleDoc: isAdmin,
   };
 }
 
@@ -153,6 +157,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       canEditExisting: permissionState.canEditExisting,
       canDelete: permissionState.canDelete,
       canChangeStatus: permissionState.canChangeStatus,
+      canEditMemo: permissionState.canEditMemo,
+      canUploadVehicleDoc: permissionState.canUploadVehicleDoc,
 
       login,
       logout,
