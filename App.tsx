@@ -56,6 +56,7 @@ import SitemapPage from "./pages/Sitemap";
 import IndividualCargoFinancePage from "./pages/IndividualCargoFinance/index";
 import TireShopPage from "./pages/TireShop/index";
 import TireShopDetailPage from "./pages/TireShop/detail";
+import CallManagementPage from "./pages/CallManagement/index";
 
 
 /* utils / config */
@@ -4668,6 +4669,8 @@ const App = () => {
   {/* BS_ON */}
   <Route path="/bson" element={<BsonWorkPage />} />
   <Route path="/work/bson" element={<Navigate to="/bson" replace />} />
+
+  <Route path="/work/call-management" element={<CallManagementPage />} />
 
   {/* legacy */}
   <Route path="/Narumi" element={<Navigate to="/narumi" replace />} />

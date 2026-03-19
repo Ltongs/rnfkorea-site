@@ -78,7 +78,10 @@ function calcMobileMenuStyle(btnEl: HTMLButtonElement | null): MobileMenuStyle {
   const top = rect.bottom + 6;
 
   const desiredLeft = rect.left;
-  const clampedLeft = Math.max(gutter, Math.min(desiredLeft, vw - width - gutter));
+  const clampedLeft = Math.max(
+    gutter,
+    Math.min(desiredLeft, vw - width - gutter)
+  );
 
   return {
     top,
@@ -90,7 +93,7 @@ function calcMobileMenuStyle(btnEl: HTMLButtonElement | null): MobileMenuStyle {
 export default function PageHeader() {
   const { pathname } = useLocation();
   const nav = useNavigate();
-  const { user, canViewAll } = useAuth() as any;
+  const { user, canViewAll, isAdmin } = useAuth() as any;
 
   const [openBiz, setOpenBiz] = useState(false);
   const [openShop, setOpenShop] = useState(false);
@@ -171,7 +174,13 @@ export default function PageHeader() {
     };
   }, [isMobileMenuMode, openBiz, openShop, openWork]);
 
-  const bizActive = ["/tires", "/battery", "/export", "/finance", "/cargo-finance"].includes(pathname);
+  const bizActive = [
+    "/tires",
+    "/battery",
+    "/export",
+    "/finance",
+    "/cargo-finance",
+  ].includes(pathname);
 
   const shopActive =
     pathname === "/tires-shop" ||
@@ -207,7 +216,9 @@ export default function PageHeader() {
     }, OPEN_DELAY);
   };
 
-  const hoverClose = (setter: React.Dispatch<React.SetStateAction<boolean>>) => {
+  const hoverClose = (
+    setter: React.Dispatch<React.SetStateAction<boolean>>
+  ) => {
     if (isMobileMenuMode) return;
 
     timers.clearOpen();
@@ -296,7 +307,9 @@ export default function PageHeader() {
             <button
               ref={bizBtnRef}
               type="button"
-              className={`${topBtnBase} ${underlineHover} ${bizActive ? underlineActive : ""}`}
+              className={`${topBtnBase} ${underlineHover} ${
+                bizActive ? underlineActive : ""
+              }`}
               aria-expanded={openBiz}
               onPointerDown={(e) => {
                 e.stopPropagation();
@@ -321,7 +334,9 @@ export default function PageHeader() {
                 )}
 
                 <div
-                  className={isMobileMenuMode ? mobileDropBoxBase : desktopDropBoxBase}
+                  className={
+                    isMobileMenuMode ? mobileDropBoxBase : desktopDropBoxBase
+                  }
                   style={isMobileMenuMode ? bizMenuStyle : undefined}
                   role="menu"
                   onMouseEnter={() => {
@@ -330,23 +345,43 @@ export default function PageHeader() {
                   onMouseLeave={() => hoverClose(setOpenBiz)}
                   onPointerDown={(e) => e.stopPropagation()}
                 >
-                  <Link to="/tires" className={dropItem} onClick={handleMenuNavigate}>
+                  <Link
+                    to="/tires"
+                    className={dropItem}
+                    onClick={handleMenuNavigate}
+                  >
                     타이어
                   </Link>
 
-                  <Link to="/battery" className={dropItem} onClick={handleMenuNavigate}>
+                  <Link
+                    to="/battery"
+                    className={dropItem}
+                    onClick={handleMenuNavigate}
+                  >
                     배터리
                   </Link>
 
-                  <Link to="/export" className={dropItem} onClick={handleMenuNavigate}>
+                  <Link
+                    to="/export"
+                    className={dropItem}
+                    onClick={handleMenuNavigate}
+                  >
                     노후장비 수출사업
                   </Link>
 
-                  <Link to="/finance" className={dropItem} onClick={handleMenuNavigate}>
+                  <Link
+                    to="/finance"
+                    className={dropItem}
+                    onClick={handleMenuNavigate}
+                  >
                     금융솔루션
                   </Link>
 
-                  <Link to="/cargo-finance" className={dropItem} onClick={handleMenuNavigate}>
+                  <Link
+                    to="/cargo-finance"
+                    className={dropItem}
+                    onClick={handleMenuNavigate}
+                  >
                     개인(개별)협회 전용 금융상품
                   </Link>
                 </div>
@@ -363,7 +398,9 @@ export default function PageHeader() {
             <button
               ref={shopBtnRef}
               type="button"
-              className={`${topBtnBase} ${underlineHover} ${shopActive ? underlineActive : ""}`}
+              className={`${topBtnBase} ${underlineHover} ${
+                shopActive ? underlineActive : ""
+              }`}
               aria-expanded={openShop}
               onPointerDown={(e) => {
                 e.stopPropagation();
@@ -373,7 +410,9 @@ export default function PageHeader() {
               쇼핑몰
               <ChevronDown
                 size={16}
-                className={`${openShop ? "rotate-180" : ""} transition-transform`}
+                className={`${
+                  openShop ? "rotate-180" : ""
+                } transition-transform`}
               />
             </button>
 
@@ -388,7 +427,9 @@ export default function PageHeader() {
                 )}
 
                 <div
-                  className={isMobileMenuMode ? mobileDropBoxBase : desktopDropBoxBase}
+                  className={
+                    isMobileMenuMode ? mobileDropBoxBase : desktopDropBoxBase
+                  }
                   style={isMobileMenuMode ? shopMenuStyle : undefined}
                   role="menu"
                   onMouseEnter={() => {
@@ -397,13 +438,25 @@ export default function PageHeader() {
                   onMouseLeave={() => hoverClose(setOpenShop)}
                   onPointerDown={(e) => e.stopPropagation()}
                 >
-                  <Link to="/tires-shop" className={dropItem} onClick={handleMenuNavigate}>
+                  <Link
+                    to="/tires-shop"
+                    className={dropItem}
+                    onClick={handleMenuNavigate}
+                  >
                     타이어 쇼핑몰
                   </Link>
-                  <Link to="/export-shop" className={dropItem} onClick={handleMenuNavigate}>
+                  <Link
+                    to="/export-shop"
+                    className={dropItem}
+                    onClick={handleMenuNavigate}
+                  >
                     수출용 쇼핑몰
                   </Link>
-                  <Link to="/battery-shop" className={dropItem} onClick={handleMenuNavigate}>
+                  <Link
+                    to="/battery-shop"
+                    className={dropItem}
+                    onClick={handleMenuNavigate}
+                  >
                     배터리 쇼핑몰 (준비중)
                   </Link>
                 </div>
@@ -420,7 +473,9 @@ export default function PageHeader() {
             <button
               ref={workBtnRef}
               type="button"
-              className={`${topBtnBase} ${underlineHover} ${workActive ? underlineActive : ""}`}
+              className={`${topBtnBase} ${underlineHover} ${
+                workActive ? underlineActive : ""
+              }`}
               aria-expanded={openWork}
               onPointerDown={(e) => {
                 e.stopPropagation();
@@ -430,7 +485,9 @@ export default function PageHeader() {
               업무용
               <ChevronDown
                 size={16}
-                className={`${openWork ? "rotate-180" : ""} transition-transform`}
+                className={`${
+                  openWork ? "rotate-180" : ""
+                } transition-transform`}
               />
             </button>
 
@@ -445,7 +502,9 @@ export default function PageHeader() {
                 )}
 
                 <div
-                  className={isMobileMenuMode ? mobileDropBoxBase : desktopDropBoxBase}
+                  className={
+                    isMobileMenuMode ? mobileDropBoxBase : desktopDropBoxBase
+                  }
                   style={isMobileMenuMode ? workMenuStyle : undefined}
                   role="menu"
                   onMouseEnter={() => {
@@ -462,9 +521,23 @@ export default function PageHeader() {
                     나르미업무
                   </button>
 
-                  <button type="button" className={dropItem} onClick={goBsonPublic}>
+                  <button
+                    type="button"
+                    className={dropItem}
+                    onClick={goBsonPublic}
+                  >
                     BS_ON 업무
                   </button>
+
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      className={dropItem}
+                      onClick={() => goWorkInternalOnly("/work/call-management")}
+                    >
+                      상담관리
+                    </button>
+                  )}
                 </div>
               </>
             )}
