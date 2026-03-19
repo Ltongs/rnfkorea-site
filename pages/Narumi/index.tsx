@@ -175,9 +175,14 @@ const btnOff =
 const btnDisabled = "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed";
 
 const labelClass = "text-xs font-extrabold text-gray-500 block mb-2";
-const inputClass =
-  "h-[52px] w-full px-4 rounded-xl border border-gray-200 bg-white " +
-  "focus:border-orange-400 focus:ring-4 focus:ring-orange-200/40 outline-none";
+const compactInputClass =
+  "h-[44px] w-full px-3 rounded-lg border border-gray-200 bg-white " +
+  "text-sm font-medium text-navy-900 focus:border-orange-400 focus:ring-4 " +
+  "focus:ring-orange-200/40 outline-none";
+
+const compactButtonClass =
+  "h-[44px] w-full px-3 rounded-lg border border-gray-200 bg-white " +
+  "text-sm font-bold text-navy-900 hover:border-orange-300 disabled:opacity-60";
 
 const cardClass = "border border-gray-200 rounded-2xl bg-white shadow-sm";
 
@@ -204,7 +209,6 @@ export default function NarumiPage() {
   const [deliveryText, setDeliveryText] = useState("");
   const [lotte, setLotte] = useState<boolean>(false);
   const [specialNote, setSpecialNote] = useState("");
-  const last6 = useMemo(() => vinLast6(vin), [vin]);
 
   const [manufactureImageFile, setManufactureImageFile] = useState<File | null>(null);
 
@@ -726,207 +730,235 @@ export default function NarumiPage() {
         )}
       </div>
 
-      {(isAdmin || isNarumi) && (
+      {((isAdmin || isNarumi) || canViewAll) && (
         <section className={`${cardClass} p-5`}>
-          <div className="flex items-start gap-3 mb-4">
-            <div className="mt-1 h-5 w-1.5 rounded bg-orange-500" />
-            <div>
-              <div className="text-lg font-extrabold text-navy-900">
-                신규 입력 (나르미모터스)
-              </div>
-              <div className="text-sm text-gray-500 mt-1">
-                차대번호/제작증 이미지/고객전화번호/출고일자/롯데오토리스 여부를 먼저 입력합니다.
-              </div>
-            </div>
-          </div>
+          <div className="grid xl:grid-cols-12 gap-5 items-start">
+            {(isAdmin || isNarumi) && (
+  <div className="xl:col-span-8">
+    <div className="flex items-start gap-3 mb-4">
+      <div className="mt-1 h-5 w-1.5 rounded bg-orange-500" />
+      <div>
+        <div className="text-lg font-extrabold text-navy-900">
+          신규 입력
+        </div>
+        <div className="text-sm text-gray-500 mt-1">
+          차대번호, 제작증, 전화번호, 출고일자 등을 입력합니다.
+        </div>
+      </div>
+    </div>
 
-          <div className="grid md:grid-cols-12 gap-4 items-end">
-            <div className="md:col-span-4 relative">
-              <label className={labelClass}>차대번호(VIN) *</label>
-              <input
-                value={vin}
-                onChange={(e) => setVin(normalizeVin(e.target.value))}
-                placeholder="예: KMH..."
-                className={inputClass}
-                disabled={!canCreate}
-              />
-              
-            </div>
+    <div className="space-y-3">
+      {/* 1행 */}
+      <div className="grid md:grid-cols-[2fr_1fr] gap-3">
+        <div>
+          <label className={labelClass}>차대번호(VIN) *</label>
+          <input
+            value={vin}
+            onChange={(e) => setVin(normalizeVin(e.target.value))}
+            placeholder="예: KMH..."
+            className={compactInputClass}
+            disabled={!canCreate}
+          />
+        </div>
 
-            <div className="md:col-span-2">
-              <label className={labelClass}>제작증 이미지</label>
-              <input
-                ref={manufactureInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={onManufacturePicked}
-              />
-              <button
-                type="button"
-                onClick={() => manufactureInputRef.current?.click()}
-                disabled={!canCreate}
-                className="h-[52px] w-full px-4 rounded-xl border border-gray-200 bg-white text-navy-900 font-extrabold hover:border-orange-300 disabled:opacity-60"
-              >
-                {manufactureImageFile ? "제작증 변경" : "제작증 첨부"}
-              </button>
+        <div>
+          <label className={labelClass}>전화번호 *</label>
+          <input
+            value={customerPhone}
+            onChange={(e) => setCustomerPhone(formatPhoneKR(e.target.value))}
+            placeholder="010-1234-5678"
+            inputMode="tel"
+            className={compactInputClass}
+            disabled={!canCreate}
+          />
+        </div>
+      </div>
 
+      {/* 2행 */}
+      <div className="grid md:grid-cols-3 gap-3 items-start">
+        <div>
+          <label className={labelClass}>제작증 이미지</label>
+          <input
+            ref={manufactureInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={onManufacturePicked}
+          />
+          <button
+            type="button"
+            onClick={() => manufactureInputRef.current?.click()}
+            disabled={!canCreate}
+            className={compactButtonClass}
+          >
+            {manufactureImageFile ? "제작증 변경" : "제작증 첨부"}
+          </button>
 
-              {manufactureImageFile && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setManufactureImageFile(null);
-                    if (manufactureInputRef.current) manufactureInputRef.current.value = "";
-                  }}
-                  disabled={!canCreate}
-                  className="mt-1 text-xs font-extrabold text-red-600 hover:underline disabled:opacity-60"
-                >
-                  첨부 제거
-                </button>
-              )}
-            </div>
-
-            <div className="md:col-span-2">
-              <label className={labelClass}>전화번호 *</label>
-              <input
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(formatPhoneKR(e.target.value))}
-                placeholder="010-1234-5678"
-                inputMode="tel"
-                className={inputClass}
-                disabled={!canCreate}
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <label className={labelClass}>출고일자 *</label>
-              <input
-                value={deliveryText}
-                onChange={(e) => setDeliveryText(formatYYYYMMDDToDots(e.target.value))}
-                placeholder="YYYY.MM.DD"
-                inputMode="numeric"
-                className={inputClass}
-                disabled={!canCreate}
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <label className={labelClass}>롯데오토리스(Y/N)</label>
-              <div className="h-[52px] w-full rounded-xl border border-gray-200 bg-white flex items-center gap-6 px-4">
-                <label className="inline-flex items-center gap-2 font-extrabold text-sm text-navy-900 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="lotte"
-                    checked={lotte === true}
-                    onChange={() => setLotte(true)}
-                    className="h-4 w-4 accent-orange-500"
-                    disabled={!canCreate}
-                  />
-                  Y
-                </label>
-                <label className="inline-flex items-center gap-2 font-extrabold text-sm text-navy-900 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="lotte"
-                    checked={lotte === false}
-                    onChange={() => setLotte(false)}
-                    className="h-4 w-4 accent-orange-500"
-                    disabled={!canCreate}
-                  />
-                  N
-                </label>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-5">
-            <label className={labelClass}>특이사항 (긴 내용 가능)</label>
-            <textarea
-              value={specialNote}
-              onChange={(e) => setSpecialNote(e.target.value)}
-              placeholder="예: 고객 요청사항 / 특이사항 / 보험사 정보 / 등록 관련 메모 ..."
-              className="w-full min-h-[84px] px-4 py-3 rounded-xl border border-gray-200 focus:border-orange-400 focus:ring-4 focus:ring-orange-200/40 outline-none whitespace-pre-wrap"
-              disabled={!canCreate}
-            />
-          </div>
-
-          <div className="mt-5 flex items-center gap-3 flex-wrap">
+          {manufactureImageFile && (
             <button
               type="button"
-              onClick={onAdd}
-              disabled={saving || !canCreate}
-              className="px-6 py-3 rounded-xl bg-orange-500 text-white font-extrabold hover:bg-orange-600 disabled:opacity-60 whitespace-nowrap"
-            >
-              {saving ? "추가 중..." : "추가"}
-            </button>
-
-            <button
-              type="button"
-              onClick={onReset}
+              onClick={() => {
+                setManufactureImageFile(null);
+                if (manufactureInputRef.current) manufactureInputRef.current.value = "";
+              }}
               disabled={!canCreate}
-              className="px-6 py-3 rounded-xl border border-gray-200 text-navy-900 font-extrabold hover:border-gray-300 whitespace-nowrap disabled:opacity-60"
+              className="mt-1 text-[11px] font-bold text-red-600 hover:underline disabled:opacity-60"
             >
-              입력 초기화
+              첨부 제거
             </button>
-          </div>
-        </section>
-      )}
+          )}
+        </div>
 
-      {canViewAll && (
-        <section className={`${cardClass} p-5`}>
-          <div className="flex items-start gap-3 mb-4">
-            <div className="mt-1 h-5 w-1.5 rounded bg-navy-900" />
-            <div>
-              <div className="text-lg font-extrabold text-navy-900">
-                조회 / 검색
-              </div>
-              <div className="text-sm text-gray-500 mt-1">
-                VIN / 전화번호 / 특이사항 / ID 검색 및 상태별 필터
-              </div>
-            </div>
-          </div>
+        <div>
+          <label className={labelClass}>출고일자 *</label>
+          <input
+            value={deliveryText}
+            onChange={(e) => setDeliveryText(formatYYYYMMDDToDots(e.target.value))}
+            placeholder="YYYY.MM.DD"
+            inputMode="numeric"
+            className={compactInputClass}
+            disabled={!canCreate}
+          />
+        </div>
 
-          <div className="grid md:grid-cols-12 gap-4 items-end">
-            <div className="md:col-span-6">
-              <label className={labelClass}>검색</label>
+        <div>
+          <label className={labelClass}>롯데오토리스</label>
+          <div className="h-[44px] w-full rounded-lg border border-gray-200 bg-white flex items-center gap-4 px-3">
+            <label className="inline-flex items-center gap-1.5 text-sm font-bold text-navy-900 cursor-pointer">
               <input
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                placeholder="VIN / 전화번호 / 특이사항 / ID"
-                className={inputClass}
+                type="radio"
+                name="lotte"
+                checked={lotte === true}
+                onChange={() => setLotte(true)}
+                className="h-4 w-4 accent-orange-500"
+                disabled={!canCreate}
               />
-            </div>
+              Y
+            </label>
+            <label className="inline-flex items-center gap-1.5 text-sm font-bold text-navy-900 cursor-pointer">
+              <input
+                type="radio"
+                name="lotte"
+                checked={lotte === false}
+                onChange={() => setLotte(false)}
+                className="h-4 w-4 accent-orange-500"
+                disabled={!canCreate}
+              />
+              N
+            </label>
+          </div>
+        </div>
+      </div>
 
-            <div className="md:col-span-3">
-              <label className={labelClass}>상태 필터</label>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as any)}
-                className={inputClass}
-              >
-                <option value="all">전체</option>
-                <option value="todo">접수</option>
-                <option value="insurance">보험서류</option>
-                <option value="docs">등록서류수령</option>
-                <option value="registered">등록완료</option>
-                <option value="completed">차량등록증 완료</option>
-              </select>
-            </div>
+      {/* 3행 */}
+<div className="grid md:grid-cols-[1fr_140px] gap-3 items-start">
+  {/* 특이사항 */}
+  <div>
+    <label className={labelClass}>특이사항</label>
+    <textarea
+      value={specialNote}
+      onChange={(e) => setSpecialNote(e.target.value)}
+      placeholder="고객 요청사항 / 특이사항 / 보험사 정보 / 등록 관련 메모 ..."
+      className="min-h-[88px] w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium text-navy-900 focus:border-orange-400 focus:ring-4 focus:ring-orange-200/40 outline-none resize-none"
+      disabled={!canCreate}
+    />
+  </div>
 
-            <div className="md:col-span-3">
-              <label className={labelClass}>오래된 업로드 건</label>
-              <label className="h-[52px] w-full rounded-xl border border-gray-200 bg-white flex items-center gap-3 px-4 cursor-pointer font-extrabold text-sm text-navy-900">
-                <input
-                  type="checkbox"
-                  checked={showOldUploaded}
-                  onChange={(e) => setShowOldUploaded(e.target.checked)}
-                  className="h-4 w-4 accent-orange-500"
-                  disabled={!isAdmin}
-                />
-                30일 초과도 포함
-              </label>
-            </div>
+  {/* 버튼 */}
+  <div>
+  <label className={labelClass}>&nbsp;</label>
+  <div className="h-[88px] flex flex-col justify-between gap-3">
+    <button
+      type="button"
+      onClick={onAdd}
+      disabled={saving || !canCreate}
+      className="h-[40px] w-full rounded-lg bg-orange-500 text-white text-sm font-extrabold hover:bg-orange-600 disabled:opacity-60"
+    >
+      {saving ? "추가 중..." : "추가"}
+    </button>
+
+    <button
+      type="button"
+      onClick={onReset}
+      disabled={!canCreate}
+      className="h-[40px] w-full rounded-lg border border-gray-200 text-navy-900 text-sm font-extrabold hover:border-gray-300 disabled:opacity-60"
+    >
+      초기화
+    </button>
+  </div>
+</div>
+</div>
+    </div>
+  </div>
+)}
+
+            {canViewAll && (
+              <div className="xl:col-span-4">
+                <div className="flex items-start gap-3 mb-4">
+  <div className="mt-1 h-5 w-1.5 rounded bg-orange-500" />
+  <div>
+                    <div className="text-lg font-extrabold text-navy-900">
+                      조회 / 검색
+                    </div>
+                    <div className="text-sm text-gray-500 mt-1">
+                      VIN, 전화번호, 특이사항, ID 검색
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className={labelClass}>검색</label>
+                    <input
+                      value={searchText}
+                      onChange={(e) => setSearchText(e.target.value)}
+                      placeholder="VIN / 전화번호 / 특이사항 / ID"
+                      className={compactInputClass}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>상태 필터</label>
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value as any)}
+                      className={compactInputClass}
+                    >
+                      <option value="all">전체</option>
+                      <option value="todo">접수</option>
+                      <option value="insurance">보험서류</option>
+                      <option value="docs">등록서류수령</option>
+                      <option value="registered">등록완료</option>
+                      <option value="completed">차량등록증 완료</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>오래된 업로드 건</label>
+                    <label className="h-[44px] w-full rounded-lg border border-gray-200 bg-white flex items-center gap-3 px-3 cursor-pointer text-sm font-bold text-navy-900">
+                      <input
+                        type="checkbox"
+                        checked={showOldUploaded}
+                        onChange={(e) => setShowOldUploaded(e.target.checked)}
+                        className="h-4 w-4 accent-orange-500"
+                        disabled={!isAdmin}
+                      />
+                      30일 초과도 포함
+                    </label>
+                  </div>
+
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={fetchRows}
+                      className="h-[44px] w-full rounded-lg border border-gray-200 text-navy-900 text-sm font-extrabold hover:border-gray-300"
+                    >
+                      조회 / 새로고침
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </section>
       )}
@@ -1012,12 +1044,6 @@ export default function NarumiPage() {
                         <div>
                           <div className={infoLabel}>차대번호(VIN)</div>
                           <div className={infoValue}>{r.vin}</div>
-                          <div className="mt-1 text-xs text-gray-400">
-                            끝6자리:{" "}
-                            <span className="font-extrabold text-gray-600">
-                              {r.vin_last6 || vinLast6(r.vin) || "-"}
-                            </span>
-                          </div>
                         </div>
 
                         <div>

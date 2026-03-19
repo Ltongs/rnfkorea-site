@@ -1,34 +1,31 @@
 import React from "react";
 
-type PageTitleProps = {
+type Props = {
   title: string;
   desc?: string;
-  className?: string;
 };
 
-const PageTitle: React.FC<PageTitleProps> = ({
-  title,
-  desc,
-  className = "",
-}) => {
+const PageTitle: React.FC<Props> = ({ title, desc }) => {
   return (
-    <section className={`pt-2 md:pt-4 space-y-3 ${className}`}>
+    <div className="border-b border-gray-200 pb-6">
       <div className="flex items-start gap-3">
-        <div className="mt-1 h-5 md:h-6 w-1.5 rounded bg-orange-500 shrink-0" />
+        {/* 오렌지 바 */}
+        <div className="w-1.5 rounded bg-orange-500 self-stretch" />
 
-        <div className="min-w-0">
-          <h1 className="text-[28px] sm:text-3xl lg:text-4xl font-extrabold text-navy-900 tracking-tight leading-[1.18] break-keep">
+        {/* 텍스트 영역 */}
+        <div className="flex-1">
+          <h1 className="text-2xl font-extrabold text-navy-900 leading-tight">
             {title}
           </h1>
 
-          {desc ? (
-            <p className="mt-2 max-w-3xl text-sm sm:text-base text-gray-600 leading-relaxed break-keep">
+          {desc && (
+            <p className="mt-2 text-sm text-gray-500 leading-relaxed">
               {desc}
             </p>
-          ) : null}
+          )}
         </div>
       </div>
-    </section>
+    </div>
   );
 };
 

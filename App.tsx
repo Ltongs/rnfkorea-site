@@ -1643,7 +1643,7 @@ const TiresPage: React.FC = () => {
     []
   );
 
-  // ✅ 타이어 쇼핑몰(상품) 등록 개수 집계
+    // ✅ 타이어 쇼핑몰(상품) 등록 개수 집계
   const [tireCount, setTireCount] = useState<number | null>(null);
 
   useEffect(() => {
@@ -1658,29 +1658,13 @@ const TiresPage: React.FC = () => {
 
         const rows = await fetchTireRows(url);
 
-        // ✅ CSV 값 흔들림(공백/대소문자/TRUE/1/Y 등) 방어
-        const norm = (v: any) => String(v ?? "").trim().toUpperCase();
-        const isActive = (v: any) => {
-          const s = norm(v);
-          return s === "TRUE" || s === "1" || s === "Y" || s === "YES" || s === "T";
-        };
-        const isCommercialVehicle = (v: any) => {
-          const s = norm(v);
-          return s === "CARGO" || s === "DUMP" || s === "BUS" || s === "TRAILER";
-        };
-
-        const commercial = rows.filter(
-          (x: any) => isActive(x.is_active) && isCommercialVehicle(x.vehicle_type)
-        );
-
         if (!alive) return;
-        setTireCount(commercial.length);
+        setTireCount(rows.length);
 
-        // 디버그 필요 시만 사용
-        console.log("[TIRE] rows:", rows.length);
-        console.log("[TIRE] sample:", rows?.[0]);
+        console.log("[TIRE COUNT] total:", rows.length);
+        console.log("[TIRE COUNT] sample:", rows?.[0]);
       } catch (e) {
-        console.warn("[TIRE] count error:", e);
+        console.warn("[TIRE COUNT] error:", e);
         if (!alive) return;
         setTireCount(null);
       }

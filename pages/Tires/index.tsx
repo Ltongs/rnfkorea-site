@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { fetchTireRows } from "../../lib/tiresCsv";
-import { TIRE_CSV_URL } from "../TireShop/config";
+
+const TIRE_CSV_URL =
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vStUJkHotLlVECjJPyaxIWnYTl45_0Fw9IAtgIUzkRjScPYWE_lYJfk2_38Uqn9Y40kP-5pv3UXeRJf/pub?gid=306191113&single=true&output=csv";
 
 type TruckCategory = "cargo" | "dump" | "bus";
 type TruckProduct = {
@@ -14,6 +16,7 @@ type TruckProduct = {
   use2Img?: string[];
 };
 type ProductCardProps = { p: TruckProduct };
+
 function isInCenterArea(e: React.MouseEvent, ratio = 0.4) {
   const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
   const x = e.clientX - rect.left;
@@ -29,8 +32,8 @@ function isInCenterArea(e: React.MouseEvent, ratio = 0.4) {
 
 export const ProductCard: React.FC<ProductCardProps> = ({ p }) => {
   const [hover, setHover] = useState(false);
-
   const [activeSrc, setActiveSrc] = useState(p.thumb);
+
   useEffect(() => {
     setActiveSrc(p.thumb);
   }, [p.thumb]);
@@ -43,13 +46,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({ p }) => {
 
   return (
     <div className="border rounded-lg overflow-hidden bg-white">
-      {/* 텍스트 */}
       <div className="p-4 space-y-1">
         <div className="text-sm text-gray-500">{p.brand}</div>
         <div className="text-lg font-bold text-navy-900">{p.model}</div>
       </div>
 
-      {/* hover 감지 영역 */}
       <div
         className="relative"
         onMouseMove={(e) => {
@@ -60,10 +61,14 @@ export const ProductCard: React.FC<ProductCardProps> = ({ p }) => {
         onMouseLeave={() => setHover(false)}
         onMouseEnter={() => setActiveSrc(p.thumb)}
       >
-        <img src={p.thumb} alt={`${p.brand} ${p.model}`} className="w-full h-44 object-cover" loading="lazy" />
+        <img
+          src={p.thumb}
+          alt={`${p.brand} ${p.model}`}
+          className="w-full h-44 object-cover"
+          loading="lazy"
+        />
       </div>
 
-      {/* 내용 */}
       <div className="p-4">
         <div className="text-sm text-gray-600 whitespace-pre-line">{p.use}</div>
 
@@ -73,13 +78,18 @@ export const ProductCard: React.FC<ProductCardProps> = ({ p }) => {
         {p.use2Img && p.use2Img.length > 0 && (
           <div className="flex gap-2 mt-2">
             {p.use2Img.map((img, idx) => (
-              <img key={idx} src={img} alt="" className="w-28 h-14 object-contain block" loading="lazy" />
+              <img
+                key={idx}
+                src={img}
+                alt=""
+                className="w-28 h-14 object-contain block"
+                loading="lazy"
+              />
             ))}
           </div>
         )}
       </div>
 
-      {/* 중앙 프리뷰 오버레이 (1개만 유지) */}
       <div
         className={`
           fixed inset-0 z-[99999]
@@ -135,7 +145,6 @@ const TiresPage: React.FC = () => {
     []
   );
 
-  // ✅ 타이어 쇼핑몰(상품) 등록 개수 집계
   const [tireCount, setTireCount] = useState<number | null>(null);
 
   useEffect(() => {
@@ -145,34 +154,16 @@ const TiresPage: React.FC = () => {
       try {
         if (!TIRE_CSV_URL) throw new Error("TIRE_CSV_URL is empty");
 
-        // ✅ 캐시 방지(구글시트/CSV 업데이트 즉시 반영용)
         const url = `${TIRE_CSV_URL}${TIRE_CSV_URL.includes("?") ? "&" : "?"}v=${Date.now()}`;
-
         const rows = await fetchTireRows(url);
 
-        // ✅ CSV 값 흔들림(공백/대소문자/TRUE/1/Y 등) 방어
-        const norm = (v: any) => String(v ?? "").trim().toUpperCase();
-        const isActive = (v: any) => {
-          const s = norm(v);
-          return s === "TRUE" || s === "1" || s === "Y" || s === "YES" || s === "T";
-        };
-        const isCommercialVehicle = (v: any) => {
-          const s = norm(v);
-          return s === "CARGO" || s === "DUMP" || s === "BUS" || s === "TRAILER";
-        };
-
-        const commercial = rows.filter(
-          (x: any) => isActive(x.is_active) && isCommercialVehicle(x.vehicle_type)
-        );
-
         if (!alive) return;
-        setTireCount(commercial.length);
+        setTireCount(rows.length);
 
-        // 디버그 필요 시만 사용
-        console.log("[TIRE] rows:", rows.length);
-        console.log("[TIRE] sample:", rows?.[0]);
+        console.log("[TIRE COUNT] total:", rows.length);
+        console.log("[TIRE COUNT] sample:", rows?.[0]);
       } catch (e) {
-        console.warn("[TIRE] count error:", e);
+        console.warn("[TIRE COUNT] error:", e);
         if (!alive) return;
         setTireCount(null);
       }
@@ -296,7 +287,6 @@ const TiresPage: React.FC = () => {
     ],
   };
 
-  // ✅ 섹션 이동용 ref
   const cargoRef = useRef<HTMLDivElement | null>(null);
   const dumpRef = useRef<HTMLDivElement | null>(null);
   const busRef = useRef<HTMLDivElement | null>(null);
@@ -305,7 +295,6 @@ const TiresPage: React.FC = () => {
     ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  // ✅ 산업용 타이어 주요고객
   const industrialKeyClients = [
     { key: "tls", name: "티엘에스코리아", sub: "융하인리히", inlinePair: true, logo: "/logo/TLS.png" },
     { key: "nichiyu", name: "혁신상사", sub: "니찌유 총판", inlinePair: true, logo: "/logo/NICHIYU.jpg" },
@@ -315,7 +304,6 @@ const TiresPage: React.FC = () => {
     { key: "dpl", name: "DPL", sub: "TOYOTA 총판", inlinePair: true, logo: "/logo/dpl.png" },
   ] as const;
 
-  // ✅ “주요제품 박스” 공통 래퍼(양식 통일)
   const ProductsBlock = ({
     title,
     desc,
@@ -347,7 +335,6 @@ const TiresPage: React.FC = () => {
 
   return (
     <div className="container mx-auto px-4 py-16 space-y-16">
-      {/* ===================== 페이지 헤더 + 쇼핑몰 배너 ===================== */}
       <div className="border-b border-gray-200 pb-6">
         <div className="grid md:grid-cols-12 gap-6 items-start">
           <div className="md:col-span-7 space-y-3">
@@ -359,7 +346,9 @@ const TiresPage: React.FC = () => {
               <span className="text-gray-700 font-semibold">타이어</span>
             </div>
 
-            <h1 className="text-4xl md:text-5xl font-extrabold text-navy-900 tracking-tight">타이어</h1>
+            <h1 className="text-4xl md:text-5xl font-extrabold text-navy-900 tracking-tight">
+              타이어
+            </h1>
 
             <p className="text-gray-600 text-base md:text-lg max-w-3xl">
               운송 환경과 산업 현장의 다양한 조건에 최적화된 타이어 솔루션을 제공합니다.
@@ -412,7 +401,9 @@ const TiresPage: React.FC = () => {
                       "
                     >
                       바로가기
-                      <span className="inline-block transform transition-transform group-hover:translate-x-1">→</span>
+                      <span className="inline-block transform transition-transform group-hover:translate-x-1">
+                        →
+                      </span>
                     </Link>
                   </div>
                 </div>
@@ -422,7 +413,6 @@ const TiresPage: React.FC = () => {
         </div>
       </div>
 
-      {/* ===================== 타이어 구매 Project ===================== */}
       <section className="space-y-8">
         <div className="grid md:grid-cols-12 gap-8 items-start">
           <div className="md:col-span-7 min-w-0">
@@ -433,7 +423,8 @@ const TiresPage: React.FC = () => {
                   타이어 구매 Project!
                 </h2>
                 <p className="text-gray-600 mt-3 leading-relaxed break-keep">
-                  단순 구매가 아니라 “구매 프로젝트 + 금융”으로 설계합니다.<br />
+                  단순 구매가 아니라 “구매 프로젝트 + 금융”으로 설계합니다.
+                  <br />
                   RNF KOREA가 물량/운행조건/교체주기 기반으로 최적의 조합과 결제 구조까지 함께 제안합니다.
                 </p>
               </div>
@@ -460,7 +451,10 @@ const TiresPage: React.FC = () => {
             { step: "STEP 03", title: "금융 결합 구조", desc: "구매와 렌탈 옵션을 결합해 초기 부담을 낮추고 현금흐름을 최적화합니다." },
             { step: "STEP 04", title: "운영 최적화", desc: "교체주기·정비·관리 기준을 함께 잡아 운행 효율성을 높여드립니다." },
           ].map((x) => (
-            <div key={x.step} className="border border-gray-200 rounded-xl p-6 bg-white hover:shadow-md transition-all">
+            <div
+              key={x.step}
+              className="border border-gray-200 rounded-xl p-6 bg-white hover:shadow-md transition-all"
+            >
               <div className="text-orange-500 font-extrabold text-sm mb-2">{x.step}</div>
               <h3 className="font-extrabold text-navy-900 mb-2">{x.title}</h3>
               <p className="text-sm text-gray-600 leading-relaxed">{x.desc}</p>
@@ -469,8 +463,12 @@ const TiresPage: React.FC = () => {
         </div>
 
         <div className="mt-2 rounded-2xl bg-orange-50 border border-orange-200 p-6 text-center">
-          <p className="text-navy-900 font-extrabold text-lg">타이어 교체에 큰 비용을 지출할 필요가 없습니다.</p>
-          <p className="text-sm text-gray-600 mt-2">소모품 구매비용을 분납 구조로 전환하여 현금흐름 안정화를 설계합니다.</p>
+          <p className="text-navy-900 font-extrabold text-lg">
+            타이어 교체에 큰 비용을 지출할 필요가 없습니다.
+          </p>
+          <p className="text-sm text-gray-600 mt-2">
+            소모품 구매비용을 분납 구조로 전환하여 현금흐름 안정화를 설계합니다.
+          </p>
         </div>
 
         <div className="mt-6 flex flex-col sm:flex-row gap-4 justify-center">
@@ -490,12 +488,13 @@ const TiresPage: React.FC = () => {
         </div>
       </section>
 
-      {/* ===================== 화물용 타이어 (상단 이동 버튼 영역) ===================== */}
       <section className="space-y-8">
         <div className="flex items-start gap-3">
           <div className="mt-1 h-6 w-1.5 rounded bg-orange-500" />
           <div>
-            <h2 className="text-2xl md:text-3xl font-extrabold text-navy-900 tracking-tight">화물용 타이어</h2>
+            <h2 className="text-2xl md:text-3xl font-extrabold text-navy-900 tracking-tight">
+              화물용 타이어
+            </h2>
             <p className="text-gray-600 mt-2 max-w-3xl">
               장거리 운송, 고하중 적재, 내구성 및 경제성을 고려한 상용차 타이어 라인업.
             </p>
@@ -506,8 +505,7 @@ const TiresPage: React.FC = () => {
           <button
             type="button"
             onClick={() => scrollToRef(cargoRef)}
-            className="group border border-gray-200 rounded-xl bg-white hover:shadow-md transition-all overflow-hidden text-left
-                       focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50"
+            className="group border border-gray-200 rounded-xl bg-white hover:shadow-md transition-all overflow-hidden text-left focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50"
           >
             <div className="flex h-full">
               <div className="flex-1 p-6">
@@ -515,7 +513,9 @@ const TiresPage: React.FC = () => {
                   <div className="h-4 w-1 rounded bg-orange-500" />
                   <h3 className="text-lg font-extrabold text-navy-900">카고 & 트레일러용</h3>
                 </div>
-                <p className="text-sm text-gray-600">마일리지, 연비 효율, 주행 안정성의 균형을 고려한 표준 운송 솔루션.</p>
+                <p className="text-sm text-gray-600">
+                  마일리지, 연비 효율, 주행 안정성의 균형을 고려한 표준 운송 솔루션.
+                </p>
               </div>
               <div className="relative w-[40%] min-w-[110px]">
                 <img
@@ -532,8 +532,7 @@ const TiresPage: React.FC = () => {
           <button
             type="button"
             onClick={() => scrollToRef(dumpRef)}
-            className="group border border-gray-200 rounded-xl bg-white hover:shadow-md transition-all overflow-hidden text-left
-                       focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50"
+            className="group border border-gray-200 rounded-xl bg-white hover:shadow-md transition-all overflow-hidden text-left focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50"
           >
             <div className="flex h-full">
               <div className="flex-1 p-6">
@@ -541,7 +540,9 @@ const TiresPage: React.FC = () => {
                   <div className="h-4 w-1 rounded bg-orange-500" />
                   <h3 className="text-lg font-extrabold text-navy-900">덤프용</h3>
                 </div>
-                <p className="text-sm text-gray-600">험로 및 건설 현장 대응을 위한 내절상·내충격 강화 설계.</p>
+                <p className="text-sm text-gray-600">
+                  험로 및 건설 현장 대응을 위한 내절상·내충격 강화 설계.
+                </p>
               </div>
               <div className="relative w-[40%] min-w-[110px]">
                 <img
@@ -558,8 +559,7 @@ const TiresPage: React.FC = () => {
           <button
             type="button"
             onClick={() => scrollToRef(busRef)}
-            className="group border border-gray-200 rounded-xl bg-white hover:shadow-md transition-all overflow-hidden text-left
-                       focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50"
+            className="group border border-gray-200 rounded-xl bg-white hover:shadow-md transition-all overflow-hidden text-left focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50"
           >
             <div className="flex h-full">
               <div className="flex-1 p-6">
@@ -567,7 +567,9 @@ const TiresPage: React.FC = () => {
                   <div className="h-4 w-1 rounded bg-orange-500" />
                   <h3 className="text-lg font-extrabold text-navy-900">버스용</h3>
                 </div>
-                <p className="text-sm text-gray-600">승차감, 소음 저감, 안전성을 중시한 여객 운송 전용 타이어.</p>
+                <p className="text-sm text-gray-600">
+                  승차감, 소음 저감, 안전성을 중시한 여객 운송 전용 타이어.
+                </p>
               </div>
               <div className="relative w-[40%] min-w-[110px]">
                 <img
@@ -583,12 +585,13 @@ const TiresPage: React.FC = () => {
         </div>
       </section>
 
-      {/* ===================== 산업용 타이어 ===================== */}
       <section className="space-y-8">
         <div className="flex items-start gap-3">
           <div className="mt-1 h-6 w-1.5 rounded bg-orange-500" />
           <div>
-            <h2 className="text-2xl md:text-3xl font-extrabold text-navy-900 tracking-tight">산업용 타이어</h2>
+            <h2 className="text-2xl md:text-3xl font-extrabold text-navy-900 tracking-tight">
+              산업용 타이어
+            </h2>
             <p className="text-gray-600 mt-2 max-w-3xl">
               지게차, 물류장비, 특수장비 등 고하중·고내구 환경 대응 산업 특화 솔루션.
             </p>
@@ -601,7 +604,10 @@ const TiresPage: React.FC = () => {
             { title: "공기압 타이어", desc: "충격 흡수 및 승차감 개선에 유리한 범용 산업 장비 대응 타입.", img: "/home/air.jpg" },
             { title: "특수장비용 타이어", desc: "작업 환경 및 장비 특성에 맞춘 맞춤 규격 및 제품 제안 가능.", img: "/home/special.jpg" },
           ].map((x) => (
-            <div key={x.title} className="group border border-gray-200 rounded-xl bg-white hover:shadow-md transition-all overflow-hidden">
+            <div
+              key={x.title}
+              className="group border border-gray-200 rounded-xl bg-white hover:shadow-md transition-all overflow-hidden"
+            >
               <div className="flex h-full">
                 <div className="flex-1 p-6">
                   <div className="flex items-center gap-2 mb-2">
@@ -629,7 +635,6 @@ const TiresPage: React.FC = () => {
         </div>
       </section>
 
-      {/* ✅ 산업용 타이어 주요 고객사 (1번만!) */}
       <div className="border border-gray-200 rounded-xl bg-white p-6 w-full">
         <div className="relative pl-5">
           <div className="absolute left-0 top-1 h-5 w-1.5 rounded bg-orange-500" />
@@ -671,7 +676,6 @@ const TiresPage: React.FC = () => {
         </div>
       </div>
 
-      {/* ===================== 주요제품(✅ 고객사 박스 밖 / ✅ 양식 통일) ===================== */}
       <ProductsBlock
         title="카고 & 트레일러용 주요제품"
         desc="장거리 운송 환경에 최적화된 마일리지·연비 효율 중심 제품 라인업."
@@ -692,13 +696,8 @@ const TiresPage: React.FC = () => {
         sectionRef={busRef}
         products={truckProducts.bus}
       />
-
-      {/* ✅ 여기 아래에 “공동 프로젝트 상담 폼(ProjectConsultForm)” 붙이면 끝 */}
-      {/* <ProjectConsultForm project="TIRE_PURCHASE" /> */}
     </div>
   );
 };
-
-
 
 export default TiresPage;
