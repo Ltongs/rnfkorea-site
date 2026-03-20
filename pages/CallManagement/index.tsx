@@ -147,15 +147,15 @@ const controlClass =
 const compactControlClass =
   "w-full h-9 rounded-lg border border-gray-200 px-3 text-xs text-gray-900 bg-white";
 const textareaClass =
-  "w-full min-h-[80px] rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 bg-white resize-none";
+  "w-full min-h-[104px] rounded-xl border border-gray-200 px-3 py-3 text-sm text-gray-900 bg-white";
 
 const labelClass = "block text-sm font-semibold text-gray-700 mb-1";
 const compactLabelClass = "block text-xs font-semibold text-gray-600 mb-1";
 
 const thClass =
-  "px-4 py-3 text-left text-sm font-bold text-navy-900 border-b border-gray-200";
+  "px-4 py-3 text-left text-sm font-bold text-navy-900 border-b border-gray-200 whitespace-nowrap";
 const tdClass =
-  "px-4 py-3 text-sm text-gray-700 border-b border-gray-100 align-top";
+  "px-4 py-3 text-sm text-gray-700 border-b border-gray-100 align-top whitespace-nowrap";
 
 const actionBtnClass =
   "px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-300 text-gray-700 hover:bg-gray-50 whitespace-nowrap";
@@ -164,10 +164,10 @@ const completeBtnClass =
 const sectionTitleClass =
   "text-sm font-extrabold text-navy-900 border-b border-gray-200 pb-1";
 
-const detailLabelClass = "text-[11px] leading-4 font-bold text-gray-500";
-const detailValueClass = "text-xs leading-4 text-gray-800 mt-0.5";
+const detailLabelClass = "text-[10px] leading-3 font-bold text-gray-500 whitespace-normal break-words";
+const detailValueClass = "text-[11px] leading-4 text-gray-800 mt-0 whitespace-normal break-words";
 const inlineDetailBoxClass =
-  "bg-orange-50/40 border border-orange-200 rounded-xl p-3";
+  "bg-orange-50/40 border border-orange-200 rounded-xl p-2";
 
 const grid5Class = "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4";
 const dashboardGridClass = "grid grid-cols-1 xl:grid-cols-3 gap-4";
@@ -209,10 +209,24 @@ function formatDateTime(value: string | null) {
   return d.toLocaleDateString("ko-KR");
 }
 
-function formatDateOnly(value: string | null) {
+function formatWorkType(value: ConsultationRow["work_type"] | string | null) {
+  if (value === "registration_insurance") return "보험";
+  if (value === "tire_sales") return "타이어";
+  if (value === "finance") return "금융";
   return value || "-";
 }
 
+function formatDateOnly(value: string | null) {
+  if (!value) return "-";
+  const d = new Date(value);
+  if (!Number.isNaN(d.getTime())) return d.toLocaleDateString("ko-KR");
+  return value.includes("T") ? value.slice(0, 10) : value;
+}
+
+
+function formatCompactSummary(row: ConsultationRow) {
+  return `${formatWorkType(row.work_type)} / ${row.customer_name || "-"}`;
+}
 
 function formatDateInputValue(value: string | null) {
   if (!value) return "";
@@ -251,7 +265,7 @@ function deriveInsuranceProcessStatus(
   if (paymentCompleted) return "payment_completed";
   if (applicationIssued) return "application_issued";
   if (designRequested) return "design_requested";
-  return "request_received";
+  return null;
 }
 
 const CallManagementPage: React.FC = () => {
@@ -294,6 +308,36 @@ const CallManagementPage: React.FC = () => {
   const [applicationIssued, setApplicationIssued] = useState(false);
   const [paymentCompleted, setPaymentCompleted] = useState(false);
   const [policyIssued, setPolicyIssued] = useState(false);
+  const handleInsuranceStatusChange = (
+    key: "requested" | "proposal" | "paid" | "issued",
+    checked: boolean
+  ) => {
+    let next = {
+      requested: designRequested,
+      proposal: applicationIssued,
+      paid: paymentCompleted,
+      issued: policyIssued,
+    };
+
+    next[key] = checked;
+
+    if (checked) {
+      if (key === "issued") {
+        next = { requested: true, proposal: true, paid: true, issued: true };
+      } else if (key === "paid") {
+        next.requested = true;
+        next.proposal = true;
+      } else if (key === "proposal") {
+        next.requested = true;
+      }
+    }
+
+    setDesignRequested(next.requested);
+    setApplicationIssued(next.proposal);
+    setPaymentCompleted(next.paid);
+    setPolicyIssued(next.issued);
+  };
+
   const [insuranceNote, setInsuranceNote] = useState("");
 
   const [financeCategory, setFinanceCategory] = useState("");
@@ -339,6 +383,7 @@ const CallManagementPage: React.FC = () => {
   const [listSearchVehicleNo, setListSearchVehicleNo] = useState("");
   const [listSearchTireSize, setListSearchTireSize] = useState("");
   const [listQuickScope, setListQuickScope] = useState<"all" | "followup">("all");
+  const [closingFilter, setClosingFilter] = useState<"all" | "Y" | "N">("all");
 
   const [followSearchName, setFollowSearchName] = useState("");
   const [followSearchPhone, setFollowSearchPhone] = useState("");
@@ -352,6 +397,7 @@ const CallManagementPage: React.FC = () => {
   const recentContacts = useMemo(() => rows.slice(0, 10), [rows]);
 
   const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState("");
   const [expandedTireDetail, setExpandedTireDetail] =
@@ -479,6 +525,21 @@ const CallManagementPage: React.FC = () => {
     return insuranceCompanyOk && vehicleNoOk && tireSizeOk;
   };
 
+  useEffect(() => {
+    setExpandedRowId(null);
+  }, [
+    listSearchName,
+    listSearchPhone,
+    listSearchCompany,
+    listFilterWorkType,
+    listFilterStatus,
+    listSearchInsuranceCompany,
+    listSearchVehicleNo,
+    listSearchTireSize,
+    listQuickScope,
+    closingFilter,
+  ]);
+
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
       const nameOk =
@@ -510,6 +571,17 @@ const CallManagementPage: React.FC = () => {
       const quickScopeOk =
         listQuickScope === "followup" ? row.followup_needed : true;
 
+      const closingValue = isClosingCase(
+        row,
+        insuranceDetailsMap[row.id],
+        tireDetailsMap[row.id],
+        financeDetailsMap[row.id]
+      )
+        ? "Y"
+        : "N";
+
+      const closingOk = closingFilter === "all" ? true : closingValue === closingFilter;
+
       return (
         nameOk &&
         phoneOk &&
@@ -517,7 +589,8 @@ const CallManagementPage: React.FC = () => {
         workTypeOk &&
         statusOk &&
         advancedOk &&
-        quickScopeOk
+        quickScopeOk &&
+        closingOk
       );
     });
   }, [
@@ -531,8 +604,10 @@ const CallManagementPage: React.FC = () => {
     listSearchVehicleNo,
     listSearchTireSize,
     listQuickScope,
+    closingFilter,
     insuranceDetailsMap,
     tireDetailsMap,
+    financeDetailsMap,
   ]);
 
   const filteredFollowups = useMemo(() => {
@@ -611,10 +686,18 @@ const CallManagementPage: React.FC = () => {
       setInsuranceCompany(insuranceDetail?.insurance_company || "");
       setInsuranceStartDate(insuranceDetail?.insurance_start_date || "");
       setInsuranceEndDate(insuranceDetail?.insurance_end_date || "");
-      setDesignRequested(Boolean(insuranceDetail?.design_requested));
-      setApplicationIssued(Boolean(insuranceDetail?.application_issued));
-      setPaymentCompleted(Boolean(insuranceDetail?.payment_completed));
-      setPolicyIssued(Boolean(insuranceDetail?.policy_issued));
+
+      const nextIssued = Boolean(insuranceDetail?.policy_issued);
+      const nextPaid = nextIssued || Boolean(insuranceDetail?.payment_completed);
+      const nextProposal =
+        nextPaid || nextIssued || Boolean(insuranceDetail?.application_issued);
+      const nextRequested =
+        nextProposal || nextPaid || nextIssued || Boolean(insuranceDetail?.design_requested);
+
+      setDesignRequested(nextRequested);
+      setApplicationIssued(nextProposal);
+      setPaymentCompleted(nextPaid);
+      setPolicyIssued(nextIssued);
       setInsuranceNote(insuranceDetail?.note || "");
     }
 
@@ -746,6 +829,7 @@ const CallManagementPage: React.FC = () => {
     setListSearchVehicleNo("");
     setListSearchTireSize("");
     setListQuickScope("all");
+    setClosingFilter("all");
   };
 
   const resetFollowFilters = () => {
@@ -969,6 +1053,37 @@ const CallManagementPage: React.FC = () => {
     setListQuickScope(scope);
   };
 
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) {
+      alert("선택된 항목이 없습니다.");
+      return;
+    }
+
+    if (!confirm(`총 ${selectedIds.length}건 삭제하시겠습니까?`)) return;
+
+    try {
+      await supabase.from("consultation_insurance_details").delete().in("consultation_id", selectedIds);
+      await supabase.from("consultation_tire_details").delete().in("consultation_id", selectedIds);
+      await supabase.from("consultation_finance_details").delete().in("consultation_id", selectedIds);
+
+      const { error } = await supabase.from("consultation_cases").delete().in("id", selectedIds);
+      if (error) throw error;
+
+      if (expandedRowId && selectedIds.includes(expandedRowId)) {
+        setExpandedRowId(null);
+        setExpandedInsuranceDetail(null);
+        setExpandedTireDetail(null);
+        setExpandedFinanceDetail(null);
+      }
+
+      setSelectedIds([]);
+      await fetchConsultations();
+    } catch (err: any) {
+      alert("삭제 실패: " + (err?.message || "알 수 없는 오류"));
+    }
+  };
+
   const toggleInlineDetail = async (row: ConsultationRow) => {
     if (expandedRowId === row.id) {
       setExpandedRowId(null);
@@ -1046,6 +1161,17 @@ const CallManagementPage: React.FC = () => {
       fetchFollowups();
     }
   }, [tab, user, isAdmin]);
+
+  useEffect(() => {
+    if (insuranceType === "automobile" && insuranceStartDate) {
+      const start = new Date(`${insuranceStartDate}T00:00:00`);
+      if (!Number.isNaN(start.getTime())) {
+        start.setFullYear(start.getFullYear() + 1);
+        start.setDate(start.getDate() - 1);
+        setInsuranceEndDate(start.toISOString().slice(0, 10));
+      }
+    }
+  }, [insuranceType, insuranceStartDate]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -1157,9 +1283,10 @@ const CallManagementPage: React.FC = () => {
 
       const { error: insuranceError } = await supabase
         .from("consultation_insurance_details")
-        .upsert([
-          {
-            consultation_id: savedCaseId,
+        .upsert(
+          [
+            {
+              consultation_id: savedCaseId,
             vehicle_no: insuranceVehicleNo.trim() || null,
             vehicle_model: insuranceVehicleModel || null,
             vehicle_use: insuranceVehicleUse || null,
@@ -1174,12 +1301,14 @@ const CallManagementPage: React.FC = () => {
             payment_completed: paymentCompleted,
             policy_issued: policyIssued,
             process_status: processStatus,
-            note: insuranceNote.trim() || null,
-          },
-        ]);
+              note: insuranceNote.trim() || null,
+            },
+          ],
+          { onConflict: "consultation_id" }
+        );
 
       if (insuranceError) {
-        alert("상담건은 저장되었지만 보험 상세 저장 실패: " + insuranceError.message);
+        alert(`상담건은 저장되었지만 보험 상세 저장 실패: ${insuranceError.message}\ncode: ${insuranceError.code ?? "-"}\ndetails: ${insuranceError.details ?? "-"}\nhint: ${insuranceError.hint ?? "-"}`);
         await fetchConsultations();
         await fetchFollowups();
         await fetchInsuranceExpiries();
@@ -1195,10 +1324,11 @@ const CallManagementPage: React.FC = () => {
 
       const { error: tireError } = await supabase
         .from("consultation_tire_details")
-        .upsert([
-          {
-            consultation_id: savedCaseId,
-            vehicle_info: tireVehicleInfo.trim() || null,
+        .upsert(
+          [
+            {
+              consultation_id: savedCaseId,
+              vehicle_info: tireVehicleInfo.trim() || null,
             vehicle_type: tireVehicleType.trim() || null,
             tire_size: tireSize.trim() || null,
             quantity: totalQty || null,
@@ -1207,12 +1337,14 @@ const CallManagementPage: React.FC = () => {
             region_detail: tireRegionDetail.trim() || null,
             current_brand: tireCurrentBrand.trim() || null,
             process_status: tireProcessStatus || "inquiry_received",
-            note: tireNote.trim() || null,
-          },
-        ]);
+              note: tireNote.trim() || null,
+            },
+          ],
+          { onConflict: "consultation_id" }
+        );
 
       if (tireError) {
-        alert("상담건은 저장되었지만 타이어 상세 저장 실패: " + tireError.message);
+        alert(`상담건은 저장되었지만 타이어 상세 저장 실패: ${tireError.message}\ncode: ${tireError.code ?? "-"}\ndetails: ${tireError.details ?? "-"}\nhint: ${tireError.hint ?? "-"}`);
         await fetchConsultations();
         await fetchFollowups();
         await fetchInsuranceExpiries();
@@ -1224,10 +1356,11 @@ const CallManagementPage: React.FC = () => {
     if (workType === "finance") {
       const { error: financeError } = await supabase
         .from("consultation_finance_details")
-        .upsert([
-          {
-            consultation_id: savedCaseId,
-            finance_category: financeCategory || null,
+        .upsert(
+          [
+            {
+              consultation_id: savedCaseId,
+              finance_category: financeCategory || null,
             finance_vehicle_model: financeVehicleModel.trim() || null,
             finance_product: financeProduct || null,
             finance_company: financeCompany || null,
@@ -1237,12 +1370,14 @@ const CallManagementPage: React.FC = () => {
             finance_incentive: financeIncentive ? Number(financeIncentive) : null,
             finance_stage: financeStage || null,
             finance_aftercare: nextFollowupDate ? true : false,
-            note: financeNote.trim() || null,
-          },
-        ]);
+              note: financeNote.trim() || null,
+            },
+          ],
+          { onConflict: "consultation_id" }
+        );
 
       if (financeError) {
-        alert("상담건은 저장되었지만 금융 상세 저장 실패: " + financeError.message);
+        alert(`상담건은 저장되었지만 금융 상세 저장 실패: ${financeError.message}\ncode: ${financeError.code ?? "-"}\ndetails: ${financeError.details ?? "-"}\nhint: ${financeError.hint ?? "-"}`);
         await fetchConsultations();
         await fetchFollowups();
         await fetchInsuranceExpiries();
@@ -1524,13 +1659,17 @@ const CallManagementPage: React.FC = () => {
 
                   <div>
                     <label className={labelClass}>보험 요청 내용</label>
-                    <input
-                      type="text"
+                    <select
                       className={controlClass}
-                      placeholder="예: 신규가입 / 갱신 / 조건비교"
                       value={insuranceRequest}
                       onChange={(e) => setInsuranceRequest(e.target.value)}
-                    />
+                    >
+                      <option value="">선택</option>
+                      <option value="신규">신규</option>
+                      <option value="갱신">갱신</option>
+                      <option value="해지">해지</option>
+                      <option value="비교견적">비교견적</option>
+                    </select>
                   </div>
 
                   <div>
@@ -1627,7 +1766,7 @@ const CallManagementPage: React.FC = () => {
                       <input
                         type="checkbox"
                         checked={designRequested}
-                        onChange={(e) => setDesignRequested(e.target.checked)}
+                        onChange={(e) => handleInsuranceStatusChange("requested", e.target.checked)}
                       />
                       설계요청
                     </label>
@@ -1635,7 +1774,7 @@ const CallManagementPage: React.FC = () => {
                       <input
                         type="checkbox"
                         checked={applicationIssued}
-                        onChange={(e) => setApplicationIssued(e.target.checked)}
+                        onChange={(e) => handleInsuranceStatusChange("proposal", e.target.checked)}
                       />
                       청약서발행
                     </label>
@@ -1643,7 +1782,7 @@ const CallManagementPage: React.FC = () => {
                       <input
                         type="checkbox"
                         checked={paymentCompleted}
-                        onChange={(e) => setPaymentCompleted(e.target.checked)}
+                        onChange={(e) => handleInsuranceStatusChange("paid", e.target.checked)}
                       />
                       결제
                     </label>
@@ -1651,7 +1790,7 @@ const CallManagementPage: React.FC = () => {
                       <input
                         type="checkbox"
                         checked={policyIssued}
-                        onChange={(e) => setPolicyIssued(e.target.checked)}
+                        onChange={(e) => handleInsuranceStatusChange("issued", e.target.checked)}
                       />
                       증권발급
                     </label>
@@ -1818,34 +1957,14 @@ const CallManagementPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-12 gap-4 items-start">
-                  <div className="col-span-12 lg:col-span-10">
-                    <label className={labelClass}>상담내용</label>
-                    <textarea
-                      className={textareaClass}
-                      placeholder="금융조건, 요청사항, 진행 메모 등을 입력하세요."
-                      value={financeNote}
-                      onChange={(e) => setFinanceNote(e.target.value)}
-                      rows={3}
-                    />
-                  </div>
-
-                  <div className="col-span-12 lg:col-span-2 flex flex-col gap-2 lg:pt-7">
-                    <button
-                      type="button"
-                      className="w-full h-10 rounded-xl border border-gray-300 text-gray-700 font-bold hover:bg-gray-50 whitespace-nowrap"
-                      onClick={resetForm}
-                    >
-                      초기화
-                    </button>
-
-                    <button
-                      type="submit"
-                      className="w-full h-10 rounded-xl bg-orange-500 text-white font-bold hover:bg-orange-600 whitespace-nowrap"
-                    >
-                      {editingCaseId ? "수정 저장" : "저장"}
-                    </button>
-                  </div>
+                <div>
+                  <label className={labelClass}>상담내용</label>
+                  <textarea
+                    className={textareaClass}
+                    placeholder="금융조건, 요청사항, 진행 메모 등을 입력하세요."
+                    value={financeNote}
+                    onChange={(e) => setFinanceNote(e.target.value)}
+                  />
                 </div>
               </div>
             )}
@@ -1967,37 +2086,34 @@ const CallManagementPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-12 gap-4 items-start">
-                  <div className="col-span-12 lg:col-span-10">
-                    <label className={labelClass}>상담내용</label>
-                    <textarea
-                      className={textareaClass}
-                      placeholder="규격 문의, 장착 위치, 교체 일정, 현장 요청사항 등을 입력하세요."
-                      value={tireNote}
-                      onChange={(e) => setTireNote(e.target.value)}
-                      rows={3}
-                    />
-                  </div>
-
-                  <div className="col-span-12 lg:col-span-2 flex flex-col gap-2 lg:pt-7">
-                    <button
-                      type="button"
-                      className="w-full h-10 rounded-xl border border-gray-300 text-gray-700 font-bold hover:bg-gray-50 whitespace-nowrap"
-                      onClick={resetForm}
-                    >
-                      초기화
-                    </button>
-
-                    <button
-                      type="submit"
-                      className="w-full h-10 rounded-xl bg-orange-500 text-white font-bold hover:bg-orange-600 whitespace-nowrap"
-                    >
-                      {editingCaseId ? "수정 저장" : "저장"}
-                    </button>
-                  </div>
+                <div>
+                  <label className={labelClass}>상담내용</label>
+                  <textarea
+                    className={textareaClass}
+                    placeholder="규격 문의, 장착 위치, 교체 일정, 현장 요청사항 등을 입력하세요."
+                    value={tireNote}
+                    onChange={(e) => setTireNote(e.target.value)}
+                  />
                 </div>
               </div>
             )}
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                className="px-6 py-2 rounded-xl border border-gray-300 text-gray-700 font-bold hover:bg-gray-50"
+                onClick={resetForm}
+              >
+                초기화
+              </button>
+
+              <button
+                type="submit"
+                className="px-6 py-2 rounded-xl bg-orange-500 text-white font-bold hover:bg-orange-600"
+              >
+                {editingCaseId ? "수정 저장" : "저장"}
+              </button>
+            </div>
           </form>
 
             <div className={`${dashboardGridClass} pt-2`}>
@@ -2030,7 +2146,7 @@ const CallManagementPage: React.FC = () => {
                 {!loadingExpiry &&
                   !expiryError &&
                   insuranceExpiries.length > 0 && (
-                    <div className="space-y-3">
+                    <div className="space-y-2">
                       {insuranceExpiries.slice(0, 6).map((item, idx) => {
                         const daysLeft = getDaysLeft(item.insurance_end_date);
                         const c = item.consultation_cases;
@@ -2077,7 +2193,7 @@ const CallManagementPage: React.FC = () => {
                 {rows.length === 0 ? (
                   <div className="text-sm text-gray-500">최근 상담이 없습니다.</div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {recentContacts.slice(0, 6).map((row) => (
                       <button
                         key={row.id}
@@ -2102,7 +2218,7 @@ const CallManagementPage: React.FC = () => {
                           {formatDateTime(row.call_datetime)}
                         </div>
                         <div className="text-xs text-gray-600 mt-1 truncate">
-                          {row.summary}
+                          {formatCompactSummary(row)}
                         </div>
                       </button>
                     ))}
@@ -2239,6 +2355,19 @@ const CallManagementPage: React.FC = () => {
                   />
                 </div>
 
+                <div>
+                  <label className={compactLabelClass}>Closing</label>
+                  <select
+                    className={compactControlClass}
+                    value={closingFilter}
+                    onChange={(e) => setClosingFilter(e.target.value as "all" | "Y" | "N")}
+                  >
+                    <option value="all">전체</option>
+                    <option value="Y">Y</option>
+                    <option value="N">N</option>
+                  </select>
+                </div>
+
                 <div className="flex items-end gap-2 flex-nowrap whitespace-nowrap">
                   <button
                     type="button"
@@ -2255,13 +2384,23 @@ const CallManagementPage: React.FC = () => {
                     새로고침
                   </button>
                 </div>
-              </div>
+</div>
             </div>
 
             <div className="flex items-center justify-between gap-3 text-sm text-gray-600">
-              <div>목록을 클릭하면 바로 아래에 상세 내역이 열립니다.</div>
-              <div className="font-bold text-orange-600">
-                {listQuickScope === "followup" ? "사후관리 대상만 표시 중" : "전체 상담 표시 중"}
+              <div>필터 선택 시 목록에 자동 반영되며, 목록을 클릭하면 바로 아래에 상세 내역이 열립니다.</div>
+              <div className="flex items-center gap-2">
+                <div className="font-bold text-orange-600 whitespace-nowrap">
+                  {listQuickScope === "followup" ? "사후관리 대상만 표시 중" : "전체 상담 표시 중"}
+                </div>
+                <button
+                  type="button"
+                  className={`${actionBtnClass} text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap`}
+                  onClick={handleBulkDelete}
+                  disabled={selectedIds.length === 0}
+                >
+                  선택 삭제{selectedIds.length > 0 ? ` (${selectedIds.length})` : ""}
+                </button>
               </div>
             </div>
 
@@ -2274,10 +2413,20 @@ const CallManagementPage: React.FC = () => {
             )}
 
             {!loadingList && !listError && filteredRows.length > 0 && (
-              <div className="border border-gray-200 rounded-2xl overflow-hidden">
-                <table className="min-w-full bg-white">
+              <div className="border border-gray-200 rounded-2xl overflow-x-auto">
+                <table className=" bg-white">
                   <thead>
                     <tr className="bg-gray-50">
+                      <th className={thClass}>
+                        <input
+                          type="checkbox"
+                          checked={filteredRows.length > 0 && selectedIds.length === filteredRows.length}
+                          onChange={(e) => {
+                            if (e.target.checked) setSelectedIds(filteredRows.map((r) => r.id));
+                            else setSelectedIds([]);
+                          }}
+                        />
+                      </th>
                       <th className={thClass}>상담일시</th>
                       <th className={thClass}>고객명</th>
                       <th className={thClass}>연락처</th>
@@ -2286,6 +2435,7 @@ const CallManagementPage: React.FC = () => {
                       <th className={thClass}>Closing</th>
                       <th className={thClass}>사후관리</th>
                       <th className={thClass}>다음 연락일</th>
+                      <th className={thClass}>수정</th>
                     </tr>
                   </thead>
 
@@ -2298,6 +2448,17 @@ const CallManagementPage: React.FC = () => {
                           }`}
                           onClick={() => toggleInlineDetail(row)}
                         >
+                          <td className={tdClass}>
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.includes(row.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) setSelectedIds((prev) => [...prev, row.id]);
+                                else setSelectedIds((prev) => prev.filter((id) => id !== row.id));
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </td>
                           <td className={tdClass}>{formatDateTime(row.call_datetime)}</td>
                           <td className={tdClass}>{row.customer_name}</td>
                           <td className={tdClass}>
@@ -2323,12 +2484,24 @@ const CallManagementPage: React.FC = () => {
                             {row.followup_needed ? "필요" : "불필요"}
                           </td>
                           <td className={tdClass}>{row.next_followup_date || "-"}</td>
+                          <td className={tdClass}>
+                            <button
+                              type="button"
+                              className={`${actionBtnClass} whitespace-nowrap`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleStartEdit(row);
+                              }}
+                            >
+                              수정
+                            </button>
+                          </td>
                         </tr>
 
                         {expandedRowId === row.id && (
                           <tr>
-                            <td colSpan={8} className="p-3 bg-white">
-                              <div className={inlineDetailBoxClass}>
+                            <td colSpan={10} className="p-3 bg-white">
+                              <div className={`${inlineDetailBoxClass} overflow-hidden`}>
                                 {loadingDetail && (
                                   <div className="text-sm text-gray-500">
                                     상세 정보를 불러오는 중입니다...
@@ -2343,7 +2516,7 @@ const CallManagementPage: React.FC = () => {
 
                                 {!loadingDetail && !detailError && (
                                   <div className="space-y-3">
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex items-center justify-between mb-1">
                                       <div className="text-sm font-extrabold text-navy-900">
                                         {row.customer_name} 상세내역
                                       </div>
@@ -2378,8 +2551,8 @@ const CallManagementPage: React.FC = () => {
                                     <div className="space-y-3">
                                       <div className={sectionTitleClass}>공통 정보</div>
 
-                                      <div className="overflow-x-auto">
-                                        <div className="grid grid-cols-8 gap-1 min-w-[1200px]">
+                                      <div>
+                                        <div className="grid grid-cols-8 gap-x-2 gap-y-1 items-start">
                                           <div>
                                             <div className={detailLabelClass}>상담일자</div>
                                             <div className={detailValueClass}>
@@ -2458,8 +2631,8 @@ const CallManagementPage: React.FC = () => {
                                         )}
 
                                         {expandedInsuranceDetail && (
-                                          <div className="overflow-x-auto">
-                                            <div className="grid grid-cols-12 gap-1 min-w-[1800px]">
+                                          <div>
+                                            <div className="grid grid-cols-12 gap-x-2 gap-y-1 items-start">
                                             <div>
                                               <div className={detailLabelClass}>차량번호</div>
                                               <div className={detailValueClass}>
@@ -2575,8 +2748,8 @@ const CallManagementPage: React.FC = () => {
                                         )}
 
                                         {expandedTireDetail && (
-                                          <div className="overflow-x-auto">
-                                            <div className="grid grid-cols-11 gap-1 min-w-[1700px]">
+                                          <div>
+                                            <div className="grid grid-cols-11 gap-x-2 gap-y-1 items-start">
                                             <div>
                                               <div className={detailLabelClass}>보유차량 브랜드</div>
                                               <div className={detailValueClass}>
@@ -2674,8 +2847,8 @@ const CallManagementPage: React.FC = () => {
                                         )}
 
                                         {expandedFinanceDetail && (
-                                          <div className="overflow-x-auto">
-                                            <div className="grid grid-cols-10 gap-1 min-w-[1500px]">
+                                          <div>
+                                            <div className="grid grid-cols-10 gap-x-2 gap-y-1 items-start">
                                             <div>
                                               <div className={detailLabelClass}>종목</div>
                                               <div className={detailValueClass}>

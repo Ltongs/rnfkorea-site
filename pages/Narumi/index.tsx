@@ -210,7 +210,7 @@ export default function NarumiPage() {
   const [lotte, setLotte] = useState<boolean>(false);
   const [specialNote, setSpecialNote] = useState("");
 
-  const [manufactureImageFile, setManufactureImageFile] = useState<File | null>(null);
+  const [manufactureDocFile, setManufactureDocFile] = useState<File | null>(null);
 
   const [rows, setRows] = useState<NarumiTask[]>([]);
   const [loading, setLoading] = useState(false);
@@ -317,7 +317,7 @@ export default function NarumiPage() {
     setDeliveryText("");
     setLotte(false);
     setSpecialNote("");
-    setManufactureImageFile(null);
+    setManufactureDocFile(null);
     if (manufactureInputRef.current) manufactureInputRef.current.value = "";
   };
 
@@ -408,8 +408,8 @@ export default function NarumiPage() {
 
       if (error) throw error;
 
-      if (manufactureImageFile && inserted?.id != null) {
-        await uploadManufactureDocForRow(inserted.id, manufactureImageFile);
+      if (manufactureDocFile && inserted?.id != null) {
+        await uploadManufactureDocForRow(inserted.id, manufactureDocFile);
       }
 
       onReset();
@@ -650,13 +650,16 @@ export default function NarumiPage() {
     const file = e.target.files?.[0] || null;
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
-      alert("제작증은 이미지 파일만 첨부 가능합니다.");
+    const ext = extFromName(file.name);
+    const isPdf = file.type === "application/pdf" || ext === "pdf";
+    const isImage = file.type.startsWith("image/");
+    if (!isImage && !isPdf) {
+      alert("제작증은 PDF 또는 이미지 파일만 첨부 가능합니다.");
       e.target.value = "";
       return;
     }
 
-    setManufactureImageFile(file);
+    setManufactureDocFile(file);
   };
 
   const loginRoleLabel = useMemo(() => {
@@ -777,11 +780,11 @@ export default function NarumiPage() {
       {/* 2행 */}
       <div className="grid md:grid-cols-3 gap-3 items-start">
         <div>
-          <label className={labelClass}>제작증 이미지</label>
+          <label className={labelClass}>제작증 파일</label>
           <input
             ref={manufactureInputRef}
             type="file"
-            accept="image/*"
+            accept=".pdf,image/*,application/pdf"
             className="hidden"
             onChange={onManufacturePicked}
           />
@@ -791,14 +794,14 @@ export default function NarumiPage() {
             disabled={!canCreate}
             className={compactButtonClass}
           >
-            {manufactureImageFile ? "제작증 변경" : "제작증 첨부"}
+            {manufactureDocFile ? "제작증 변경" : "제작증 첨부"}
           </button>
 
-          {manufactureImageFile && (
+          {manufactureDocFile && (
             <button
               type="button"
               onClick={() => {
-                setManufactureImageFile(null);
+                setManufactureDocFile(null);
                 if (manufactureInputRef.current) manufactureInputRef.current.value = "";
               }}
               disabled={!canCreate}
@@ -1198,7 +1201,7 @@ export default function NarumiPage() {
                       </div>
 
                       <div className="text-xs text-gray-400 leading-relaxed whitespace-nowrap overflow-x-auto">
-                        * 등록완료까지 처리된 후 차량등록증 업로드 가능 / * 업로드 완료 후 단계 변경 불가 / * 제작증 보기는 관리자 전용
+                        * 등록완료까지 처리된 후 차량등록증 업로드 가능 / * 업로드 완료 후 단계 변경 불가 / * 제작증은 PDF/이미지 업로드 가능 / * 제작증 보기는 관리자 전용
                         {!canEditExisting && (
                           <span> / * 현재 계정은 기존 데이터 상태 변경 권한이 없습니다.</span>
                         )}
