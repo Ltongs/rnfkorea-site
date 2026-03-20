@@ -164,8 +164,8 @@ const completeBtnClass =
 const sectionTitleClass =
   "text-sm font-extrabold text-navy-900 border-b border-gray-200 pb-1";
 
-const detailLabelClass = "text-[10px] leading-3 font-bold text-gray-500 whitespace-normal break-words";
-const detailValueClass = "text-[11px] leading-4 text-gray-800 mt-0 whitespace-normal break-words";
+const detailLabelClass = "text-[10px] leading-3 font-bold text-gray-500 whitespace-nowrap";
+const detailValueClass = "text-[11px] leading-3 text-gray-800 mt-0 whitespace-nowrap";
 const inlineDetailBoxClass =
   "bg-orange-50/40 border border-orange-200 rounded-xl p-2";
 
@@ -2501,7 +2501,7 @@ const CallManagementPage: React.FC = () => {
                         {expandedRowId === row.id && (
                           <tr>
                             <td colSpan={10} className="p-3 bg-white">
-                              <div className={`${inlineDetailBoxClass} overflow-hidden`}>
+                              <div className={inlineDetailBoxClass}>
                                 {loadingDetail && (
                                   <div className="text-sm text-gray-500">
                                     상세 정보를 불러오는 중입니다...
@@ -2552,7 +2552,7 @@ const CallManagementPage: React.FC = () => {
                                       <div className={sectionTitleClass}>공통 정보</div>
 
                                       <div>
-                                        <div className="grid grid-cols-8 gap-x-2 gap-y-1 items-start">
+                                        <div className="grid grid-cols-8 gap-1">
                                           <div>
                                             <div className={detailLabelClass}>상담일자</div>
                                             <div className={detailValueClass}>
@@ -2632,7 +2632,7 @@ const CallManagementPage: React.FC = () => {
 
                                         {expandedInsuranceDetail && (
                                           <div>
-                                            <div className="grid grid-cols-12 gap-x-2 gap-y-1 items-start">
+                                            <div className="grid grid-cols-12 gap-1">
                                             <div>
                                               <div className={detailLabelClass}>차량번호</div>
                                               <div className={detailValueClass}>
@@ -2749,7 +2749,7 @@ const CallManagementPage: React.FC = () => {
 
                                         {expandedTireDetail && (
                                           <div>
-                                            <div className="grid grid-cols-11 gap-x-2 gap-y-1 items-start">
+                                            <div className="grid grid-cols-11 gap-1">
                                             <div>
                                               <div className={detailLabelClass}>보유차량 브랜드</div>
                                               <div className={detailValueClass}>
@@ -2848,7 +2848,7 @@ const CallManagementPage: React.FC = () => {
 
                                         {expandedFinanceDetail && (
                                           <div>
-                                            <div className="grid grid-cols-10 gap-x-2 gap-y-1 items-start">
+                                            <div className="grid grid-cols-10 gap-1">
                                             <div>
                                               <div className={detailLabelClass}>종목</div>
                                               <div className={detailValueClass}>
