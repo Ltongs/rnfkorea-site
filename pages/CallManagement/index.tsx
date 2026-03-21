@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import PageTitle from "../../components/PageTitle";
 import { supabase } from "../../lib/supabase";
@@ -185,6 +185,14 @@ function onlyDigits(value: string) {
   return value.replace(/\D/g, "");
 }
 
+function onlyKoreanAndDigits(value: string) {
+  return value.replace(/[^가-힣0-9]/g, "");
+}
+
+function onlyEnglishTireSize(value: string) {
+  return value.replace(/[^A-Za-z0-9./\-\s]/g, "").toUpperCase();
+}
+
 function formatNumberWithCommas(value: string | number | null | undefined) {
   if (value === null || value === undefined) return "";
   const digits = String(value).replace(/\D/g, "");
@@ -240,6 +248,49 @@ function formatDateInputValue(value: string | null) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function normalizeVehicleNo(value: string | null | undefined) {
+  return String(value ?? "").trim().toUpperCase();
+}
+
+async function syncNarumiInsuranceByVehicleNo(vehicleNo: string | null | undefined) {
+  const normalizedVin = normalizeVehicleNo(vehicleNo);
+  if (!normalizedVin) return;
+
+  const { data: narumiRows, error: narumiFetchError } = await supabase
+    .from("narumi_tasks")
+    .select("id, vin, docs_ready, is_registered, vehicle_doc_path")
+    .eq("vin", normalizedVin);
+
+  if (narumiFetchError) throw narumiFetchError;
+  if (!Array.isArray(narumiRows) || narumiRows.length === 0) return;
+
+  const { data: issuedRows, error: issuedFetchError } = await supabase
+    .from("consultation_insurance_details")
+    .select("consultation_id")
+    .eq("vehicle_no", normalizedVin)
+    .eq("policy_issued", true)
+    .limit(1);
+
+  if (issuedFetchError) throw issuedFetchError;
+
+  const hasIssued = Array.isArray(issuedRows) && issuedRows.length > 0;
+
+  for (const narumiRow of narumiRows) {
+    let nextStatus = "todo";
+    if (narumiRow.vehicle_doc_path) nextStatus = "completed";
+    else if (narumiRow.is_registered) nextStatus = "registered";
+    else if (narumiRow.docs_ready) nextStatus = "docs";
+    else if (hasIssued) nextStatus = "insurance";
+
+    const { error: narumiUpdateError } = await supabase
+      .from("narumi_tasks")
+      .update({ has_insurance: hasIssued, status: nextStatus })
+      .eq("id", narumiRow.id);
+
+    if (narumiUpdateError) throw narumiUpdateError;
+  }
+}
+
 
 function getDaysLeft(dateText: string | null) {
   if (!dateText) return null;
@@ -268,11 +319,27 @@ function deriveInsuranceProcessStatus(
   return null;
 }
 
+function deriveNarumiInsuranceStatus(row: {
+  has_insurance?: boolean | null;
+  docs_ready?: boolean | null;
+  is_registered?: boolean | null;
+  vehicle_doc_path?: string | null;
+}) {
+  if (row.vehicle_doc_path) return "completed";
+  if (row.is_registered) return "registered";
+  if (row.docs_ready) return "docs";
+  if (row.has_insurance) return "insurance";
+  return "todo";
+}
+
 const CallManagementPage: React.FC = () => {
   const { user, loading, isAdmin } = useAuth() as any;
   const location = useLocation();
 
   const [tab, setTab] = useState<TabKey>("new");
+  const newFormTopRef = useRef<HTMLDivElement | null>(null);
+  const customerNameInputRef = useRef<HTMLInputElement | null>(null);
+  const appliedNarumiPrefillRef = useRef<string>("");
 
   const [callDatetime, setCallDatetime] = useState("");
   const [customerName, setCustomerName] = useState("");
@@ -319,9 +386,12 @@ const CallManagementPage: React.FC = () => {
       issued: policyIssued,
     };
 
-    next[key] = checked;
+    // 기존 ON 자동화는 유지, 하나라도 OFF 되면 전체 OFF
+    if (!checked) {
+      next = { requested: false, proposal: false, paid: false, issued: false };
+    } else {
+      next[key] = true;
 
-    if (checked) {
       if (key === "issued") {
         next = { requested: true, proposal: true, paid: true, issued: true };
       } else if (key === "paid") {
@@ -407,6 +477,9 @@ const CallManagementPage: React.FC = () => {
   const [expandedFinanceDetail, setExpandedFinanceDetail] =
     useState<FinanceDetailRow | null>(null);
   const [editingCaseId, setEditingCaseId] = useState<number | null>(null);
+  const [showTodoBox, setShowTodoBox] = useState(false);
+  const [showListFilters, setShowListFilters] = useState(false);
+  const [showFollowupFilters, setShowFollowupFilters] = useState(false);
 
   const title = useMemo(() => {
     if (tab === "new") return "상담등록";
@@ -654,6 +727,49 @@ const CallManagementPage: React.FC = () => {
     tireDetailsMap,
   ]);
 
+
+
+  const todayTomorrowTodoRows = useMemo(() => {
+    const todayDate = new Date();
+    const tomorrowDate = new Date();
+    tomorrowDate.setDate(todayDate.getDate() + 1);
+
+    const today = formatDateInputValue(todayDate.toISOString());
+    const tomorrow = formatDateInputValue(tomorrowDate.toISOString());
+
+    return rows
+      .filter((row) => {
+        if (!row.followup_needed) return false;
+        const followupDate = row.next_followup_date || '';
+        return followupDate === today || followupDate === tomorrow;
+      })
+      .sort((a, b) => {
+        const aFollow = new Date(`${a.next_followup_date || '9999-12-31'}T00:00:00`).getTime();
+        const bFollow = new Date(`${b.next_followup_date || '9999-12-31'}T00:00:00`).getTime();
+        if (aFollow !== bFollow) return aFollow - bFollow;
+
+        const aTime = new Date(a.created_at || a.call_datetime || 0).getTime();
+        const bTime = new Date(b.created_at || b.call_datetime || 0).getTime();
+        return bTime - aTime;
+      });
+  }, [rows]);
+
+  const todayTomorrowTodoSummary = useMemo(() => {
+    if (!todayTomorrowTodoRows.length) return '오늘/내일 예정된 사후관리 할 일이 없습니다.';
+
+    const preview = todayTomorrowTodoRows
+      .slice(0, 5)
+      .map((row) => {
+        const label =
+          row.next_followup_date === formatDateInputValue(new Date().toISOString()) ? '오늘' : '내일';
+        return `${label} ${row.customer_name || '-'}(${formatWorkType(row.work_type)})`;
+      })
+      .join(' · ');
+
+    return todayTomorrowTodoRows.length > 5
+      ? `${preview} 외 ${todayTomorrowTodoRows.length - 5}건`
+      : preview;
+  }, [todayTomorrowTodoRows]);
 
   const populateFormForEdit = (
     row: ConsultationRow,
@@ -1063,12 +1179,30 @@ const CallManagementPage: React.FC = () => {
     if (!confirm(`총 ${selectedIds.length}건 삭제하시겠습니까?`)) return;
 
     try {
+      const { data: insuranceRowsBeforeDelete, error: insuranceRowsError } = await supabase
+        .from("consultation_insurance_details")
+        .select("consultation_id, vehicle_no")
+        .in("consultation_id", selectedIds);
+      if (insuranceRowsError) throw insuranceRowsError;
+
+      const affectedVehicleNos = Array.from(
+        new Set(
+          (insuranceRowsBeforeDelete || [])
+            .map((row: any) => normalizeVehicleNo(row.vehicle_no))
+            .filter(Boolean)
+        )
+      );
+
       await supabase.from("consultation_insurance_details").delete().in("consultation_id", selectedIds);
       await supabase.from("consultation_tire_details").delete().in("consultation_id", selectedIds);
       await supabase.from("consultation_finance_details").delete().in("consultation_id", selectedIds);
 
       const { error } = await supabase.from("consultation_cases").delete().in("id", selectedIds);
       if (error) throw error;
+
+      for (const vehicleNo of affectedVehicleNos) {
+        await syncNarumiInsuranceByVehicleNo(vehicleNo);
+      }
 
       if (expandedRowId && selectedIds.includes(expandedRowId)) {
         setExpandedRowId(null);
@@ -1172,6 +1306,32 @@ const CallManagementPage: React.FC = () => {
       }
     }
   }, [insuranceType, insuranceStartDate]);
+
+  useEffect(() => {
+    const payload = (location.state as any)?.narumiInsurancePrefill;
+    if (!payload) return;
+
+    const payloadKey = JSON.stringify(payload);
+    if (appliedNarumiPrefillRef.current === payloadKey) return;
+    appliedNarumiPrefillRef.current = payloadKey;
+
+    setTab("new");
+    setEditingCaseId(null);
+    setWorkType("registration_insurance");
+    setCallDatetime(payload.callDatetime || new Date().toISOString().slice(0, 10));
+    setPhone(formatPhoneInput(payload.phone || ""));
+    setInsuranceVehicleNo(payload.vehicleNo || "");
+    setDesignRequested(false);
+    setApplicationIssued(false);
+    setPaymentCompleted(false);
+    setPolicyIssued(false);
+
+    setTimeout(() => {
+      newFormTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      customerNameInputRef.current?.focus();
+      customerNameInputRef.current?.select();
+    }, 80);
+  }, [location.state]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -1314,6 +1474,29 @@ const CallManagementPage: React.FC = () => {
         await fetchInsuranceExpiries();
         setTab("list");
         return;
+      }
+
+      const narumiPrefill = (location.state as any)?.narumiInsurancePrefill;
+      const narumiTaskId = narumiPrefill?.narumiTaskId;
+      const normalizedVehicleNo = normalizeVehicleNo(insuranceVehicleNo);
+
+      try {
+        if (normalizedVehicleNo) {
+          await syncNarumiInsuranceByVehicleNo(normalizedVehicleNo);
+        } else if (narumiTaskId !== undefined && narumiTaskId !== null) {
+          const { data: narumiTask, error: narumiFetchError } = await supabase
+            .from("narumi_tasks")
+            .select("id, vin, docs_ready, is_registered, vehicle_doc_path")
+            .eq("id", narumiTaskId)
+            .maybeSingle();
+
+          if (narumiFetchError) throw narumiFetchError;
+          if (narumiTask?.vin) {
+            await syncNarumiInsuranceByVehicleNo(narumiTask.vin);
+          }
+        }
+      } catch (syncError: any) {
+        alert("상담건은 저장되었지만 나르미 보험단계 동기화 실패: " + (syncError?.message || "알 수 없는 오류"));
       }
     }
 
@@ -1548,7 +1731,7 @@ const CallManagementPage: React.FC = () => {
 
         {tab === "new" && (
           <div className="space-y-6">
-            <form className="space-y-6" onSubmit={handleSubmit}>
+            <form ref={newFormTopRef} className="space-y-6" onSubmit={handleSubmit}>
             {editingCaseId && (
               <div className="flex items-center justify-between rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3">
                 <div className="text-sm font-bold text-orange-700">
@@ -1563,7 +1746,31 @@ const CallManagementPage: React.FC = () => {
                 </button>
               </div>
             )}
-            
+
+            <div className="rounded-2xl border border-gray-200 bg-gray-50/70 px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-extrabold text-navy-900">To-Do</div>
+                  <div className="text-xs text-gray-500">사후관리의 당일 + 익일 할 일 목록</div>
+                </div>
+
+                <button
+                  type="button"
+                  className="inline-flex h-9 min-w-[42px] items-center justify-center rounded-xl border border-gray-200 bg-white px-3 text-sm font-extrabold text-gray-700 hover:border-gray-300"
+                  onClick={() => setShowTodoBox((prev) => !prev)}
+                  aria-expanded={showTodoBox}
+                  aria-label={showTodoBox ? 'To-Do 접기' : 'To-Do 펼치기'}
+                >
+                  {showTodoBox ? '-' : '+'}
+                </button>
+              </div>
+
+              {showTodoBox && (
+                <div className="mt-3 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                  {todayTomorrowTodoSummary}
+                </div>
+              )}
+            </div>
 
             <div className={grid5Class}>
               <div>
@@ -1579,6 +1786,7 @@ const CallManagementPage: React.FC = () => {
               <div>
                 <label className={labelClass}>고객명</label>
                 <input
+                  ref={customerNameInputRef}
                   type="text"
                   className={controlClass}
                   placeholder="예: 홍길동"
@@ -1624,10 +1832,14 @@ const CallManagementPage: React.FC = () => {
                     <label className={labelClass}>차량번호</label>
                     <input
                       type="text"
+                      lang="ko"
+                      inputMode="text"
+                      autoComplete="off"
+                      spellCheck={false}
                       className={controlClass}
                       placeholder="예: 123가4567"
                       value={insuranceVehicleNo}
-                      onChange={(e) => setInsuranceVehicleNo(e.target.value)}
+                      onChange={(e) => setInsuranceVehicleNo(onlyKoreanAndDigits(e.target.value))}
                     />
                   </div>
 
@@ -1891,23 +2103,26 @@ const CallManagementPage: React.FC = () => {
                   <div>
                     <label className={labelClass}>기간</label>
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="numeric"
                       className={controlClass}
                       placeholder="예: 36"
                       value={financePeriod}
-                      onChange={(e) => setFinancePeriod(e.target.value)}
+                      onChange={(e) => setFinancePeriod(onlyDigits(e.target.value))}
                     />
                   </div>
 
                   <div>
                     <label className={labelClass}>금리</label>
                     <input
-                      type="number"
-                      step="0.001"
+                      type="text"
+                      inputMode="decimal"
                       className={controlClass}
                       placeholder="예: 5.9"
                       value={financeInterestRate}
-                      onChange={(e) => setFinanceInterestRate(e.target.value)}
+                      onChange={(e) =>
+                        setFinanceInterestRate(e.target.value.replace(/[^0-9.]/g, ""))
+                      }
                     />
                   </div>
 
@@ -1915,12 +2130,14 @@ const CallManagementPage: React.FC = () => {
                     <label className={labelClass}>인센티브</label>
                     <div className="relative">
                       <input
-                        type="number"
-                        step="0.01"
+                        type="text"
+                        inputMode="decimal"
                         className={`${controlClass} pr-8`}
                         placeholder="예: 2.5"
                         value={financeIncentive}
-                        onChange={(e) => setFinanceIncentive(e.target.value)}
+                        onChange={(e) =>
+                          setFinanceIncentive(e.target.value.replace(/[^0-9.]/g, ""))
+                        }
                       />
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">
                         %
@@ -2004,10 +2221,14 @@ const CallManagementPage: React.FC = () => {
                     <label className={labelClass}>타이어 사이즈</label>
                     <input
                       type="text"
+                      lang="en"
+                      inputMode="text"
+                      autoComplete="off"
+                      spellCheck={false}
                       className={controlClass}
                       placeholder="예: 265/70R19.5"
                       value={tireSize}
-                      onChange={(e) => setTireSize(e.target.value.toUpperCase())}
+                      onChange={(e) => setTireSize(onlyEnglishTireSize(e.target.value))}
                     />
                   </div>
 
@@ -2186,7 +2407,7 @@ const CallManagementPage: React.FC = () => {
                     최근상담
                   </div>
                   <div className="text-xs font-bold text-gray-500">
-                    최신 10건
+                    최신 5건
                   </div>
                 </div>
 
@@ -2194,7 +2415,7 @@ const CallManagementPage: React.FC = () => {
                   <div className="text-sm text-gray-500">최근 상담이 없습니다.</div>
                 ) : (
                   <div className="space-y-2">
-                    {recentContacts.slice(0, 6).map((row) => (
+                    {recentContacts.slice(0, 5).map((row) => (
                       <button
                         key={row.id}
                         type="button"
@@ -2303,11 +2524,22 @@ const CallManagementPage: React.FC = () => {
         {tab === "list" && (
           <div className="space-y-4">
             <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
-              <div className="text-sm font-extrabold text-navy-900 mb-3">
-                상담내역 검색 / 필터
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="text-sm font-extrabold text-navy-900">
+                  상담내역 검색 / 필터
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowListFilters((prev) => !prev)}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-base font-extrabold text-gray-700 hover:bg-gray-50"
+                  title={showListFilters ? "접기" : "펼치기"}
+                >
+                  {showListFilters ? "−" : "+"}
+                </button>
               </div>
 
-              <div className={filterGridClass}>
+              {showListFilters && (
+                <div className={filterGridClass}>
                 <div>
                   <label className={compactLabelClass}>고객명</label>
                   <input
@@ -2384,7 +2616,8 @@ const CallManagementPage: React.FC = () => {
                     새로고침
                   </button>
                 </div>
-</div>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-between gap-3 text-sm text-gray-600">
@@ -2956,11 +3189,22 @@ const CallManagementPage: React.FC = () => {
         {tab === "followups" && (
           <div className="space-y-4">
             <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
-              <div className="text-sm font-extrabold text-navy-900 mb-3">
-                사후관리 검색 / 필터
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="text-sm font-extrabold text-navy-900">
+                  사후관리 검색 / 필터
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowFollowupFilters((prev) => !prev)}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-base font-extrabold text-gray-700 hover:bg-gray-50"
+                  title={showFollowupFilters ? "접기" : "펼치기"}
+                >
+                  {showFollowupFilters ? "−" : "+"}
+                </button>
               </div>
 
-              <div className={filterGridClass}>
+              {showFollowupFilters && (
+                <div className={filterGridClass}>
                 <div>
                   <label className={compactLabelClass}>고객명</label>
                   <input
@@ -3024,7 +3268,8 @@ const CallManagementPage: React.FC = () => {
                     새로고침
                   </button>
                 </div>
-              </div>
+                </div>
+              )}
             </div>
 
             <div className="text-sm text-gray-600">사후관리 필요 건만 표시됩니다.</div>

@@ -256,7 +256,23 @@ export default function TiresShop() {
             normalize(row.ton_class) !== ""
           );
         });
-        setRows(data);
+        const deduped = Array.from(
+          new Map(
+            data.map((row) => {
+              const key = [
+                normalize(row.size),
+                normalize(row.pr),
+                normalize(row.brand),
+                normalize(row.model_line),
+                String(row.price ?? "").trim(),
+              ].join("||");
+
+              return [key, row];
+            })
+          ).values()
+        );
+
+        setRows(deduped);
       })
       .catch((err) => {
         console.error("CSV load error:", err);
@@ -481,7 +497,12 @@ export default function TiresShop() {
                     </span>
                   </div>
 
+                  <div className="flex items-baseline gap-2">
                   <div className="text-lg font-extrabold text-navy-900">{normalize(row.size)}</div>
+                  {normalize(row.pr) && (
+                    <div className="text-base font-extrabold text-gray-500">{normalize(row.pr)}</div>
+                  )}
+                </div>
 
                   <div className="text-sm font-bold text-gray-600">
                     {getAxleLabel(row.axle)} · {brandShort} · {normalize(row.model_line)}

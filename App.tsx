@@ -57,6 +57,7 @@ import IndividualCargoFinancePage from "./pages/IndividualCargoFinance/index";
 import TireShopPage from "./pages/TireShop/index";
 import TireShopDetailPage from "./pages/TireShop/detail";
 import CallManagementPage from "./pages/CallManagement/index";
+import DashboardPage from "./pages/Dashboard";
 
 
 /* utils / config */
@@ -4611,6 +4612,71 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   return <>{children}</>;
 };
 
+const AppRoutes = () => {
+  const { isAdmin } = useAuth() as any;
+
+  return (
+    <BrowserRouter>
+      <div className="min-h-screen overflow-x-hidden bg-white">
+        <ScrollToTop />
+        <ScrollToTopButton />
+        <PageHeader />
+
+        <main className="w-full">
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/tires" element={<TiresPage />} />
+            <Route path="/battery" element={<BatteryPage />} />
+            <Route path="/export" element={<ExportShopPage />} />
+            <Route path="/export-shop" element={<ExportShopPage />} />
+            <Route path="/finance" element={<FinancePage />} />
+            <Route path="/cargo-finance" element={<IndividualCargoFinancePage />} />
+            <Route path="/sitemap" element={<SitemapPage />} />
+
+            {/* Shop */}
+            <Route path="/tires-shop" element={<TireShopPage />} />
+            <Route path="/tires-shop/:sku" element={<TireShopDetailPage />} />
+
+            {/* Narumi */}
+            <Route path="/narumi/login" element={<NarumiLoginPage />} />
+            <Route
+              path="/narumi"
+              element={
+                <ProtectedRoute>
+                  <NarumiPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/narumi/admin"
+              element={
+                <ProtectedRoute>
+                  <NarumiPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* BS_ON */}
+            <Route path="/bson" element={<BsonWorkPage />} />
+            <Route path="/work/bson" element={<Navigate to="/bson" replace />} />
+
+            <Route path="/work/call-management" element={<CallManagementPage />} />
+            <Route
+              path="/work/dashboard"
+              element={isAdmin ? <DashboardPage /> : <Navigate to="/" replace />}
+            />
+
+            {/* legacy */}
+            <Route path="/Narumi" element={<Navigate to="/narumi" replace />} />
+          </Routes>
+        </main>
+
+        <Footer />
+      </div>
+    </BrowserRouter>
+  );
+};
+
 const App = () => {
   const [lang, setLang] = useState<Lang>(() => {
     const saved = localStorage.getItem("lang");
@@ -4626,61 +4692,8 @@ const App = () => {
   return (
     <LangContext.Provider value={{ lang, setLang, t }}>
       <AuthProvider>
-      <BrowserRouter>
-  <div className="min-h-screen overflow-x-hidden bg-white">
-    <ScrollToTop />
-    <ScrollToTopButton />
-    <PageHeader />
-
-    <main className="w-full">
-      <Routes>
-  <Route path="/" element={<HomePage />} />
-  <Route path="/tires" element={<TiresPage />} />
-  <Route path="/battery" element={<BatteryPage />} />
-  <Route path="/export" element={<ExportShopPage />} />
-  <Route path="/export-shop" element={<ExportShopPage />} />
-  <Route path="/finance" element={<FinancePage />} />
-  <Route path="/cargo-finance" element={<IndividualCargoFinancePage />} />
-  <Route path="/sitemap" element={<SitemapPage />} />
-
-  {/* Shop */}
-  <Route path="/tires-shop" element={<TireShopPage />} />
-  <Route path="/tires-shop/:sku" element={<TireShopDetailPage />} />
-
-  {/* Narumi */}
-  <Route path="/narumi/login" element={<NarumiLoginPage />} />
-  <Route
-    path="/narumi"
-    element={
-      <ProtectedRoute>
-        <NarumiPage />
-      </ProtectedRoute>
-    }
-  />
-  <Route
-    path="/narumi/admin"
-    element={
-      <ProtectedRoute>
-        <NarumiPage />
-      </ProtectedRoute>
-    }
-  />
-
-  {/* BS_ON */}
-  <Route path="/bson" element={<BsonWorkPage />} />
-  <Route path="/work/bson" element={<Navigate to="/bson" replace />} />
-
-  <Route path="/work/call-management" element={<CallManagementPage />} />
-
-  {/* legacy */}
-  <Route path="/Narumi" element={<Navigate to="/narumi" replace />} />
-</Routes>
-    </main>
-
-    <Footer />
-  </div>
-</BrowserRouter>
-    </AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
     </LangContext.Provider>
   );
 };

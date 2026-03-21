@@ -513,6 +513,16 @@ export default function PageHeader() {
                   onMouseLeave={() => hoverClose(setOpenWork)}
                   onPointerDown={(e) => e.stopPropagation()}
                 >
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      className={dropItem}
+                      onClick={() => goWorkInternalOnly("/work/dashboard")}
+                    >
+                      운영대시보드
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     className={dropItem}

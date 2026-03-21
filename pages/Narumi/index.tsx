@@ -2,9 +2,10 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 import PageTitle from "../../components/PageTitle";
+import { useNavigate } from "react-router-dom";
 
 // 정책
-const UI_MASK_AFTER_HOURS = 24;
+const UI_MASK_AFTER_HOURS = 120;
 const DB_SCRUB_AFTER_HOURS = 120;
 const HIDE_UPLOADED_AFTER_DAYS_FOR_NON_ADMIN = 30;
 
@@ -34,6 +35,7 @@ type NarumiTask = {
   customer_phone?: string | null;
   customer_phone_set_at?: string | null;
   customer_phone_scrubbed_at?: string | null;
+  on_hold?: boolean | null;
 };
 
 function onlyDigits(s: string) {
@@ -63,6 +65,14 @@ function vinLast6(vin: string) {
 
 function isAllDone(t: NarumiTask) {
   return !!(t.has_insurance && t.docs_ready && t.is_registered);
+}
+
+function isClosingDone(t: Pick<NarumiTask, "is_registered" | "vehicle_doc_path">) {
+  return !!(t.is_registered && t.vehicle_doc_path);
+}
+
+function isOnHold(row: Pick<NarumiTask, "on_hold">) {
+  return !!row.on_hold;
 }
 
 function extFromName(name: string) {
@@ -99,6 +109,7 @@ function formatPhonePrettyFromDigits(digitsOnly: string) {
 
 function shouldMaskPhoneForUI(r: NarumiTask) {
   if (r.customer_phone_scrubbed_at) return true;
+  if (r.vehicle_doc_path) return true;
   if (!r.customer_phone_set_at) return false;
 
   const setAt = new Date(r.customer_phone_set_at).getTime();
@@ -120,6 +131,15 @@ function getDisplayPhone(r: NarumiTask) {
   return formatPhonePrettyFromDigits(maskedDigits);
 }
 
+function getDialablePhone(r: NarumiTask) {
+  return onlyDigits(r.customer_phone ?? "").slice(0, 11);
+}
+
+function isMobileDevice() {
+  if (typeof navigator === "undefined") return false;
+  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+}
+
 function deriveStatus(
   row: Pick<
     NarumiTask,
@@ -136,9 +156,9 @@ function deriveStatus(
 function statusLabel(status?: string | null) {
   switch (status) {
     case "insurance":
-      return "보험서류";
+      return "보험";
     case "docs":
-      return "등록서류수령";
+      return "등록서류";
     case "registered":
       return "등록완료";
     case "completed":
@@ -168,7 +188,7 @@ const pillProg = "bg-orange-50 text-orange-700 border-orange-200";
 const pillGray = "bg-gray-50 text-gray-700 border-gray-200";
 
 const btnBase =
-  "h-[44px] px-3 rounded-lg text-sm font-extrabold border transition-all whitespace-nowrap";
+  "w-[88px] h-[40px] inline-flex items-center justify-center px-2 py-1 rounded-lg text-xs font-extrabold border transition-all text-center whitespace-nowrap shrink-0";
 const btnOn = "bg-navy-900 text-white border-navy-900";
 const btnOff =
   "bg-white text-navy-900 border-gray-200 hover:border-orange-300 hover:text-orange-600";
@@ -188,6 +208,43 @@ const cardClass = "border border-gray-200 rounded-2xl bg-white shadow-sm";
 
 const infoLabel = "text-xs font-extrabold text-gray-400";
 const infoValue = "mt-1 text-sm font-extrabold text-navy-900 break-all";
+const summaryBadgeBase =
+  "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-extrabold whitespace-nowrap";
+
+type SummaryFilter = "all" | "hold" | "insurance_waiting" | "docs_waiting" | "register_waiting" | "completed";
+
+type SummaryBadgeProps = {
+  label: string;
+  count: number;
+  className: string;
+  active?: boolean;
+  onClick?: () => void;
+};
+
+function SummaryBadge({ label, count, className, active = false, onClick }: SummaryBadgeProps) {
+  const Comp = onClick ? "button" : "div";
+
+  return (
+    <Comp
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
+      className={`${summaryBadgeBase} ${className} ${onClick ? "hover:brightness-95 transition-all cursor-pointer" : ""} ${active ? "ring-2 ring-offset-2 ring-navy-900/20 shadow-sm" : ""}`.trim()}
+      aria-pressed={onClick ? active : undefined}
+      title={onClick ? `${label} 목록만 보기` : undefined}
+    >
+      <span>{label}</span>
+      <span>({count}개)</span>
+    </Comp>
+  );
+}
+
+function deriveSummaryFilter(row: NarumiTask): Exclude<SummaryFilter, "all"> {
+  if (row.on_hold) return "hold";
+  if (isClosingDone(row)) return "completed";
+  if (!row.has_insurance) return "insurance_waiting";
+  if (!row.docs_ready) return "docs_waiting";
+  return "register_waiting";
+}
 
 export default function NarumiPage() {
   const {
@@ -203,6 +260,7 @@ export default function NarumiPage() {
     canEditMemo,
     canUploadVehicleDoc,
   } = useAuth() as any;
+  const navigate = useNavigate();
 
   const [vin, setVin] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -219,7 +277,10 @@ export default function NarumiPage() {
 
   const [searchText, setSearchText] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | TaskStatus>("all");
+  const [summaryFilter, setSummaryFilter] = useState<SummaryFilter>("all");
   const [showOldUploaded, setShowOldUploaded] = useState(false);
+  const [showCreatePanel, setShowCreatePanel] = useState(false);
+  const [showSearchPanel, setShowSearchPanel] = useState(false);
 
   const [uploadingId, setUploadingId] = useState<string | number | null>(null);
 
@@ -227,6 +288,7 @@ export default function NarumiPage() {
   const manufactureInputRef = useRef<HTMLInputElement | null>(null);
 
   const [pendingUploadRowId, setPendingUploadRowId] = useState<string | number | null>(null);
+  const [insuranceModalRow, setInsuranceModalRow] = useState<NarumiTask | null>(null);
 
   const [memoDrafts, setMemoDrafts] = useState<Record<string, string>>({});
   const [memoSavingId, setMemoSavingId] = useState<string | number | null>(null);
@@ -281,7 +343,7 @@ export default function NarumiPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showOldUploaded, isAdmin, isNarumi, isLotte]);
 
-  const filteredRows = useMemo(() => {
+  const searchedRows = useMemo(() => {
     let result = [...rows];
 
     if (isLotte) {
@@ -304,12 +366,53 @@ export default function NarumiPage() {
       });
     }
 
+    return result;
+  }, [rows, searchText, isLotte]);
+
+  const filteredRows = useMemo(() => {
+    let result = [...searchedRows];
+
+    if (summaryFilter !== "all") {
+      result = result.filter((r) => deriveSummaryFilter(r) === summaryFilter);
+    }
+
     if (statusFilter !== "all") {
-      result = result.filter((r) => deriveStatus(r) === statusFilter);
+      result = result.filter((r) => {
+        if (summaryFilter !== "hold" && r.on_hold) return false;
+        return deriveStatus(r) === statusFilter;
+      });
     }
 
     return result;
-  }, [rows, searchText, statusFilter, isLotte]);
+  }, [searchedRows, summaryFilter, statusFilter]);
+
+  const summaryCounts = useMemo(() => {
+    return searchedRows.reduce(
+      (acc, row) => {
+        const bucket = deriveSummaryFilter(row);
+
+        if (bucket === "hold") acc.hold += 1;
+        else if (bucket === "completed") acc.completed += 1;
+        else if (bucket === "insurance_waiting") acc.insuranceWaiting += 1;
+        else if (bucket === "docs_waiting") acc.docsWaiting += 1;
+        else acc.registerWaiting += 1;
+
+        return acc;
+      },
+      {
+        hold: 0,
+        insuranceWaiting: 0,
+        docsWaiting: 0,
+        registerWaiting: 0,
+        completed: 0,
+      }
+    );
+  }, [searchedRows]);
+
+  const handleSummaryBadgeClick = (next: Exclude<SummaryFilter, "all">) => {
+    setSummaryFilter((prev) => (prev === next ? "all" : next));
+    setStatusFilter("all");
+  };
 
   const onReset = () => {
     setVin("");
@@ -391,6 +494,7 @@ export default function NarumiPage() {
         customer_phone: phoneTrim,
         customer_phone_set_at: new Date().toISOString(),
         customer_phone_scrubbed_at: null,
+        on_hold: false,
         has_insurance: false,
         docs_ready: false,
         is_registering: false,
@@ -438,7 +542,7 @@ export default function NarumiPage() {
     const target = rows.find((rr) => String(rr.id) === String(id));
     if (!target) return;
 
-    if (isLockedAfterUpload(target)) return;
+    if (isLockedAfterUpload(target) || isOnHold(target)) return;
 
     const nextVal = !target[key];
     const nextRow = { ...target, [key]: nextVal };
@@ -467,6 +571,140 @@ export default function NarumiPage() {
         prev.map((rr) =>
           String(rr.id) === String(id)
             ? { ...rr, [key]: !nextVal, status: target.status ?? deriveStatus(target) }
+            : rr
+        )
+      );
+      alert(error.message);
+    }
+  };
+
+  const updateInsuranceStage = async (row: NarumiTask, nextVal: boolean) => {
+    const nextRow = { ...row, has_insurance: nextVal };
+    const nextStatus = deriveStatus(nextRow);
+
+    setRows((prev) =>
+      prev.map((rr) =>
+        String(rr.id) === String(row.id)
+          ? { ...rr, has_insurance: nextVal, status: nextStatus }
+          : rr
+      )
+    );
+
+    const { error } = await supabase
+      .from("narumi_tasks")
+      .update({ has_insurance: nextVal, status: nextStatus })
+      .eq("id", row.id as any);
+
+    if (error) {
+      setRows((prev) =>
+        prev.map((rr) =>
+          String(rr.id) === String(row.id)
+            ? { ...rr, has_insurance: row.has_insurance, status: row.status ?? deriveStatus(row) }
+            : rr
+        )
+      );
+      throw error;
+    }
+  };
+
+  const hasIssuedInsuranceCase = async (vin: string) => {
+    const normalizedVin = normalizeVin(vin);
+    if (!normalizedVin) return false;
+
+    const { data, error } = await supabase
+      .from("consultation_insurance_details")
+      .select("consultation_id")
+      .eq("vehicle_no", normalizedVin)
+      .eq("policy_issued", true)
+      .limit(1);
+
+    if (error) throw error;
+    return Array.isArray(data) && data.length > 0;
+  };
+
+  const handleInsuranceButtonClick = async (row: NarumiTask) => {
+    if (!canChangeStatus) {
+      alert("상태 변경 권한이 없습니다.");
+      return;
+    }
+
+    if (isLockedAfterUpload(row) || isOnHold(row)) return;
+
+    if (!row.has_insurance) {
+      setInsuranceModalRow(row);
+      return;
+    }
+
+    try {
+      const issuedByConsultation = await hasIssuedInsuranceCase(row.vin);
+
+      if (issuedByConsultation) {
+        alert("Y 완료건은 상담관리에서 해당 건의 증권발급을 해제해 주세요.");
+        return;
+      }
+
+      await updateInsuranceStage(row, false);
+    } catch (e: any) {
+      alert(e?.message || "보험 단계 해제 실패");
+    }
+  };
+
+  const completeInsuranceAsN = async () => {
+    if (!insuranceModalRow) return;
+
+    try {
+      await updateInsuranceStage(insuranceModalRow, true);
+      setInsuranceModalRow(null);
+    } catch (e: any) {
+      alert(e?.message || "보험 단계 완료 처리 실패");
+    }
+  };
+
+  const moveToCallManagementForInsurance = () => {
+    if (!insuranceModalRow) return;
+
+    navigate("/work/call-management", {
+      state: {
+        narumiInsurancePrefill: {
+          narumiTaskId: insuranceModalRow.id,
+          callDatetime: new Date().toISOString().slice(0, 10),
+          phone: insuranceModalRow.customer_phone ?? "",
+          vehicleNo: normalizeVin(insuranceModalRow.vin ?? ""),
+        },
+      },
+    });
+
+    setInsuranceModalRow(null);
+  };
+
+  const toggleHold = async (row: NarumiTask) => {
+    if (!canChangeStatus) {
+      alert("보류 변경 권한이 없습니다.");
+      return;
+    }
+
+    if (isLockedAfterUpload(row)) return;
+
+    const nextVal = !row.on_hold;
+
+    setRows((prev) =>
+      prev.map((rr) =>
+        String(rr.id) === String(row.id)
+          ? { ...rr, on_hold: nextVal }
+          : rr
+      )
+    );
+
+    const { error } = await supabase
+      .from("narumi_tasks")
+      .update({ on_hold: nextVal })
+      .eq("id", row.id as any);
+
+    if (error) {
+      setRows((prev) =>
+        prev.map((rr) =>
+          String(rr.id) === String(row.id)
+            ? { ...rr, on_hold: row.on_hold ?? false }
             : rr
         )
       );
@@ -546,12 +784,21 @@ export default function NarumiPage() {
   };
 
   const openStorageFile = async (path: string) => {
-    const { data, error } = await supabase.storage.from("vehicle_docs").download(path);
+    const { data, error } = await supabase.storage
+      .from("vehicle_docs")
+      .createSignedUrl(path, 60 * 10, {
+        download: false,
+      });
+
     if (error) throw error;
 
-    const url = URL.createObjectURL(data);
-    window.open(url, "_blank", "noopener,noreferrer");
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    const signedUrl = data?.signedUrl;
+    if (!signedUrl) throw new Error("파일 열기 링크를 생성하지 못했습니다.");
+
+    if (typeof window !== "undefined") {
+      // 모바일에서도 빈 새 창을 만들지 않고 현재 창에서 바로 엽니다.
+      window.location.assign(signedUrl);
+    }
   };
 
   const downloadVehicleDoc = async (row: NarumiTask) => {
@@ -735,18 +982,31 @@ export default function NarumiPage() {
           <div className="grid xl:grid-cols-12 gap-5 items-start">
             {(isAdmin || isNarumi) && (
   <div className="xl:col-span-8">
-    <div className="flex items-start gap-3 mb-4">
-      <div className="mt-1 h-5 w-1.5 rounded bg-orange-500" />
-      <div>
-        <div className="text-lg font-extrabold text-navy-900">
-          신규 입력
-        </div>
-        <div className="text-sm text-gray-500 mt-1">
-          차대번호, 제작증, 전화번호, 출고일자 등을 입력합니다.
+    <div className="flex items-start justify-between gap-3 mb-4">
+      <div className="flex items-start gap-3">
+        <div className="mt-1 h-5 w-1.5 rounded bg-orange-500" />
+        <div>
+          <div className="text-lg font-extrabold text-navy-900">
+            신규 입력
+          </div>
+          <div className="text-sm text-gray-500 mt-1">
+            차대번호, 제작증, 전화번호, 출고일자 등을 입력합니다.
+          </div>
         </div>
       </div>
+
+      <button
+        type="button"
+        onClick={() => setShowCreatePanel((prev) => !prev)}
+        className="h-9 w-9 shrink-0 rounded-lg border border-gray-200 bg-white text-lg font-extrabold text-navy-900 hover:border-gray-300"
+        aria-label={showCreatePanel ? "신규입력 접기" : "신규입력 펼치기"}
+        title={showCreatePanel ? "신규입력 접기" : "신규입력 펼치기"}
+      >
+        {showCreatePanel ? "−" : "+"}
+      </button>
     </div>
 
+    {showCreatePanel && (
     <div className="space-y-3">
       {/* 1행 */}
       <div className="grid md:grid-cols-[2fr_1fr] gap-3">
@@ -889,74 +1149,92 @@ export default function NarumiPage() {
 </div>
 </div>
     </div>
+    )}
   </div>
 )}
 
             {canViewAll && (
               <div className="xl:col-span-4">
-                <div className="flex items-start gap-3 mb-4">
-  <div className="mt-1 h-5 w-1.5 rounded bg-orange-500" />
-  <div>
-                    <div className="text-lg font-extrabold text-navy-900">
-                      조회 / 검색
-                    </div>
-                    <div className="text-sm text-gray-500 mt-1">
-                      VIN, 전화번호, 특이사항, ID 검색
+                <div className="flex items-start justify-between gap-3 mb-4">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-1 h-5 w-1.5 rounded bg-orange-500" />
+                    <div>
+                      <div className="text-lg font-extrabold text-navy-900">
+                        조회 / 검색
+                      </div>
+                      <div className="text-sm text-gray-500 mt-1">
+                        VIN, 전화번호, 특이사항, ID 검색
+                      </div>
                     </div>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowSearchPanel((prev) => !prev)}
+                    className="h-9 w-9 shrink-0 rounded-lg border border-gray-200 bg-white text-lg font-extrabold text-navy-900 hover:border-gray-300"
+                    aria-label={showSearchPanel ? "조회/검색 접기" : "조회/검색 펼치기"}
+                    title={showSearchPanel ? "조회/검색 접기" : "조회/검색 펼치기"}
+                  >
+                    {showSearchPanel ? "−" : "+"}
+                  </button>
                 </div>
 
-                <div className="space-y-3">
-                  <div>
-                    <label className={labelClass}>검색</label>
-                    <input
-                      value={searchText}
-                      onChange={(e) => setSearchText(e.target.value)}
-                      placeholder="VIN / 전화번호 / 특이사항 / ID"
-                      className={compactInputClass}
-                    />
-                  </div>
+                {showSearchPanel && (
+                  <div className="space-y-3">
+                    <div>
+                      <label className={labelClass}>검색</label>
+                      <input
+                        value={searchText}
+                        onChange={(e) => setSearchText(e.target.value)}
+                        placeholder="VIN / 전화번호 / 특이사항 / ID"
+                        className={compactInputClass}
+                      />
+                    </div>
 
-                  <div>
-                    <label className={labelClass}>상태 필터</label>
-                    <select
-                      value={statusFilter}
-                      onChange={(e) => setStatusFilter(e.target.value as any)}
-                      className={compactInputClass}
-                    >
-                      <option value="all">전체</option>
-                      <option value="todo">접수</option>
-                      <option value="insurance">보험서류</option>
-                      <option value="docs">등록서류수령</option>
-                      <option value="registered">등록완료</option>
-                      <option value="completed">차량등록증 완료</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className={labelClass}>오래된 업로드 건</label>
-                    <div className="h-[88px] flex flex-col justify-between gap-3">
-                      <label className="h-[40px] w-full rounded-lg border border-gray-200 bg-white flex items-center gap-3 px-3 cursor-pointer text-sm font-bold text-navy-900">
-                        <input
-                          type="checkbox"
-                          checked={showOldUploaded}
-                          onChange={(e) => setShowOldUploaded(e.target.checked)}
-                          className="h-4 w-4 accent-orange-500"
-                          disabled={!isAdmin}
-                        />
-                        30일 초과도 포함
-                      </label>
-
-                      <button
-                        type="button"
-                        onClick={fetchRows}
-                        className="h-[40px] w-full rounded-lg border border-gray-200 text-navy-900 text-sm font-extrabold hover:border-gray-300"
+                    <div>
+                      <label className={labelClass}>상태 필터</label>
+                      <select
+                        value={statusFilter}
+                        onChange={(e) => {
+                          setStatusFilter(e.target.value as any);
+                          setSummaryFilter("all");
+                        }}
+                        className={compactInputClass}
                       >
-                        조회 / 새로고침
-                      </button>
+                        <option value="all">전체</option>
+                        <option value="todo">접수</option>
+                        <option value="insurance">보험</option>
+                        <option value="docs">등록서류</option>
+                        <option value="registered">등록완료</option>
+                        <option value="completed">차량등록증 완료</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className={labelClass}>오래된 업로드 건</label>
+                      <div className="h-[88px] flex flex-col justify-between gap-3">
+                        <label className="h-[40px] w-full rounded-lg border border-gray-200 bg-white flex items-center gap-3 px-3 cursor-pointer text-sm font-bold text-navy-900">
+                          <input
+                            type="checkbox"
+                            checked={showOldUploaded}
+                            onChange={(e) => setShowOldUploaded(e.target.checked)}
+                            className="h-4 w-4 accent-orange-500"
+                            disabled={!isAdmin}
+                          />
+                          30일 초과도 포함
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={fetchRows}
+                          className="h-[40px] w-full rounded-lg border border-gray-200 text-navy-900 text-sm font-extrabold hover:border-gray-300"
+                        >
+                          조회 / 새로고침
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
           </div>
@@ -978,12 +1256,84 @@ export default function NarumiPage() {
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div className="text-lg font-extrabold text-navy-900">
                 업무 목록 ({filteredRows.length})
+                {summaryFilter !== "all" && (
+                  <span className="ml-2 text-sm font-bold text-orange-600">· 배지 필터 적용중</span>
+                )}
               </div>
-              {loading && <div className="text-sm text-gray-500">Loading…</div>}
+
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                <SummaryBadge
+  label="전체"
+  count={filteredRows.length}
+  className={
+    summaryFilter === "all"
+      ? "bg-gray-900 text-white border-gray-900"
+      : "bg-gray-50 text-gray-700 border-gray-200"
+  }
+  active={summaryFilter === "all"}
+  onClick={() => setSummaryFilter("all")}
+/>
+                <SummaryBadge
+                  label="보류"
+                  count={summaryCounts.hold}
+                  className={
+                    summaryFilter === "hold"
+                      ? "bg-slate-700 text-white border-slate-700"
+                      : "bg-slate-50 text-slate-700 border-slate-200"
+                  }
+                  active={summaryFilter === "hold"}
+                  onClick={() => handleSummaryBadgeClick("hold")}
+                />
+                <SummaryBadge
+                  label="보험대기"
+                  count={summaryCounts.insuranceWaiting}
+                  className={
+                    summaryFilter === "insurance_waiting"
+                      ? "bg-amber-600 text-white border-amber-600"
+                      : "bg-amber-50 text-amber-700 border-amber-200"
+                  }
+                  active={summaryFilter === "insurance_waiting"}
+                  onClick={() => handleSummaryBadgeClick("insurance_waiting")}
+                />
+                <SummaryBadge
+                  label="등록서류대기"
+                  count={summaryCounts.docsWaiting}
+                  className={
+                    summaryFilter === "docs_waiting"
+                      ? "bg-orange-600 text-white border-orange-600"
+                      : "bg-orange-50 text-orange-700 border-orange-200"
+                  }
+                  active={summaryFilter === "docs_waiting"}
+                  onClick={() => handleSummaryBadgeClick("docs_waiting")}
+                />
+                <SummaryBadge
+                  label="등록대기"
+                  count={summaryCounts.registerWaiting}
+                  className={
+                    summaryFilter === "register_waiting"
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-blue-50 text-blue-700 border-blue-200"
+                  }
+                  active={summaryFilter === "register_waiting"}
+                  onClick={() => handleSummaryBadgeClick("register_waiting")}
+                />
+                <SummaryBadge
+                  label="완결"
+                  count={summaryCounts.completed}
+                  className={
+                    summaryFilter === "completed"
+                      ? "bg-emerald-600 text-white border-emerald-600"
+                      : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  }
+                  active={summaryFilter === "completed"}
+                  onClick={() => handleSummaryBadgeClick("completed")}
+                />
+                {loading && <div className="text-sm text-gray-500 ml-1">Loading…</div>}
+              </div>
             </div>
 
             <div className="text-sm text-gray-500 mt-1 leading-relaxed">
-              차량등록증 업로드 완료 후에는 RNF 단계 버튼이 잠금됩니다.
+              차량등록증 업로드 완료 후에는 RNF 단계 버튼이 잠금됩니다. 보류 건은 별도 배지로 분리되며 다른 단계 카운팅에서 제외됩니다.
               {!isAdmin && (
                 <>
                   <br />
@@ -998,6 +1348,12 @@ export default function NarumiPage() {
               )}
               <br />
               * 메모 입력/수정/저장은 관리자(admin)만 가능합니다.
+              {summaryFilter !== "all" && (
+                <>
+                  <br />
+                  * 현재 상단 배지 필터가 적용되어 해당 단계 목록만 표시 중입니다. 같은 배지를 다시 누르면 전체로 돌아갑니다.
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1005,28 +1361,35 @@ export default function NarumiPage() {
         <div className="space-y-2">
           {filteredRows.map((r) => {
             const locked = !!r.vehicle_doc_path;
+            const held = !!r.on_hold;
             const hasVehicleDoc = !!r.vehicle_doc_path;
             const hasManufactureDoc = !!r.manufacture_doc_path;
             const vehicleDocCanUpload = isVehicleDocKeyEnabled(r);
             const currentStatus = deriveStatus(r);
             const memoValue = memoDrafts[String(r.id)] ?? "";
+            const maskedPhone = shouldMaskPhoneForUI(r);
+            const displayPhone = getDisplayPhone(r);
+            const dialablePhone = getDialablePhone(r);
+            const canDialNow = isMobileDevice() && !maskedPhone && !!dialablePhone;
 
             return (
               <div key={String(r.id)} className="overflow-x-auto">
-                <div className="min-w-[1180px] border border-gray-200 rounded-2xl bg-white overflow-hidden">
-                  <div className="grid xl:grid-cols-[1.1fr_1.55fr]">
-                    <div className="p-3 xl:border-r border-gray-200">
+                <div className="min-w-[1120px] border border-gray-200 rounded-2xl bg-white overflow-hidden">
+                  <div className="grid grid-cols-1 xl:grid-cols-10">
+                    <div className="p-3 xl:col-span-4 xl:border-r border-gray-200 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-3">
                         <span
                           className={`${pillBase} ${
-                            currentStatus === "completed"
-                              ? pillDone
-                              : currentStatus === "todo"
-                                ? pillGray
-                                : pillProg
+                            held
+                              ? "bg-slate-100 text-slate-700 border-slate-300"
+                              : currentStatus === "completed"
+                                ? pillDone
+                                : currentStatus === "todo"
+                                  ? pillGray
+                                  : pillProg
                           }`}
                         >
-                          {statusLabel(currentStatus)}
+                          {held ? "보류" : statusLabel(currentStatus)}
                         </span>
 
                         <span className="text-xs font-extrabold text-gray-500">
@@ -1038,23 +1401,46 @@ export default function NarumiPage() {
                             업로드 완료(잠금)
                           </span>
                         )}
+
+                        {held && (
+                          <span className="text-xs font-bold text-slate-500">등록업무 보류중</span>
+                        )}
                       </div>
 
                       <div className="grid sm:grid-cols-2 gap-x-5 gap-y-3">
                         <div>
                           <div className={infoLabel}>차대번호(VIN)</div>
-                          <div className={infoValue}>{r.vin}</div>
+                          <div className={`${infoValue} break-all xl:break-normal xl:whitespace-nowrap text-[15px]`}>{r.vin}</div>
                         </div>
 
                         <div>
                           <div className={infoLabel}>전화번호</div>
-                          <div className={infoValue}>{getDisplayPhone(r)}</div>
+                          <div className={`${infoValue} whitespace-nowrap`}>
+                            {canDialNow ? (
+                              <a
+                                href={`tel:${dialablePhone}`}
+                                className="text-blue-600 underline underline-offset-2"
+                              >
+                                {displayPhone}
+                              </a>
+                            ) : (
+                              <span className={maskedPhone ? "text-gray-400 cursor-not-allowed select-none" : undefined}>
+                                {displayPhone}
+                              </span>
+                            )}
+                          </div>
                           <div className="mt-1 text-xs text-gray-400">
                             {r.customer_phone_scrubbed_at
-                              ? "DB 영구 마스킹됨"
-                              : r.customer_phone_set_at
-                                ? `${UI_MASK_AFTER_HOURS}h 후 화면 마스킹`
-                                : ""}
+                              ? "DB 영구 마스킹됨 · 모바일 발신 차단"
+                              : r.vehicle_doc_path
+                                ? "차량등록증 업로드로 즉시 화면 마스킹 · 모바일 발신 차단"
+                                : maskedPhone
+                                  ? "화면 마스킹 상태 · 모바일 발신 차단"
+                                  : isMobileDevice()
+                                    ? "모바일에서 탭 시 즉시 발신"
+                                    : r.customer_phone_set_at
+                                      ? `${UI_MASK_AFTER_HOURS}h 후 화면 마스킹`
+                                      : ""}
                           </div>
                         </div>
 
@@ -1080,35 +1466,35 @@ export default function NarumiPage() {
                       </div>
                     </div>
 
-                    <div className="p-3 flex flex-col gap-3">
+                    <div className="p-3 xl:col-span-6 flex flex-col gap-3 min-w-0">
                       <div>
                         <div className="text-sm font-extrabold text-gray-500 mb-2">
                           RNF 단계
                         </div>
 
-                        <div className="flex items-center gap-2 min-w-max">
+                        <div className="flex items-center gap-1 whitespace-nowrap overflow-hidden">
                           <button
                             type="button"
-                            disabled={locked || !canChangeStatus}
+                            disabled={locked || held || !canChangeStatus}
                             className={[
                               btnBase,
-                              locked || !canChangeStatus
+                              locked || held || !canChangeStatus
                                 ? btnDisabled
                                 : r.has_insurance
                                   ? btnOn
                                   : btnOff,
                             ].join(" ")}
-                            onClick={() => toggleStage(r.id, "has_insurance")}
+                            onClick={() => handleInsuranceButtonClick(r)}
                           >
-                            보험서류
+                            보험
                           </button>
 
                           <button
                             type="button"
-                            disabled={locked || !canChangeStatus}
+                            disabled={locked || held || !canChangeStatus}
                             className={[
                               btnBase,
-                              locked || !canChangeStatus
+                              locked || held || !canChangeStatus
                                 ? btnDisabled
                                 : r.docs_ready
                                   ? btnOn
@@ -1116,15 +1502,15 @@ export default function NarumiPage() {
                             ].join(" ")}
                             onClick={() => toggleStage(r.id, "docs_ready")}
                           >
-                            등록서류수령
+                            등록서류
                           </button>
 
                           <button
                             type="button"
-                            disabled={locked || !canChangeStatus}
+                            disabled={locked || held || !canChangeStatus}
                             className={[
                               btnBase,
-                              locked || !canChangeStatus
+                              locked || held || !canChangeStatus
                                 ? btnDisabled
                                 : r.is_registered
                                   ? btnOn
@@ -1137,11 +1523,11 @@ export default function NarumiPage() {
 
                           <button
                             type="button"
-                            disabled={!vehicleDocCanUpload || uploadingId === r.id || locked}
+                            disabled={!vehicleDocCanUpload || uploadingId === r.id || locked || held}
                             className={[
                               btnBase,
                               hasVehicleDoc ? btnOn : btnOff,
-                              (!vehicleDocCanUpload || uploadingId === r.id || locked) && !hasVehicleDoc
+                              (!vehicleDocCanUpload || uploadingId === r.id || locked || held) && !hasVehicleDoc
                                 ? btnDisabled
                                 : "",
                             ].join(" ")}
@@ -1155,14 +1541,16 @@ export default function NarumiPage() {
                                     ? "등록완료까지 처리된 후 업로드 가능"
                                     : locked
                                       ? "업로드 후 잠금"
-                                      : "차량등록증 업로드"
+                                      : held
+                                        ? "보류 해제 후 업로드 가능"
+                                        : "차량등록증 업로드"
                             }
                           >
                             {uploadingId === r.id
                               ? "업로드중…"
                               : hasVehicleDoc
-                                ? "차량등록증(완료)"
-                                : "차량등록증"}
+                                ? "등록증"
+                                : "등록증"}
                           </button>
 
                           <button
@@ -1174,14 +1562,6 @@ export default function NarumiPage() {
                             다운로드
                           </button>
 
-                          <button
-                            type="button"
-                            disabled={!hasManufactureDoc}
-                            className={[btnBase, hasManufactureDoc ? btnOff : btnDisabled].join(" ")}
-                            onClick={() => downloadManufactureDoc(r)}
-                          >
-                            제작증 다운로드
-                          </button>
 
                           <button
                             type="button"
@@ -1194,11 +1574,28 @@ export default function NarumiPage() {
                           >
                             제작증 보기
                           </button>
+
+                          <button
+                            type="button"
+                            disabled={locked || !canChangeStatus}
+                            className={[
+                              btnBase,
+                              locked || !canChangeStatus
+                                ? btnDisabled
+                                : held
+                                  ? "bg-slate-700 text-white border-slate-700"
+                                  : "bg-white text-slate-700 border-slate-300 hover:border-slate-500",
+                            ].join(" ")}
+                            onClick={() => toggleHold(r)}
+                            title={held ? "보류 해제" : "등록업무 보류"}
+                          >
+                            {held ? "해제" : "보류"}
+                          </button>
                         </div>
                       </div>
 
-                      <div className="text-xs text-gray-400 leading-relaxed whitespace-nowrap overflow-x-auto">
-                        * 등록완료까지 처리된 후 차량등록증 업로드 가능 / * 업로드 완료 후 단계 변경 불가 / * 제작증 보기는 관리자 전용
+                      <div className="text-xs text-gray-400 leading-relaxed break-keep">
+                        * 등록완료까지 처리된 후 차량등록증 업로드 가능 / * 업로드 완료 후 단계 변경 불가 / * 제작증 보기는 관리자 전용이며 모바일에서도 현재 창에서 바로 열립니다. / * 보류 건은 단계 카운팅에서 제외되며 보류 해제 시 다시 업무 대상에 포함됩니다.
                         {!canEditExisting && (
                           <span> / * 현재 계정은 기존 데이터 상태 변경 권한이 없습니다.</span>
                         )}
@@ -1264,6 +1661,42 @@ export default function NarumiPage() {
             </div>
           )}
         </div>
+      {insuranceModalRow && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl">
+            <div className="text-lg font-extrabold text-navy-900">당사에서 가입하나요?</div>
+            <div className="mt-2 text-sm leading-6 text-gray-600">
+              Y를 선택하면 상담관리 페이지의 보험 상담등록 화면으로 이동합니다.
+              <br />
+              N을 선택하면 현재 업무목록에서 보험 단계가 즉시 완료됩니다.
+            </div>
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-extrabold text-gray-700 hover:border-gray-300"
+                onClick={() => setInsuranceModalRow(null)}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                className="rounded-xl border border-emerald-600 bg-emerald-600 px-4 py-2 text-sm font-extrabold text-white hover:bg-emerald-700"
+                onClick={completeInsuranceAsN}
+              >
+                N
+              </button>
+              <button
+                type="button"
+                className="rounded-xl border border-orange-500 bg-orange-500 px-4 py-2 text-sm font-extrabold text-white hover:bg-orange-600"
+                onClick={moveToCallManagementForInsurance}
+              >
+                Y
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       </section>
     </div>
   );
