@@ -238,12 +238,49 @@ function SummaryBadge({ label, count, className, active = false, onClick }: Summ
   );
 }
 
-function deriveSummaryFilter(row: NarumiTask): Exclude<SummaryFilter, "all"> {
-  if (row.on_hold) return "hold";
-  if (isClosingDone(row)) return "completed";
-  if (!row.has_insurance) return "insurance_waiting";
-  if (!row.docs_ready) return "docs_waiting";
-  return "register_waiting";
+function isSummaryHold(row: NarumiTask) {
+  return isOnHold(row);
+}
+
+function isSummaryCompleted(row: NarumiTask) {
+  return !isSummaryHold(row) && isClosingDone(row);
+}
+
+function isSummaryInsuranceWaiting(row: NarumiTask) {
+  return !isSummaryHold(row) && !isSummaryCompleted(row) && !row.has_insurance;
+}
+
+function isSummaryDocsWaiting(row: NarumiTask) {
+  return !isSummaryHold(row) && !isSummaryCompleted(row) && !row.docs_ready;
+}
+
+function isSummaryRegisterWaiting(row: NarumiTask) {
+  return (
+    !isSummaryHold(row) &&
+    !isSummaryCompleted(row) &&
+    !!row.has_insurance &&
+    !!row.docs_ready
+  );
+}
+
+function matchesSummaryFilter(
+  row: NarumiTask,
+  filter: Exclude<SummaryFilter, "all">
+) {
+  switch (filter) {
+    case "hold":
+      return isSummaryHold(row);
+    case "completed":
+      return isSummaryCompleted(row);
+    case "insurance_waiting":
+      return isSummaryInsuranceWaiting(row);
+    case "docs_waiting":
+      return isSummaryDocsWaiting(row);
+    case "register_waiting":
+      return isSummaryRegisterWaiting(row);
+    default:
+      return true;
+  }
 }
 
 export default function NarumiPage() {
@@ -373,7 +410,7 @@ export default function NarumiPage() {
     let result = [...searchedRows];
 
     if (summaryFilter !== "all") {
-      result = result.filter((r) => deriveSummaryFilter(r) === summaryFilter);
+      result = result.filter((r) => matchesSummaryFilter(r, summaryFilter));
     }
 
     if (statusFilter !== "all") {
@@ -389,13 +426,11 @@ export default function NarumiPage() {
   const summaryCounts = useMemo(() => {
     return searchedRows.reduce(
       (acc, row) => {
-        const bucket = deriveSummaryFilter(row);
-
-        if (bucket === "hold") acc.hold += 1;
-        else if (bucket === "completed") acc.completed += 1;
-        else if (bucket === "insurance_waiting") acc.insuranceWaiting += 1;
-        else if (bucket === "docs_waiting") acc.docsWaiting += 1;
-        else acc.registerWaiting += 1;
+        if (isSummaryHold(row)) acc.hold += 1;
+        if (isSummaryInsuranceWaiting(row)) acc.insuranceWaiting += 1;
+        if (isSummaryDocsWaiting(row)) acc.docsWaiting += 1;
+        if (isSummaryRegisterWaiting(row)) acc.registerWaiting += 1;
+        if (isSummaryCompleted(row)) acc.completed += 1;
 
         return acc;
       },

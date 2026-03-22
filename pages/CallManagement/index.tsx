@@ -337,7 +337,7 @@ const CallManagementPage: React.FC = () => {
   const location = useLocation();
 
   const [tab, setTab] = useState<TabKey>("new");
-  const newFormTopRef = useRef<HTMLDivElement | null>(null);
+  const newFormTopRef = useRef<HTMLFormElement | null>(null);
   const customerNameInputRef = useRef<HTMLInputElement | null>(null);
   const appliedNarumiPrefillRef = useRef<string>("");
 
@@ -2958,12 +2958,7 @@ const CallManagementPage: React.FC = () => {
                                               </div>
                                             </div>
 
-                                            <div>
-                                              <div className={detailLabelClass}>상담내용</div>
-                                              <div className={detailValueClass}>
-                                                {expandedInsuranceDetail.note || "-"}
-                                              </div>
-                                            </div>
+                                            
                                             </div>
                                           </div>
                                         )}
@@ -3048,12 +3043,7 @@ const CallManagementPage: React.FC = () => {
                                               </div>
                                             </div>
 
-                                            <div>
-                                              <div className={detailLabelClass}>상담내용</div>
-                                              <div className={detailValueClass}>
-                                                {expandedTireDetail.note || "-"}
-                                              </div>
-                                            </div>
+                                            
 
                                             <div>
                                               <div className={detailLabelClass}>사후관리</div>
@@ -3160,12 +3150,7 @@ const CallManagementPage: React.FC = () => {
                                               </div>
                                             </div>
 
-                                            <div>
-                                              <div className={detailLabelClass}>상담내용</div>
-                                              <div className={detailValueClass}>
-                                                {expandedFinanceDetail.note || "-"}
-                                              </div>
-                                            </div>
+                                            
                                             </div>
                                           </div>
                                         )}
