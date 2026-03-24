@@ -29,6 +29,7 @@ type NarumiTask = {
   status?: TaskStatus | string | null;
   memo?: string | null;
   special_note: string | null;
+  customer_name?: string | null;
   created_at?: string;
   vehicle_doc_path?: string | null;
   manufacture_doc_path?: string | null;
@@ -133,6 +134,19 @@ function getDisplayPhone(r: NarumiTask) {
 
 function getDialablePhone(r: NarumiTask) {
   return onlyDigits(r.customer_phone ?? "").slice(0, 11);
+}
+
+function maskAllText(value: string) {
+  const raw = (value ?? "").trim();
+  if (!raw) return "-";
+  return raw.replace(/[^\s]/g, "*");
+}
+
+function getDisplayCustomerName(r: NarumiTask) {
+  const raw = (r.customer_name ?? "").trim();
+  if (!raw) return "-";
+  if (!shouldMaskPhoneForUI(r)) return raw;
+  return maskAllText(raw);
 }
 
 function isMobileDevice() {
@@ -300,6 +314,7 @@ export default function NarumiPage() {
   const navigate = useNavigate();
 
   const [vin, setVin] = useState("");
+  const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [deliveryText, setDeliveryText] = useState("");
   const [lotte, setLotte] = useState<boolean>(false);
@@ -329,6 +344,13 @@ export default function NarumiPage() {
 
   const [memoDrafts, setMemoDrafts] = useState<Record<string, string>>({});
   const [memoSavingId, setMemoSavingId] = useState<string | number | null>(null);
+
+  const [editRow, setEditRow] = useState<NarumiTask | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editVin, setEditVin] = useState("");
+  const [editCustomerName, setEditCustomerName] = useState("");
+  const [editCustomerPhone, setEditCustomerPhone] = useState("");
+  const [editSpecialNote, setEditSpecialNote] = useState("");
 
   const fetchRows = async () => {
     setLoading(true);
@@ -391,12 +413,15 @@ export default function NarumiPage() {
     if (q) {
       result = result.filter((r) => {
         const vinText = (r.vin ?? "").toLowerCase();
+        const nameText = (r.customer_name ?? "").toLowerCase();
         const phoneText = onlyDigits(r.customer_phone ?? "");
         const noteText = (r.special_note ?? "").toLowerCase();
         const idText = String(r.id ?? "");
+        const qDigits = onlyDigits(q);
         return (
           vinText.includes(q) ||
-          phoneText.includes(onlyDigits(q)) ||
+          nameText.includes(q) ||
+          (qDigits ? phoneText.includes(qDigits) : false) ||
           noteText.includes(q) ||
           idText.includes(q)
         );
@@ -451,12 +476,35 @@ export default function NarumiPage() {
 
   const onReset = () => {
     setVin("");
+    setCustomerName("");
     setCustomerPhone("");
     setDeliveryText("");
     setLotte(false);
     setSpecialNote("");
     setManufactureImageFile(null);
     if (manufactureInputRef.current) manufactureInputRef.current.value = "";
+  };
+
+  const openEditModal = (row: NarumiTask) => {
+    if (!canEditExisting) {
+      alert("기존 데이터 수정 권한이 없습니다.");
+      return;
+    }
+
+    setEditRow(row);
+    setEditVin(row.vin ?? "");
+    setEditCustomerName(row.customer_name ?? "");
+    setEditCustomerPhone(formatPhoneKR(row.customer_phone ?? ""));
+    setEditSpecialNote(row.special_note ?? "");
+  };
+
+  const closeEditModal = () => {
+    if (editSaving) return;
+    setEditRow(null);
+    setEditVin("");
+    setEditCustomerName("");
+    setEditCustomerPhone("");
+    setEditSpecialNote("");
   };
 
   const uploadManufactureDocForRow = async (rowId: string | number, file: File) => {
@@ -488,10 +536,15 @@ export default function NarumiPage() {
 
     const vinTrim = normalizeVin(vin);
     const dtTrim = deliveryText.trim();
+    const nameTrim = customerName.trim();
     const phoneTrim = customerPhone.trim();
 
     if (!vinTrim) {
       alert("차대번호를 입력해주세요.");
+      return;
+    }
+    if (!nameTrim) {
+      alert("고객명을 입력해주세요.");
       return;
     }
     if (!phoneTrim) {
@@ -526,6 +579,7 @@ export default function NarumiPage() {
         delivery_date_text: dtTrim,
         is_lotte_autolease: lotte,
         special_note: specialNote.trim() || null,
+        customer_name: nameTrim,
         customer_phone: phoneTrim,
         customer_phone_set_at: new Date().toISOString(),
         customer_phone_scrubbed_at: null,
@@ -704,6 +758,7 @@ export default function NarumiPage() {
           narumiTaskId: insuranceModalRow.id,
           callDatetime: new Date().toISOString().slice(0, 10),
           phone: insuranceModalRow.customer_phone ?? "",
+          customerName: insuranceModalRow.customer_name ?? "",
           vehicleNo: normalizeVin(insuranceModalRow.vin ?? ""),
         },
       },
@@ -907,6 +962,104 @@ export default function NarumiPage() {
     }
   };
 
+  const saveEditRow = async () => {
+    if (!editRow) return;
+
+    if (!canEditExisting) {
+      alert("기존 데이터 수정 권한이 없습니다.");
+      return;
+    }
+
+    const nextVin = normalizeVin(editVin);
+    const nextName = editCustomerName.trim();
+    const nextPhone = formatPhoneKR(editCustomerPhone).trim();
+    const nextNote = editSpecialNote.trim();
+
+    if (!nextVin) {
+      alert("차대번호를 입력해주세요.");
+      return;
+    }
+    if (!nextName) {
+      alert("고객명을 입력해주세요.");
+      return;
+    }
+    if (!nextPhone) {
+      alert("전화번호를 입력해주세요.");
+      return;
+    }
+
+    try {
+      setEditSaving(true);
+
+      if (!isAdmin && nextVin !== normalizeVin(editRow.vin ?? "")) {
+        alert("차대번호는 관리자만 수정할 수 있습니다.");
+        return;
+      }
+
+      if (nextVin !== normalizeVin(editRow.vin ?? "")) {
+        const { data: dup, error: dupErr } = await supabase
+          .from("narumi_tasks")
+          .select("id")
+          .eq("vin", nextVin)
+          .neq("id", editRow.id as any)
+          .limit(1);
+
+        if (dupErr) throw dupErr;
+        if (dup && dup.length > 0) {
+          alert(`이미 등록된 VIN입니다.
+VIN: ${nextVin}`);
+          return;
+        }
+      }
+
+      const prevPhoneDigits = onlyDigits(editRow.customer_phone ?? "");
+      const nextPhoneDigits = onlyDigits(nextPhone);
+
+      const patch: Partial<NarumiTask> & Record<string, any> = {
+        customer_name: nextName,
+        customer_phone: nextPhone,
+        special_note: nextNote || null,
+      };
+
+      if (isAdmin) {
+        patch.vin = nextVin;
+        patch.vin_last6 = vinLast6(nextVin);
+      }
+
+      if (prevPhoneDigits !== nextPhoneDigits) {
+        patch.customer_phone_set_at = new Date().toISOString();
+        patch.customer_phone_scrubbed_at = null;
+      }
+
+      const { error } = await supabase
+        .from("narumi_tasks")
+        .update(patch)
+        .eq("id", editRow.id as any);
+
+      if (error) throw error;
+
+      setRows((prev) =>
+        prev.map((row) =>
+          String(row.id) === String(editRow.id)
+            ? { ...row, ...patch }
+            : row
+        )
+      );
+
+      setMemoDrafts((prev) => ({
+        ...prev,
+        [String(editRow.id)]: nextNote || "",
+      }));
+
+      closeEditModal();
+      alert("수정되었습니다.");
+    } catch (e: any) {
+      alert(e?.message || "수정 실패");
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   const resetMemoDraft = (row: NarumiTask) => {
     setMemoDrafts((prev) => ({
       ...prev,
@@ -959,7 +1112,9 @@ export default function NarumiPage() {
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="space-y-3">
             <div className="text-xs text-gray-400 leading-relaxed">
-              * 고객 전화번호는 입력 후 {UI_MASK_AFTER_HOURS}시간 경과 시 화면에서 뒷 4자리가 마스킹됩니다.
+              * 고객명/전화번호는 입력 후 {UI_MASK_AFTER_HOURS}시간 경과 시 화면에서 마스킹됩니다.
+              <br />
+              * 고객명은 전체 마스킹, 고객 전화번호는 뒷 4자리가 마스킹됩니다.
               <br />
               * 고객 전화번호는 입력 후 {DB_SCRUB_AFTER_HOURS}시간(5일) 경과 시 DB에서 뒷 4자리가 영구 마스킹(삭제)됩니다.
               <br />
@@ -1025,7 +1180,7 @@ export default function NarumiPage() {
             신규 입력
           </div>
           <div className="text-sm text-gray-500 mt-1">
-            차대번호, 제작증, 전화번호, 출고일자 등을 입력합니다.
+            차대번호, 고객명, 제작증, 전화번호, 출고일자 등을 입력합니다.
           </div>
         </div>
       </div>
@@ -1044,13 +1199,24 @@ export default function NarumiPage() {
     {showCreatePanel && (
     <div className="space-y-3">
       {/* 1행 */}
-      <div className="grid md:grid-cols-[2fr_1fr] gap-3">
+      <div className="grid md:grid-cols-[1.55fr_0.95fr_1fr] gap-3">
         <div>
           <label className={labelClass}>차대번호(VIN) *</label>
           <input
             value={vin}
             onChange={(e) => setVin(normalizeVin(e.target.value))}
             placeholder="예: KMH..."
+            className={compactInputClass}
+            disabled={!canCreate}
+          />
+        </div>
+
+        <div>
+          <label className={labelClass}>고객명 *</label>
+          <input
+            value={customerName}
+            onChange={(e) => setCustomerName(e.target.value)}
+            placeholder="예: 홍길동"
             className={compactInputClass}
             disabled={!canCreate}
           />
@@ -1198,7 +1364,7 @@ export default function NarumiPage() {
                         조회 / 검색
                       </div>
                       <div className="text-sm text-gray-500 mt-1">
-                        VIN, 전화번호, 특이사항, ID 검색
+고객명, VIN, 전화번호, 특이사항, ID 검색
                       </div>
                     </div>
                   </div>
@@ -1221,7 +1387,7 @@ export default function NarumiPage() {
                       <input
                         value={searchText}
                         onChange={(e) => setSearchText(e.target.value)}
-                        placeholder="VIN / 전화번호 / 특이사항 / ID"
+                        placeholder="고객명 / VIN / 전화번호 / 특이사항 / ID"
                         className={compactInputClass}
                       />
                     </div>
@@ -1403,6 +1569,7 @@ export default function NarumiPage() {
             const currentStatus = deriveStatus(r);
             const memoValue = memoDrafts[String(r.id)] ?? "";
             const maskedPhone = shouldMaskPhoneForUI(r);
+            const displayCustomerName = getDisplayCustomerName(r);
             const displayPhone = getDisplayPhone(r);
             const dialablePhone = getDialablePhone(r);
             const canDialNow = isMobileDevice() && !maskedPhone && !!dialablePhone;
@@ -1442,10 +1609,25 @@ export default function NarumiPage() {
                         )}
                       </div>
 
-                      <div className="grid sm:grid-cols-2 gap-x-5 gap-y-3">
-                        <div>
+                      <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-x-5 gap-y-3">
+                        <div className="min-w-0">
                           <div className={infoLabel}>차대번호(VIN)</div>
-                          <div className={`${infoValue} break-all xl:break-normal xl:whitespace-nowrap text-[15px]`}>{r.vin}</div>
+                          <div className={`${infoValue} text-[15px] leading-tight`}>
+                            <div className="break-all">{(r.vin ?? "").slice(0, -6)}</div>
+                            <div className="font-extrabold tracking-wider text-orange-500">{(r.vin ?? "").slice(-6)}</div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className={infoLabel}>고객명</div>
+                          <div className={`${infoValue} whitespace-nowrap`}>{displayCustomerName}</div>
+                          <div className="mt-1 text-xs text-gray-400">
+                            {maskedPhone
+                              ? "화면 전체 마스킹 상태"
+                              : r.customer_phone_set_at
+                                ? `${UI_MASK_AFTER_HOURS}h 후 전체 마스킹`
+                                : ""}
+                          </div>
                         </div>
 
                         <div>
@@ -1497,6 +1679,15 @@ export default function NarumiPage() {
                         <div>
                           <div className={infoLabel}>제작증</div>
                           <div className={infoValue}>{hasManufactureDoc ? "첨부됨" : "-"}</div>
+                          <button
+                            type="button"
+                            disabled={!canEditExisting}
+                            className={`mt-2 h-[34px] min-w-[88px] inline-flex items-center justify-center rounded-lg px-3 text-xs font-extrabold border transition-all ${canEditExisting ? btnOff : btnDisabled}`}
+                            onClick={() => openEditModal(r)}
+                            title={canEditExisting ? "기본정보 수정" : "수정 권한 없음"}
+                          >
+                            수정
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -1696,6 +1887,111 @@ export default function NarumiPage() {
             </div>
           )}
         </div>
+      {editRow && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-lg font-extrabold text-navy-900">기본정보 수정</div>
+                <div className="mt-1 text-sm text-gray-500">
+                  차대번호, 고객명, 전화번호, 특이사항을 수정합니다.
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeEditModal}
+                disabled={editSaving}
+                className="h-9 w-9 rounded-lg border border-gray-200 bg-white text-lg font-extrabold text-navy-900 hover:border-gray-300 disabled:opacity-60"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mt-5 grid md:grid-cols-2 gap-4">
+              <div>
+                <label className={labelClass}>차대번호(VIN) *</label>
+                <input
+                  value={editVin}
+                  onChange={(e) => setEditVin(normalizeVin(e.target.value))}
+                  className={compactInputClass}
+                  disabled={!isAdmin || editSaving}
+                  placeholder="예: KMH..."
+                />
+                {!isAdmin && (
+                  <div className="mt-1 text-xs text-gray-400">차대번호는 관리자만 수정 가능합니다.</div>
+                )}
+              </div>
+
+              <div>
+                <label className={labelClass}>고객명 *</label>
+                <input
+                  value={editCustomerName}
+                  onChange={(e) => setEditCustomerName(e.target.value)}
+                  className={compactInputClass}
+                  disabled={editSaving}
+                  placeholder="예: 홍길동"
+                />
+              </div>
+
+              <div>
+                <label className={labelClass}>전화번호 *</label>
+                <input
+                  value={editCustomerPhone}
+                  onChange={(e) => setEditCustomerPhone(formatPhoneKR(e.target.value))}
+                  className={compactInputClass}
+                  disabled={editSaving}
+                  inputMode="tel"
+                  placeholder="010-1234-5678"
+                />
+                <div className="mt-1 text-xs text-gray-400">
+                  전화번호 변경 시 마스킹 기준시간이 다시 시작됩니다.
+                </div>
+              </div>
+
+              <div>
+                <label className={labelClass}>ID</label>
+                <input
+                  value={String(editRow.id)}
+                  readOnly
+                  className={`${compactInputClass} bg-gray-50 text-gray-500`}
+                />
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <label className={labelClass}>특이사항</label>
+              <textarea
+                value={editSpecialNote}
+                onChange={(e) => setEditSpecialNote(e.target.value)}
+                placeholder="고객 요청사항 / 특이사항 / 보험사 정보 / 등록 관련 메모 ..."
+                className="min-h-[110px] w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium text-navy-900 focus:border-orange-400 focus:ring-4 focus:ring-orange-200/40 outline-none resize-none"
+                disabled={editSaving}
+              />
+            </div>
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeEditModal}
+                disabled={editSaving}
+                className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-extrabold text-gray-700 hover:border-gray-300 disabled:opacity-60"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={saveEditRow}
+                disabled={editSaving}
+                className="rounded-xl border border-orange-500 bg-orange-500 px-4 py-2 text-sm font-extrabold text-white hover:bg-orange-600 disabled:opacity-60"
+              >
+                {editSaving ? "저장중..." : "저장"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {insuranceModalRow && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl">
