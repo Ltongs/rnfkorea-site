@@ -12,14 +12,25 @@ type Row = {
 };
 
 /**
- * ✅ “딜 이름” 입력값이 아래 시트명과 정확히 일치할 때만 목록을 보여줍니다.
- * 지금 딜이 “삼우”라고 하셨으니 우선 고정.
- * (추후 딜이 늘어나면 ["삼우","OOO"] 배열로 확장 가능)
+ * ✅ 허용 딜 이름(=시트명)
+ * 새 딜이 생기면 배열에 시트명과 URL만 추가하면 됩니다.
  */
-const REQUIRED_SHEET_NAME = "삼우";
+const ALLOWED_SHEET_NAMES = ["삼우", "삼우2"] as const;
 
-const CSV_URL =
-  "https://docs.google.com/spreadsheets/d/e/2PACX-1vStUJkHotLlVECjJPyaxIWnYTl45_0Fw9IAtgIUzkRjScPYWE_lYJfk2_38Uqn9Y40kP-5pv3UXeRJf/pub?gid=347572598&single=true&output=csv";
+/**
+ * ✅ 기존 공개 CSV URL(삼우)
+ * - 현재 작동이 확인된 URL
+ */
+const CSV_URL_MAP: Record<string, string[]> = {
+  삼우: [
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vStUJkHotLlVECjJPyaxIWnYTl45_0Fw9IAtgIUzkRjScPYWE_lYJfk2_38Uqn9Y40kP-5pv3UXeRJf/pub?gid=347572598&single=true&output=csv",
+  ],
+  삼우2: [
+    // ✅ 1순위: publish된 시트명 직접 지정
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vStUJkHotLlVECjJPyaxIWnYTl45_0Fw9IAtgIUzkRjScPYWE_lYJfk2_38Uqn9Y40kP-5pv3UXeRJf/pub?gid=352624719&single=true&output=csv",
+    
+  ],
+};
 
 const PHOTO_BASE = "/asset/samwoo"; // public/asset/samwoo
 const EXT = "webp" as const;
@@ -125,6 +136,27 @@ async function existsStaticFile(url: string): Promise<boolean> {
   }
 }
 
+async function resolveCsvText(urls: string[]) {
+  let lastStatus = "";
+  for (const rawUrl of urls) {
+    try {
+      const url = rawUrl.includes("?") ? `${rawUrl}&v=${Date.now()}` : `${rawUrl}?v=${Date.now()}`;
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) {
+        lastStatus = `${res.status}`;
+        continue;
+      }
+      const text = await res.text();
+      if (norm(text)) {
+        return text;
+      }
+    } catch {
+      // try next
+    }
+  }
+  throw new Error(`CSV fetch failed${lastStatus ? `: ${lastStatus}` : ""}`);
+}
+
 export default function BsonWorkPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -137,21 +169,34 @@ export default function BsonWorkPage() {
     Record<string, { p1: boolean; p2: boolean }>
   >({});
 
-  // ✅ “정확히 일치”해야 열림
-  const isUnlocked = useMemo(() => norm(dealName) === REQUIRED_SHEET_NAME, [dealName]);
+  const normalizedDealName = useMemo(() => norm(dealName), [dealName]);
+
+  const isUnlocked = useMemo(
+    () => ALLOWED_SHEET_NAMES.includes(normalizedDealName as (typeof ALLOWED_SHEET_NAMES)[number]),
+    [normalizedDealName]
+  );
 
   useEffect(() => {
     let alive = true;
+
+    if (!isUnlocked) {
+      setRows([]);
+      setErr(null);
+      setLoading(false);
+      return () => {
+        alive = false;
+      };
+    }
 
     (async () => {
       try {
         setLoading(true);
         setErr(null);
 
-        const res = await fetch(CSV_URL, { cache: "no-store" });
-        if (!res.ok) throw new Error(`CSV fetch failed: ${res.status}`);
+        const urls = CSV_URL_MAP[normalizedDealName] || [];
+        if (urls.length === 0) throw new Error("허용된 시트 URL이 없습니다.");
 
-        const csvText = await res.text();
+        const csvText = await resolveCsvText(urls);
         const grid = parseCsv(csvText).filter((r) => r.some((c) => norm(c) !== ""));
         if (grid.length < 2) throw new Error("CSV data is empty");
 
@@ -198,6 +243,7 @@ export default function BsonWorkPage() {
         setRows(out);
       } catch (e: any) {
         if (!alive) return;
+        setRows([]);
         setErr(e?.message ?? "unknown error");
       } finally {
         if (!alive) return;
@@ -208,7 +254,7 @@ export default function BsonWorkPage() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [isUnlocked, normalizedDealName]);
 
   // ✅ 잠금 상태면 자산을 “아예 안 보여줌”
   const visibleRows = useMemo(() => {
@@ -317,13 +363,13 @@ export default function BsonWorkPage() {
               value={dealName}
               onChange={(e) => setDealName(e.target.value)}
               className="mt-1 w-[260px] outline-none font-extrabold text-navy-900"
-              placeholder="딜 이름"
+              placeholder="예: RNF"
             />
             <div className="mt-2 text-[11px] font-bold">
               {isUnlocked ? (
                 <span className="text-emerald-700">✅ 일치: 자산 표시</span>
               ) : (
-                <span className="text-gray-500">⛔ 미일치: 자산 숨김</span>
+                <span className="text-gray-500">⛔ 미일치: 자산 숨김 (허용 시트: 별도)</span>
               )}
             </div>
           </div>
@@ -369,7 +415,7 @@ export default function BsonWorkPage() {
         <div className="rounded-2xl border border-gray-200 bg-white p-6">
           <div className="text-lg font-extrabold text-navy-900">딜 이름 입력 필요</div>
           <div className="mt-2 text-sm text-gray-600 leading-relaxed">
-            딜 이름(=시트명)을 정확히 입력하면 자산 목록이 표시됩니다.
+            딜 이름(=시트명)을 정확히 입력하면 자산 목록이 표시됩니다. 현재 허용 시트는 삼우, 삼우2 입니다.
           </div>
           <div className="mt-4 text-[12px] text-gray-500">
             * 목록은 숨기지만, CSV는 내부적으로 로드될 수 있습니다(표시/검증 로직만 잠금).
