@@ -5,7 +5,13 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
 type TabKey = "new" | "list" | "followups";
-type WorkType = "" | "registration_insurance" | "tire_sales" | "finance";
+type WorkType =
+  | ""
+  | "registration_insurance"
+  | "tire_sales"
+  | "finance"
+  | "forklift_sales"
+  | "battery_sales";
 
 type ConsultationRow = {
   id: number;
@@ -17,7 +23,12 @@ type ConsultationRow = {
   telecom_provider: string | null;
   company_name: string | null;
   region: string | null;
-  work_type: "registration_insurance" | "tire_sales" | "finance";
+  work_type:
+    | "registration_insurance"
+    | "tire_sales"
+    | "finance"
+    | "forklift_sales"
+    | "battery_sales";
   status: string;
   summary: string;
   detail_memo: string | null;
@@ -71,6 +82,35 @@ type FinanceDetailRow = {
   finance_incentive: number | null;
   finance_stage: string | null;
   finance_aftercare: boolean | null;
+  note: string | null;
+};
+
+
+type ForkliftDetailRow = {
+  consultation_id: number;
+  forklift_condition: string | null;
+  forklift_type: string | null;
+  forklift_ton: string | null;
+  forklift_status: string | null;
+  forklift_option_note: string | null;
+  forklift_sale_method: string | null;
+  note: string | null;
+};
+
+type BatteryDetailRow = {
+  consultation_id: number;
+  battery_vehicle_type: string | null;
+  battery_drive_type: string | null;
+  battery_status: string | null;
+  battery_voltage: number | null;
+  battery_capacity_ah: number | null;
+  battery_total_capacity_kwh: number | null;
+  battery_size_l: number | null;
+  battery_due_date: string | null;
+  battery_weight_kg: number | null;
+  battery_expected_price: number | null;
+  battery_unit_price_per_kwh: number | null;
+  battery_exchange_rate: number | null;
   note: string | null;
 };
 
@@ -420,6 +460,27 @@ const CallManagementPage: React.FC = () => {
   const [financeIncentive, setFinanceIncentive] = useState("");
   const [financeStage, setFinanceStage] = useState("consulting");
   const [financeNote, setFinanceNote] = useState("");
+
+  const [forkliftCondition, setForkliftCondition] = useState("");
+  const [forkliftType, setForkliftType] = useState("");
+  const [forkliftTon, setForkliftTon] = useState("");
+  const [forkliftStatus, setForkliftStatus] = useState("quote");
+  const [forkliftOptionNote, setForkliftOptionNote] = useState("");
+  const [forkliftSaleMethod, setForkliftSaleMethod] = useState("");
+  const [forkliftNote, setForkliftNote] = useState("");
+
+  const [batteryVehicleType, setBatteryVehicleType] = useState("");
+  const [batteryDriveType, setBatteryDriveType] = useState("");
+  const [batteryStatus, setBatteryStatus] = useState("quote");
+  const [batteryVoltage, setBatteryVoltage] = useState("");
+  const [batteryCapacityAh, setBatteryCapacityAh] = useState("");
+  const [batterySizeL, setBatterySizeL] = useState("");
+  const [batteryDueDate, setBatteryDueDate] = useState("");
+  const [batteryWeightKg, setBatteryWeightKg] = useState("");
+  const [batteryUnitPricePerKwh, setBatteryUnitPricePerKwh] = useState("");
+  const [batteryExchangeRate, setBatteryExchangeRate] = useState("");
+  const [batteryNote, setBatteryNote] = useState("");
+
   const [followupRescheduleMap, setFollowupRescheduleMap] = useState<Record<number, string>>({});
 
   const [rows, setRows] = useState<ConsultationRow[]>([]);
@@ -438,6 +499,12 @@ const CallManagementPage: React.FC = () => {
   >({});
   const [financeDetailsMap, setFinanceDetailsMap] = useState<
     Record<number, FinanceDetailRow>
+  >({});
+  const [forkliftDetailsMap, setForkliftDetailsMap] = useState<
+    Record<number, ForkliftDetailRow>
+  >({});
+  const [batteryDetailsMap, setBatteryDetailsMap] = useState<
+    Record<number, BatteryDetailRow>
   >({});
 
   const [insuranceExpiries, setInsuranceExpiries] = useState<InsuranceExpiryRow[]>([]);
@@ -476,6 +543,10 @@ const CallManagementPage: React.FC = () => {
     useState<InsuranceDetailRow | null>(null);
   const [expandedFinanceDetail, setExpandedFinanceDetail] =
     useState<FinanceDetailRow | null>(null);
+  const [expandedForkliftDetail, setExpandedForkliftDetail] =
+    useState<ForkliftDetailRow | null>(null);
+  const [expandedBatteryDetail, setExpandedBatteryDetail] =
+    useState<BatteryDetailRow | null>(null);
   const [editingCaseId, setEditingCaseId] = useState<number | null>(null);
   const [showTodoBox, setShowTodoBox] = useState(false);
   const [showListFilters, setShowListFilters] = useState(false);
@@ -487,10 +558,26 @@ const CallManagementPage: React.FC = () => {
     return "사후관리";
   }, [tab]);
 
+  const batteryTotalCapacityKwh = useMemo(() => {
+    const voltage = Number(batteryVoltage || 0);
+    const capacityAh = Number(batteryCapacityAh || 0);
+    if (!voltage || !capacityAh) return 0;
+    return (voltage * capacityAh) / 1000;
+  }, [batteryVoltage, batteryCapacityAh]);
+
+  const batteryExpectedPrice = useMemo(() => {
+    const unit = Number(batteryUnitPricePerKwh || 0);
+    const fx = Number(batteryExchangeRate || 0);
+    if (!batteryTotalCapacityKwh || !unit || !fx) return 0;
+    return batteryTotalCapacityKwh * unit * fx;
+  }, [batteryTotalCapacityKwh, batteryUnitPricePerKwh, batteryExchangeRate]);
+
   const isClosingByCurrentForm = () => {
     if (workType === "registration_insurance") return policyIssued;
     if (workType === "tire_sales") return tireProcessStatus === "completed";
     if (workType === "finance") return financeStage === "confirmed";
+    if (workType === "forklift_sales") return forkliftStatus === "delivered" || forkliftStatus === "cancelled";
+    if (workType === "battery_sales") return batteryStatus === "delivered" || batteryStatus === "cancelled";
     return false;
   };
 
@@ -498,11 +585,15 @@ const CallManagementPage: React.FC = () => {
     row: ConsultationRow,
     insuranceDetail?: InsuranceDetailRow | null,
     tireDetail?: TireDetailRow | null,
-    financeDetail?: FinanceDetailRow | null
+    financeDetail?: FinanceDetailRow | null,
+    forkliftDetail?: ForkliftDetailRow | null,
+    batteryDetail?: BatteryDetailRow | null
   ) => {
     if (row.work_type === "registration_insurance") return Boolean(insuranceDetail?.policy_issued);
     if (row.work_type === "tire_sales") return tireDetail?.process_status === "completed";
     if (row.work_type === "finance") return financeDetail?.finance_stage === "confirmed";
+    if (row.work_type === "forklift_sales") { const s = resolvedForkliftStatus(forkliftDetail); return s === "delivered" || s === "cancelled"; }
+    if (row.work_type === "battery_sales") { const s = resolvedBatteryStatus(batteryDetail); return s === "delivered" || s === "cancelled"; }
     return false;
   };
 
@@ -510,7 +601,80 @@ const CallManagementPage: React.FC = () => {
     if (value === "registration_insurance") return "보험";
     if (value === "tire_sales") return "타이어";
     if (value === "finance") return "금융";
+    if (value === "forklift_sales") return "지게차";
+    if (value === "battery_sales") return "배터리";
     return value || "-";
+  };
+
+  const formatForkliftCondition = (value: string | null) => {
+    if (value === "new") return "신차";
+    if (value === "used") return "중고";
+    return value || "-";
+  };
+
+  const formatForkliftType = (value: string | null) => {
+    if (value === "diesel") return "디젤";
+    if (value === "electric_seated") return "전동좌승";
+    if (value === "electric_standing") return "전동입승";
+    if (value === "special") return "특수지게차";
+    return value || "-";
+  };
+
+  const formatForkliftStatus = (value: string | null) => {
+    if (value === "quote") return "견적";
+    if (value === "proposal") return "제안";
+    if (value === "waiting_payment") return "결제대기";
+    if (value === "delivered") return "납품";
+    if (value === "cancelled") return "취소";
+    return value || "-";
+  };
+
+  const formatForkliftSaleMethod = (value: string | null) => {
+    if (value === "cash") return "현금";
+    if (value === "installment") return "할부금융";
+    if (value === "rental") return "렌탈";
+    if (value === "lease") return "리스";
+    return value || "-";
+  };
+
+  const formatBatteryVehicleType = (value: string | null) => {
+    if (value === "forklift") return "지게차";
+    if (value === "awp") return "고소작업대";
+    return value || "-";
+  };
+
+  const formatBatteryDriveType = (value: string | null) => {
+    if (value === "seated") return "좌승";
+    if (value === "standing") return "입승";
+    if (value === "special") return "특수";
+    return value || "-";
+  };
+
+  const formatBatteryStatus = (value: string | null) => {
+    if (value === "quote") return "견적";
+    if (value === "proposal") return "제안";
+    if (value === "waiting_payment") return "결제대기";
+    if (value === "delivered") return "납품";
+    if (value === "cancelled") return "취소";
+    return value || "-";
+  };
+
+  const stripStatusMeta = (value: string | null | undefined) =>
+    String(value || "").replace(/^\[status:[^\]]+\]\s*/, "").trim();
+
+  const withStatusMeta = (statusValue: string, noteValue: string) =>
+    `[status:${statusValue}] ${stripStatusMeta(noteValue)}`.trim();
+
+  const resolvedForkliftStatus = (detail?: ForkliftDetailRow | null) => {
+    const raw = String(detail?.note || "");
+    const matched = raw.match(/\[status:([^\]]+)\]/);
+    return matched?.[1] || detail?.forklift_status || null;
+  };
+
+  const resolvedBatteryStatus = (detail?: BatteryDetailRow | null) => {
+    const raw = String(detail?.note || "");
+    const matched = raw.match(/\[status:([^\]]+)\]/);
+    return matched?.[1] || detail?.battery_status || null;
   };
 
   const formatStatus = (value: string) => {
@@ -648,7 +812,9 @@ const CallManagementPage: React.FC = () => {
         row,
         insuranceDetailsMap[row.id],
         tireDetailsMap[row.id],
-        financeDetailsMap[row.id]
+        financeDetailsMap[row.id],
+        forkliftDetailsMap[row.id],
+        batteryDetailsMap[row.id]
       )
         ? "Y"
         : "N";
@@ -681,6 +847,8 @@ const CallManagementPage: React.FC = () => {
     insuranceDetailsMap,
     tireDetailsMap,
     financeDetailsMap,
+    forkliftDetailsMap,
+    batteryDetailsMap,
   ]);
 
   const filteredFollowups = useMemo(() => {
@@ -775,7 +943,9 @@ const CallManagementPage: React.FC = () => {
     row: ConsultationRow,
     insuranceDetail?: InsuranceDetailRow | null,
     tireDetail?: TireDetailRow | null,
-    financeDetail?: FinanceDetailRow | null
+    financeDetail?: FinanceDetailRow | null,
+    forkliftDetail?: ForkliftDetailRow | null,
+    batteryDetail?: BatteryDetailRow | null
   ) => {
     setEditingCaseId(row.id);
     setCallDatetime(formatDateInputValue(row.call_datetime));
@@ -791,6 +961,8 @@ const CallManagementPage: React.FC = () => {
     resetInsuranceFields();
     resetTireFields();
     resetFinanceFields();
+    resetForkliftFields();
+    resetBatteryFields();
 
     if (row.work_type === "registration_insurance") {
       setInsuranceVehicleNo(insuranceDetail?.vehicle_no || "");
@@ -864,6 +1036,54 @@ const CallManagementPage: React.FC = () => {
       setFinanceNote(financeDetail?.note || "");
     }
 
+    if (row.work_type === "forklift_sales") {
+      setForkliftCondition(forkliftDetail?.forklift_condition || "");
+      setForkliftType(forkliftDetail?.forklift_type || "");
+      setForkliftTon(forkliftDetail?.forklift_ton || "");
+      setForkliftStatus(resolvedForkliftStatus(forkliftDetail) || "quote");
+      setForkliftOptionNote(forkliftDetail?.forklift_option_note || "");
+      setForkliftSaleMethod(forkliftDetail?.forklift_sale_method || "");
+      setForkliftNote(stripStatusMeta(forkliftDetail?.note || ""));
+    }
+
+    if (row.work_type === "battery_sales") {
+      setBatteryVehicleType(batteryDetail?.battery_vehicle_type || "");
+      setBatteryDriveType(batteryDetail?.battery_drive_type || "");
+      setBatteryStatus(resolvedBatteryStatus(batteryDetail) || "quote");
+      setBatteryVoltage(
+        batteryDetail?.battery_voltage !== null && batteryDetail?.battery_voltage !== undefined
+          ? String(batteryDetail.battery_voltage)
+          : ""
+      );
+      setBatteryCapacityAh(
+        batteryDetail?.battery_capacity_ah !== null && batteryDetail?.battery_capacity_ah !== undefined
+          ? String(batteryDetail.battery_capacity_ah)
+          : ""
+      );
+      setBatterySizeL(
+        batteryDetail?.battery_size_l !== null && batteryDetail?.battery_size_l !== undefined
+          ? String(batteryDetail.battery_size_l)
+          : ""
+      );
+      setBatteryDueDate(batteryDetail?.battery_due_date || "");
+      setBatteryWeightKg(
+        batteryDetail?.battery_weight_kg !== null && batteryDetail?.battery_weight_kg !== undefined
+          ? String(batteryDetail.battery_weight_kg)
+          : ""
+      );
+      setBatteryUnitPricePerKwh(
+        batteryDetail?.battery_unit_price_per_kwh !== null && batteryDetail?.battery_unit_price_per_kwh !== undefined
+          ? String(batteryDetail.battery_unit_price_per_kwh)
+          : ""
+      );
+      setBatteryExchangeRate(
+        batteryDetail?.battery_exchange_rate !== null && batteryDetail?.battery_exchange_rate !== undefined
+          ? String(batteryDetail.battery_exchange_rate)
+          : ""
+      );
+      setBatteryNote(stripStatusMeta(batteryDetail?.note || ""));
+    }
+
     setTab("new");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -873,7 +1093,9 @@ const CallManagementPage: React.FC = () => {
       row,
       insuranceDetailsMap[row.id] || expandedInsuranceDetail,
       tireDetailsMap[row.id] || expandedTireDetail,
-      financeDetailsMap[row.id] || expandedFinanceDetail
+      financeDetailsMap[row.id] || expandedFinanceDetail,
+      forkliftDetailsMap[row.id] || expandedForkliftDetail,
+      batteryDetailsMap[row.id] || expandedBatteryDetail
     );
   };
 
@@ -919,6 +1141,30 @@ const CallManagementPage: React.FC = () => {
     setFinanceNote("");
   };
 
+  const resetForkliftFields = () => {
+    setForkliftCondition("");
+    setForkliftType("");
+    setForkliftTon("");
+    setForkliftStatus("quote");
+    setForkliftOptionNote("");
+    setForkliftSaleMethod("");
+    setForkliftNote("");
+  };
+
+  const resetBatteryFields = () => {
+    setBatteryVehicleType("");
+    setBatteryDriveType("");
+    setBatteryStatus("quote");
+    setBatteryVoltage("");
+    setBatteryCapacityAh("");
+    setBatterySizeL("");
+    setBatteryDueDate("");
+    setBatteryWeightKg("");
+    setBatteryUnitPricePerKwh("");
+    setBatteryExchangeRate("");
+    setBatteryNote("");
+  };
+
   const resetForm = () => {
     setEditingCaseId(null);
     setCallDatetime("");
@@ -933,6 +1179,8 @@ const CallManagementPage: React.FC = () => {
     resetTireFields();
     resetInsuranceFields();
     resetFinanceFields();
+    resetForkliftFields();
+    resetBatteryFields();
   };
 
   const resetListFilters = () => {
@@ -966,7 +1214,7 @@ const CallManagementPage: React.FC = () => {
     const { data, error } = await supabase
       .from("consultation_cases")
       .select("*")
-      .in("work_type", ["registration_insurance", "tire_sales", "finance"])
+      .in("work_type", ["registration_insurance", "tire_sales", "finance", "forklift_sales", "battery_sales"])
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -985,10 +1233,12 @@ const CallManagementPage: React.FC = () => {
       setInsuranceDetailsMap({});
       setTireDetailsMap({});
       setFinanceDetailsMap({});
+      setForkliftDetailsMap({});
+      setBatteryDetailsMap({});
       return;
     }
 
-    const [insRes, tireRes, financeRes] = await Promise.all([
+    const [insRes, tireRes, financeRes, forkliftRes, batteryRes] = await Promise.all([
       supabase
         .from("consultation_insurance_details")
         .select("*")
@@ -1001,11 +1251,21 @@ const CallManagementPage: React.FC = () => {
         .from("consultation_finance_details")
         .select("*")
         .in("consultation_id", ids),
+      supabase
+        .from("consultation_forklift_details")
+        .select("*")
+        .in("consultation_id", ids),
+      supabase
+        .from("consultation_battery_details")
+        .select("*")
+        .in("consultation_id", ids),
     ]);
 
     const insMap: Record<number, InsuranceDetailRow> = {};
     const tireMap: Record<number, TireDetailRow> = {};
     const financeMap: Record<number, FinanceDetailRow> = {};
+    const forkliftMap: Record<number, ForkliftDetailRow> = {};
+    const batteryMap: Record<number, BatteryDetailRow> = {};
 
     (insRes.data || []).forEach((row: any) => {
       insMap[row.consultation_id] = row as InsuranceDetailRow;
@@ -1019,9 +1279,19 @@ const CallManagementPage: React.FC = () => {
       financeMap[row.consultation_id] = row as FinanceDetailRow;
     });
 
+    (forkliftRes.data || []).forEach((row: any) => {
+      forkliftMap[row.consultation_id] = row as ForkliftDetailRow;
+    });
+
+    (batteryRes.data || []).forEach((row: any) => {
+      batteryMap[row.consultation_id] = row as BatteryDetailRow;
+    });
+
     setInsuranceDetailsMap(insMap);
     setTireDetailsMap(tireMap);
     setFinanceDetailsMap(financeMap);
+    setForkliftDetailsMap(forkliftMap);
+    setBatteryDetailsMap(batteryMap);
   };
 
   const fetchFollowups = async () => {
@@ -1031,7 +1301,7 @@ const CallManagementPage: React.FC = () => {
     const { data, error } = await supabase
       .from("consultation_cases")
       .select("*")
-      .in("work_type", ["registration_insurance", "tire_sales", "finance"])
+      .in("work_type", ["registration_insurance", "tire_sales", "finance", "forklift_sales", "battery_sales"])
       .eq("followup_needed", true)
       .order("next_followup_date", { ascending: true })
       .order("created_at", { ascending: false });
@@ -1134,6 +1404,27 @@ const CallManagementPage: React.FC = () => {
       ].join(" / ");
     }
 
+    if (workType === "forklift_sales") {
+      return [
+        "지게차",
+        customerName.trim() || "고객",
+        formatForkliftCondition(forkliftCondition),
+        formatForkliftType(forkliftType),
+        forkliftTon.trim() || "톤수 미입력",
+      ].join(" / ");
+    }
+
+    if (workType === "battery_sales") {
+      return [
+        "배터리",
+        customerName.trim() || "고객",
+        formatBatteryVehicleType(batteryVehicleType),
+        formatBatteryStatus(batteryStatus),
+        `${batteryVoltage || "-"}V`,
+        `${batteryCapacityAh || "-"}Ah`,
+      ].join(" / ");
+    }
+
     return customerName.trim() || "상담";
   };
 
@@ -1157,6 +1448,10 @@ const CallManagementPage: React.FC = () => {
     setExpandedTireDetail(null);
     setExpandedInsuranceDetail(null);
     setExpandedFinanceDetail(null);
+    setExpandedForkliftDetail(null);
+    setExpandedBatteryDetail(null);
+    setExpandedForkliftDetail(null);
+    setExpandedBatteryDetail(null);
     setDetailError("");
     setListSearchName("");
     setListSearchPhone("");
@@ -1196,6 +1491,8 @@ const CallManagementPage: React.FC = () => {
       await supabase.from("consultation_insurance_details").delete().in("consultation_id", selectedIds);
       await supabase.from("consultation_tire_details").delete().in("consultation_id", selectedIds);
       await supabase.from("consultation_finance_details").delete().in("consultation_id", selectedIds);
+      await supabase.from("consultation_forklift_details").delete().in("consultation_id", selectedIds);
+      await supabase.from("consultation_battery_details").delete().in("consultation_id", selectedIds);
 
       const { error } = await supabase.from("consultation_cases").delete().in("id", selectedIds);
       if (error) throw error;
@@ -1209,6 +1506,8 @@ const CallManagementPage: React.FC = () => {
         setExpandedInsuranceDetail(null);
         setExpandedTireDetail(null);
         setExpandedFinanceDetail(null);
+        setExpandedForkliftDetail(null);
+        setExpandedBatteryDetail(null);
       }
 
       setSelectedIds([]);
@@ -1224,6 +1523,8 @@ const CallManagementPage: React.FC = () => {
       setExpandedTireDetail(null);
       setExpandedInsuranceDetail(null);
       setExpandedFinanceDetail(null);
+      setExpandedForkliftDetail(null);
+      setExpandedBatteryDetail(null);
       setDetailError("");
       return;
     }
@@ -1232,6 +1533,8 @@ const CallManagementPage: React.FC = () => {
     setExpandedTireDetail(null);
     setExpandedInsuranceDetail(null);
     setExpandedFinanceDetail(null);
+    setExpandedForkliftDetail(null);
+    setExpandedBatteryDetail(null);
     setDetailError("");
     setLoadingDetail(true);
 
@@ -1278,6 +1581,36 @@ const CallManagementPage: React.FC = () => {
         return;
       }
       setExpandedFinanceDetail((data || null) as FinanceDetailRow | null);
+    }
+
+    if (row.work_type === "forklift_sales") {
+      const { data, error } = await supabase
+        .from("consultation_forklift_details")
+        .select("*")
+        .eq("consultation_id", row.id)
+        .maybeSingle();
+
+      if (error) {
+        setDetailError(error.message || "지게차 상세 조회 실패");
+        setLoadingDetail(false);
+        return;
+      }
+      setExpandedForkliftDetail((data || null) as ForkliftDetailRow | null);
+    }
+
+    if (row.work_type === "battery_sales") {
+      const { data, error } = await supabase
+        .from("consultation_battery_details")
+        .select("*")
+        .eq("consultation_id", row.id)
+        .maybeSingle();
+
+      if (error) {
+        setDetailError(error.message || "배터리 상세 조회 실패");
+        setLoadingDetail(false);
+        return;
+      }
+      setExpandedBatteryDetail((data || null) as BatteryDetailRow | null);
     }
 
     setLoadingDetail(false);
@@ -1338,7 +1671,7 @@ const CallManagementPage: React.FC = () => {
 
     if (!customerName.trim()) return alert("고객명을 입력해 주세요.");
     if (!phone.trim()) return alert("연락처를 입력해 주세요.");
-    if (!workType) return alert("상단에서 업무유형(보험/타이어/금융)을 선택해 주세요.");
+    if (!workType) return alert("상단에서 업무유형을 선택해 주세요.");
 
     if (
       workType === "registration_insurance" &&
@@ -1356,6 +1689,14 @@ const CallManagementPage: React.FC = () => {
       return alert("금융 상담은 상품을 선택해 주세요.");
     }
 
+    if (workType === "forklift_sales" && !forkliftType) {
+      return alert("지게차 판매는 형식을 선택해 주세요.");
+    }
+
+    if (workType === "battery_sales" && (!batteryVoltage || !batteryCapacityAh)) {
+      return alert("배터리 판매는 전압과 용량을 입력해 주세요.");
+    }
+
     const autoSummary = buildAutoSummary();
     const detailMemoForCase =
       workType === "registration_insurance"
@@ -1364,7 +1705,11 @@ const CallManagementPage: React.FC = () => {
           ? tireNote.trim() || null
           : workType === "finance"
             ? financeNote.trim() || null
-            : null;
+            : workType === "forklift_sales"
+              ? (forkliftNote.trim() || forkliftOptionNote.trim() || null)
+              : workType === "battery_sales"
+                ? batteryNote.trim() || null
+                : null;
 
     const isClosing = isClosingByCurrentForm();
     const casePayload = {
@@ -1417,11 +1762,19 @@ const CallManagementPage: React.FC = () => {
     }
 
     if (editingCaseId) {
-      const deleteTargets = ["consultation_insurance_details", "consultation_tire_details", "consultation_finance_details"].filter(
+      const deleteTargets = [
+        "consultation_insurance_details",
+        "consultation_tire_details",
+        "consultation_finance_details",
+        "consultation_forklift_details",
+        "consultation_battery_details",
+      ].filter(
         (table) =>
           (workType === "registration_insurance" && table !== "consultation_insurance_details") ||
           (workType === "tire_sales" && table !== "consultation_tire_details") ||
-          (workType === "finance" && table !== "consultation_finance_details")
+          (workType === "finance" && table !== "consultation_finance_details") ||
+          (workType === "forklift_sales" && table !== "consultation_forklift_details") ||
+          (workType === "battery_sales" && table !== "consultation_battery_details")
       );
 
       if (deleteTargets.length) {
@@ -1544,15 +1897,15 @@ const CallManagementPage: React.FC = () => {
             {
               consultation_id: savedCaseId,
               finance_category: financeCategory || null,
-            finance_vehicle_model: financeVehicleModel.trim() || null,
-            finance_product: financeProduct || null,
-            finance_company: financeCompany || null,
-            finance_amount: financeAmount ? Number(onlyDigits(financeAmount)) : null,
-            finance_period: financePeriod ? Number(financePeriod) : null,
-            finance_interest_rate: financeInterestRate ? Number(financeInterestRate) : null,
-            finance_incentive: financeIncentive ? Number(financeIncentive) : null,
-            finance_stage: financeStage || null,
-            finance_aftercare: nextFollowupDate ? true : false,
+              finance_vehicle_model: financeVehicleModel.trim() || null,
+              finance_product: financeProduct || null,
+              finance_company: financeCompany || null,
+              finance_amount: financeAmount ? Number(onlyDigits(financeAmount)) : null,
+              finance_period: financePeriod ? Number(financePeriod) : null,
+              finance_interest_rate: financeInterestRate ? Number(financeInterestRate) : null,
+              finance_incentive: financeIncentive ? Number(financeIncentive) : null,
+              finance_stage: financeStage || null,
+              finance_aftercare: nextFollowupDate ? true : false,
               note: financeNote.trim() || null,
             },
           ],
@@ -1561,6 +1914,69 @@ const CallManagementPage: React.FC = () => {
 
       if (financeError) {
         alert(`상담건은 저장되었지만 금융 상세 저장 실패: ${financeError.message}\ncode: ${financeError.code ?? "-"}\ndetails: ${financeError.details ?? "-"}\nhint: ${financeError.hint ?? "-"}`);
+        await fetchConsultations();
+        await fetchFollowups();
+        await fetchInsuranceExpiries();
+        setTab("list");
+        return;
+      }
+    }
+
+    if (workType === "forklift_sales") {
+      const { error: forkliftError } = await supabase
+        .from("consultation_forklift_details")
+        .upsert(
+          [
+            {
+              consultation_id: savedCaseId,
+              forklift_condition: forkliftCondition || null,
+              forklift_type: forkliftType || null,
+              forklift_ton: forkliftTon.trim() || null,
+              forklift_status: forkliftStatus && forkliftStatus !== "cancelled" ? forkliftStatus : null,
+              forklift_option_note: forkliftOptionNote.trim() || null,
+              forklift_sale_method: forkliftSaleMethod || null,
+              note: withStatusMeta(forkliftStatus || "quote", forkliftNote.trim()),
+            },
+          ],
+          { onConflict: "consultation_id" }
+        );
+
+      if (forkliftError) {
+        alert(`상담건은 저장되었지만 지게차 상세 저장 실패: ${forkliftError.message}\ncode: ${forkliftError.code ?? "-"}\ndetails: ${forkliftError.details ?? "-"}\nhint: ${forkliftError.hint ?? "-"}`);
+        await fetchConsultations();
+        await fetchFollowups();
+        await fetchInsuranceExpiries();
+        setTab("list");
+        return;
+      }
+    }
+
+    if (workType === "battery_sales") {
+      const { error: batteryError } = await supabase
+        .from("consultation_battery_details")
+        .upsert(
+          [
+            {
+              consultation_id: savedCaseId,
+              battery_vehicle_type: batteryVehicleType || null,
+              battery_drive_type: batteryDriveType || null,
+                            battery_voltage: batteryVoltage ? Number(batteryVoltage) : null,
+              battery_capacity_ah: batteryCapacityAh ? Number(batteryCapacityAh) : null,
+              battery_total_capacity_kwh: batteryTotalCapacityKwh || null,
+              battery_size_l: batterySizeL ? Number(batterySizeL) : null,
+              battery_due_date: batteryDueDate || null,
+              battery_weight_kg: batteryWeightKg ? Number(batteryWeightKg) : null,
+              battery_expected_price: batteryExpectedPrice ? Math.round(batteryExpectedPrice) : null,
+              battery_unit_price_per_kwh: batteryUnitPricePerKwh ? Number(batteryUnitPricePerKwh) : null,
+              battery_exchange_rate: batteryExchangeRate ? Number(batteryExchangeRate) : null,
+              note: withStatusMeta(batteryStatus || "quote", batteryNote.trim()),
+            },
+          ],
+          { onConflict: "consultation_id" }
+        );
+
+      if (batteryError) {
+        alert(`상담건은 저장되었지만 배터리 상세 저장 실패: ${batteryError.message}\ncode: ${batteryError.code ?? "-"}\ndetails: ${batteryError.details ?? "-"}\nhint: ${batteryError.hint ?? "-"}`);
         await fetchConsultations();
         await fetchFollowups();
         await fetchInsuranceExpiries();
@@ -1724,6 +2140,24 @@ const CallManagementPage: React.FC = () => {
                 onClick={() => setWorkType("finance")}
               >
                 금융
+              </button>
+              <button
+                type="button"
+                className={`${typeBtnBase} ${
+                  workType === "forklift_sales" ? typeBtnActive : typeBtnInactive
+                }`}
+                onClick={() => setWorkType("forklift_sales")}
+              >
+                지게차
+              </button>
+              <button
+                type="button"
+                className={`${typeBtnBase} ${
+                  workType === "battery_sales" ? typeBtnActive : typeBtnInactive
+                }`}
+                onClick={() => setWorkType("battery_sales")}
+              >
+                배터리
               </button>
             </div>
           )}
@@ -2186,6 +2620,308 @@ const CallManagementPage: React.FC = () => {
               </div>
             )}
 
+
+            {workType === "forklift_sales" && (
+              <div className="space-y-4 pt-2">
+                <div className={sectionTitleClass}>지게차 판매 상세</div>
+
+                <div className={grid5Class}>
+                  <div>
+                    <label className={labelClass}>구분</label>
+                    <select
+                      className={controlClass}
+                      value={forkliftCondition}
+                      onChange={(e) => setForkliftCondition(e.target.value)}
+                    >
+                      <option value="">선택</option>
+                      <option value="new">신차</option>
+                      <option value="used">중고</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>형식</label>
+                    <select
+                      className={controlClass}
+                      value={forkliftType}
+                      onChange={(e) => setForkliftType(e.target.value)}
+                    >
+                      <option value="">선택</option>
+                      <option value="diesel">디젤</option>
+                      <option value="electric_seated">전동좌승</option>
+                      <option value="electric_standing">전동입승</option>
+                      <option value="special">특수지게차</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>톤수</label>
+                    <input
+                      type="text"
+                      className={controlClass}
+                      placeholder="예: 2.5 / 3.0"
+                      value={forkliftTon}
+                      onChange={(e) => setForkliftTon(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>상태</label>
+                    <select
+                      className={controlClass}
+                      value={forkliftStatus}
+                      onChange={(e) => setForkliftStatus(e.target.value)}
+                    >
+                      <option value="quote">견적</option>
+                      <option value="proposal">제안</option>
+                      <option value="waiting_payment">결제대기</option>
+                      <option value="delivered">납품</option>
+                      <option value="cancelled">취소</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>판매방식</label>
+                    <select
+                      className={controlClass}
+                      value={forkliftSaleMethod}
+                      onChange={(e) => setForkliftSaleMethod(e.target.value)}
+                    >
+                      <option value="">선택</option>
+                      <option value="cash">현금</option>
+                      <option value="installment">할부금융</option>
+                      <option value="rental">렌탈</option>
+                      <option value="lease">리스</option>
+                    </select>
+                  </div>
+
+                  <div className="md:col-span-2 xl:col-span-2">
+                    <label className={labelClass}>옵션사항</label>
+                    <input
+                      type="text"
+                      className={controlClass}
+                      placeholder="예: 사이드시프트 / 캐빈 / 충전기 포함"
+                      value={forkliftOptionNote}
+                      onChange={(e) => setForkliftOptionNote(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>사후관리 (F/Up)</label>
+                    <input
+                      type="date"
+                      className={controlClass}
+                      value={nextFollowupDate}
+                      onChange={(e) => setNextFollowupDate(e.target.value)}
+                    />
+                    <div className="mt-1 text-xs font-semibold text-gray-500">
+                      {nextFollowupDate ? "대상" : "비대상"}
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className={labelClass}>비고</label>
+                  <textarea
+                    className={textareaClass}
+                    placeholder="브랜드, 거래조건, 인도 일정 등"
+                    value={forkliftNote}
+                    onChange={(e) => setForkliftNote(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+
+            {workType === "battery_sales" && (
+              <div className="space-y-4 pt-2">
+                <div className={sectionTitleClass}>배터리 판매 상세</div>
+
+                <div className={grid5Class}>
+                  <div>
+                    <label className={labelClass}>차종</label>
+                    <select
+                      className={controlClass}
+                      value={batteryVehicleType}
+                      onChange={(e) => setBatteryVehicleType(e.target.value)}
+                    >
+                      <option value="">선택</option>
+                      <option value="forklift">지게차</option>
+                      <option value="awp">고소작업대</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>형식</label>
+                    <select
+                      className={controlClass}
+                      value={batteryDriveType}
+                      onChange={(e) => setBatteryDriveType(e.target.value)}
+                    >
+                      <option value="">선택</option>
+                      <option value="seated">좌승</option>
+                      <option value="standing">입승</option>
+                      <option value="special">특수</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>상태</label>
+                    <select
+                      className={controlClass}
+                      value={batteryStatus}
+                      onChange={(e) => setBatteryStatus(e.target.value)}
+                    >
+                      <option value="quote">견적</option>
+                      <option value="proposal">제안</option>
+                      <option value="waiting_payment">결제대기</option>
+                      <option value="delivered">납품</option>
+                      <option value="cancelled">취소</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>전압</label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        className={`${controlClass} pr-8`}
+                        placeholder="예: 51.2"
+                        value={batteryVoltage}
+                        onChange={(e) => setBatteryVoltage(e.target.value.replace(/[^0-9.]/g, ""))}
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">V</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>용량</label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        className={`${controlClass} pr-10`}
+                        placeholder="예: 150"
+                        value={batteryCapacityAh}
+                        onChange={(e) => setBatteryCapacityAh(e.target.value.replace(/[^0-9.]/g, ""))}
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">Ah</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>전체용량</label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        className={`${controlClass} pr-12 bg-gray-50`}
+                        value={batteryTotalCapacityKwh ? batteryTotalCapacityKwh.toFixed(2) : ""}
+                        readOnly
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">kWh</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>규격 L</label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      className={controlClass}
+                      placeholder="예: 830"
+                      value={batterySizeL}
+                      onChange={(e) => setBatterySizeL(e.target.value.replace(/[^0-9.]/g, ""))}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>희망납기일</label>
+                    <input
+                      type="date"
+                      className={controlClass}
+                      value={batteryDueDate}
+                      onChange={(e) => setBatteryDueDate(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>웨이트</label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        className={`${controlClass} pr-8`}
+                        placeholder="예: 780"
+                        value={batteryWeightKg}
+                        onChange={(e) => setBatteryWeightKg(e.target.value.replace(/[^0-9.]/g, ""))}
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">kg</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>kWh당 단가</label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      className={controlClass}
+                      placeholder="예: 220"
+                      value={batteryUnitPricePerKwh}
+                      onChange={(e) => setBatteryUnitPricePerKwh(e.target.value.replace(/[^0-9.]/g, ""))}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>환율</label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      className={controlClass}
+                      placeholder="예: 1380"
+                      value={batteryExchangeRate}
+                      onChange={(e) => setBatteryExchangeRate(e.target.value.replace(/[^0-9.]/g, ""))}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>예상견적가</label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        className={`${controlClass} pr-10 bg-gray-50`}
+                        value={batteryExpectedPrice ? Math.round(batteryExpectedPrice).toLocaleString("ko-KR") : ""}
+                        readOnly
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">원</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>사후관리 (F/Up)</label>
+                    <input
+                      type="date"
+                      className={controlClass}
+                      value={nextFollowupDate}
+                      onChange={(e) => setNextFollowupDate(e.target.value)}
+                    />
+                    <div className="mt-1 text-xs font-semibold text-gray-500">
+                      {nextFollowupDate ? "대상" : "비대상"}
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className={labelClass}>비고</label>
+                  <textarea
+                    className={textareaClass}
+                    placeholder="규격 특이사항, 설치 조건, 고객 요청사항 등"
+                    value={batteryNote}
+                    onChange={(e) => setBatteryNote(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+
             {workType === "tire_sales" && (
               <div className="space-y-4 pt-2">
                 <div className={sectionTitleClass}>타이어 상세</div>
@@ -2573,6 +3309,8 @@ const CallManagementPage: React.FC = () => {
                     <option value="registration_insurance">보험</option>
                     <option value="tire_sales">타이어</option>
                     <option value="finance">금융</option>
+                    <option value="forklift_sales">지게차</option>
+                    <option value="battery_sales">배터리</option>
                   </select>
                 </div>
 
@@ -2710,7 +3448,9 @@ const CallManagementPage: React.FC = () => {
                               row,
                               insuranceDetailsMap[row.id],
                               tireDetailsMap[row.id],
-                              financeDetailsMap[row.id]
+                              financeDetailsMap[row.id],
+                              forkliftDetailsMap[row.id],
+                              batteryDetailsMap[row.id]
                             ) ? "Y" : "N"}
                           </td>
                           <td className={tdClass}>
@@ -2773,6 +3513,8 @@ const CallManagementPage: React.FC = () => {
                                             setExpandedTireDetail(null);
                                             setExpandedInsuranceDetail(null);
                                             setExpandedFinanceDetail(null);
+                                            setExpandedForkliftDetail(null);
+                                            setExpandedBatteryDetail(null);
                                             setDetailError("");
                                           }}
                                         >
@@ -2831,7 +3573,9 @@ const CallManagementPage: React.FC = () => {
                                                 row,
                                                 expandedInsuranceDetail,
                                                 expandedTireDetail,
-                                                expandedFinanceDetail
+                                                expandedFinanceDetail,
+                                                expandedForkliftDetail,
+                                                expandedBatteryDetail
                                               ) ? "Y" : "N"}
                                             </div>
                                           </div>
@@ -2962,6 +3706,145 @@ const CallManagementPage: React.FC = () => {
                                             </div>
                                           </div>
                                         )}
+
+                                        {expandedForkliftDetail && (
+                                          <div>
+                                            <div className="grid grid-cols-10 gap-1">
+                                              <div>
+                                                <div className={detailLabelClass}>구분</div>
+                                                <div className={detailValueClass}>
+                                                  {formatForkliftCondition(expandedForkliftDetail.forklift_condition)}
+                                                </div>
+                                              </div>
+
+                                              <div>
+                                                <div className={detailLabelClass}>형식</div>
+                                                <div className={detailValueClass}>
+                                                  {formatForkliftType(expandedForkliftDetail.forklift_type)}
+                                                </div>
+                                              </div>
+
+                                              <div>
+                                                <div className={detailLabelClass}>톤수</div>
+                                                <div className={detailValueClass}>
+                                                  {expandedForkliftDetail.forklift_ton || "-"}
+                                                </div>
+                                              </div>
+
+                                              <div>
+                                                <div className={detailLabelClass}>상태</div>
+                                                <div className={detailValueClass}>
+                                                  {formatForkliftStatus(resolvedForkliftStatus(expandedForkliftDetail))}
+                                                </div>
+                                              </div>
+
+                                              <div>
+                                                <div className={detailLabelClass}>판매방식</div>
+                                                <div className={detailValueClass}>
+                                                  {formatForkliftSaleMethod(expandedForkliftDetail.forklift_sale_method)}
+                                                </div>
+                                              </div>
+
+                                              <div className="col-span-2">
+                                                <div className={detailLabelClass}>옵션사항</div>
+                                                <div className={detailValueClass}>
+                                                  {expandedForkliftDetail.forklift_option_note || "-"}
+                                                </div>
+                                              </div>
+
+                                              <div className="col-span-3">
+                                                <div className={detailLabelClass}>비고</div>
+                                                <div className={detailValueClass}>
+                                                  {stripStatusMeta(expandedForkliftDetail.note) || "-"}
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {expandedBatteryDetail && (
+                                          <div>
+                                            <div className="grid grid-cols-10 gap-1">
+                                              <div>
+                                                <div className={detailLabelClass}>차종</div>
+                                                <div className={detailValueClass}>
+                                                  {formatBatteryVehicleType(expandedBatteryDetail.battery_vehicle_type)}
+                                                </div>
+                                              </div>
+
+                                              <div>
+                                                <div className={detailLabelClass}>형식</div>
+                                                <div className={detailValueClass}>
+                                                  {formatBatteryDriveType(expandedBatteryDetail.battery_drive_type)}
+                                                </div>
+                                              </div>
+
+                                              <div>
+                                                <div className={detailLabelClass}>상태</div>
+                                                <div className={detailValueClass}>
+                                                  {formatBatteryStatus(resolvedBatteryStatus(expandedBatteryDetail))}
+                                                </div>
+                                              </div>
+
+                                              <div>
+                                                <div className={detailLabelClass}>전압</div>
+                                                <div className={detailValueClass}>
+                                                  {expandedBatteryDetail.battery_voltage ?? "-"}
+                                                </div>
+                                              </div>
+
+                                              <div>
+                                                <div className={detailLabelClass}>용량</div>
+                                                <div className={detailValueClass}>
+                                                  {expandedBatteryDetail.battery_capacity_ah ?? "-"}
+                                                </div>
+                                              </div>
+
+                                              <div>
+                                                <div className={detailLabelClass}>전체용량</div>
+                                                <div className={detailValueClass}>
+                                                  {expandedBatteryDetail.battery_total_capacity_kwh ?? "-"}
+                                                </div>
+                                              </div>
+
+                                              <div>
+                                                <div className={detailLabelClass}>규격 L</div>
+                                                <div className={detailValueClass}>
+                                                  {expandedBatteryDetail.battery_size_l ?? "-"}
+                                                </div>
+                                              </div>
+
+                                              <div>
+                                                <div className={detailLabelClass}>희망납기일</div>
+                                                <div className={detailValueClass}>
+                                                  {formatDateOnly(expandedBatteryDetail.battery_due_date)}
+                                                </div>
+                                              </div>
+
+                                              <div>
+                                                <div className={detailLabelClass}>웨이트</div>
+                                                <div className={detailValueClass}>
+                                                  {expandedBatteryDetail.battery_weight_kg ?? "-"}
+                                                </div>
+                                              </div>
+
+                                              <div>
+                                                <div className={detailLabelClass}>예상견적가</div>
+                                                <div className={detailValueClass}>
+                                                  {formatAmountDisplay(expandedBatteryDetail.battery_expected_price)}
+                                                </div>
+                                              </div>
+
+                                              <div>
+                                                <div className={detailLabelClass}>비고</div>
+                                                <div className={detailValueClass}>
+                                                  {stripStatusMeta(expandedBatteryDetail.note) || "-"}
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
+
                                       </div>
                                     )}
 
@@ -3223,6 +4106,8 @@ const CallManagementPage: React.FC = () => {
                     <option value="registration_insurance">보험</option>
                     <option value="tire_sales">타이어</option>
                     <option value="finance">금융</option>
+                    <option value="forklift_sales">지게차</option>
+                    <option value="battery_sales">배터리</option>
                   </select>
                 </div>
 
@@ -3347,7 +4232,7 @@ const CallManagementPage: React.FC = () => {
             )}
 
             <div className="text-sm text-gray-600 pt-2">
-              보험 / 타이어 상담 및 사후관리 관리
+              보험 / 타이어 / 금융 / 지게차 / 배터리 상담 및 사후관리 관리
             </div>
           </div>
         )}

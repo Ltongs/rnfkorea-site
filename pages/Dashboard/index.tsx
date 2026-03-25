@@ -404,7 +404,7 @@ const DashboardPage: React.FC = () => {
     const amountSum = (rows: FinanceDetailRow[]) =>
       rows.reduce((sum, row) => sum + safeNumber(row.finance_amount), 0);
     const incentiveSum = (rows: FinanceDetailRow[]) =>
-      rows.reduce((sum, row) => sum + safeNumber(row.finance_incentive), 0);
+      rows.reduce((sum, row) => sum + (safeNumber(row.finance_amount) * safeNumber(row.finance_incentive) / 100), 0);
 
     const monthConfirmedRows = financeMonthRows.filter((row) => row.finance_stage === "confirmed");
     const ytdConfirmedRows = financeDetails.filter((row) => row.finance_stage === "confirmed");
@@ -507,10 +507,7 @@ const DashboardPage: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-      <PageTitle
-        title="운영대시보드"
-        subtitle="월 기준 KPI와 연간 누적 보조지표를 한 화면에서 확인합니다."
-      />
+      <PageTitle title="운영대시보드" />
 
       <div className={cardClass}>
         <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
