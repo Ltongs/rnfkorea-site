@@ -37,6 +37,12 @@ type NarumiTask = {
   customer_phone_set_at?: string | null;
   customer_phone_scrubbed_at?: string | null;
   on_hold?: boolean | null;
+  sales_rep?: string | null;
+  sales_rep_phone?: string | null;
+  vehicle_use_type?: string | null;
+  postal_mail_sent?: boolean | null;
+  postal_tracking_no?: string | null;
+  postal_sent_date?: string | null;
 };
 
 function onlyDigits(s: string) {
@@ -206,7 +212,7 @@ const btnBase =
 const btnOn = "bg-navy-900 text-white border-navy-900";
 const btnOff =
   "bg-white text-navy-900 border-gray-200 hover:border-orange-300 hover:text-orange-600";
-const btnDisabled = "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed";
+const btnDisabled = "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-50";
 
 const labelClass = "text-xs font-extrabold text-gray-500 block mb-2";
 const compactInputClass =
@@ -318,6 +324,9 @@ export default function NarumiPage() {
   const [customerPhone, setCustomerPhone] = useState("");
   const [deliveryText, setDeliveryText] = useState("");
   const [lotte, setLotte] = useState<boolean>(false);
+  const [salesRep, setSalesRep] = useState("");
+  const [salesRepPhone, setSalesRepPhone] = useState("");
+  const [vehicleUseType, setVehicleUseType] = useState<"영업용" | "자가용">("자가용");
   const [specialNote, setSpecialNote] = useState("");
 
   const [manufactureImageFile, setManufactureImageFile] = useState<File | null>(null);
@@ -341,6 +350,10 @@ export default function NarumiPage() {
 
   const [pendingUploadRowId, setPendingUploadRowId] = useState<string | number | null>(null);
   const [insuranceModalRow, setInsuranceModalRow] = useState<NarumiTask | null>(null);
+  const [postalOpenRowId, setPostalOpenRowId] = useState<string | number | null>(null);
+  const [postalTrackingNo, setPostalTrackingNo] = useState("");
+  const [postalSentDate, setPostalSentDate] = useState("");
+  const [postalSavingId, setPostalSavingId] = useState<string | number | null>(null);
 
   const [memoDrafts, setMemoDrafts] = useState<Record<string, string>>({});
   const [memoSavingId, setMemoSavingId] = useState<string | number | null>(null);
@@ -350,6 +363,9 @@ export default function NarumiPage() {
   const [editVin, setEditVin] = useState("");
   const [editCustomerName, setEditCustomerName] = useState("");
   const [editCustomerPhone, setEditCustomerPhone] = useState("");
+  const [editSalesRep, setEditSalesRep] = useState("");
+  const [editSalesRepPhone, setEditSalesRepPhone] = useState("");
+  const [editVehicleUseType, setEditVehicleUseType] = useState<"영업용" | "자가용">("자가용");
   const [editSpecialNote, setEditSpecialNote] = useState("");
 
   const fetchRows = async () => {
@@ -416,6 +432,9 @@ export default function NarumiPage() {
         const nameText = (r.customer_name ?? "").toLowerCase();
         const phoneText = onlyDigits(r.customer_phone ?? "");
         const noteText = (r.special_note ?? "").toLowerCase();
+        const salesRepText = (r.sales_rep ?? "").toLowerCase();
+        const salesRepPhoneText = onlyDigits(r.sales_rep_phone ?? "");
+        const vehicleUseTypeText = (r.vehicle_use_type ?? "").toLowerCase();
         const idText = String(r.id ?? "");
         const qDigits = onlyDigits(q);
         return (
@@ -423,6 +442,9 @@ export default function NarumiPage() {
           nameText.includes(q) ||
           (qDigits ? phoneText.includes(qDigits) : false) ||
           noteText.includes(q) ||
+          salesRepText.includes(q) ||
+          vehicleUseTypeText.includes(q) ||
+          (qDigits ? salesRepPhoneText.includes(qDigits) : false) ||
           idText.includes(q)
         );
       });
@@ -480,6 +502,9 @@ export default function NarumiPage() {
     setCustomerPhone("");
     setDeliveryText("");
     setLotte(false);
+    setSalesRep("");
+    setSalesRepPhone("");
+    setVehicleUseType("자가용");
     setSpecialNote("");
     setManufactureImageFile(null);
     if (manufactureInputRef.current) manufactureInputRef.current.value = "";
@@ -495,6 +520,9 @@ export default function NarumiPage() {
     setEditVin(row.vin ?? "");
     setEditCustomerName(row.customer_name ?? "");
     setEditCustomerPhone(formatPhoneKR(row.customer_phone ?? ""));
+    setEditSalesRep(row.sales_rep ?? "");
+    setEditSalesRepPhone(formatPhoneKR(row.sales_rep_phone ?? ""));
+    setEditVehicleUseType(row.vehicle_use_type === "영업용" ? "영업용" : "자가용");
     setEditSpecialNote(row.special_note ?? "");
   };
 
@@ -504,6 +532,9 @@ export default function NarumiPage() {
     setEditVin("");
     setEditCustomerName("");
     setEditCustomerPhone("");
+    setEditSalesRep("");
+    setEditSalesRepPhone("");
+    setEditVehicleUseType("자가용");
     setEditSpecialNote("");
   };
 
@@ -538,6 +569,8 @@ export default function NarumiPage() {
     const dtTrim = deliveryText.trim();
     const nameTrim = customerName.trim();
     const phoneTrim = customerPhone.trim();
+    const salesRepTrim = salesRep.trim();
+    const salesRepPhoneTrim = salesRepPhone.trim();
 
     if (!vinTrim) {
       alert("차대번호를 입력해주세요.");
@@ -553,6 +586,14 @@ export default function NarumiPage() {
     }
     if (dtTrim.length !== 10) {
       alert("출고일자는 YYYY.MM.DD 형식으로 입력해주세요. (예: 2026.02.25)");
+      return;
+    }
+    if (!salesRepTrim) {
+      alert("영업사원을 입력해주세요.");
+      return;
+    }
+    if (!salesRepPhoneTrim) {
+      alert("영업사원 연락처를 입력해주세요.");
       return;
     }
 
@@ -581,6 +622,9 @@ export default function NarumiPage() {
         special_note: specialNote.trim() || null,
         customer_name: nameTrim,
         customer_phone: phoneTrim,
+        sales_rep: salesRepTrim,
+        sales_rep_phone: salesRepPhoneTrim,
+        vehicle_use_type: vehicleUseType,
         customer_phone_set_at: new Date().toISOString(),
         customer_phone_scrubbed_at: null,
         on_hold: false,
@@ -767,6 +811,112 @@ export default function NarumiPage() {
     setInsuranceModalRow(null);
   };
 
+  const openPostalForm = (row: NarumiTask) => {
+    if (!canChangeStatus) {
+      alert("우편발송 변경 권한이 없습니다.");
+      return;
+    }
+    if (!row.is_registered) {
+      alert("등록완료 상태에서만 우편발송을 입력할 수 있습니다.");
+      return;
+    }
+
+    setPostalOpenRowId(row.id);
+    setPostalTrackingNo(row.postal_tracking_no ?? "");
+    setPostalSentDate(
+      row.postal_sent_date ??
+        new Date(Date.now() - new Date().getTimezoneOffset() * 60 * 1000)
+          .toISOString()
+          .slice(0, 10)
+    );
+  };
+
+  const closePostalForm = () => {
+    setPostalOpenRowId(null);
+    setPostalTrackingNo("");
+    setPostalSentDate("");
+  };
+
+  const savePostalInfo = async (row: NarumiTask) => {
+    if (!canChangeStatus) {
+      alert("우편발송 저장 권한이 없습니다.");
+      return;
+    }
+    if (!row.is_registered) {
+      alert("등록완료 상태에서만 우편발송을 저장할 수 있습니다.");
+      return;
+    }
+
+    const tracking = postalTrackingNo.trim();
+    const sentDate = postalSentDate.trim();
+
+    if (!tracking) {
+      return;
+    }
+    if (!sentDate) {
+      return;
+    }
+
+    setPostalSavingId(row.id);
+    try {
+      const patch = {
+        postal_mail_sent: true,
+        postal_tracking_no: tracking,
+        postal_sent_date: sentDate,
+      };
+
+      const { error } = await supabase
+        .from("narumi_tasks")
+        .update(patch)
+        .eq("id", row.id as any);
+
+      if (error) throw error;
+
+      setRows((prev) =>
+        prev.map((rr) =>
+          String(rr.id) === String(row.id)
+            ? { ...rr, ...patch }
+            : rr
+        )
+      );
+
+      closePostalForm();
+    } catch (e: any) {
+      alert(e?.message || "우편발송 저장 실패");
+    } finally {
+      setPostalSavingId(null);
+    }
+  };
+
+  const openPostalTrackingLookup = async (trackingNo: string) => {
+    const trimmed = (trackingNo ?? "").trim();
+    if (!trimmed) {
+      return;
+    }
+
+    const normalized = onlyDigits(trimmed);
+    const lookupUrl = "https://service.epost.go.kr/iservice/usr/trace/usrtrc001k01.jsp";
+
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(normalized || trimmed);
+      }
+    } catch {
+      // ignore clipboard errors and continue
+    }
+
+    const popup = window.open("", "_blank");
+    if (popup) {
+      popup.opener = null;
+      popup.location.href = lookupUrl;
+    } else {
+      window.location.href = lookupUrl;
+    }
+
+    alert(
+    );
+  };
+
   const toggleHold = async (row: NarumiTask) => {
     if (!canChangeStatus) {
       alert("보류 변경 권한이 없습니다.");
@@ -834,6 +984,7 @@ export default function NarumiPage() {
       const idText = String(row.id);
       const ext = extFromName(file.name) || "bin";
       const path = `${idText}/vehicle_registration.${ext}`;
+      const prevManufactureDocPath = row.manufacture_doc_path ?? null;
 
       const { error: upErr } = await supabase.storage
         .from("vehicle_docs")
@@ -841,17 +992,28 @@ export default function NarumiPage() {
 
       if (upErr) throw upErr;
 
+      if (prevManufactureDocPath) {
+        const { error: removeErr } = await supabase.storage
+          .from("vehicle_docs")
+          .remove([prevManufactureDocPath]);
+
+        if (removeErr) throw removeErr;
+      }
+
       const nextStatus = "completed" as TaskStatus;
 
       const { error: dbErr } = await supabase
         .from("narumi_tasks")
-        .update({ vehicle_doc_path: path, status: nextStatus })
+        .update({
+          vehicle_doc_path: path,
+          manufacture_doc_path: null,
+          status: nextStatus,
+        })
         .eq("id", row.id as any);
 
       if (dbErr) throw dbErr;
 
       await fetchRows();
-      alert("차량등록증 업로드 완료. 업로드 후에는 단계 변경이 잠금됩니다.");
     } catch (e: any) {
       alert(e?.message || "차량등록증 업로드 실패");
     } finally {
@@ -915,7 +1077,6 @@ export default function NarumiPage() {
 
   const viewManufactureDoc = async (row: NarumiTask) => {
     if (!isAdmin) {
-      alert("제작증 보기 권한은 관리자만 가능합니다.");
       return;
     }
 
@@ -973,6 +1134,8 @@ export default function NarumiPage() {
     const nextVin = normalizeVin(editVin);
     const nextName = editCustomerName.trim();
     const nextPhone = formatPhoneKR(editCustomerPhone).trim();
+    const nextSalesRep = editSalesRep.trim();
+    const nextSalesRepPhone = formatPhoneKR(editSalesRepPhone).trim();
     const nextNote = editSpecialNote.trim();
 
     if (!nextVin) {
@@ -985,6 +1148,14 @@ export default function NarumiPage() {
     }
     if (!nextPhone) {
       alert("전화번호를 입력해주세요.");
+      return;
+    }
+    if (!nextSalesRep) {
+      alert("영업사원을 입력해주세요.");
+      return;
+    }
+    if (!nextSalesRepPhone) {
+      alert("영업사원 연락처를 입력해주세요.");
       return;
     }
 
@@ -1018,6 +1189,9 @@ VIN: ${nextVin}`);
       const patch: Partial<NarumiTask> & Record<string, any> = {
         customer_name: nextName,
         customer_phone: nextPhone,
+        sales_rep: nextSalesRep,
+        sales_rep_phone: nextSalesRepPhone,
+        vehicle_use_type: editVehicleUseType,
         special_note: nextNote || null,
       };
 
@@ -1086,7 +1260,6 @@ VIN: ${nextVin}`);
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      alert("제작증은 이미지 파일만 첨부 가능합니다.");
       e.target.value = "";
       return;
     }
@@ -1180,7 +1353,6 @@ VIN: ${nextVin}`);
             신규 입력
           </div>
           <div className="text-sm text-gray-500 mt-1">
-            차대번호, 고객명, 제작증, 전화번호, 출고일자 등을 입력합니다.
           </div>
         </div>
       </div>
@@ -1236,9 +1408,9 @@ VIN: ${nextVin}`);
       </div>
 
       {/* 2행 */}
-      <div className="grid md:grid-cols-3 gap-3 items-start">
+      <div className="grid md:grid-cols-2 xl:grid-cols-6 gap-3 items-start">
         <div>
-          <label className={labelClass}>제작증 이미지</label>
+          <label className={labelClass}>제작증</label>
           <input
             ref={manufactureInputRef}
             type="file"
@@ -1252,7 +1424,7 @@ VIN: ${nextVin}`);
             disabled={!canCreate}
             className={compactButtonClass}
           >
-            {manufactureImageFile ? "제작증 변경" : "제작증 첨부"}
+            {manufactureImageFile ? "첨부됨" : "제작증 첨부"}
           </button>
 
           {manufactureImageFile && (
@@ -1309,6 +1481,42 @@ VIN: ${nextVin}`);
             </label>
           </div>
         </div>
+
+        <div>
+          <label className={labelClass}>영업사원 *</label>
+          <input
+            value={salesRep}
+            onChange={(e) => setSalesRep(e.target.value)}
+            placeholder="예: 홍길동"
+            className={compactInputClass}
+            disabled={!canCreate}
+          />
+        </div>
+
+        <div>
+          <label className={labelClass}>영업사원 연락처 *</label>
+          <input
+            value={salesRepPhone}
+            onChange={(e) => setSalesRepPhone(formatPhoneKR(e.target.value))}
+            placeholder="010-1234-5678"
+            inputMode="tel"
+            className={compactInputClass}
+            disabled={!canCreate}
+          />
+        </div>
+
+        <div>
+          <label className={labelClass}>용도 구분 *</label>
+          <select
+            value={vehicleUseType}
+            onChange={(e) => setVehicleUseType(e.target.value as "영업용" | "자가용")}
+            className={compactInputClass}
+            disabled={!canCreate}
+          >
+            <option value="영업용">영업용</option>
+            <option value="자가용">자가용</option>
+          </select>
+        </div>
       </div>
 
       {/* 3행 */}
@@ -1364,7 +1572,7 @@ VIN: ${nextVin}`);
                         조회 / 검색
                       </div>
                       <div className="text-sm text-gray-500 mt-1">
-고객명, VIN, 전화번호, 특이사항, ID 검색
+고객명, VIN, 전화번호, 영업사원, 특이사항, ID 검색
                       </div>
                     </div>
                   </div>
@@ -1387,7 +1595,7 @@ VIN: ${nextVin}`);
                       <input
                         value={searchText}
                         onChange={(e) => setSearchText(e.target.value)}
-                        placeholder="고객명 / VIN / 전화번호 / 특이사항 / ID"
+                        placeholder="고객명 / VIN / 전화번호 / 영업사원 / 특이사항 / ID"
                         className={compactInputClass}
                       />
                     </div>
@@ -1573,6 +1781,10 @@ VIN: ${nextVin}`);
             const displayPhone = getDisplayPhone(r);
             const dialablePhone = getDialablePhone(r);
             const canDialNow = isMobileDevice() && !maskedPhone && !!dialablePhone;
+            const isPostalMode = !!r.is_registered;
+            const postalSaved = !!r.postal_mail_sent;
+            const hasPostalInfo = !!((r.postal_tracking_no ?? "").trim() || (r.postal_sent_date ?? "").trim());
+            const postalFormOpen = String(postalOpenRowId) === String(r.id);
 
             return (
               <div key={String(r.id)} className="overflow-x-auto">
@@ -1641,7 +1853,7 @@ VIN: ${nextVin}`);
                                 {displayPhone}
                               </a>
                             ) : (
-                              <span className={maskedPhone ? "text-gray-400 cursor-not-allowed select-none" : undefined}>
+                              <span className={maskedPhone ? "text-gray-400 cursor-not-allowed text-gray-500 bg-gray-50 select-none" : undefined}>
                                 {displayPhone}
                               </span>
                             )}
@@ -1667,27 +1879,23 @@ VIN: ${nextVin}`);
                         </div>
 
                         <div>
-                          <div className={infoLabel}>생성일시</div>
-                          <div className={infoValue}>{formatCreatedAt(r.created_at)}</div>
-                        </div>
-
-                        <div>
                           <div className={infoLabel}>롯데오토리스</div>
                           <div className={infoValue}>{r.is_lotte_autolease ? "Y" : "N"}</div>
                         </div>
 
                         <div>
-                          <div className={infoLabel}>제작증</div>
-                          <div className={infoValue}>{hasManufactureDoc ? "첨부됨" : "-"}</div>
-                          <button
-                            type="button"
-                            disabled={!canEditExisting}
-                            className={`mt-2 h-[34px] min-w-[88px] inline-flex items-center justify-center rounded-lg px-3 text-xs font-extrabold border transition-all ${canEditExisting ? btnOff : btnDisabled}`}
-                            onClick={() => openEditModal(r)}
-                            title={canEditExisting ? "기본정보 수정" : "수정 권한 없음"}
-                          >
-                            수정
-                          </button>
+                          <div className={infoLabel}>영업사원</div>
+                          <div className={infoValue}>{r.sales_rep || "-"}</div>
+                        </div>
+
+                        <div>
+                          <div className={infoLabel}>영업사원 연락처</div>
+                          <div className={infoValue}>{r.sales_rep_phone || "-"}</div>
+                        </div>
+
+                        <div>
+                          <div className={infoLabel}>영업용/자가용</div>
+                          <div className={infoValue}>{r.vehicle_use_type || "-"}</div>
                         </div>
                       </div>
                     </div>
@@ -1749,15 +1957,21 @@ VIN: ${nextVin}`);
 
                           <button
                             type="button"
-                            disabled={!vehicleDocCanUpload || uploadingId === r.id || locked || held}
+                            disabled={false}
                             className={[
                               btnBase,
-                              hasVehicleDoc ? btnOn : btnOff,
                               (!vehicleDocCanUpload || uploadingId === r.id || locked || held) && !hasVehicleDoc
-                                ? btnDisabled
-                                : "",
+                                ? "bg-gray-50 text-gray-500 border-gray-200"
+                                : hasVehicleDoc
+                                  ? btnOn
+                                  : btnOff,
                             ].join(" ")}
-                            onClick={() => onClickVehicleDocUpload(r)}
+                            style={
+                              (!vehicleDocCanUpload || uploadingId === r.id || locked || held) && !hasVehicleDoc
+                                ? { color: "#6b7280", backgroundColor: "#f9fafb", borderColor: "#e5e7eb" }
+                                : undefined
+                            }
+                            onClick={() => { if (!vehicleDocCanUpload || uploadingId === r.id || locked || held) return; onClickVehicleDocUpload(r); }}
                             title={
                               hasVehicleDoc
                                 ? "업로드 완료"
@@ -1772,11 +1986,7 @@ VIN: ${nextVin}`);
                                         : "차량등록증 업로드"
                             }
                           >
-                            {uploadingId === r.id
-                              ? "업로드중…"
-                              : hasVehicleDoc
-                                ? "등록증"
-                                : "등록증"}
+                            등록증
                           </button>
 
                           <button
@@ -1791,37 +2001,100 @@ VIN: ${nextVin}`);
 
                           <button
                             type="button"
-                            disabled={!hasManufactureDoc || !isAdmin}
+                            disabled={false}
                             className={[
                               btnBase,
-                              hasManufactureDoc && isAdmin ? btnOff : btnDisabled,
+                              hasManufactureDoc && isAdmin && !locked ? btnOff : btnDisabled,
                             ].join(" ")}
-                            onClick={() => viewManufactureDoc(r)}
+                            onClick={() => { if (!hasManufactureDoc || !isAdmin || locked) return; viewManufactureDoc(r); }}
                           >
-                            제작증 보기
+                            제작증
                           </button>
 
                           <button
                             type="button"
-                            disabled={locked || !canChangeStatus}
+                            disabled={isPostalMode ? !canChangeStatus : locked || !canChangeStatus}
                             className={[
                               btnBase,
-                              locked || !canChangeStatus
-                                ? btnDisabled
-                                : held
-                                  ? "bg-slate-700 text-white border-slate-700"
-                                  : "bg-white text-slate-700 border-slate-300 hover:border-slate-500",
+                              isPostalMode
+                                ? !canChangeStatus
+                                  ? btnDisabled
+                                  : btnOff
+                                : locked || !canChangeStatus
+                                  ? btnDisabled
+                                  : held
+                                    ? "bg-slate-700 text-white border-slate-700"
+                                    : "bg-white text-slate-700 border-slate-300 hover:border-slate-500",
                             ].join(" ")}
-                            onClick={() => toggleHold(r)}
-                            title={held ? "보류 해제" : "등록업무 보류"}
+                            onClick={() => (isPostalMode ? openPostalForm(r) : toggleHold(r))}
+                            title={
+                              isPostalMode
+                                ? hasPostalInfo
+                                  ? "우편발송 정보를 조회/수정"
+                                  : "우편발송 정보 입력"
+                                : held
+                                  ? "보류 해제"
+                                  : "등록업무 보류"
+                            }
                           >
-                            {held ? "해제" : "보류"}
+                            {isPostalMode ? (hasPostalInfo ? "우편조회" : "우편발송") : held ? "해제" : "보류"}
                           </button>
                         </div>
                       </div>
 
+                      {postalFormOpen && (
+                        <div className="rounded-xl border border-orange-200 bg-orange-50/50 px-3 py-3">
+                          <div className="grid grid-cols-1 md:grid-cols-[1.5fr_1fr_auto_auto_auto] gap-2 items-end">
+                            <div>
+                              <input
+                                value={postalTrackingNo}
+                                onChange={(e) => setPostalTrackingNo(e.target.value)}
+                                className={compactInputClass}
+                              />
+                            </div>
+
+                            <div>
+                              <input
+                                type="date"
+                                value={postalSentDate}
+                                onChange={(e) => setPostalSentDate(e.target.value)}
+                                className={compactInputClass}
+                              />
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                openPostalTrackingLookup(postalTrackingNo);
+                              }}
+                              className="h-[44px] px-4 rounded-lg border border-gray-200 bg-white text-sm font-extrabold text-navy-900 hover:border-orange-300"
+                            >
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => savePostalInfo(r)}
+                              disabled={postalSavingId === r.id}
+                              className="h-[44px] px-4 rounded-lg bg-orange-500 text-white text-sm font-extrabold hover:bg-orange-600 disabled:opacity-60"
+                            >
+                              {postalSavingId === r.id ? "저장중..." : "저장"}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={closePostalForm}
+                              disabled={postalSavingId === r.id}
+                              className="h-[44px] px-4 rounded-lg border border-gray-200 bg-white text-sm font-extrabold text-gray-700 hover:border-gray-300 disabled:opacity-60"
+                            >
+                              취소
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="text-xs text-gray-400 leading-relaxed break-keep">
-                        * 등록완료까지 처리된 후 차량등록증 업로드 가능 / * 업로드 완료 후 단계 변경 불가 / * 제작증 보기는 관리자 전용이며 모바일에서도 현재 창에서 바로 열립니다. / * 보류 건은 단계 카운팅에서 제외되며 보류 해제 시 다시 업무 대상에 포함됩니다.
                         {!canEditExisting && (
                           <span> / * 현재 계정은 기존 데이터 상태 변경 권한이 없습니다.</span>
                         )}
@@ -1894,7 +2167,7 @@ VIN: ${nextVin}`);
               <div>
                 <div className="text-lg font-extrabold text-navy-900">기본정보 수정</div>
                 <div className="mt-1 text-sm text-gray-500">
-                  차대번호, 고객명, 전화번호, 특이사항을 수정합니다.
+                  차대번호, 고객명, 전화번호, 영업사원 정보, 특이사항을 수정합니다.
                 </div>
               </div>
 
@@ -1947,6 +2220,42 @@ VIN: ${nextVin}`);
                 <div className="mt-1 text-xs text-gray-400">
                   전화번호 변경 시 마스킹 기준시간이 다시 시작됩니다.
                 </div>
+              </div>
+
+              <div>
+                <label className={labelClass}>영업사원 *</label>
+                <input
+                  value={editSalesRep}
+                  onChange={(e) => setEditSalesRep(e.target.value)}
+                  className={compactInputClass}
+                  disabled={editSaving}
+                  placeholder="예: 홍길동"
+                />
+              </div>
+
+              <div>
+                <label className={labelClass}>영업사원 연락처 *</label>
+                <input
+                  value={editSalesRepPhone}
+                  onChange={(e) => setEditSalesRepPhone(formatPhoneKR(e.target.value))}
+                  className={compactInputClass}
+                  disabled={editSaving}
+                  inputMode="tel"
+                  placeholder="010-1234-5678"
+                />
+              </div>
+
+              <div>
+                <label className={labelClass}>용도 구분 *</label>
+                <select
+                  value={editVehicleUseType}
+                  onChange={(e) => setEditVehicleUseType(e.target.value as "영업용" | "자가용")}
+                  className={compactInputClass}
+                  disabled={editSaving}
+                >
+                  <option value="영업용">영업용</option>
+                  <option value="자가용">자가용</option>
+                </select>
               </div>
 
               <div>

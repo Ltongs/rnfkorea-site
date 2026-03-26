@@ -1648,12 +1648,20 @@ const CallManagementPage: React.FC = () => {
     if (appliedNarumiPrefillRef.current === payloadKey) return;
     appliedNarumiPrefillRef.current = payloadKey;
 
+    const prefillCustomerName =
+      payload.customerName ||
+      payload.customer_name ||
+      payload.name ||
+      payload.customer ||
+      "";
+
     setTab("new");
     setEditingCaseId(null);
     setWorkType("registration_insurance");
     setCallDatetime(payload.callDatetime || new Date().toISOString().slice(0, 10));
+    setCustomerName(prefillCustomerName);
     setPhone(formatPhoneInput(payload.phone || ""));
-    setInsuranceVehicleNo(payload.vehicleNo || "");
+    setInsuranceVehicleNo(payload.vehicleNo || payload.vehicle_no || payload.vin || "");
     setDesignRequested(false);
     setApplicationIssued(false);
     setPaymentCompleted(false);
