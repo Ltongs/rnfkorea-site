@@ -17,6 +17,7 @@ type AuthContextType = {
   isAdmin: boolean;
   isNarumi: boolean;
   isLotte: boolean;
+  isInsuranceManager: boolean;
   isInternal: boolean;
 
   // page permissions
@@ -45,34 +46,43 @@ function getRoleFlags(emailRaw?: string | null) {
   const isAdmin = email === "admin@rnfkorea.co.kr";
   const isNarumi = email.endsWith("@narmimotors.com");
   const isLotte = email.endsWith("@lotte.net");
+  const isInsuranceManager = email === "inhyang1004@hanmail.net";
 
-  const isInternal = isAdmin || isNarumi || isLotte;
+  const isInternal = isAdmin || isNarumi || isLotte || isInsuranceManager;
 
   return {
     email,
     isAdmin,
     isNarumi,
     isLotte,
+    isInsuranceManager,
     isInternal,
   };
 }
 
 function getPermissions(emailRaw?: string | null) {
-  const { isAdmin, isNarumi, isLotte, isInternal } = getRoleFlags(emailRaw);
+  const {
+    isAdmin,
+    isNarumi,
+    isLotte,
+    isInsuranceManager,
+    isInternal,
+  } = getRoleFlags(emailRaw);
 
   return {
     isAdmin,
     isNarumi,
     isLotte,
+    isInsuranceManager,
     isInternal,
 
     canViewAll: isInternal,
-    canCreate: isAdmin || isNarumi,
-    canEditExisting: isAdmin,
-    canDelete: isAdmin,
-    canChangeStatus: isAdmin,
-    canEditMemo: isAdmin,
-    canUploadVehicleDoc: isAdmin,
+    canCreate: isAdmin || isNarumi || isInsuranceManager,
+    canEditExisting: isAdmin || isInsuranceManager,
+    canDelete: isAdmin || isInsuranceManager,
+    canChangeStatus: isAdmin || isInsuranceManager,
+    canEditMemo: isAdmin || isInsuranceManager,
+    canUploadVehicleDoc: isAdmin || isInsuranceManager,
   };
 }
 
@@ -150,6 +160,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAdmin: permissionState.isAdmin,
       isNarumi: permissionState.isNarumi,
       isLotte: permissionState.isLotte,
+      isInsuranceManager: permissionState.isInsuranceManager,
       isInternal: permissionState.isInternal,
 
       canViewAll: permissionState.canViewAll,

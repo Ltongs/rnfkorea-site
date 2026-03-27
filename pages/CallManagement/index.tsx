@@ -373,8 +373,10 @@ function deriveNarumiInsuranceStatus(row: {
 }
 
 const CallManagementPage: React.FC = () => {
-  const { user, loading, isAdmin } = useAuth() as any;
+  const { user, loading, isAdmin, isInsuranceManager } = useAuth() as any;
   const location = useLocation();
+  const canAccessConsulting = isAdmin || isInsuranceManager;
+  const insuranceOnlyScope = isInsuranceManager && !isAdmin;
 
   const [tab, setTab] = useState<TabKey>("new");
   const newFormTopRef = useRef<HTMLFormElement | null>(null);
@@ -1214,7 +1216,7 @@ const CallManagementPage: React.FC = () => {
     const { data, error } = await supabase
       .from("consultation_cases")
       .select("*")
-      .in("work_type", ["registration_insurance", "tire_sales", "finance", "forklift_sales", "battery_sales"])
+      .in("work_type", insuranceOnlyScope ? ["registration_insurance"] : ["registration_insurance", "tire_sales", "finance", "forklift_sales", "battery_sales"])
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -1301,7 +1303,7 @@ const CallManagementPage: React.FC = () => {
     const { data, error } = await supabase
       .from("consultation_cases")
       .select("*")
-      .in("work_type", ["registration_insurance", "tire_sales", "finance", "forklift_sales", "battery_sales"])
+      .in("work_type", insuranceOnlyScope ? ["registration_insurance"] : ["registration_insurance", "tire_sales", "finance", "forklift_sales", "battery_sales"])
       .eq("followup_needed", true)
       .order("next_followup_date", { ascending: true })
       .order("created_at", { ascending: false });
@@ -1617,17 +1619,23 @@ const CallManagementPage: React.FC = () => {
   };
 
   useEffect(() => {
-    if (user && isAdmin) {
+    if (user && canAccessConsulting) {
       fetchConsultations();
       fetchInsuranceExpiries();
     }
-  }, [user, isAdmin]);
+  }, [user, canAccessConsulting]);
 
   useEffect(() => {
-    if (user && isAdmin && tab === "followups") {
+    if (user && canAccessConsulting && tab === "followups") {
       fetchFollowups();
     }
-  }, [tab, user, isAdmin]);
+  }, [tab, user, canAccessConsulting]);
+
+  useEffect(() => {
+    if (insuranceOnlyScope && workType !== "registration_insurance") {
+      setWorkType("registration_insurance");
+    }
+  }, [insuranceOnlyScope, workType]);
 
   useEffect(() => {
     if (insuranceType === "automobile" && insuranceStartDate) {
@@ -2070,7 +2078,7 @@ const CallManagementPage: React.FC = () => {
     return <Navigate to="/narumi/login" replace state={{ from: location.pathname }} />;
   }
 
-  if (!isAdmin) {
+  if (!canAccessConsulting) {
     return (
       <div className="container mx-auto px-4 py-12">
         <div className="max-w-xl mx-auto border border-red-200 bg-red-50 rounded-2xl p-6">
@@ -2078,7 +2086,7 @@ const CallManagementPage: React.FC = () => {
             접근 권한이 없습니다.
           </div>
           <div className="text-sm text-red-700 leading-relaxed">
-            상담관리 페이지는 admin@rnfkorea.co.kr 계정만 접근할 수 있습니다.
+            상담관리 페이지는 허용된 계정만 접근할 수 있습니다.
           </div>
         </div>
       </div>
@@ -2131,42 +2139,50 @@ const CallManagementPage: React.FC = () => {
               >
                 보험
               </button>
-              <button
-                type="button"
-                className={`${typeBtnBase} ${
-                  workType === "tire_sales" ? typeBtnActive : typeBtnInactive
-                }`}
-                onClick={() => setWorkType("tire_sales")}
-              >
-                타이어
-              </button>
-              <button
-                type="button"
-                className={`${typeBtnBase} ${
-                  workType === "finance" ? typeBtnActive : typeBtnInactive
-                }`}
-                onClick={() => setWorkType("finance")}
-              >
-                금융
-              </button>
-              <button
-                type="button"
-                className={`${typeBtnBase} ${
-                  workType === "forklift_sales" ? typeBtnActive : typeBtnInactive
-                }`}
-                onClick={() => setWorkType("forklift_sales")}
-              >
-                지게차
-              </button>
-              <button
-                type="button"
-                className={`${typeBtnBase} ${
-                  workType === "battery_sales" ? typeBtnActive : typeBtnInactive
-                }`}
-                onClick={() => setWorkType("battery_sales")}
-              >
-                배터리
-              </button>
+              {!insuranceOnlyScope && (
+                <button
+                  type="button"
+                  className={`${typeBtnBase} ${
+                    workType === "tire_sales" ? typeBtnActive : typeBtnInactive
+                  }`}
+                  onClick={() => setWorkType("tire_sales")}
+                >
+                  타이어
+                </button>
+              )}
+              {!insuranceOnlyScope && (
+                <button
+                  type="button"
+                  className={`${typeBtnBase} ${
+                    workType === "finance" ? typeBtnActive : typeBtnInactive
+                  }`}
+                  onClick={() => setWorkType("finance")}
+                >
+                  금융
+                </button>
+              )}
+              {!insuranceOnlyScope && (
+                <button
+                  type="button"
+                  className={`${typeBtnBase} ${
+                    workType === "forklift_sales" ? typeBtnActive : typeBtnInactive
+                  }`}
+                  onClick={() => setWorkType("forklift_sales")}
+                >
+                  지게차
+                </button>
+              )}
+              {!insuranceOnlyScope && (
+                <button
+                  type="button"
+                  className={`${typeBtnBase} ${
+                    workType === "battery_sales" ? typeBtnActive : typeBtnInactive
+                  }`}
+                  onClick={() => setWorkType("battery_sales")}
+                >
+                  배터리
+                </button>
+              )}
             </div>
           )}
         </div>

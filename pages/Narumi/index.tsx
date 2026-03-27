@@ -310,6 +310,7 @@ export default function NarumiPage() {
     isAdmin,
     isNarumi,
     isLotte,
+    isInsuranceManager,
     canViewAll,
     canCreate,
     canEditExisting,
@@ -318,6 +319,7 @@ export default function NarumiPage() {
     canUploadVehicleDoc,
   } = useAuth() as any;
   const navigate = useNavigate();
+  const isPrivilegedManager = isAdmin || isInsuranceManager;
 
   const [vin, setVin] = useState("");
   const [customerName, setCustomerName] = useState("");
@@ -379,7 +381,7 @@ export default function NarumiPage() {
 
       let q = supabase.from("narumi_tasks").select("*");
 
-      if (isAdmin) {
+      if (isPrivilegedManager) {
         if (!showOldUploaded) {
           q = q.or(`vehicle_doc_path.is.null,created_at.gte.${cutoffISO}`);
         }
@@ -416,7 +418,7 @@ export default function NarumiPage() {
   useEffect(() => {
     fetchRows();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showOldUploaded, isAdmin, isNarumi, isLotte]);
+  }, [showOldUploaded, isPrivilegedManager, isNarumi, isLotte]);
 
   const searchedRows = useMemo(() => {
     let result = [...rows];
@@ -1076,7 +1078,7 @@ export default function NarumiPage() {
   };
 
   const viewManufactureDoc = async (row: NarumiTask) => {
-    if (!isAdmin) {
+    if (!isPrivilegedManager) {
       return;
     }
 
@@ -1162,8 +1164,8 @@ export default function NarumiPage() {
     try {
       setEditSaving(true);
 
-      if (!isAdmin && nextVin !== normalizeVin(editRow.vin ?? "")) {
-        alert("차대번호는 관리자만 수정할 수 있습니다.");
+      if (!isPrivilegedManager && nextVin !== normalizeVin(editRow.vin ?? "")) {
+        alert("차대번호는 관리자/보험전담 계정만 수정할 수 있습니다.");
         return;
       }
 
@@ -1195,7 +1197,7 @@ VIN: ${nextVin}`);
         special_note: nextNote || null,
       };
 
-      if (isAdmin) {
+      if (isPrivilegedManager) {
         patch.vin = nextVin;
         patch.vin_last6 = vinLast6(nextVin);
       }
@@ -1269,10 +1271,11 @@ VIN: ${nextVin}`);
 
   const loginRoleLabel = useMemo(() => {
     if (isAdmin) return "관리자";
+    if (isInsuranceManager) return "보험전담";
     if (isNarumi) return "나르미모터스";
     if (isLotte) return "롯데오토리스 조회";
     return "일반";
-  }, [isAdmin, isNarumi, isLotte]);
+  }, [isAdmin, isInsuranceManager, isNarumi, isLotte]);
 
   return (
     <div className="container mx-auto px-4 py-10 space-y-6">
@@ -1291,7 +1294,7 @@ VIN: ${nextVin}`);
               <br />
               * 고객 전화번호는 입력 후 {DB_SCRUB_AFTER_HOURS}시간(5일) 경과 시 DB에서 뒷 4자리가 영구 마스킹(삭제)됩니다.
               <br />
-              * 차량등록증 업로드 완료 건은 일반 사용자는 최근 {HIDE_UPLOADED_AFTER_DAYS_FOR_NON_ADMIN}일 이내만 표시되며, 그 이후는 관리자만 볼 수 있습니다.
+              * 차량등록증 업로드 완료 건은 일반 사용자는 최근 {HIDE_UPLOADED_AFTER_DAYS_FOR_NON_ADMIN}일 이내만 표시되며, 그 이후는 관리자/보험전담 계정만 볼 수 있습니다.
             </div>
 
             <div className="text-xs font-extrabold text-gray-500">
@@ -1300,7 +1303,9 @@ VIN: ${nextVin}`);
                 className={
                   isAdmin
                     ? "text-emerald-700"
-                    : isNarumi
+                    : isInsuranceManager
+                      ? "text-purple-700"
+                      : isNarumi
                       ? "text-orange-700"
                       : isLotte
                         ? "text-blue-700"
@@ -1343,7 +1348,7 @@ VIN: ${nextVin}`);
       {((isAdmin || isNarumi) || canViewAll) && (
         <section className={`${cardClass} p-5`}>
           <div className="grid xl:grid-cols-12 gap-5 items-start">
-            {(isAdmin || isNarumi) && (
+            {(isPrivilegedManager || isNarumi) && (
   <div className="xl:col-span-8">
     <div className="flex items-start justify-between gap-3 mb-4">
       <div className="flex items-start gap-3">
@@ -1628,7 +1633,7 @@ VIN: ${nextVin}`);
                             checked={showOldUploaded}
                             onChange={(e) => setShowOldUploaded(e.target.checked)}
                             className="h-4 w-4 accent-orange-500"
-                            disabled={!isAdmin}
+                            disabled={!isPrivilegedManager}
                           />
                           30일 초과도 포함
                         </label>
@@ -1743,7 +1748,7 @@ VIN: ${nextVin}`);
 
             <div className="text-sm text-gray-500 mt-1 leading-relaxed">
               차량등록증 업로드 완료 후에는 RNF 단계 버튼이 잠금됩니다. 보류 건은 별도 배지로 분리되며 다른 단계 카운팅에서 제외됩니다.
-              {!isAdmin && (
+              {!isPrivilegedManager && (
                 <>
                   <br />
                   * 업로드 완료 건은 최근 {HIDE_UPLOADED_AFTER_DAYS_FOR_NON_ADMIN}일만 표시됩니다.
@@ -2004,9 +2009,9 @@ VIN: ${nextVin}`);
                             disabled={false}
                             className={[
                               btnBase,
-                              hasManufactureDoc && isAdmin && !locked ? btnOff : btnDisabled,
+                              hasManufactureDoc && isPrivilegedManager && !locked ? btnOff : btnDisabled,
                             ].join(" ")}
-                            onClick={() => { if (!hasManufactureDoc || !isAdmin || locked) return; viewManufactureDoc(r); }}
+                            onClick={() => { if (!hasManufactureDoc || !isPrivilegedManager || locked) return; viewManufactureDoc(r); }}
                           >
                             제작증
                           </button>
@@ -2134,7 +2139,7 @@ VIN: ${nextVin}`);
                                 [String(r.id)]: e.target.value,
                               }))
                             }
-                            placeholder="관리자만 메모 입력/수정 가능"
+                            placeholder="관리자/보험전담 계정만 메모 입력/수정 가능"
                             className="w-full h-[88px] text-[13px] text-gray-700 whitespace-pre-wrap break-words rounded-xl bg-white border border-gray-200 px-3 py-2 focus:border-orange-400 focus:ring-4 focus:ring-orange-200/40 outline-none resize-none overflow-y-auto"
                           />
                         ) : (
@@ -2188,11 +2193,11 @@ VIN: ${nextVin}`);
                   value={editVin}
                   onChange={(e) => setEditVin(normalizeVin(e.target.value))}
                   className={compactInputClass}
-                  disabled={!isAdmin || editSaving}
+                  disabled={!isPrivilegedManager || editSaving}
                   placeholder="예: KMH..."
                 />
-                {!isAdmin && (
-                  <div className="mt-1 text-xs text-gray-400">차대번호는 관리자만 수정 가능합니다.</div>
+                {!isPrivilegedManager && (
+                  <div className="mt-1 text-xs text-gray-400">차대번호는 관리자/보험전담 계정만 수정 가능합니다.</div>
                 )}
               </div>
 
