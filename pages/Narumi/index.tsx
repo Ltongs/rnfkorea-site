@@ -2049,16 +2049,19 @@ VIN: ${nextVin}`);
 
                       {postalFormOpen && (
                         <div className="rounded-xl border border-orange-200 bg-orange-50/50 px-3 py-3">
-                          <div className="grid grid-cols-1 md:grid-cols-[1.5fr_1fr_auto_auto_auto] gap-2 items-end">
-                            <div>
+                          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(180px,1fr)_auto_auto_auto] gap-3 items-end">
+                            <div className="min-w-0">
+                              <label className={labelClass}>등기번호</label>
                               <input
                                 value={postalTrackingNo}
                                 onChange={(e) => setPostalTrackingNo(e.target.value)}
+                                placeholder="등기번호 입력"
                                 className={compactInputClass}
                               />
                             </div>
 
-                            <div>
+                            <div className="min-w-0">
+                              <label className={labelClass}>발송일자</label>
                               <input
                                 type="date"
                                 value={postalSentDate}
@@ -2076,6 +2079,7 @@ VIN: ${nextVin}`);
                               }}
                               className="h-[44px] px-4 rounded-lg border border-gray-200 bg-white text-sm font-extrabold text-navy-900 hover:border-orange-300"
                             >
+                              조회
                             </button>
 
                             <button
