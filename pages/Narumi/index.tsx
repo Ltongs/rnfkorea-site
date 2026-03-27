@@ -896,27 +896,39 @@ export default function NarumiPage() {
       return;
     }
 
-    const normalized = onlyDigits(trimmed);
+    const normalized = onlyDigits(trimmed) || trimmed;
     const lookupUrl = "https://service.epost.go.kr/iservice/usr/trace/usrtrc001k01.jsp";
 
+    // 새 창만 열고 현재 창은 유지 (절대 redirect 없음)
     try {
-      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(normalized || trimmed);
+      const popup = window.open(lookupUrl, "_blank", "noopener,noreferrer");
+      if (popup) {
+        popup.opener = null;
       }
     } catch {
-      // ignore clipboard errors and continue
+      // 아무것도 하지 않음 (현재 창 유지)
     }
 
-    const popup = window.open("", "_blank");
-    if (popup) {
-      popup.opener = null;
-      popup.location.href = lookupUrl;
-    } else {
-      window.location.href = lookupUrl;
+    // 클립보드 복사
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(normalized);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = normalized;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.top = "-9999px";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+    } catch {
+      // 복사 실패 무시
     }
-
-    alert(
-    );
   };
 
   const toggleHold = async (row: NarumiTask) => {
@@ -2049,19 +2061,19 @@ VIN: ${nextVin}`);
 
                       {postalFormOpen && (
                         <div className="rounded-xl border border-orange-200 bg-orange-50/50 px-3 py-3">
-                          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(180px,1fr)_auto_auto_auto] gap-3 items-end">
+                          <div className="grid grid-cols-[minmax(0,0.7fr)_128px_1fr] gap-2 items-end">
                             <div className="min-w-0">
-                              <label className={labelClass}>등기번호</label>
+                              <label className="mb-1 block text-[11px] font-bold text-gray-500">등기번호</label>
                               <input
                                 value={postalTrackingNo}
                                 onChange={(e) => setPostalTrackingNo(e.target.value)}
-                                placeholder="등기번호 입력"
                                 className={compactInputClass}
+                                placeholder="등기번호 입력"
                               />
                             </div>
 
                             <div className="min-w-0">
-                              <label className={labelClass}>발송일자</label>
+                              <label className="mb-1 block text-[11px] font-bold text-gray-500">발송일자</label>
                               <input
                                 type="date"
                                 value={postalSentDate}
@@ -2070,35 +2082,37 @@ VIN: ${nextVin}`);
                               />
                             </div>
 
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                openPostalTrackingLookup(postalTrackingNo);
-                              }}
-                              className="h-[44px] px-4 rounded-lg border border-gray-200 bg-white text-sm font-extrabold text-navy-900 hover:border-orange-300"
-                            >
-                              조회
-                            </button>
+                            <div className="flex items-end justify-end gap-2 min-w-0">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  openPostalTrackingLookup(postalTrackingNo);
+                                }}
+                                className="h-[44px] w-[72px] shrink-0 px-0 rounded-lg border border-gray-200 bg-white text-sm font-extrabold text-navy-900 whitespace-nowrap hover:border-orange-300"
+                              >
+                                조회
+                              </button>
 
-                            <button
-                              type="button"
-                              onClick={() => savePostalInfo(r)}
-                              disabled={postalSavingId === r.id}
-                              className="h-[44px] px-4 rounded-lg bg-orange-500 text-white text-sm font-extrabold hover:bg-orange-600 disabled:opacity-60"
-                            >
-                              {postalSavingId === r.id ? "저장중..." : "저장"}
-                            </button>
+                              <button
+                                type="button"
+                                onClick={() => savePostalInfo(r)}
+                                disabled={postalSavingId === r.id}
+                                className="h-[44px] w-[72px] shrink-0 px-0 rounded-lg bg-orange-500 text-white text-sm font-extrabold whitespace-nowrap hover:bg-orange-600 disabled:opacity-60"
+                              >
+                                {postalSavingId === r.id ? "저장중..." : "저장"}
+                              </button>
 
-                            <button
-                              type="button"
-                              onClick={closePostalForm}
-                              disabled={postalSavingId === r.id}
-                              className="h-[44px] px-4 rounded-lg border border-gray-200 bg-white text-sm font-extrabold text-gray-700 hover:border-gray-300 disabled:opacity-60"
-                            >
-                              취소
-                            </button>
+                              <button
+                                type="button"
+                                onClick={closePostalForm}
+                                disabled={postalSavingId === r.id}
+                                className="h-[44px] w-[72px] shrink-0 px-0 rounded-lg border border-gray-200 bg-white text-sm font-extrabold text-gray-700 whitespace-nowrap hover:border-gray-300 disabled:opacity-60"
+                              >
+                                취소
+                              </button>
+                            </div>
                           </div>
                         </div>
                       )}
