@@ -278,23 +278,6 @@ export default function PageHeader() {
     nav("/bson");
   };
 
-  const workMenuItems = [
-    isAdmin
-      ? { key: "dashboard", label: "운영대시보드", action: () => goWorkInternalOnly("/work/dashboard") }
-      : null,
-    (isAdmin || isNarumi || isLotte || isInsuranceManager)
-      ? { key: "narumi", label: "나르미업무", action: () => goWorkInternalOnly("/narumi") }
-      : null,
-    isAdmin || isInsuranceManager
-      ? { key: "consulting", label: "상담관리", action: () => goWorkInternalOnly("/work/call-management") }
-      : null,
-    isAdmin
-      ? { key: "bson", label: "BS_ON 업무", action: goBsonPublic }
-      : null,
-  ].filter(Boolean) as Array<{ key: string; label: string; action: () => void }>;
-
-  const showWorkMenu = workMenuItems.length > 0;
-
   return (
     <header className="sticky top-0 z-[9999] bg-white/95 backdrop-blur border-b border-gray-200">
       <div
@@ -482,70 +465,97 @@ export default function PageHeader() {
           </div>
 
           {/* 업무용 */}
-          {showWorkMenu && (
-            <div
-              className="relative overflow-visible"
-              onMouseEnter={() => hoverOpen("work")}
-              onMouseLeave={() => hoverClose(setOpenWork)}
+          <div
+            className="relative overflow-visible"
+            onMouseEnter={() => hoverOpen("work")}
+            onMouseLeave={() => hoverClose(setOpenWork)}
+          >
+            <button
+              ref={workBtnRef}
+              type="button"
+              className={`${topBtnBase} ${underlineHover} ${
+                workActive ? underlineActive : ""
+              }`}
+              aria-expanded={openWork}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                toggleMenu("work");
+              }}
             >
-              <button
-                ref={workBtnRef}
-                type="button"
-                className={`${topBtnBase} ${underlineHover} ${
-                  workActive ? underlineActive : ""
-                }`}
-                aria-expanded={openWork}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  toggleMenu("work");
-                }}
-              >
-                업무용
-                <ChevronDown
-                  size={16}
-                  className={`${
-                    openWork ? "rotate-180" : ""
-                  } transition-transform`}
-                />
-              </button>
+              업무용
+              <ChevronDown
+                size={16}
+                className={`${
+                  openWork ? "rotate-180" : ""
+                } transition-transform`}
+              />
+            </button>
 
-              {openWork && (
-                <>
-                  {!isMobileMenuMode && (
-                    <div
-                      className={`absolute left-0 top-full w-[240px] ${BRIDGE_H} pointer-events-auto`}
-                      onMouseEnter={() => timers.clearClose()}
-                      onMouseLeave={() => hoverClose(setOpenWork)}
-                    />
+            {openWork && (
+              <>
+                {!isMobileMenuMode && (
+                  <div
+                    className={`absolute left-0 top-full w-[240px] ${BRIDGE_H} pointer-events-auto`}
+                    onMouseEnter={() => timers.clearClose()}
+                    onMouseLeave={() => hoverClose(setOpenWork)}
+                  />
+                )}
+
+                <div
+                  className={
+                    isMobileMenuMode ? mobileDropBoxBase : desktopDropBoxBase
+                  }
+                  style={isMobileMenuMode ? workMenuStyle : undefined}
+                  role="menu"
+                  onMouseEnter={() => {
+                    if (!isMobileMenuMode) timers.clearClose();
+                  }}
+                  onMouseLeave={() => hoverClose(setOpenWork)}
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      className={dropItem}
+                      onClick={() => goWorkInternalOnly("/work/dashboard")}
+                    >
+                      운영대시보드
+                    </button>
                   )}
 
-                  <div
-                    className={
-                      isMobileMenuMode ? mobileDropBoxBase : desktopDropBoxBase
-                    }
-                    style={isMobileMenuMode ? workMenuStyle : undefined}
-                    role="menu"
-                    onMouseEnter={() => {
-                      if (!isMobileMenuMode) timers.clearClose();
-                    }}
-                    onMouseLeave={() => hoverClose(setOpenWork)}
-                    onPointerDown={(e) => e.stopPropagation()}
-                  >
-                    {workMenuItems.map((item) => (
-                      <button
-                        key={item.key}
-                        type="button"
-                        className={dropItem}
-                        onClick={item.action}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+                  {(isAdmin || isNarumi || isLotte || isInsuranceManager || !user) && (
+                    <button
+                      type="button"
+                      className={dropItem}
+                      onClick={() => goWorkInternalOnly("/narumi")}
+                    >
+                      나르미업무
+                    </button>
+                  )}
+
+                  {(isAdmin || isInsuranceManager || !user) && (
+                    <button
+                      type="button"
+                      className={dropItem}
+                      onClick={() => goWorkInternalOnly("/work/call-management")}
+                    >
+                      상담관리
+                    </button>
+                  )}
+
+                  {(isAdmin || !user) && (
+                    <button
+                      type="button"
+                      className={dropItem}
+                      onClick={goBsonPublic}
+                    >
+                      BS_ON 업무
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
 
           <a
             href="tel:1551-1873"
