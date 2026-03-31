@@ -75,6 +75,8 @@ type TireDetailRow = {
   vehicle_type: string | null;
   tire_size: string | null;
   current_brand: string | null;
+  inflow_channel: string | null;
+  association_name: string | null;
   process_status: string | null;
   quantity: number | null;
   front_quantity: number | null;
@@ -95,12 +97,6 @@ type CurrencyMetric = {
 type RateMetric = {
   month: number;
   ytd: number;
-};
-
-type TopItem = {
-  label: string;
-  monthCount: number;
-  ytdCount: number;
 };
 
 const cardClass =
@@ -181,44 +177,35 @@ function insuranceStep(detail: InsuranceDetailRow | null | undefined) {
   return "미진행";
 }
 
-function buildTopItems(
-  monthRows: TireDetailRow[],
-  ytdRows: TireDetailRow[],
-  limit = 5
-): TopItem[] {
-  const monthMap = new Map<string, number>();
-  const ytdMap = new Map<string, number>();
-
-  const makeLabel = (row: TireDetailRow) => {
-    const brand = (row.current_brand || "브랜드미입력").trim();
-    const size = (row.tire_size || "규격미입력").trim();
-    return `${brand} · ${size}`;
-  };
-
-  for (const row of monthRows) {
-    if (row.process_status !== "completed") continue;
-    const key = makeLabel(row);
-    monthMap.set(key, (monthMap.get(key) || 0) + 1);
+function inflowChannelLabel(
+  inflowChannel: string | null | undefined,
+  associationName?: string | null
+) {
+  if (inflowChannel === "association") {
+    return associationName ? `협회 (${associationName})` : "협회";
   }
+  if (inflowChannel === "gotruck") return "고트럭";
+  if (inflowChannel === "etc") return "기타";
+  return "미분류";
+}
 
-  for (const row of ytdRows) {
-    if (row.process_status !== "completed") continue;
-    const key = makeLabel(row);
-    ytdMap.set(key, (ytdMap.get(key) || 0) + 1);
-  }
+function consultationListUrl(params?: Record<string, string | number | null | undefined>) {
+  const search = new URLSearchParams();
 
-  const mergedKeys = new Set([...Array.from(monthMap.keys()), ...Array.from(ytdMap.keys())]);
-  return Array.from(mergedKeys)
-    .map((label) => ({
-      label,
-      monthCount: monthMap.get(label) || 0,
-      ytdCount: ytdMap.get(label) || 0,
-    }))
-    .sort((a, b) => {
-      if (b.ytdCount !== a.ytdCount) return b.ytdCount - a.ytdCount;
-      return b.monthCount - a.monthCount;
-    })
-    .slice(0, limit);
+  // 상담관리 페이지 구현 차이에 대비해 목록 탭을 가리키는 키를 함께 전달
+  search.set("tab", "list");
+  search.set("view", "list");
+  search.set("mode", "list");
+  search.set("section", "list");
+  search.set("screen", "list");
+  search.set("from", "dashboard");
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value === null || value === undefined || value === "") return;
+    search.set(key, String(value));
+  });
+
+  return `/work/call-management?${search.toString()}#list`;
 }
 
 const DashboardPage: React.FC = () => {
@@ -273,7 +260,7 @@ const DashboardPage: React.FC = () => {
           supabase
             .from("consultation_tire_details")
             .select(
-              "consultation_id, vehicle_type, tire_size, current_brand, process_status, quantity, front_quantity, rear_quantity, note"
+              "consultation_id, vehicle_type, tire_size, current_brand, inflow_channel, association_name, process_status, quantity, front_quantity, rear_quantity, note"
             ),
           supabase
             .from("narumi_tasks")
@@ -343,6 +330,12 @@ const DashboardPage: React.FC = () => {
     return map;
   }, [consultations]);
 
+  const tireDetailMap = useMemo(() => {
+    const map = new Map<number, TireDetailRow>();
+    tireDetails.forEach((row) => map.set(row.consultation_id, row));
+    return map;
+  }, [tireDetails]);
+
   const monthConsultations = useMemo(
     () => consultations.filter((row) => isInRange(row.created_at, ranges.monthStart, ranges.monthEnd)),
     [consultations, ranges]
@@ -351,6 +344,16 @@ const DashboardPage: React.FC = () => {
   const monthConsultationIdSet = useMemo(
     () => new Set(monthConsultations.map((row) => row.id)),
     [monthConsultations]
+  );
+
+  const monthTireConsultations = useMemo(
+    () => monthConsultations.filter((row) => row.work_type === "tire_sales"),
+    [monthConsultations]
+  );
+
+  const ytdTireConsultations = useMemo(
+    () => consultations.filter((row) => row.work_type === "tire_sales"),
+    [consultations]
   );
 
   const monthNarumiTasks = useMemo(
@@ -442,8 +445,8 @@ const DashboardPage: React.FC = () => {
   }, [financeMonthRows, financeDetails]);
 
   const tireSummary = useMemo(() => {
-    const monthInflow = monthConsultations.filter((row) => row.work_type === "tire_sales").length;
-    const ytdInflow = consultations.filter((row) => row.work_type === "tire_sales").length;
+    const monthInflow = monthTireConsultations.length;
+    const ytdInflow = ytdTireConsultations.length;
     const monthCompleted = tireMonthRows.filter((row) => row.process_status === "completed").length;
     const ytdCompleted = tireDetails.filter((row) => row.process_status === "completed").length;
     const monthQuote = tireMonthRows.filter((row) => row.process_status === "quote_sent").length;
@@ -459,9 +462,62 @@ const DashboardPage: React.FC = () => {
         month: toRate(monthCompleted, monthInflow),
         ytd: toRate(ytdCompleted, ytdInflow),
       },
-      topItems: buildTopItems(tireMonthRows, tireDetails, 5),
     };
-  }, [monthConsultations, consultations, tireMonthRows, tireDetails]);
+  }, [monthTireConsultations, ytdTireConsultations, tireMonthRows, tireDetails]);
+
+  const inflowSummary = useMemo(() => {
+    const result = {
+      total: { month: 0, ytd: 0 },
+      association: { month: 0, ytd: 0 },
+      gotruck: { month: 0, ytd: 0 },
+      etc: { month: 0, ytd: 0 },
+      seoul: { month: 0, ytd: 0 },
+      gwangju: { month: 0, ytd: 0 },
+      gyeongbuk: { month: 0, ytd: 0 },
+      gyeongnam: { month: 0, ytd: 0 },
+      unknownAssociation: { month: 0, ytd: 0 },
+    };
+
+    const apply = (consultation: ConsultationRow, bucket: "month" | "ytd") => {
+      const detail = tireDetailMap.get(consultation.id);
+      result.total[bucket] += 1;
+
+      if (detail?.inflow_channel === "association") {
+        result.association[bucket] += 1;
+        if (detail.association_name === "서울") result.seoul[bucket] += 1;
+        else if (detail.association_name === "광주") result.gwangju[bucket] += 1;
+        else if (detail.association_name === "경북") result.gyeongbuk[bucket] += 1;
+        else if (detail.association_name === "경남") result.gyeongnam[bucket] += 1;
+        else result.unknownAssociation[bucket] += 1;
+      } else if (detail?.inflow_channel === "gotruck") {
+        result.gotruck[bucket] += 1;
+      } else if (detail?.inflow_channel === "etc") {
+        result.etc[bucket] += 1;
+      }
+    };
+
+    monthTireConsultations.forEach((row) => apply(row, "month"));
+    ytdTireConsultations.forEach((row) => apply(row, "ytd"));
+
+    return result;
+  }, [monthTireConsultations, ytdTireConsultations, tireDetailMap]);
+
+  const dailyInflowData = useMemo(() => {
+    const daysInMonth = endOfMonth(selectedYear, selectedMonth).getDate();
+    const counts = Array.from({ length: daysInMonth }, (_, index) => ({
+      day: index + 1,
+      count: 0,
+    }));
+
+    monthTireConsultations.forEach((row) => {
+      const date = new Date(row.created_at);
+      const day = date.getDate();
+      if (Number.isNaN(day) || day < 1 || day > daysInMonth) return;
+      counts[day - 1].count += 1;
+    });
+
+    return counts;
+  }, [monthTireConsultations, selectedYear, selectedMonth]);
 
   const hotList = useMemo(() => {
     const financeAttention = financeDetails
@@ -504,6 +560,11 @@ const DashboardPage: React.FC = () => {
 
   const monthLabel = `${selectedYear}년 ${selectedMonth}월`;
   const ytdLabel = `${selectedYear}년 누적`;
+
+  const openConsultationList = (params?: Record<string, string | number | null | undefined>) => {
+    if (typeof window === "undefined") return;
+    window.open(consultationListUrl(params), "_blank", "noopener,noreferrer");
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
@@ -629,272 +690,201 @@ const DashboardPage: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-            <section className={`${cardClass} xl:col-span-1 space-y-4`}>
+            <section className={`${cardClass} xl:col-span-2 space-y-4`}>
               <div className={sectionTitleClass}>
-                <Shield className="w-5 h-5 text-orange-500" />
-                보험 현황
+                <BarChart3 className="w-5 h-5 text-orange-500" />
+                유입채널별 문의건수
               </div>
 
-              <div className="grid grid-cols-1 gap-3">
-                <div className={subCardClass}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-bold text-gray-700">증권발급 완료</span>
-                    <span className={chipClass}>{monthLabel}</span>
-                  </div>
-                  <div className="mt-3 text-2xl font-extrabold text-navy-900">
-                    {formatCount(insuranceSummary.policyIssued.month)}
-                  </div>
-                  <div className="mt-2 text-xs text-gray-500">{ytdLabel} {formatCount(insuranceSummary.policyIssued.ytd)}</div>
-                </div>
-
-                <div className={subCardClass}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-bold text-gray-700">보험 진행중</span>
-                    <span className={chipClass}>상담관리 기준</span>
-                  </div>
-                  <div className="mt-3 text-2xl font-extrabold text-navy-900">
-                    {formatCount(insuranceSummary.inProgress.month)}
-                  </div>
-                  <div className="mt-2 text-xs text-gray-500">{ytdLabel} {formatCount(insuranceSummary.inProgress.ytd)}</div>
-                </div>
-
-                <div className={subCardClass}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-bold text-gray-700">나르미 보험완료</span>
-                    <span className={chipClass}>N/Y 포함</span>
-                  </div>
-                  <div className="mt-3 text-2xl font-extrabold text-navy-900">
-                    {formatCount(insuranceSummary.narumiDone.month)}
-                  </div>
-                  <div className="mt-2 text-xs text-gray-500">{ytdLabel} {formatCount(insuranceSummary.narumiDone.ytd)}</div>
-                </div>
-              </div>
-            </section>
-
-            <section className={`${cardClass} xl:col-span-1 space-y-4`}>
-              <div className={sectionTitleClass}>
-                <CreditCard className="w-5 h-5 text-orange-500" />
-                금융 파이프라인
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
                 {[
-                  { key: "consulting", label: "상담", data: financeSummary.consulting },
-                  { key: "approved", label: "승인", data: financeSummary.approved },
-                  { key: "documents_requested", label: "서류징구", data: financeSummary.documentsRequested },
-                  { key: "confirmed", label: "확정", data: financeSummary.confirmed },
+                  { key: "association", label: "협회", month: inflowSummary.association.month, ytd: inflowSummary.association.ytd },
+                  { key: "gotruck", label: "고트럭", month: inflowSummary.gotruck.month, ytd: inflowSummary.gotruck.ytd },
+                  { key: "etc", label: "기타", month: inflowSummary.etc.month, ytd: inflowSummary.etc.ytd },
+                  { key: "total", label: "전체", month: inflowSummary.total.month, ytd: inflowSummary.total.ytd },
                 ].map((item) => (
                   <div key={item.key} className={subCardClass}>
                     <div className="text-sm font-bold text-gray-700">{item.label}</div>
-                    <div className="mt-2 text-2xl font-extrabold text-navy-900">{item.data.month}</div>
+                    <div className="mt-2 text-2xl font-extrabold text-navy-900">{formatCount(item.month)}</div>
+                    <div className="mt-1 text-xs text-gray-500">{ytdLabel} {formatCount(item.ytd)}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-3">
+                {[
+                  { key: "서울", data: inflowSummary.seoul },
+                  { key: "광주", data: inflowSummary.gwangju },
+                  { key: "경북", data: inflowSummary.gyeongbuk },
+                  { key: "경남", data: inflowSummary.gyeongnam },
+                  { key: "미지정", data: inflowSummary.unknownAssociation },
+                ].map((item) => (
+                  <div key={item.key} className={subCardClass}>
+                    <div className="text-xs font-bold text-gray-500">협회 · {item.key}</div>
+                    <div className="mt-2 text-xl font-extrabold text-navy-900">{formatCount(item.data.month)}</div>
                     <div className="mt-1 text-xs text-gray-500">{ytdLabel} {formatCount(item.data.ytd)}</div>
                   </div>
                 ))}
               </div>
 
-              <div className="grid grid-cols-1 gap-3">
-                <div className={subCardClass}>
-                  <div className="text-sm font-bold text-gray-700">확정 총액</div>
-                  <div className="mt-2 text-xl font-extrabold text-navy-900 break-words">
-                    {formatCurrency(financeSummary.confirmedAmount.month)}
-                  </div>
-                  <div className="mt-1 text-xs text-gray-500">
-                    {ytdLabel} {formatCurrency(financeSummary.confirmedAmount.ytd)}
-                  </div>
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="text-sm font-extrabold text-navy-900">일별 유입현황</div>
+                  <div className="text-xs text-gray-500">세로축 최대 10건</div>
                 </div>
 
-                <div className={subCardClass}>
-                  <div className="text-sm font-bold text-gray-700">예상 인센티브</div>
-                  <div className="mt-2 text-xl font-extrabold text-navy-900 break-words">
-                    {formatCurrency(financeSummary.expectedIncentive.month)}
-                  </div>
-                  <div className="mt-1 text-xs text-gray-500">
-                    {ytdLabel} {formatCurrency(financeSummary.expectedIncentive.ytd)}
-                  </div>
+                <div className="h-64 flex items-end gap-1 overflow-x-auto pb-2">
+                  {dailyInflowData.map((item) => {
+                    const heightPercent = Math.max((item.count / 10) * 100, item.count > 0 ? 8 : 2);
+                    return (
+                      <div
+                        key={item.day}
+                        className="min-w-[22px] flex-1 flex flex-col items-center justify-end gap-2"
+                        title={`${item.day}일 · ${item.count}건`}
+                      >
+                        <div className="text-[10px] font-bold text-gray-500">{item.count}</div>
+                        <div className="w-full h-44 flex items-end">
+                          <div
+                            className="w-full rounded-t-md bg-orange-500/85"
+                            style={{ height: `${heightPercent}%`, maxHeight: "100%" }}
+                          />
+                        </div>
+                        <div className="text-[10px] text-gray-500">{item.day}</div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </section>
 
             <section className={`${cardClass} xl:col-span-1 space-y-4`}>
-              <div className={sectionTitleClass}>
-                <Car className="w-5 h-5 text-orange-500" />
-                타이어 현황
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className={subCardClass}>
-                  <div className="text-sm font-bold text-gray-700">신규상담 유입</div>
-                  <div className="mt-2 text-2xl font-extrabold text-navy-900">{tireSummary.inflow.month}</div>
-                  <div className="mt-1 text-xs text-gray-500">{ytdLabel} {formatCount(tireSummary.inflow.ytd)}</div>
+              <button
+                type="button"
+                onClick={() => openConsultationList({ work_type: "all", priority: "urgent" })}
+                className="w-full text-left space-y-4"
+              >
+                <div className={sectionTitleClass}>
+                  <Activity className="w-5 h-5 text-orange-500" />
+                  즉시 처리 필요
                 </div>
-                <div className={subCardClass}>
-                  <div className="text-sm font-bold text-gray-700">견적발송</div>
-                  <div className="mt-2 text-2xl font-extrabold text-navy-900">{tireSummary.quote.month}</div>
-                  <div className="mt-1 text-xs text-gray-500">{ytdLabel} {formatCount(tireSummary.quote.ytd)}</div>
-                </div>
-                <div className={subCardClass}>
-                  <div className="text-sm font-bold text-gray-700">실제 판매</div>
-                  <div className="mt-2 text-2xl font-extrabold text-navy-900">{tireSummary.completed.month}</div>
-                  <div className="mt-1 text-xs text-gray-500">{ytdLabel} {formatCount(tireSummary.completed.ytd)}</div>
-                </div>
-                <div className={subCardClass}>
-                  <div className="text-sm font-bold text-gray-700">판매 비율</div>
-                  <div className="mt-2 text-2xl font-extrabold text-navy-900">
-                    {formatPercent(tireSummary.conversionRate.month)}
-                  </div>
-                  <div className="mt-1 text-xs text-gray-500">
-                    {ytdLabel} {formatPercent(tireSummary.conversionRate.ytd)}
-                  </div>
-                </div>
-              </div>
-            </section>
-          </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-            <section className={`${cardClass} xl:col-span-2 space-y-4`}>
-              <div className={sectionTitleClass}>
-                <BarChart3 className="w-5 h-5 text-orange-500" />
-                주요 판매 모델/규격
-              </div>
-              <p className="text-sm text-gray-500">
-                현재 상담관리 테이블에는 타이어 모델 전용 컬럼이 없어, 브랜드 + 규격 기준으로 상위 판매 항목을 집계했습니다.
-              </p>
-
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-200 text-left text-gray-600">
-                      <th className="py-3 pr-4 font-bold">순위</th>
-                      <th className="py-3 pr-4 font-bold">항목</th>
-                      <th className="py-3 pr-4 font-bold">월 판매</th>
-                      <th className="py-3 pr-4 font-bold">연간 누적</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tireSummary.topItems.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="py-6 text-center text-gray-400">
-                          완료 데이터가 없습니다.
-                        </td>
-                      </tr>
-                    ) : (
-                      tireSummary.topItems.map((item, index) => (
-                        <tr key={item.label} className="border-b border-gray-100 last:border-b-0">
-                          <td className="py-3 pr-4 font-extrabold text-navy-900">{index + 1}</td>
-                          <td className="py-3 pr-4 text-gray-800">{item.label}</td>
-                          <td className="py-3 pr-4 text-gray-700">{formatCount(item.monthCount)}</td>
-                          <td className="py-3 pr-4 text-gray-700">{formatCount(item.ytdCount)}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-
-            <section className={`${cardClass} xl:col-span-1 space-y-4`}>
-              <div className={sectionTitleClass}>
-                <Activity className="w-5 h-5 text-orange-500" />
-                즉시 처리 필요
-              </div>
-
-              <div className="space-y-3">
-                {hotList.length === 0 ? (
-                  <div className={`${subCardClass} text-sm text-gray-500`}>
-                    현재 즉시 처리 필요 목록이 없습니다.
-                  </div>
-                ) : (
-                  hotList.map((item, index) => (
-                    <div key={`${item.type}-${index}`} className={subCardClass}>
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-xs font-extrabold text-orange-600">{item.type}</span>
-                        <span className={chipClass}>확인 필요</span>
-                      </div>
-                      <div className="mt-2 text-sm font-bold text-navy-900">{item.label}</div>
-                      <div className="mt-1 text-xs text-gray-500">{item.sub}</div>
+                <div className="space-y-3">
+                  {hotList.length === 0 ? (
+                    <div className={`${subCardClass} text-sm text-gray-500`}>
+                      현재 즉시 처리 필요 목록이 없습니다.
                     </div>
-                  ))
-                )}
-              </div>
+                  ) : (
+                    hotList.map((item, index) => (
+                      <div key={`${item.type}-${index}`} className={subCardClass}>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-xs font-extrabold text-orange-600">{item.type}</span>
+                          <span className={chipClass}>새 탭 열기</span>
+                        </div>
+                        <div className="mt-2 text-sm font-bold text-navy-900">{item.label}</div>
+                        <div className="mt-1 text-xs text-gray-500">{item.sub}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </button>
             </section>
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
             <section className={`${cardClass} space-y-4`}>
-              <div className={sectionTitleClass}>
-                <Gauge className="w-5 h-5 text-orange-500" />
-                보험 진행 요약
-              </div>
-              <div className="space-y-3 text-sm">
-                {insuranceMonthRows.slice(0, 6).map((row) => {
-                  const consultation = consultationMap.get(row.consultation_id);
-                  return (
-                    <div key={row.consultation_id} className={subCardClass}>
-                      <div className="font-bold text-navy-900">{consultation?.customer_name || "고객명없음"}</div>
-                      <div className="mt-1 text-gray-600">
-                        {row.insurance_company || "보험사 미입력"} · {insuranceStep(row)}
+              <button
+                type="button"
+                onClick={() => openConsultationList({ work_type: "registration_insurance" })}
+                className="w-full text-left"
+              >
+                <div className={sectionTitleClass}>
+                  <Gauge className="w-5 h-5 text-orange-500" />
+                  보험 진행 요약
+                </div>
+                <div className="mt-4 space-y-3 text-sm">
+                  {insuranceMonthRows.slice(0, 6).map((row) => {
+                    const consultation = consultationMap.get(row.consultation_id);
+                    return (
+                      <div key={row.consultation_id} className={subCardClass}>
+                        <div className="font-bold text-navy-900">{consultation?.customer_name || "고객명없음"}</div>
+                        <div className="mt-1 text-gray-600">
+                          {row.insurance_company || "보험사 미입력"} · {insuranceStep(row)}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-                {insuranceMonthRows.length === 0 && (
-                  <div className={`${subCardClass} text-gray-400`}>해당 월 보험 데이터가 없습니다.</div>
-                )}
-              </div>
+                    );
+                  })}
+                  {insuranceMonthRows.length === 0 && (
+                    <div className={`${subCardClass} text-gray-400`}>해당 월 보험 데이터가 없습니다.</div>
+                  )}
+                </div>
+              </button>
             </section>
 
             <section className={`${cardClass} space-y-4`}>
-              <div className={sectionTitleClass}>
-                <FileText className="w-5 h-5 text-orange-500" />
-                금융 단계별 상세
-              </div>
-              <div className="space-y-3 text-sm">
-                {financeMonthRows.slice(0, 6).map((row) => {
-                  const consultation = consultationMap.get(row.consultation_id);
-                  return (
-                    <div key={row.consultation_id} className={subCardClass}>
-                      <div className="font-bold text-navy-900">{consultation?.customer_name || "고객명없음"}</div>
-                      <div className="mt-1 text-gray-600">
-                        {financeStageLabel(row.finance_stage)} · {row.finance_company || "금융사 미입력"}
+              <button
+                type="button"
+                onClick={() => openConsultationList({ work_type: "finance" })}
+                className="w-full text-left"
+              >
+                <div className={sectionTitleClass}>
+                  <FileText className="w-5 h-5 text-orange-500" />
+                  금융 단계별 상세
+                </div>
+                <div className="mt-4 space-y-3 text-sm">
+                  {financeMonthRows.slice(0, 6).map((row) => {
+                    const consultation = consultationMap.get(row.consultation_id);
+                    const incentiveAmount =
+                      (safeNumber(row.finance_amount) * safeNumber(row.finance_incentive)) / 100;
+
+                    return (
+                      <div key={row.consultation_id} className={subCardClass}>
+                        <div className="font-bold text-navy-900">{consultation?.customer_name || "고객명없음"}</div>
+                        <div className="mt-1 text-gray-600">
+                          {financeStageLabel(row.finance_stage)} · {row.finance_company || "금융사 미입력"}
+                        </div>
+                        <div className="mt-1 text-xs text-gray-500">
+                          취급액 {formatCurrency(safeNumber(row.finance_amount))} / 인센티브 {formatCurrency(incentiveAmount)}
+                        </div>
                       </div>
-                      <div className="mt-1 text-xs text-gray-500">
-                        취급액 {formatCurrency(safeNumber(row.finance_amount))} / 인센티브 {formatCurrency(
-                          safeNumber(row.finance_incentive)
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-                {financeMonthRows.length === 0 && (
-                  <div className={`${subCardClass} text-gray-400`}>해당 월 금융 데이터가 없습니다.</div>
-                )}
-              </div>
+                    );
+                  })}
+                  {financeMonthRows.length === 0 && (
+                    <div className={`${subCardClass} text-gray-400`}>해당 월 금융 데이터가 없습니다.</div>
+                  )}
+                </div>
+              </button>
             </section>
 
             <section className={`${cardClass} space-y-4`}>
-              <div className={sectionTitleClass}>
-                <TrendingUp className="w-5 h-5 text-orange-500" />
-                타이어 진행 상세
-              </div>
-              <div className="space-y-3 text-sm">
-                {tireMonthRows.slice(0, 6).map((row, index) => {
-                  const consultation = consultationMap.get(row.consultation_id);
-                  return (
-                    <div key={`${row.consultation_id}-${index}`} className={subCardClass}>
-                      <div className="font-bold text-navy-900">{consultation?.customer_name || "고객명없음"}</div>
-                      <div className="mt-1 text-gray-600">
-                        {tireStageLabel(row.process_status)} · {row.current_brand || "브랜드 미입력"}
+              <button
+                type="button"
+                onClick={() => openConsultationList({ work_type: "tire_sales" })}
+                className="w-full text-left"
+              >
+                <div className={sectionTitleClass}>
+                  <TrendingUp className="w-5 h-5 text-orange-500" />
+                  타이어 진행 상세
+                </div>
+                <div className="mt-4 space-y-3 text-sm">
+                  {tireMonthRows.slice(0, 6).map((row, index) => {
+                    const consultation = consultationMap.get(row.consultation_id);
+                    return (
+                      <div key={`${row.consultation_id}-${index}`} className={subCardClass}>
+                        <div className="font-bold text-navy-900">{consultation?.customer_name || "고객명없음"}</div>
+                        <div className="mt-1 text-gray-600">
+                          {tireStageLabel(row.process_status)} · {row.current_brand || "브랜드 미입력"}
+                        </div>
+                        <div className="mt-1 text-xs text-gray-500">
+                          {(row.tire_size || "규격 미입력")} / {inflowChannelLabel(row.inflow_channel, row.association_name)}
+                        </div>
                       </div>
-                      <div className="mt-1 text-xs text-gray-500">
-                        {row.tire_size || "규격 미입력"}
-                      </div>
-                    </div>
-                  );
-                })}
-                {tireMonthRows.length === 0 && (
-                  <div className={`${subCardClass} text-gray-400`}>해당 월 타이어 데이터가 없습니다.</div>
-                )}
-              </div>
+                    );
+                  })}
+                  {tireMonthRows.length === 0 && (
+                    <div className={`${subCardClass} text-gray-400`}>해당 월 타이어 데이터가 없습니다.</div>
+                  )}
+                </div>
+              </button>
             </section>
           </div>
         </>

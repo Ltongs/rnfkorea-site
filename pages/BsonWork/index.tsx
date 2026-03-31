@@ -163,6 +163,7 @@ export default function BsonWorkPage() {
 
   const [rows, setRows] = useState<Row[]>([]);
   const [dealName, setDealName] = useState("");
+  const [equipmentSearch, setEquipmentSearch] = useState("");
 
   // 파일 존재 캐시
   const [photoExistMap, setPhotoExistMap] = useState<
@@ -170,6 +171,7 @@ export default function BsonWorkPage() {
   >({});
 
   const normalizedDealName = useMemo(() => norm(dealName), [dealName]);
+  const normalizedEquipmentSearch = useMemo(() => norm(equipmentSearch), [equipmentSearch]);
 
   const isUnlocked = useMemo(
     () => ALLOWED_SHEET_NAMES.includes(normalizedDealName as (typeof ALLOWED_SHEET_NAMES)[number]),
@@ -259,8 +261,14 @@ export default function BsonWorkPage() {
   // ✅ 잠금 상태면 자산을 “아예 안 보여줌”
   const visibleRows = useMemo(() => {
     if (!isUnlocked) return [];
-    return rows;
-  }, [isUnlocked, rows]);
+
+    if (!normalizedEquipmentSearch) return rows;
+
+    return rows.filter((r) => {
+      const equipmentNo = norm(r.equipNo || r.assetNo || "");
+      return equipmentNo.slice(-4) === normalizedEquipmentSearch;
+    });
+  }, [isUnlocked, rows, normalizedEquipmentSearch]);
 
   // ✅ 사진 존재 체크도 “잠금 해제된 경우에만”
   useEffect(() => {
@@ -374,6 +382,29 @@ export default function BsonWorkPage() {
             </div>
           </div>
 
+          {/* 장비번호 검색 */}
+          <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
+            <div className="text-[11px] font-extrabold text-gray-500">
+              장비번호 검색(끝 4자리)
+            </div>
+            <input
+              value={equipmentSearch}
+              onChange={(e) => {
+                const raw = e.target.value.replace(/\s+/g, "");
+                setEquipmentSearch(raw.slice(0, 4));
+              }}
+              className="mt-1 w-[180px] outline-none font-extrabold text-navy-900"
+              placeholder="예: 1234"
+              inputMode="numeric"
+              maxLength={4}
+            />
+            <div className="mt-2 text-[11px] font-bold text-gray-500">
+              {normalizedEquipmentSearch
+                ? `입력값: ${normalizedEquipmentSearch}`
+                : "미입력 시 전체 표시"}
+            </div>
+          </div>
+
           {/* 진척율 박스 (잠금 해제 시만 의미있게 표시) */}
           <div className="rounded-2xl border border-gray-200 bg-white px-5 py-4 min-w-[280px]">
             <div className="text-[11px] font-extrabold text-gray-500">사진 진척율</div>
@@ -426,9 +457,16 @@ export default function BsonWorkPage() {
       {/* 테이블 (잠금 해제 시만 표시) */}
       {isUnlocked && (
         <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-            <div className="font-extrabold text-navy-900">
-              자산 {visibleRows.length.toLocaleString()}개
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
+            <div>
+              <div className="font-extrabold text-navy-900">
+                자산 {visibleRows.length.toLocaleString()}개
+              </div>
+              {normalizedEquipmentSearch && (
+                <div className="text-[12px] text-gray-500 mt-1">
+                  장비번호 끝 4자리 <b>{normalizedEquipmentSearch}</b> 검색 결과
+                </div>
+              )}
             </div>
             {loading && <div className="text-sm font-bold text-gray-500">불러오는 중…</div>}
             {err && <div className="text-sm font-extrabold text-red-600">에러: {err}</div>}
@@ -581,7 +619,7 @@ export default function BsonWorkPage() {
                       className="px-4 py-10 text-center text-gray-500 font-bold"
                       colSpan={10}
                     >
-                      표시할 자산이 없습니다.
+                      표시할 자산이 없습니다. 장비번호 끝 4자리 검색값을 확인해주세요.
                     </td>
                   </tr>
                 )}

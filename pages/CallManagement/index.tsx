@@ -522,6 +522,54 @@ const CallManagementPage: React.FC = () => {
   const [listSearchVehicleNo, setListSearchVehicleNo] = useState("");
   const [listSearchTireSize, setListSearchTireSize] = useState("");
   const [listQuickScope, setListQuickScope] = useState<"all" | "followup">("all");
+
+  useEffect(() => {
+    const search = new URLSearchParams(location.search);
+    const hash = (location.hash || "").replace(/^#/, "").toLowerCase();
+
+    const tabCandidates = [
+      search.get("tab"),
+      search.get("view"),
+      search.get("mode"),
+      search.get("section"),
+      search.get("screen"),
+      hash,
+    ]
+      .filter(Boolean)
+      .map((v) => String(v).toLowerCase());
+
+    const shouldOpenList = tabCandidates.includes("list");
+    const shouldOpenFollowups = tabCandidates.includes("followups");
+
+    if (shouldOpenFollowups) {
+      setTab("followups");
+    } else if (shouldOpenList) {
+      setTab("list");
+    }
+
+    const workTypeParam = (search.get("work_type") || "").trim();
+    if (workTypeParam) {
+      setListFilterWorkType(workTypeParam === "all" ? "" : workTypeParam);
+    }
+
+    const statusParam = (search.get("status") || "").trim();
+    if (statusParam) setListFilterStatus(statusParam);
+
+    const insuranceCompanyParam = (search.get("insurance_company") || "").trim();
+    if (insuranceCompanyParam) setListSearchInsuranceCompany(insuranceCompanyParam);
+
+    const vehicleNoParam = (search.get("vehicle_no") || "").trim();
+    if (vehicleNoParam) setListSearchVehicleNo(vehicleNoParam);
+
+    const tireSizeParam = (search.get("tire_size") || "").trim();
+    if (tireSizeParam) setListSearchTireSize(tireSizeParam);
+
+    const followupParam = (search.get("followup") || "").trim().toLowerCase();
+    if (["y", "yes", "true", "1"].includes(followupParam)) {
+      setListQuickScope("followup");
+      setTab("list");
+    }
+  }, [location.search, location.hash]);
   const [closingFilter, setClosingFilter] = useState<"all" | "Y" | "N">("all");
 
   const [followSearchName, setFollowSearchName] = useState("");
@@ -642,6 +690,7 @@ const CallManagementPage: React.FC = () => {
   const formatBatteryVehicleType = (value: string | null) => {
     if (value === "forklift") return "지게차";
     if (value === "awp") return "고소작업대";
+    if (value === "golfcart") return "골프카트";
     return value || "-";
   };
 
@@ -2771,6 +2820,7 @@ const CallManagementPage: React.FC = () => {
                       <option value="">선택</option>
                       <option value="forklift">지게차</option>
                       <option value="awp">고소작업대</option>
+                      <option value="golfcart">골프카트</option>
                     </select>
                   </div>
 
