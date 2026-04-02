@@ -96,11 +96,21 @@ function pickIndex(headers: string[], candidates: string[]) {
   return -1;
 }
 
-// ✅ VIN 끝 4자리(영숫자 그대로)
-function last4FromVin(vinLike: string) {
-  const s = norm(vinLike);
+// ✅ 문자열 끝 4자리(영숫자 그대로)
+function last4FromText(value: string) {
+  const s = norm(value);
   if (!s) return "";
   return s.slice(-4);
+}
+
+function getPhotoMatchKey(row: Row, dealName: string) {
+  // 삼우2는 자산번호 끝 4자리로 매칭
+  if (norm(dealName) === "삼우2") {
+    return last4FromText(row.assetNo ?? row.equipNo ?? "");
+  }
+
+  // 기본값(삼우): 차대번호 끝 4자리로 매칭
+  return last4FromText(row.vin ?? "");
 }
 
 function photoUrl(last4: string, which: 1 | 2) {
@@ -278,7 +288,7 @@ export default function BsonWorkPage() {
 
     (async () => {
       const targets = visibleRows
-        .map((r) => last4FromVin(r.vin ?? ""))
+        .map((r) => getPhotoMatchKey(r, normalizedDealName))
         .filter((k) => k && !photoExistMap[k]);
 
       if (targets.length === 0) return;
@@ -311,7 +321,7 @@ export default function BsonWorkPage() {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isUnlocked, visibleRows]);
+  }, [isUnlocked, visibleRows, normalizedDealName]);
 
   // ✅ 진척율 (사진 1 또는 2 중 하나라도 있으면 “있음”)
   const progress = useMemo(() => {
@@ -320,7 +330,7 @@ export default function BsonWorkPage() {
 
     let hasAny = 0;
     for (const r of visibleRows) {
-      const k = last4FromVin(r.vin ?? "");
+      const k = getPhotoMatchKey(r, normalizedDealName);
       if (!k) continue;
       const ex = photoExistMap[k];
       if (ex && (ex.p1 || ex.p2)) hasAny++;
@@ -328,7 +338,7 @@ export default function BsonWorkPage() {
 
     const pct = Math.round((hasAny / total) * 100);
     return { total, hasAny, pct };
-  }, [visibleRows, photoExistMap]);
+  }, [visibleRows, photoExistMap, normalizedDealName]);
 
   const badge = (ok: boolean) =>
     ok
@@ -491,7 +501,7 @@ export default function BsonWorkPage() {
 
               <tbody>
                 {visibleRows.map((r, idx) => {
-                  const last4 = last4FromVin(r.vin ?? "");
+                  const last4 = getPhotoMatchKey(r, normalizedDealName);
                   const u1 = last4 ? photoUrl(last4, 1) : "";
                   const u2 = last4 ? photoUrl(last4, 2) : "";
 
@@ -513,7 +523,7 @@ export default function BsonWorkPage() {
                           {r.equipNo || r.assetNo || "-"}
                         </div>
                         <div className="text-[11px] text-gray-500 mt-0.5">
-                          파일키(VIN끝4): <span className="font-bold">{last4 || "—"}</span>
+                          파일키({normalizedDealName === "삼우2" ? "자산번호끝4" : "VIN끝4"}): <span className="font-bold">{last4 || "—"}</span>
                         </div>
                       </td>
 
@@ -628,8 +638,7 @@ export default function BsonWorkPage() {
           </div>
 
           <div className="px-5 py-4 text-[12px] text-gray-500 bg-white border-t border-gray-100">
-            사진 파일은 <b>{PHOTO_BASE}</b> 아래에 <b>VIN끝4자리(1).webp</b>,{" "}
-            <b>VIN끝4자리(2).webp</b> 규칙으로 두면 자동 연결됩니다.
+            사진 파일은 <b>{PHOTO_BASE}</b> 아래에 {normalizedDealName === "삼우2" ? (<><b>자산번호끝4자리(1).webp</b>, <b>자산번호끝4자리(2).webp</b></>) : (<><b>VIN끝4자리(1).webp</b>, <b>VIN끝4자리(2).webp</b></>)} 규칙으로 두면 자동 연결됩니다.
           </div>
         </div>
       )}
