@@ -45,7 +45,8 @@ type TireDetailRow = {
   front_quantity: number | null;
   rear_quantity: number | null;
   region_detail: string | null;
-  current_brand: string | null;
+  inflow_channel: string | null;
+  association_name: string | null;
   process_status: string | null;
   note: string | null;
 };
@@ -162,6 +163,9 @@ const LIFE_INSURERS = [
   "AIA생명",
   "NH농협생명",
 ];
+
+const TIRE_INFLOW_CHANNELS = ["association", "gotruck", "etc"] as const;
+const TIRE_ASSOCIATIONS = ["서울", "광주", "경북", "경남"] as const;
 
 const tabBase =
   "px-4 py-2 rounded-xl text-sm font-bold border transition";
@@ -399,7 +403,8 @@ const CallManagementPage: React.FC = () => {
   const [tireFrontQuantity, setTireFrontQuantity] = useState("");
   const [tireRearQuantity, setTireRearQuantity] = useState("");
   const [tireRegionDetail, setTireRegionDetail] = useState("");
-  const [tireCurrentBrand, setTireCurrentBrand] = useState("");
+  const [tireInflowChannel, setTireInflowChannel] = useState("");
+  const [tireAssociationName, setTireAssociationName] = useState("");
   const [tireProcessStatus, setTireProcessStatus] =
     useState("inquiry_received");
   const [tireNote, setTireNote] = useState("");
@@ -522,54 +527,6 @@ const CallManagementPage: React.FC = () => {
   const [listSearchVehicleNo, setListSearchVehicleNo] = useState("");
   const [listSearchTireSize, setListSearchTireSize] = useState("");
   const [listQuickScope, setListQuickScope] = useState<"all" | "followup">("all");
-
-  useEffect(() => {
-    const search = new URLSearchParams(location.search);
-    const hash = (location.hash || "").replace(/^#/, "").toLowerCase();
-
-    const tabCandidates = [
-      search.get("tab"),
-      search.get("view"),
-      search.get("mode"),
-      search.get("section"),
-      search.get("screen"),
-      hash,
-    ]
-      .filter(Boolean)
-      .map((v) => String(v).toLowerCase());
-
-    const shouldOpenList = tabCandidates.includes("list");
-    const shouldOpenFollowups = tabCandidates.includes("followups");
-
-    if (shouldOpenFollowups) {
-      setTab("followups");
-    } else if (shouldOpenList) {
-      setTab("list");
-    }
-
-    const workTypeParam = (search.get("work_type") || "").trim();
-    if (workTypeParam) {
-      setListFilterWorkType(workTypeParam === "all" ? "" : workTypeParam);
-    }
-
-    const statusParam = (search.get("status") || "").trim();
-    if (statusParam) setListFilterStatus(statusParam);
-
-    const insuranceCompanyParam = (search.get("insurance_company") || "").trim();
-    if (insuranceCompanyParam) setListSearchInsuranceCompany(insuranceCompanyParam);
-
-    const vehicleNoParam = (search.get("vehicle_no") || "").trim();
-    if (vehicleNoParam) setListSearchVehicleNo(vehicleNoParam);
-
-    const tireSizeParam = (search.get("tire_size") || "").trim();
-    if (tireSizeParam) setListSearchTireSize(tireSizeParam);
-
-    const followupParam = (search.get("followup") || "").trim().toLowerCase();
-    if (["y", "yes", "true", "1"].includes(followupParam)) {
-      setListQuickScope("followup");
-      setTab("list");
-    }
-  }, [location.search, location.hash]);
   const [closingFilter, setClosingFilter] = useState<"all" | "Y" | "N">("all");
 
   const [followSearchName, setFollowSearchName] = useState("");
@@ -1055,7 +1012,8 @@ const CallManagementPage: React.FC = () => {
           : ""
       );
       setTireRegionDetail(tireDetail?.region_detail || "");
-      setTireCurrentBrand(tireDetail?.current_brand || "");
+      setTireInflowChannel(tireDetail?.inflow_channel || "");
+      setTireAssociationName(tireDetail?.association_name || "");
       setTireProcessStatus(tireDetail?.process_status || "inquiry_received");
       setTireNote(tireDetail?.note || "");
     }
@@ -1157,7 +1115,8 @@ const CallManagementPage: React.FC = () => {
     setTireFrontQuantity("");
     setTireRearQuantity("");
     setTireRegionDetail("");
-    setTireCurrentBrand("");
+    setTireInflowChannel("");
+    setTireAssociationName("");
     setTireProcessStatus("inquiry_received");
     setTireNote("");
   };
@@ -1698,6 +1657,12 @@ const CallManagementPage: React.FC = () => {
   }, [insuranceType, insuranceStartDate]);
 
   useEffect(() => {
+    if (tireInflowChannel !== "association" && tireAssociationName) {
+      setTireAssociationName("");
+    }
+  }, [tireInflowChannel, tireAssociationName]);
+
+  useEffect(() => {
     const payload = (location.state as any)?.narumiInsurancePrefill;
     if (!payload) return;
 
@@ -1748,6 +1713,10 @@ const CallManagementPage: React.FC = () => {
 
     if (workType === "tire_sales" && !tireSize.trim()) {
       return alert("타이어 상담은 타이어 사이즈를 입력해 주세요.");
+    }
+
+    if (workType === "tire_sales" && tireInflowChannel === "association" && !tireAssociationName) {
+      return alert("유입경로를 협회로 선택한 경우 협회명을 선택해 주세요.");
     }
 
     if (workType === "finance" && !financeProduct) {
@@ -1870,7 +1839,7 @@ const CallManagementPage: React.FC = () => {
             vehicle_use: insuranceVehicleUse || null,
             insurance_request: insuranceRequest.trim() || null,
             insurance_type: insuranceType || null,
-            job: insuranceJob.trim() || null,
+            job: null,
             insurance_company: insuranceCompany || null,
             insurance_start_date: insuranceStartDate || null,
             insurance_end_date: insuranceEndDate || null,
@@ -1936,7 +1905,9 @@ const CallManagementPage: React.FC = () => {
             front_quantity: frontQtyNum || null,
             rear_quantity: rearQtyNum || null,
             region_detail: tireRegionDetail.trim() || null,
-            current_brand: tireCurrentBrand.trim() || null,
+            inflow_channel: tireInflowChannel || null,
+            association_name:
+              tireInflowChannel === "association" ? tireAssociationName || null : null,
             process_status: tireProcessStatus || "inquiry_received",
               note: tireNote.trim() || null,
             },
@@ -2313,21 +2284,6 @@ const CallManagementPage: React.FC = () => {
                   onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
                 />
               </div>
-
-              <div>
-                <label className={labelClass}>통신사</label>
-                <select
-                  className={controlClass}
-                  value={telecomProvider}
-                  onChange={(e) => setTelecomProvider(e.target.value)}
-                >
-                  <option value="">선택</option>
-                  <option value="SKT">SKT</option>
-                  <option value="KT">KT</option>
-                  <option value="LGU+">LGU+</option>
-                  <option value="알뜰폰">알뜰폰</option>
-                </select>
-              </div>
             </div>
 
             {workType === "registration_insurance" && (
@@ -2335,6 +2291,21 @@ const CallManagementPage: React.FC = () => {
                 <div className={sectionTitleClass}>보험 상세</div>
 
                 <div className={grid5Class}>
+                  <div>
+                    <label className={labelClass}>통신사</label>
+                    <select
+                      className={controlClass}
+                      value={telecomProvider}
+                      onChange={(e) => setTelecomProvider(e.target.value)}
+                    >
+                      <option value="">선택</option>
+                      <option value="SKT">SKT</option>
+                      <option value="KT">KT</option>
+                      <option value="LGU+">LGU+</option>
+                      <option value="알뜰폰">알뜰폰</option>
+                    </select>
+                  </div>
+
                   <div>
                     <label className={labelClass}>차량번호</label>
                     <input
@@ -2404,18 +2375,6 @@ const CallManagementPage: React.FC = () => {
                       <option value="health">건강보험</option>
                     </select>
                   </div>
-
-                  <div>
-                    <label className={labelClass}>직업</label>
-                    <input
-                      type="text"
-                      className={controlClass}
-                      placeholder="예: 자영업 / 운전기사 / 회사원"
-                      value={insuranceJob}
-                      onChange={(e) => setInsuranceJob(e.target.value)}
-                    />
-                  </div>
-
                   <div>
                     <label className={labelClass}>가입 보험사</label>
                     <select
@@ -3076,15 +3035,42 @@ const CallManagementPage: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className={labelClass}>현재 사용 브랜드</label>
-                    <input
-                      type="text"
+                    <label className={labelClass}>유입경로</label>
+                    <select
                       className={controlClass}
-                      placeholder="예: 금호 / 한국 / 넥센"
-                      value={tireCurrentBrand}
-                      onChange={(e) => setTireCurrentBrand(e.target.value)}
-                    />
+                      value={tireInflowChannel}
+                      onChange={(e) => setTireInflowChannel(e.target.value)}
+                    >
+                      <option value="">선택</option>
+                      {TIRE_INFLOW_CHANNELS.map((channel) => (
+                        <option key={channel} value={channel}>
+                          {channel === "association"
+                            ? "협회"
+                            : channel === "gotruck"
+                              ? "고트럭"
+                              : "기타"}
+                        </option>
+                      ))}
+                    </select>
                   </div>
+
+                  {tireInflowChannel === "association" && (
+                    <div>
+                      <label className={labelClass}>협회명</label>
+                      <select
+                        className={controlClass}
+                        value={tireAssociationName}
+                        onChange={(e) => setTireAssociationName(e.target.value)}
+                      >
+                        <option value="">선택</option>
+                        {TIRE_ASSOCIATIONS.map((association) => (
+                          <option key={association} value={association}>
+                            {association}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
                   <div>
                     <label className={labelClass}>타이어 진행상태</label>
@@ -3934,7 +3920,7 @@ const CallManagementPage: React.FC = () => {
 
                                         {expandedTireDetail && (
                                           <div>
-                                            <div className="grid grid-cols-11 gap-1">
+                                            <div className="grid grid-cols-12 gap-1">
                                             <div>
                                               <div className={detailLabelClass}>보유차량 브랜드</div>
                                               <div className={detailValueClass}>
@@ -3985,9 +3971,15 @@ const CallManagementPage: React.FC = () => {
                                             </div>
 
                                             <div>
-                                              <div className={detailLabelClass}>현재 사용 브랜드</div>
+                                              <div className={detailLabelClass}>유입경로</div>
                                               <div className={detailValueClass}>
-                                                {expandedTireDetail.current_brand || "-"}
+                                                {expandedTireDetail.inflow_channel === "association"
+                                                  ? `협회${expandedTireDetail.association_name ? ` (${expandedTireDetail.association_name})` : ""}`
+                                                  : expandedTireDetail.inflow_channel === "gotruck"
+                                                    ? "고트럭"
+                                                    : expandedTireDetail.inflow_channel === "etc"
+                                                      ? "기타"
+                                                      : "-"}
                                               </div>
                                             </div>
 

@@ -435,7 +435,7 @@ export default function TiresShop() {
       {loading ? (
         <div>loading...</div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
           {filteredRows.map((row, i) => {
             const isBestModel = upper(row.model_line) === "KRS55";
             const isHotSize = popularSizes.includes(normalize(row.size));
@@ -446,15 +446,15 @@ export default function TiresShop() {
             return (
               <div
                 key={normalize(row.sku) || `${normalize(row.model_line)}-${i}`}
-                className="rounded-2xl border bg-white shadow transition hover:shadow-xl hover:-translate-y-1"
+                className="flex h-full flex-col rounded-2xl border bg-white shadow transition hover:shadow-xl hover:-translate-y-1"
               >
-                <div className="group relative aspect-[4/3] overflow-hidden bg-gray-50">
+                <div className="group relative h-40 md:h-44 overflow-hidden bg-gray-50">
                   {normalize(row.main_thumb_url) ? (
                     <>
                       <img
                         src={row.main_thumb_url}
                         alt={normalize(row.shop_title) || normalize(row.model_line)}
-                        className="h-full w-full object-contain p-3"
+                        className="h-full w-full object-contain p-2.5 md:p-3"
                       />
 
                       <div className="absolute inset-0 hidden group-hover:flex items-center justify-center bg-white">
@@ -472,7 +472,7 @@ export default function TiresShop() {
                   )}
                 </div>
 
-                <div className="p-4 space-y-3">
+                <div className="flex flex-1 flex-col p-3 md:p-4 space-y-2.5 md:space-y-3">
                   <div className="flex flex-wrap gap-2">
                     {isBestModel && (
                       <span className="px-3 py-1 text-xs font-bold bg-red-50 border border-red-200 text-red-600 rounded-full">
@@ -498,17 +498,17 @@ export default function TiresShop() {
                   </div>
 
                   <div className="flex items-baseline gap-2">
-                  <div className="text-lg font-extrabold text-navy-900">{normalize(row.size)}</div>
+                  <div className="text-base md:text-lg font-extrabold text-navy-900 leading-tight">{normalize(row.size)}</div>
                   {normalize(row.pr) && (
-                    <div className="text-base font-extrabold text-gray-500">{normalize(row.pr)}</div>
+                    <div className="text-sm md:text-base font-extrabold text-gray-500">{normalize(row.pr)}</div>
                   )}
                 </div>
 
-                  <div className="text-sm font-bold text-gray-600">
+                  <div className="text-xs md:text-sm font-bold text-gray-600 leading-snug">
                     {getAxleLabel(row.axle)} · {brandShort} · {normalize(row.model_line)}
                   </div>
 
-                  <div className="rounded-2xl bg-gray-50 p-3 text-sm text-gray-700 space-y-2">
+                  <div className="rounded-2xl bg-gray-50 p-2.5 md:p-3 text-xs md:text-sm text-gray-700 space-y-1.5 md:space-y-2">
                     <div className="flex justify-between gap-3">
                       <span className="text-gray-500">브랜드</span>
                       <span className="font-bold text-right">{normalize(row.brand) || "-"}</span>
@@ -527,26 +527,26 @@ export default function TiresShop() {
                     </div>
                   </div>
 
-                  <div className="text-center bg-orange-50 border border-orange-100 rounded-xl p-3">
+                  <div className="text-center bg-orange-50 border border-orange-100 rounded-xl p-2.5 md:p-3">
                     <div className="text-xs font-bold text-orange-700">공급가 기준</div>
-                    <div className="text-xl font-extrabold">{formatPrice(row.price)}</div>
+                    <div className="text-lg md:text-xl font-extrabold">{formatPrice(row.price)}</div>
                     <div className="text-xs text-gray-500">배송비 별도 / 장착비 별도</div>
                   </div>
 
-                  <div className="rounded-2xl border border-gray-200 bg-white p-3">
+                  <div className="rounded-2xl border border-gray-200 bg-white p-2.5 md:p-3">
                     <div className="mb-2 text-xs font-extrabold text-gray-500">타이어 위치정보</div>
                     <div className="flex justify-center">
                       <img
                         src={positionImage}
                         alt={`${getAxleLabel(row.axle)} 위치정보`}
-                        className="h-14 object-contain"
+                        className="h-12 md:h-14 object-contain"
                       />
                     </div>
                   </div>
 
                   <a
                     href="tel:1551-1873"
-                    className="block text-center bg-navy-900 text-white rounded-xl py-3 font-extrabold text-lg"
+                    className="mt-auto block text-center bg-navy-900 text-white rounded-xl py-2.5 md:py-3 font-extrabold text-base md:text-lg"
                   >
                     ☎ 타이어 상담 1551-1873
                   </a>
