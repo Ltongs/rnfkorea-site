@@ -435,7 +435,7 @@ export default function TiresShop() {
       {loading ? (
         <div>loading...</div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
           {filteredRows.map((row, i) => {
             const isBestModel = upper(row.model_line) === "KRS55";
             const isHotSize = popularSizes.includes(normalize(row.size));
@@ -448,7 +448,7 @@ export default function TiresShop() {
                 key={normalize(row.sku) || `${normalize(row.model_line)}-${i}`}
                 className="flex h-full flex-col rounded-2xl border bg-white shadow transition hover:shadow-xl hover:-translate-y-1"
               >
-                <div className="group relative h-40 md:h-44 overflow-hidden bg-gray-50">
+                <div className="group relative h-40 md:aspect-[4/3] md:h-auto overflow-hidden bg-gray-50">
                   {normalize(row.main_thumb_url) ? (
                     <>
                       <img
@@ -556,6 +556,14 @@ export default function TiresShop() {
           })}
         </div>
       )}
+      <div className="fixed inset-x-0 bottom-0 z-50 border-t border-orange-200 bg-white/95 px-4 py-3 backdrop-blur md:hidden">
+        <a
+          href="tel:1551-1873"
+          className="flex h-12 w-full items-center justify-center rounded-xl bg-orange-500 text-base font-extrabold text-white shadow-lg"
+        >
+          ☎ 상담연결 1551-1873
+        </a>
+      </div>
     </div>
   );
 }
