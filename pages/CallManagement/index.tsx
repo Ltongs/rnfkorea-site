@@ -188,6 +188,17 @@ const compactCard =
 
 const controlClass =
   "w-full h-11 rounded-xl border border-gray-200 px-3 text-sm text-gray-900 bg-white";
+const insuranceEqualFieldStyle = {
+  width: "100%",
+  minWidth: 0,
+  maxWidth: "100%",
+  boxSizing: "border-box" as const,
+};
+const insuranceEqualDateFieldStyle = {
+  ...insuranceEqualFieldStyle,
+  appearance: "none" as const,
+  WebkitAppearance: "none" as const,
+};
 const compactControlClass =
   "w-full h-9 rounded-lg border border-gray-200 px-3 text-xs text-gray-900 bg-white";
 const textareaClass =
@@ -2256,6 +2267,7 @@ const CallManagementPage: React.FC = () => {
                 <input
                   type="date"
                   className={controlClass}
+                  style={insuranceEqualDateFieldStyle}
                   value={callDatetime}
                   onChange={(e) => setCallDatetime(e.target.value)}
                 />
@@ -2267,6 +2279,7 @@ const CallManagementPage: React.FC = () => {
                   ref={customerNameInputRef}
                   type="text"
                   className={controlClass}
+                  style={insuranceEqualFieldStyle}
                   placeholder="예: 홍길동"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
@@ -2279,6 +2292,7 @@ const CallManagementPage: React.FC = () => {
                   type="text"
                   inputMode="numeric"
                   className={controlClass}
+                  style={insuranceEqualFieldStyle}
                   placeholder="010-1234-5678"
                   value={phone}
                   onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
@@ -2295,6 +2309,7 @@ const CallManagementPage: React.FC = () => {
                     <label className={labelClass}>통신사</label>
                     <select
                       className={controlClass}
+                      style={insuranceEqualFieldStyle}
                       value={telecomProvider}
                       onChange={(e) => setTelecomProvider(e.target.value)}
                     >
@@ -2315,6 +2330,7 @@ const CallManagementPage: React.FC = () => {
                       autoComplete="off"
                       spellCheck={false}
                       className={controlClass}
+                      style={insuranceEqualFieldStyle}
                       placeholder="예: 123가4567"
                       value={insuranceVehicleNo}
                       onChange={(e) => setInsuranceVehicleNo(onlyKoreanAndDigits(e.target.value))}
@@ -2325,6 +2341,7 @@ const CallManagementPage: React.FC = () => {
                     <label className={labelClass}>차종 / 모델</label>
                     <select
                       className={controlClass}
+                      style={insuranceEqualFieldStyle}
                       value={insuranceVehicleModel}
                       onChange={(e) => setInsuranceVehicleModel(e.target.value)}
                     >
@@ -2338,6 +2355,7 @@ const CallManagementPage: React.FC = () => {
                     <label className={labelClass}>사용용도</label>
                     <select
                       className={controlClass}
+                      style={insuranceEqualFieldStyle}
                       value={insuranceVehicleUse}
                       onChange={(e) => setInsuranceVehicleUse(e.target.value)}
                     >
@@ -2351,6 +2369,7 @@ const CallManagementPage: React.FC = () => {
                     <label className={labelClass}>보험 요청 내용</label>
                     <select
                       className={controlClass}
+                      style={insuranceEqualFieldStyle}
                       value={insuranceRequest}
                       onChange={(e) => setInsuranceRequest(e.target.value)}
                     >
@@ -2366,6 +2385,7 @@ const CallManagementPage: React.FC = () => {
                     <label className={labelClass}>보험종류</label>
                     <select
                       className={controlClass}
+                      style={insuranceEqualFieldStyle}
                       value={insuranceType}
                       onChange={(e) => setInsuranceType(e.target.value)}
                     >
@@ -2379,6 +2399,7 @@ const CallManagementPage: React.FC = () => {
                     <label className={labelClass}>가입 보험사</label>
                     <select
                       className={controlClass}
+                      style={insuranceEqualFieldStyle}
                       value={insuranceCompany}
                       onChange={(e) => setInsuranceCompany(e.target.value)}
                     >
@@ -2405,6 +2426,7 @@ const CallManagementPage: React.FC = () => {
                     <input
                       type="date"
                       className={controlClass}
+                      style={insuranceEqualDateFieldStyle}
                       value={insuranceStartDate}
                       onChange={(e) => setInsuranceStartDate(e.target.value)}
                     />
@@ -2415,6 +2437,7 @@ const CallManagementPage: React.FC = () => {
                     <input
                       type="date"
                       className={controlClass}
+                      style={insuranceEqualDateFieldStyle}
                       value={insuranceEndDate}
                       onChange={(e) => setInsuranceEndDate(e.target.value)}
                     />
@@ -2425,6 +2448,7 @@ const CallManagementPage: React.FC = () => {
                     <input
                       type="date"
                       className={controlClass}
+                      style={insuranceEqualDateFieldStyle}
                       value={nextFollowupDate}
                       onChange={(e) => setNextFollowupDate(e.target.value)}
                     />
