@@ -121,6 +121,15 @@ function downloadName(last4: string, which: 1 | 2) {
   return `${last4}(${which}).${EXT}`;
 }
 
+
+function escapeHtml(value: string) {
+  return (value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 /**
  * ✅ 존재 여부 판정 (SPA fallback 방지)
  * - 없는 파일인데 index.html이 떨어지는 경우 content-type: text/html
@@ -355,6 +364,125 @@ export default function BsonWorkPage() {
     "inline-flex items-center justify-center px-4 py-2 rounded-xl " +
     "bg-gray-100 border border-gray-200 text-gray-400 font-extrabold cursor-not-allowed";
 
+
+  const exportBtnClass =
+    "inline-flex items-center justify-center w-auto px-3 py-1.5 text-sm font-bold " +
+    "text-white bg-gray-800 rounded-md hover:bg-gray-700 whitespace-nowrap transition";
+
+  const exportBtnDisabledClass =
+    "inline-flex items-center justify-center w-auto px-3 py-1.5 text-sm font-bold " +
+    "text-gray-400 bg-gray-100 border border-gray-200 rounded-md whitespace-nowrap cursor-not-allowed";
+
+  const handleExportNoPhotoExcel = async () => {
+    const targets = visibleRows
+      .map((r) => ({ row: r, key: getPhotoMatchKey(r, normalizedDealName) }))
+      .filter((item) => !!item.key);
+
+    const missingKeys = Array.from(
+      new Set(
+        targets
+          .map((item) => item.key as string)
+          .filter((key) => !photoExistMap[key])
+      )
+    );
+
+    let mergedMap: Record<string, { p1: boolean; p2: boolean }> = { ...photoExistMap };
+
+    if (missingKeys.length > 0) {
+      const results = await Promise.all(
+        missingKeys.map(async (key) => {
+          const [p1, p2] = await Promise.all([
+            existsStaticFile(photoUrl(key, 1)),
+            existsStaticFile(photoUrl(key, 2)),
+          ]);
+          return { key, p1, p2 };
+        })
+      );
+
+      mergedMap = { ...mergedMap };
+      for (const item of results) {
+        mergedMap[item.key] = { p1: item.p1, p2: item.p2 };
+      }
+      setPhotoExistMap((prev) => ({ ...prev, ...mergedMap }));
+    }
+
+    const noPhotoRows = targets
+      .filter(({ key }) => {
+        const ex = mergedMap[key as string];
+        return ex && !ex.p1 && !ex.p2;
+      })
+      .map(({ row, key }) => ({
+        no: row.no ?? "",
+        assetNo: row.assetNo ?? "",
+        equipNo: row.equipNo ?? "",
+        model: row.model ?? "",
+        vin: row.vin ?? "",
+        siteName: row.siteName ?? "",
+        siteAddress: row.siteAddress ?? "",
+        fileKey: key ?? "",
+        photo1: "없음",
+        photo2: "없음",
+      }));
+
+    const tableRows = noPhotoRows
+      .map(
+        (r) => `
+          <tr>
+            <td>${escapeHtml(String(r.no))}</td>
+            <td>${escapeHtml(r.assetNo)}</td>
+            <td>${escapeHtml(r.equipNo)}</td>
+            <td>${escapeHtml(r.model)}</td>
+            <td>${escapeHtml(r.vin)}</td>
+            <td>${escapeHtml(r.siteName)}</td>
+            <td>${escapeHtml(r.siteAddress)}</td>
+            <td>${escapeHtml(r.fileKey)}</td>
+            <td>${r.photo1}</td>
+            <td>${r.photo2}</td>
+          </tr>`
+      )
+      .join("");
+
+    const html = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office"
+            xmlns:x="urn:schemas-microsoft-com:office:excel"
+            xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+          <meta charset="utf-8" />
+        </head>
+        <body>
+          <table border="1">
+            <thead>
+              <tr>
+                <th>순번</th>
+                <th>자산번호</th>
+                <th>장비번호</th>
+                <th>모델명</th>
+                <th>차대번호</th>
+                <th>현장명</th>
+                <th>현장주소</th>
+                <th>파일키</th>
+                <th>사진1</th>
+                <th>사진2</th>
+              </tr>
+            </thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+        </body>
+      </html>`;
+
+    const blob = new Blob(["\ufeff", html], {
+      type: "application/vnd.ms-excel;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `samwoo2_no_photo_${new Date().toISOString().slice(0, 10)}.xls`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="container mx-auto px-4 py-10 space-y-6">
       <PageTitle
@@ -478,8 +606,23 @@ export default function BsonWorkPage() {
                 </div>
               )}
             </div>
-            {loading && <div className="text-sm font-bold text-gray-500">불러오는 중…</div>}
-            {err && <div className="text-sm font-extrabold text-red-600">에러: {err}</div>}
+
+            <div className="flex items-center gap-2">
+              {normalizedDealName === "삼우2" && (
+                <button
+                  type="button"
+                  onClick={handleExportNoPhotoExcel}
+                  className={loading ? exportBtnDisabledClass : exportBtnClass}
+                  disabled={loading}
+                  title="삼우2 목록에서 사진이 하나도 없는 장비만 엑셀로 다운로드"
+                >
+                  사진없는 장비 엑셀 다운로드
+                </button>
+              )}
+
+              {loading && <div className="text-sm font-bold text-gray-500">불러오는 중…</div>}
+              {err && <div className="text-sm font-extrabold text-red-600">에러: {err}</div>}
+            </div>
           </div>
 
           <div className="overflow-x-auto">
