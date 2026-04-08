@@ -423,7 +423,7 @@ const TiresPage: React.FC = () => {
                   타이어 구매 Project!
                 </h2>
                 <p className="text-gray-600 mt-3 leading-relaxed break-keep">
-                  단순 구매가 아니라 “구매 프로젝트 + 금융”으로 설계합니다.
+                  단순 구매가 아니라 “금융을 적용한 판매방식”을 제안합니다.
                   <br />
                   RNF KOREA가 물량/운행조건/교체주기 기반으로 최적의 조합과 결제 구조까지 함께 제안합니다.
                 </p>

@@ -39,7 +39,7 @@ const ExportOverviewPage: React.FC = () => {
             </h1>
 
             <p className="text-gray-600 text-base md:text-lg max-w-3xl leading-relaxed">
-              한국에서 노후 디젤 지게차를 매입하고, 정비·등급화(A/B/C)한 뒤 신흥국 산업 현장에 안정적으로 공급합니다.
+              한국에서 노후 디젤 지게차를 매입하고, 정비·등급화(A/B/C)한 뒤 신흥국 산업 현장으로 공급합니다.
               “정비 완료 + 부품 패키지”로 품질 불균형 시장을 정면 공략합니다.
             </p>
 
@@ -118,7 +118,7 @@ const ExportOverviewPage: React.FC = () => {
                   </div>
 
                   <p className="mt-2 text-sm text-gray-700 leading-relaxed">
-                    수출 가능 물량 선별·매입을 <b className="text-navy-900">(주)크린어스</b>와 협업하여 안정적으로 진행합니다.
+                    수출 가능 물량 선별·매입을 <b className="text-navy-900">(주)크린어스</b>와 함께합니다.
                   </p>
 
                   <div className="mt-4 grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-center">

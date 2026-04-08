@@ -876,47 +876,157 @@ const Header: React.FC = () => {
 };
 
 
+const heroShowcaseItems = [
+  {
+    eyebrow: "최근 납품실적",
+    title: "골프카트용 LFP 배터리 공급",
+    subtitle: "타미우스CC",
+    description: "기존 납산 배터리 대체용 LFP 배터리 공급 사례",
+    image: "/home/golfcart_tamius.png",
+    to: "/battery",
+  },
+  {
+    eyebrow: "현장 운영사례",
+    title: "고소작업대 렌탈 제공",
+    subtitle: "Dingli 고소작업대 (50대)",
+    description: "현장 운영 목적의 장비 렌탈·금융 연계 사례",
+    image:
+      "https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=1200&q=80",
+    to: "/finance",
+  },
+  {
+    eyebrow: "협업 제안",
+    title: "제품 + 금융 결합 판매 모델",
+    subtitle: "토우그린 (TowGreen)",
+    description: "골프장 장비에 금융솔루션을 결합한 구독형 공급 모델 제안",
+    image: "/home/towgreen.png",
+    to: "/finance",
+  },
+  {
+    eyebrow: "협업 제안",
+    title: "지게차용 배터리(납산)) 렌탈 상품",
+    subtitle: "아이티앤티전기",
+    description: "배터리 구매 부담을 줄이는 렌탈 기반 공급 모델 협업",
+    image: "/home/itnt.png",
+    to: "/battery",
+  },
+];
+
+const HeroShowcaseSlider: React.FC = () => {
+  const loopItems = [...heroShowcaseItems, ...heroShowcaseItems];
+
+  return (
+    <div className="mt-10 md:mt-12 w-full">
+      <div className="flex items-end justify-between gap-4 mb-4 px-1">
+        <div>
+          <p className="text-[11px] md:text-xs font-extrabold tracking-[0.28em] text-[#ff8a3d] uppercase">
+            Recent Business Highlights
+          </p>
+          <h2 className="mt-2 text-left text-xl md:text-2xl font-bold text-white">
+            최근 납품실적 · 사업추진 현황
+          </h2>
+        </div>
+      </div>
+
+      <div className="relative overflow-hidden rounded-[24px] border border-white/10 bg-white/5 backdrop-blur-[2px]">
+        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 bg-gradient-to-r from-[#0a192f] to-transparent" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-gradient-to-l from-[#0a192f] to-transparent" />
+
+        <div className="flex w-max gap-4 px-4 py-4 [animation:heroCaseMarquee_26s_linear_infinite] hover:[animation-play-state:paused]">
+          {loopItems.map((item, idx) => (
+            <Link
+              key={`${item.title}-${idx}`}
+              to={item.to}
+              className="group relative h-[220px] w-[300px] md:h-[236px] md:w-[360px] shrink-0 overflow-hidden rounded-[20px] border border-white/10 bg-[#10233c]"
+            >
+              <div className="absolute inset-0 overflow-hidden">
+                <img
+                  src={item.image}
+                  alt={`${item.title} ${item.subtitle}`}
+                  className="h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-105"
+                  loading="lazy"
+                />
+              </div>
+
+              <div className="absolute inset-0 bg-gradient-to-t from-[#07111f] via-[#07111f]/55 to-transparent" />
+              <div className="absolute inset-x-0 bottom-0 p-5 text-left">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <span className="inline-flex rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-[11px] font-bold tracking-[0.14em] text-[#ffd8bf] uppercase">
+                    {item.eyebrow}
+                  </span>
+                  <span className="text-[11px] font-semibold tracking-[0.24em] text-white/60 uppercase">
+                    Case
+                  </span>
+                </div>
+
+                <h3 className="text-lg md:text-xl font-bold text-white leading-snug">
+                  {item.title}
+                </h3>
+                <p className="mt-1 text-sm font-semibold text-[#b7f064]">
+                  {item.subtitle}
+                </p>
+                <p className="mt-2 text-sm leading-relaxed text-gray-200 line-clamp-2">
+                  {item.description}
+                </p>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes heroCaseMarquee {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(calc(-50% - 8px)); }
+        }
+      `}</style>
+    </div>
+  );
+};
+
 const Hero: React.FC = () => {
   return (
     <section
-  className="
-    relative
-    min-h-[56vh] md:min-h-[60vh]
-    flex items-center justify-center
-    bg-[#0a192f] overflow-hidden
-    py-8 md:py-0
-  "
->
-  <div className="absolute inset-0 z-0">
-    <img
-      src="https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80"
-      alt="Industrial Warehouse"
-      className="w-full h-full object-contain md:object-cover object-center opacity-30"
-      loading="lazy"
-    />
-    <div className="absolute inset-0 bg-[#0a192f]/60 mix-blend-multiply" />
-    <div className="absolute inset-0 bg-gradient-to-t from-[#0a192f] via-transparent to-transparent" />
-  </div>
+      className="
+        relative
+        min-h-[72vh] md:min-h-[82vh]
+        flex items-center justify-center
+        bg-[#0a192f] overflow-hidden
+        py-10 md:py-16
+      "
+    >
+      <div className="absolute inset-0 z-0">
+        <img
+          src="https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80"
+          alt="Industrial Warehouse"
+          className="w-full h-full object-cover object-center opacity-30"
+          loading="lazy"
+        />
+        <div className="absolute inset-0 bg-[#0a192f]/60 mix-blend-multiply" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0a192f] via-[#0a192f]/35 to-transparent" />
+      </div>
 
-  <div className="container mx-auto px-4 relative z-10">
-    <div className="max-w-3xl mx-auto text-center">
-      <span className="animate-fadeUp text-[#a3e635] font-medium tracking-wider text-sm md:text-base mb-5 block uppercase">
-        Industrial Energy & Mobility Solution
-      </span>
+      <div className="container mx-auto px-4 relative z-10">
+        <div className="max-w-6xl mx-auto text-center">
+          <span className="animate-fadeUp text-[#a3e635] font-medium tracking-wider text-sm md:text-base mb-5 block uppercase">
+            Industrial Energy & Mobility Solution
+          </span>
 
-      <h1 className="animate-fadeUp delay-150 text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-tight mb-6">
-        산업재에 관한 모든 것<br />
-        <span className="text-[#a3e635]">RNF KOREA</span>가 책임집니다.
-      </h1>
+          <h1 className="animate-fadeUp delay-150 text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-tight mb-6">
+            산업재에 관한 모든 것<br />
+            <span className="text-[#a3e635]">RNF KOREA</span>가 책임집니다.
+          </h1>
 
-      <p className="animate-fadeUp delay-300 text-lg md:text-xl text-gray-300 mb-0 leading-relaxed font-light max-w-2xl mx-auto">
-        물류기기용 LFP배터리, 산업용/화물용 타이어<br className="hidden md:block" />
-        그리고 그 모든 것에 대한 렌탈과 금융 서비스.<br className="hidden md:block" />
-        현장 운영비 절감을 위한 가장 합리적인 선택.
-      </p>
-    </div>
-  </div>
-</section>
+          <p className="animate-fadeUp delay-300 text-lg md:text-xl text-gray-300 mb-0 leading-relaxed font-light max-w-2xl mx-auto">
+            물류기기용 LFP배터리, 산업용/화물용 타이어<br className="hidden md:block" />
+            그리고 그 모든 것에 대한 렌탈과 금융 서비스.<br className="hidden md:block" />
+            현장 운영비 절감을 위한 가장 합리적인 선택.
+          </p>
+
+          <HeroShowcaseSlider />
+        </div>
+      </div>
+    </section>
   );
 };
 
