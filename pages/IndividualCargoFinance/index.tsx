@@ -1,6 +1,76 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import PageTitle from "../../components/PageTitle";
+
+
+type PageHeroProps = {
+  eyebrow?: string;
+  title: string;
+  description?: string;
+};
+
+type SectionHeaderProps = {
+  eyebrow?: string;
+  title: string;
+  description?: string;
+};
+
+function PageHero({ eyebrow, title, description }: PageHeroProps) {
+  return (
+    <section className="pt-16 pb-14 md:pt-20 md:pb-16">
+      <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10">
+        <div className="grid lg:grid-cols-12 gap-8 lg:gap-10 items-start">
+          <div className="lg:col-span-7">
+            <div className="text-sm text-gray-500">
+              <Link to="/" className="hover:text-orange-500 transition-colors">
+                Home
+              </Link>
+              <span className="mx-2">/</span>
+              <span className="text-gray-700 font-semibold">개인(개별)화물협회 전용 금융상품</span>
+            </div>
+
+            {eyebrow && (
+              <div className="mt-4 text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
+                {eyebrow}
+              </div>
+            )}
+
+            <h1 className="mt-4 text-3xl md:text-4xl lg:text-5xl font-semibold leading-[1.15] text-navy-900 break-keep">
+              {title}
+            </h1>
+
+            {description && (
+              <p className="mt-4 text-base md:text-lg leading-7 text-neutral-600 max-w-3xl break-keep">
+                {description}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SectionHeader({ eyebrow, title, description }: SectionHeaderProps) {
+  return (
+    <div className="max-w-3xl">
+      {eyebrow && (
+        <div className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
+          {eyebrow}
+        </div>
+      )}
+
+      <h2 className="mt-3 text-2xl md:text-3xl font-semibold leading-[1.2] text-navy-900 break-keep">
+        {title}
+      </h2>
+
+      {description && (
+        <p className="mt-3 text-base leading-7 text-neutral-600 break-keep">
+          {description}
+        </p>
+      )}
+    </div>
+  );
+}
 
 type CompareRow = {
   title: string;
@@ -14,8 +84,8 @@ const cardBase =
   "hover:shadow-[0_14px_40px_rgba(15,23,42,0.10)] hover:border-gray-300 transition-all";
 
 const chip =
-  "inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold " +
-  "bg-orange-50 text-orange-700 border border-orange-200";
+  "inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold " +
+  "bg-white text-navy-900 border border-gray-200";
 
 const Bullet: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div className="flex gap-2 text-sm text-gray-700 leading-relaxed">
@@ -26,18 +96,11 @@ const Bullet: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 
 const CompareCard: React.FC<{ rows: CompareRow[] }> = ({ rows }) => (
   <div className={cardBase}>
-    <div className="flex items-start gap-3">
-      <div className="mt-1 h-6 w-1.5 rounded bg-orange-500" />
-      <div>
-        <h2 className="text-2xl md:text-3xl font-extrabold text-navy-900">
-          할부 vs 리스 비교 (예시)
-        </h2>
-        <p className="text-gray-600 mt-2 max-w-3xl">
-          즉시 소유권이 필요한지, 월 비용과 초기부담을 우선할지에 따라 선택이 달라집니다.
-          실제 조건은 심사, 차종, 기간, 잔존가치에 따라 달라질 수 있습니다.
-        </p>
-      </div>
-    </div>
+    <SectionHeader
+      eyebrow="Finance Comparison"
+      title="할부 vs 리스 비교 (예시)"
+      description="즉시 소유권이 필요한지, 월 비용과 초기부담을 우선할지에 따라 선택이 달라집니다. 실제 조건은 심사, 차종, 기간, 잔존가치에 따라 달라질 수 있습니다."
+    />
 
     <div className="mt-6 grid md:grid-cols-2 gap-4">
       {rows.map((r) => (
@@ -45,11 +108,11 @@ const CompareCard: React.FC<{ rows: CompareRow[] }> = ({ rows }) => (
           key={r.title}
           className="rounded-2xl border border-gray-200 bg-white p-5"
         >
-          <div className="text-lg font-extrabold text-navy-900">{r.title}</div>
+          <div className="text-lg font-semibold text-navy-900">{r.title}</div>
 
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-              <div className="text-sm font-extrabold text-gray-700">할부금융</div>
+              <div className="text-sm font-semibold text-gray-700">할부금융</div>
               <div className="mt-2 space-y-2">
                 {r.installment.map((x, i) => (
                   <div
@@ -63,7 +126,7 @@ const CompareCard: React.FC<{ rows: CompareRow[] }> = ({ rows }) => (
             </div>
 
             <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-              <div className="text-sm font-extrabold text-gray-700">
+              <div className="text-sm font-semibold text-gray-700">
                 리스(운용)
               </div>
               <div className="mt-2 space-y-2">
@@ -92,20 +155,14 @@ const CompareCard: React.FC<{ rows: CompareRow[] }> = ({ rows }) => (
 const MouSection: React.FC = () => (
   <section className="space-y-6">
     <div className="flex items-start justify-between gap-4 flex-wrap">
-      <div className="flex items-start gap-3">
-        <div className="mt-1 h-6 w-1.5 rounded bg-orange-500" />
-        <div>
-          <h2 className="text-2xl md:text-3xl font-extrabold text-navy-900 tracking-tight">
-            MOU 협약 개인(개별)화물협회
-          </h2>
-          <p className="text-gray-600 mt-2 leading-relaxed">
-            지역 협회와의 협약을 기반으로 금융 지원을 제공합니다.
-          </p>
-        </div>
-      </div>
+      <SectionHeader
+        eyebrow="MOU Network"
+        title="MOU 협약 개인(개별)화물협회"
+        description="지역 협회와의 협약을 기반으로 금융 지원을 제공합니다."
+      />
 
       <div className="mt-1 shrink-0">
-        <span className="inline-flex items-center px-4 py-2 rounded-full bg-orange-50 text-orange-600 text-sm font-extrabold border border-orange-200">
+        <span className="inline-flex items-center px-4 py-2 rounded-full bg-orange-50 text-orange-600 text-sm font-semibold border border-orange-200">
           3개 시도 협약 완료
         </span>
       </div>
@@ -114,7 +171,7 @@ const MouSection: React.FC = () => (
     <div className="grid grid-cols-1 md:grid-cols-12 gap-4 w-full items-stretch">
       <div className="md:col-span-4 relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 w-full h-full">
         <div className="relative w-full h-full flex flex-col">
-          <div className="text-xs font-extrabold text-gray-500 mb-3">
+          <div className="text-xs font-semibold text-gray-500 mb-3">
             협약 네트워크(지도)
           </div>
 
@@ -273,7 +330,7 @@ const MouSection: React.FC = () => (
                 "
               >
                 <span className="inline-block w-2.5 h-2.5 rounded-full bg-orange-500" />
-                <span className="text-sm font-extrabold text-navy-900">
+                <span className="text-sm font-semibold text-navy-900">
                   {x.label}
                 </span>
                 <span className="text-xs font-bold text-gray-500">
@@ -283,7 +340,7 @@ const MouSection: React.FC = () => (
             ))}
           </div>
 
-          <div className="text-sm font-extrabold text-navy-900">
+          <div className="text-sm font-semibold text-navy-900">
             협약 구조 (운영 방식)
           </div>
 
@@ -307,7 +364,7 @@ const MouSection: React.FC = () => (
             <div className="flex gap-2">
               <span className="mt-1 inline-block w-1.5 h-1.5 rounded-full bg-orange-500" />
               <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <span className="inline-flex items-center gap-2 font-extrabold text-navy-900">
+                <span className="inline-flex items-center gap-2 font-semibold text-navy-900">
                   <span>롯데오토리스</span>
                 </span>
                 <span>는 최종 심사 및 계약을 수행합니다.</span>
@@ -357,22 +414,26 @@ const IndividualCargoFinancePage: React.FC = () => {
   ];
 
   return (
-    <div className="container mx-auto px-4 py-16 space-y-12">
-      {/* 페이지 제목 */}
-      <PageTitle
-  title="개인(개별)화물협회 전용 금융상품"
-  desc="협회 회원 전용 조건으로, 초기 부담을 낮추고 운행 수익성 중심의 조달 구조(할부/리스)를 제안합니다."
-/>
+    <div className="space-y-12">
+      <PageHero
+        eyebrow="Association Finance"
+        title="개인(개별)화물협회 전용 금융상품"
+        description="협회 회원 전용 조건으로, 초기 부담을 낮추고 운행 수익성 중심의 조달 구조(할부/리스)를 제안합니다."
+      />
+
+      <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-12">
 
       {/* 상단 파트너 박스 */}
-      <section className="border border-gray-200 rounded-3xl bg-white px-6 md:px-10 py-10 md:py-12 shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
+      <section className="border border-gray-200 rounded-2xl bg-white px-6 md:px-10 py-10 md:py-12 shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-8">
           <div className="min-w-0">
-            <div className="text-sm md:text-base font-extrabold tracking-[0.12em] text-gray-500 uppercase">
-              Official Finance Partner
+            <div className="inline-flex items-center gap-2 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-2">
+              <span className="text-xs md:text-sm font-semibold tracking-[0.16em] uppercase text-orange-600">
+                Official Finance Partner
+              </span>
             </div>
 
-            <h2 className="text-2xl md:text-3xl font-extrabold text-navy-900">
+            <h2 className="text-2xl md:text-3xl font-semibold text-navy-900">
 롯데오토리스 협회 전용 금융상품
 </h2>
 
@@ -398,7 +459,7 @@ const IndividualCargoFinancePage: React.FC = () => {
           <div className="min-w-0">
             <div className={chip}>회원 전용 파트너십</div>
 
-            <div className="mt-3 text-2xl md:text-3xl font-extrabold text-navy-900 leading-tight">
+            <div className="mt-3 text-2xl md:text-3xl font-semibold text-navy-900 leading-tight">
               협회 회원님만을 위한 특별한 파트너십으로
               <br className="hidden md:block" />
               운영 부담은 낮추고, 수익 기회는 높이고, 복지는 더 풍성하게
@@ -429,7 +490,7 @@ const IndividualCargoFinancePage: React.FC = () => {
 
           <div className="shrink-0 w-full md:w-[360px]">
             <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5">
-              <div className="text-sm font-extrabold text-gray-700">
+              <div className="text-sm font-semibold text-gray-700">
                 추가 혜택 (회원 한정)
               </div>
               <div className="mt-3 space-y-2 text-sm text-gray-700">
@@ -446,46 +507,39 @@ const IndividualCargoFinancePage: React.FC = () => {
 
       {/* Process */}
       <section className={cardBase}>
-        <div className="flex items-start gap-3">
-          <div className="mt-1 h-6 w-1.5 rounded bg-orange-500" />
-          <div>
-            <h2 className="text-2xl md:text-3xl font-extrabold text-navy-900">
-              진행 방식
-            </h2>
-            <p className="text-gray-600 mt-2 max-w-3xl">
-              협회 회원 확인 → 조건 비교(할부/리스) → 서류 준비 → 심사/계약까지,
-              RNF가 진행을 빠르게 정리해드립니다.
-            </p>
-          </div>
-        </div>
+        <SectionHeader
+          eyebrow="Process"
+          title="진행 방식"
+          description="협회 회원 확인 → 조건 비교(할부/리스) → 서류 준비 → 심사/계약까지, RNF가 진행을 빠르게 정리해드립니다."
+        />
 
         <div className="mt-6 grid md:grid-cols-3 gap-4">
           <div className="rounded-2xl border border-gray-200 bg-white p-5">
-            <div className="text-sm font-extrabold text-gray-500">Step 1</div>
-            <div className="mt-1 text-lg font-extrabold text-navy-900">
+            <div className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">Step 1</div>
+            <div className="mt-1 text-lg font-semibold text-navy-900">
               회원 확인
             </div>
-            <div className="mt-2 text-sm text-gray-600 leading-relaxed">
+            <div className="mt-2 text-sm md:text-base text-gray-600 leading-7 break-keep">
               협회 회원 여부 및 기본 조건(차종/기간/희망 월 납입)을 먼저 정리합니다.
             </div>
           </div>
 
           <div className="rounded-2xl border border-gray-200 bg-white p-5">
-            <div className="text-sm font-extrabold text-gray-500">Step 2</div>
-            <div className="mt-1 text-lg font-extrabold text-navy-900">
+            <div className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">Step 2</div>
+            <div className="mt-1 text-lg font-semibold text-navy-900">
               할부 vs 리스 비교
             </div>
-            <div className="mt-2 text-sm text-gray-600 leading-relaxed">
+            <div className="mt-2 text-sm md:text-base text-gray-600 leading-7 break-keep">
               초기비용, 월 비용, 소유권, 세무처리 관점에서 현실적인 옵션을 선택합니다.
             </div>
           </div>
 
           <div className="rounded-2xl border border-gray-200 bg-white p-5">
-            <div className="text-sm font-extrabold text-gray-500">Step 3</div>
-            <div className="mt-1 text-lg font-extrabold text-navy-900">
+            <div className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">Step 3</div>
+            <div className="mt-1 text-lg font-semibold text-navy-900">
               심사/계약
             </div>
-            <div className="mt-2 text-sm text-gray-600 leading-relaxed">
+            <div className="mt-2 text-sm md:text-base text-gray-600 leading-7 break-keep">
               서류 접수 후 금융사 심사 → 계약 확정(금리/한도/기간/잔존가치 등) 순서로 진행됩니다.
             </div>
           </div>
@@ -499,7 +553,7 @@ const IndividualCargoFinancePage: React.FC = () => {
       <section className="rounded-3xl border border-gray-200 bg-[#0a192f] p-8 md:p-10">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
           <div className="min-w-0">
-            <div className="text-white text-2xl md:text-3xl font-extrabold">
+            <div className="text-white text-2xl md:text-3xl font-semibold">
               협회 전용 조건으로 견적/조건 비교 받기
             </div>
             <div className="mt-2 text-gray-300 leading-relaxed">
@@ -513,7 +567,7 @@ const IndividualCargoFinancePage: React.FC = () => {
               className="
                 inline-flex items-center justify-center
                 h-12 px-6 rounded-2xl
-                bg-orange-500 text-white font-extrabold
+                bg-orange-500 text-white font-semibold
                 hover:bg-orange-600 transition-all
               "
             >
@@ -525,7 +579,7 @@ const IndividualCargoFinancePage: React.FC = () => {
               className="
                 inline-flex items-center justify-center
                 h-12 px-6 rounded-2xl
-                bg-white text-navy-900 font-extrabold
+                bg-white text-navy-900 font-semibold
                 hover:bg-gray-100 transition-all
               "
             >
@@ -541,6 +595,7 @@ const IndividualCargoFinancePage: React.FC = () => {
 
       {/* MOU moved from Finance page */}
       <MouSection />
+      </div>
     </div>
   );
 };

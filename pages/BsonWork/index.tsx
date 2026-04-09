@@ -584,7 +584,7 @@ export default function BsonWorkPage() {
         <div className="rounded-2xl border border-gray-200 bg-white p-6">
           <div className="text-lg font-extrabold text-navy-900">딜 이름 입력 필요</div>
           <div className="mt-2 text-sm text-gray-600 leading-relaxed">
-            딜 이름(=시트명)을 정확히 입력하면 자산 목록이 표시됩니다. 현재 허용 시트는 삼우, 삼우2 입니다.
+            딜 이름(=시트명)을 정확히 입력하면 자산 목록이 표시됩니다.
           </div>
           <div className="mt-4 text-[12px] text-gray-500">
             * 목록은 숨기지만, CSV는 내부적으로 로드될 수 있습니다(표시/검증 로직만 잠금).

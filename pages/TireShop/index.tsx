@@ -1,4 +1,46 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+
+
+type PageHeroProps = {
+  eyebrow?: string;
+  title: string;
+  description?: string;
+};
+
+function PageHero({ eyebrow, title, description }: PageHeroProps) {
+  return (
+    <section className="pt-16 pb-14 md:pt-20 md:pb-16 border-b border-gray-100">
+      <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10">
+        <div className="max-w-3xl">
+          <div className="text-sm text-gray-500">
+            <Link to="/" className="hover:text-orange-500 transition-colors">
+              Home
+            </Link>
+            <span className="mx-2">/</span>
+            <span className="text-gray-700 font-semibold">타이어 쇼핑몰</span>
+          </div>
+
+          {eyebrow && (
+            <div className="mt-4 text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
+              {eyebrow}
+            </div>
+          )}
+
+          <h1 className="mt-4 text-3xl md:text-4xl lg:text-5xl font-semibold leading-[1.15] text-navy-900 break-keep">
+            {title}
+          </h1>
+
+          {description && (
+            <p className="mt-4 text-base md:text-lg leading-7 text-gray-600 max-w-3xl break-keep">
+              {description}
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 type TireRow = {
   brand: string;
@@ -343,25 +385,32 @@ export default function TiresShop() {
   }, [rows, vehicleFilter, axleFilter, sizeFilter, search]);
 
   return (
-    <div className="container mx-auto px-4 py-10 space-y-8">
-      <h1 className="text-3xl font-extrabold">RNF 타이어 쇼핑몰</h1>
+    <div className="bg-white text-navy-900">
+      <PageHero
+        eyebrow="Tire Shop"
+        title="상용차 타이어 쇼핑몰"
+        description="규격, 축 위치, 차종 기준으로 필요한 제품을 빠르게 찾을 수 있도록 정리했습니다. 시장 가격의 기준점을 확인하고 바로 상담으로 연결할 수 있습니다."
+      />
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <span className="text-sm font-extrabold text-gray-600">🔥 인기 사이즈</span>
+      <section className="py-16 md:py-20">
+        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-8">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">Popular Sizes</span>
 
         {popularSizes.map((size) => (
           <button
             key={size}
             type="button"
             onClick={() => setSizeFilter(size)}
-            className="h-10 px-4 rounded-full border border-orange-300 bg-orange-50 text-orange-700 font-extrabold hover:bg-orange-500 hover:text-white"
+            className="h-10 px-4 rounded-full border border-orange-300 bg-orange-50 text-orange-700 font-semibold hover:bg-orange-500 hover:text-white"
           >
             {size}
           </button>
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm space-y-5">
+            <div className="flex flex-wrap items-center gap-2">
         {vehicleGroups.map((v) => {
           const active = vehicleFilter === v;
 
@@ -370,7 +419,7 @@ export default function TiresShop() {
               key={v}
               type="button"
               onClick={() => setVehicleFilter(v)}
-              className={`h-10 px-4 rounded-full text-sm font-extrabold border ${
+              className={`h-10 px-4 rounded-full text-sm font-semibold border ${
                 active
                   ? "border-orange-500 bg-orange-500 text-white"
                   : "border-gray-200 bg-white text-gray-700 hover:border-orange-300"
@@ -391,7 +440,7 @@ export default function TiresShop() {
               key={v}
               type="button"
               onClick={() => setAxleFilter(v)}
-              className={`h-10 px-4 rounded-full text-sm font-extrabold border ${
+              className={`h-10 px-4 rounded-full text-sm font-semibold border ${
                 active
                   ? "border-orange-500 bg-orange-500 text-white"
                   : "border-gray-200 bg-white text-gray-700 hover:border-orange-300"
@@ -412,7 +461,7 @@ export default function TiresShop() {
               key={size}
               type="button"
               onClick={() => setSizeFilter(size)}
-              className={`h-10 px-4 rounded-full text-sm font-extrabold border ${
+              className={`h-10 px-4 rounded-full text-sm font-semibold border ${
                 active
                   ? "border-orange-500 bg-orange-500 text-white"
                   : "border-gray-200 bg-white text-gray-700 hover:border-orange-300"
@@ -429,11 +478,13 @@ export default function TiresShop() {
         placeholder="사이즈 또는 모델 검색"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        className="w-full md:w-96 h-11 px-4 border rounded-xl"
+        className="w-full md:w-96 h-11 px-4 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-4 focus:ring-orange-200/50"
       />
 
-      {loading ? (
-        <div>loading...</div>
+          </div>
+
+          {loading ? (
+        <div className="text-sm text-gray-500">상품 정보를 불러오는 중입니다...</div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
           {filteredRows.map((row, i) => {
@@ -446,7 +497,7 @@ export default function TiresShop() {
             return (
               <div
                 key={normalize(row.sku) || `${normalize(row.model_line)}-${i}`}
-                className="flex h-full flex-col rounded-2xl border bg-white shadow transition hover:shadow-xl hover:-translate-y-1"
+                className="flex h-full flex-col rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:shadow-md hover:-translate-y-1"
               >
                 <div className="group relative h-40 md:aspect-[4/3] md:h-auto overflow-hidden bg-gray-50">
                   {normalize(row.main_thumb_url) ? (
@@ -481,12 +532,12 @@ export default function TiresShop() {
                     )}
 
                     {!isBestModel && isHotSize && (
-                      <span className="px-3 py-1 text-xs font-bold bg-orange-50 border border-orange-200 text-orange-600 rounded-full">
+                      <span className="px-3 py-1 text-xs font-semibold bg-orange-50 border border-orange-200 text-orange-600 rounded-full">
                         HOT
                       </span>
                     )}
 
-                    <span className="px-3 py-1 text-xs font-bold bg-orange-50 border border-orange-200 text-orange-600 rounded-full">
+                    <span className="px-3 py-1 text-xs font-semibold bg-orange-50 border border-orange-200 text-orange-600 rounded-full">
                       {getVehicleGroup(row)}
                     </span>
 
@@ -498,9 +549,9 @@ export default function TiresShop() {
                   </div>
 
                   <div className="flex items-baseline gap-2">
-                  <div className="text-base md:text-lg font-extrabold text-navy-900 leading-tight">{normalize(row.size)}</div>
+                  <div className="text-base md:text-lg font-semibold text-navy-900 leading-tight">{normalize(row.size)}</div>
                   {normalize(row.pr) && (
-                    <div className="text-sm md:text-base font-extrabold text-gray-500">{normalize(row.pr)}</div>
+                    <div className="text-sm md:text-base font-semibold text-gray-500">{normalize(row.pr)}</div>
                   )}
                 </div>
 
@@ -511,25 +562,25 @@ export default function TiresShop() {
                   <div className="rounded-2xl bg-gray-50 p-2.5 md:p-3 text-xs md:text-sm text-gray-700 space-y-1.5 md:space-y-2">
                     <div className="flex justify-between gap-3">
                       <span className="text-gray-500">브랜드</span>
-                      <span className="font-bold text-right">{normalize(row.brand) || "-"}</span>
+                      <span className="font-semibold text-right">{normalize(row.brand) || "-"}</span>
                     </div>
 
                     <div className="flex justify-between gap-3">
                       <span className="text-gray-500">모델</span>
-                      <span className="font-bold text-right">{normalize(row.model_line) || "-"}</span>
+                      <span className="font-semibold text-right">{normalize(row.model_line) || "-"}</span>
                     </div>
 
                     <div className="flex justify-between gap-3">
                       <span className="text-gray-500">적용차종</span>
-                      <span className="font-bold text-right">
+                      <span className="font-semibold text-right">
                         {normalizeFitmentText(row.oe_fitment) || "-"}
                       </span>
                     </div>
                   </div>
 
                   <div className="text-center bg-orange-50 border border-orange-100 rounded-xl p-2.5 md:p-3">
-                    <div className="text-xs font-bold text-orange-700">공급가 기준</div>
-                    <div className="text-lg md:text-xl font-extrabold">{formatPrice(row.price)}</div>
+                    <div className="text-xs font-semibold text-orange-700">공급가 기준</div>
+                    <div className="text-lg md:text-xl font-semibold">{formatPrice(row.price)}</div>
                     <div className="text-xs text-gray-500">배송비 별도 / 장착비 별도</div>
                   </div>
 
@@ -546,7 +597,7 @@ export default function TiresShop() {
 
                   <a
                     href="tel:1551-1873"
-                    className="mt-auto block text-center bg-navy-900 text-white rounded-xl py-2.5 md:py-3 font-extrabold text-base md:text-lg"
+                    className="mt-auto block text-center bg-navy-900 text-white rounded-xl py-2.5 md:py-3 font-semibold text-base md:text-lg"
                   >
                     ☎ 타이어 상담 1551-1873
                   </a>
@@ -556,14 +607,16 @@ export default function TiresShop() {
           })}
         </div>
       )}
-      <div className="fixed inset-x-0 bottom-0 z-50 border-t border-orange-200 bg-white/95 px-4 py-3 backdrop-blur md:hidden">
-        <a
-          href="tel:1551-1873"
-          className="flex h-12 w-full items-center justify-center rounded-xl bg-orange-500 text-base font-extrabold text-white shadow-lg"
-        >
-          ☎ 상담연결 1551-1873
-        </a>
-      </div>
+          <div className="fixed inset-x-0 bottom-0 z-50 border-t border-orange-200 bg-white/95 px-4 py-3 backdrop-blur md:hidden">
+            <a
+              href="tel:1551-1873"
+              className="flex h-12 w-full items-center justify-center rounded-xl bg-orange-500 text-base font-semibold text-white shadow-lg"
+            >
+              ☎ 상담연결 1551-1873
+            </a>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
