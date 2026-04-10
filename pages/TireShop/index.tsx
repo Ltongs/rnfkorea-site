@@ -389,7 +389,7 @@ export default function TiresShop() {
       <PageHero
         eyebrow="Tire Shop"
         title="상용차 타이어 쇼핑몰"
-        description="규필요한 제품을 빠르게 찾을 수 있도록 정리했습니다. 시장 가격의 기준점을 확인하고 바로 상담으로 연결할 수 있습니다."
+        description="규필요한 제품을 빠르게 찾을 수 있도록 정리했습니다. 비교견적 후 바로 상담으로 연결할 수 있습니다."
       />
 
       <section className="py-16 md:py-20">
