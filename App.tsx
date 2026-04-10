@@ -57,11 +57,11 @@ import TireShopPage from "./pages/TireShop/index";
 import TireShopDetailPage from "./pages/TireShop/detail";
 import CallManagementPage from "./pages/CallManagement/index";
 import DashboardPage from "./pages/Dashboard";
-import BatteryPage from "./pages/battery/index";
+import BatteryPage from "./pages/Battery/index";
 import HomePage from "./pages/Home";
 import FinancePage from "./pages/Finance/index";
-import TiresPage from "./pages/tires/index";
-import ExportPage from "./pages/export/index";
+import TiresPage from "./pages/Tires/index";
+import ExportPage from "./pages/Export/index";
 
 /* utils / config */
 import { fetchTireRows } from "./lib/tiresCsv";
@@ -140,6 +140,22 @@ type InventoryCsvRow = {
   remarks?: string;
 
   imgCount?: number; // ✅ number로 통일
+};
+
+type ExportFilter = "all" | "forklift" | "excavator";
+
+type SpecRow = {
+  label: string;
+  value: string;
+};
+
+type InventoryItem = {
+  id: string;
+  type: "forklift" | "excavator";
+  title: string;
+  folder: string;
+  images: string[];
+  specs: SpecRow[];
 };
 
 function parseCSV(text: string): string[][] {
@@ -1352,7 +1368,7 @@ const InventoryCard: React.FC<{ item: InventoryItem }> = ({ item }) => {
   const preload = useMemo(() => item.images.slice(0, 6), [item.images]);
 
   const displayImages = useMemo(() => {
-    return okSet.size > 0 ? item.images.filter((src) => okSet.has(src)) : item.images;
+    return okSet.size > 0 ? item.images.filter((src: string) => okSet.has(src)) : item.images;
   }, [item.images, okSet]);
 
   useEffect(() => {
@@ -1408,7 +1424,7 @@ const InventoryCard: React.FC<{ item: InventoryItem }> = ({ item }) => {
     className="flex gap-2"
     onMouseLeave={() => setHeroIndex(0)}   // ✅ 썸네일 영역 이탈 시 0번 복귀
   >
-    {displayImages.slice(0, 6).map((src) => (
+    {displayImages.slice(0, 6).map((src: string) => (
   <ClickableThumb
     key={src}
     src={src}
@@ -1436,7 +1452,7 @@ const InventoryCard: React.FC<{ item: InventoryItem }> = ({ item }) => {
           <div className="border-t pt-3">
             <table className="w-full text-sm">
               <tbody>
-                {item.specs.map((row) => (
+                {item.specs.map((row: SpecRow) => (
                   <tr key={row.label} className="border-b last:border-b-0">
                     <td className="py-2 pr-3 text-gray-500 whitespace-nowrap w-28">{row.label}</td>
                     <td className="py-2 text-navy-900 font-medium">{row.value}</td>
@@ -1455,7 +1471,7 @@ const CSV_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vStUJkHotLlVECjJPyaxIWnYTl45_0Fw9IAtgIUzkRjScPYWE_lYJfk2_38Uqn9Y40kP-5pv3UXeRJf/pub?gid=0&single=true&output=csv";
 
 const ExportShopPage: React.FC = () => {
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<ExportFilter>("all");
   const [rows, setRows] = useState<InventoryCsvRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [errMsg, setErrMsg] = useState<string>("");
@@ -1483,7 +1499,7 @@ const ExportShopPage: React.FC = () => {
   }, []);
 
   const inventory: InventoryItem[] = useMemo(() => {
-    return rows.map((r) => {
+    return rows.map((r: InventoryCsvRow) => {
       const count = r.imgCount ?? 5;
       const prefix = r.type === "forklift" ? "F" : "X";
       const folder = `(${prefix})${r.id}`;
@@ -1515,9 +1531,9 @@ const ExportShopPage: React.FC = () => {
   }, [rows]);
 
   const totalCount = inventory.length;
-  const forkliftCount = inventory.filter((x) => x.type === "forklift").length;
-  const excavatorCount = inventory.filter((x) => x.type === "excavator").length;
-  const filtered = filter === "all" ? inventory : inventory.filter((x) => x.type === filter);
+  const forkliftCount = inventory.filter((x: InventoryItem) => x.type === "forklift").length;
+  const excavatorCount = inventory.filter((x: InventoryItem) => x.type === "excavator").length;
+  const filtered = filter === "all" ? inventory : inventory.filter((x: InventoryItem) => x.type === filter);
 
   const pillBase =
     "px-4 py-2 rounded-full text-sm font-semibold border transition-all duration-200";
