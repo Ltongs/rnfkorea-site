@@ -45,9 +45,9 @@ function isInCenterArea(e: React.MouseEvent, ratio = 0.4) {
 
 function PageHero({ eyebrow, title, description, right }: PageHeroProps) {
   return (
-    <section className="pt-16 pb-14 md:pt-20 md:pb-16">
+    <section className="pt-6 pb-5 md:pt-8 md:pb-6">
       <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10">
-        <div className="grid lg:grid-cols-12 gap-8 lg:gap-10 items-start">
+        <div className="grid lg:grid-cols-12 gap-6 lg:gap-8 items-start">
           <div className="lg:col-span-7">
             <div className="text-sm text-gray-500">
               <Link to="/" className="hover:text-orange-500 transition-colors">
@@ -378,12 +378,12 @@ export default function TiresPage() {
     sectionRef: React.RefObject<HTMLDivElement | null>;
     products: TruckProduct[];
   }) => (
-    <section ref={sectionRef} className="scroll-mt-28 py-16 md:py-20">
+    <section ref={sectionRef} className="scroll-mt-28 py-6 md:py-8">
       <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10">
         <div className="rounded-2xl border border-gray-200 bg-white p-6 md:p-8">
           <SectionHeader title={title} description={desc} />
 
-          <div className="mt-10 grid md:grid-cols-3 gap-6">
+          <div className="mt-4 grid md:grid-cols-3 gap-6">
             {products.map((p) => (
               <ProductCard key={p.model} p={p} />
             ))}
@@ -435,8 +435,8 @@ export default function TiresPage() {
         }
       />
 
-      <section className="py-16 md:py-20 border-t border-gray-100">
-        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-10">
+      <section className="py-6 md:py-8 border-t border-gray-100">
+        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-4">
           <div className="grid md:grid-cols-12 gap-8 items-start">
             <div className="md:col-span-7 min-w-0">
               <SectionHeader
@@ -500,8 +500,8 @@ export default function TiresPage() {
         </div>
       </section>
 
-      <section className="py-16 md:py-20 border-t border-gray-100">
-        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-10">
+      <section className="py-6 md:py-8 border-t border-gray-100">
+        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-4">
           <SectionHeader
             eyebrow="Commercial Tire"
             title="화물용 타이어"
@@ -584,8 +584,8 @@ export default function TiresPage() {
         </div>
       </section>
 
-      <section className="py-16 md:py-20 border-t border-gray-100">
-        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-10">
+      <section className="py-6 md:py-8 border-t border-gray-100">
+        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-4">
           <SectionHeader
             eyebrow="Industrial Tire"
             title="산업용 타이어"
@@ -628,7 +628,7 @@ export default function TiresPage() {
               description="산업용 타이어는 주요 물류·장비 운영사 및 공식 유통망을 중심으로 공급합니다."
             />
 
-            <div className="mt-8 grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-4">
               {industrialKeyClients.map((c) => (
                 <div
                   key={c.key}

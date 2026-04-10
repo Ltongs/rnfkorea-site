@@ -11,7 +11,7 @@ type PageHeroProps = {
 function PageHero({ eyebrow, title, description }: PageHeroProps) {
   return (
     <section className="pt-16 pb-14 md:pt-20 md:pb-16 border-b border-gray-100">
-      <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10">
+      <div className="max-w-6xl mx-auto px-4 md:px-6 lg:px-8">
         <div className="max-w-3xl">
           <div className="text-sm text-gray-500">
             <Link to="/" className="hover:text-orange-500 transition-colors">
@@ -393,7 +393,7 @@ export default function TiresShop() {
       />
 
       <section className="py-16 md:py-20">
-        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-8">
+        <div className="max-w-6xl mx-auto px-4 md:px-6 lg:px-8 space-y-8">
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">Popular Sizes</span>
 

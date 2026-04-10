@@ -94,7 +94,7 @@ const ExportOverviewPage: React.FC = () => {
   const bottomBar = "mt-auto pt-4 border-t border-gray-100 min-h-[56px] flex items-center";
 
   return (
-    <div className="space-y-12">
+    <div className="space-y-4">
       {/* ===================== PAGE HEADER ===================== */}
       <div className="border-b border-gray-200 pb-8">
         <PageHero
@@ -173,7 +173,7 @@ const ExportOverviewPage: React.FC = () => {
         />
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-12">
+      <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-4">
 
       {/* ===================== 시장 개요 ===================== */}
       <section className="space-y-6">

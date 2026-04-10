@@ -18,9 +18,9 @@ type SectionHeaderProps = {
 
 function PageHero({ eyebrow, title, description, right }: PageHeroProps) {
   return (
-    <section className="pt-16 pb-14 md:pt-20 md:pb-16">
+    <section className="pt-6 pb-5 md:pt-8 md:pb-6">
       <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10">
-        <div className="grid lg:grid-cols-12 gap-8 lg:gap-10 items-start">
+        <div className="grid lg:grid-cols-12 gap-8 lg:gap-6 items-start">
           <div className="lg:col-span-7">
             <div className="text-sm text-gray-500">
               <Link to="/" className="hover:text-orange-500 transition-colors">
@@ -264,28 +264,28 @@ export default function BatteryPage() {
                 초기비용을 없애고, 교체주기와 운용환경까지 고려한<br/>배터리 교체 프로그램을 제안합니다.
               </p>
 
-              <div className="rounded-2xl border border-gray-200 bg-white/90 p-5 md:p-6">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="rounded-xl bg-gray-50 px-4 py-4">
-                    <div className="text-[11px] font-semibold tracking-[0.12em] uppercase text-orange-500">
-                      공급 범위
+              <div className="rounded-2xl border border-gray-200 bg-white/90 px-5 py-4 md:px-6 md:py-4">
+                <div className="space-y-2.5 text-sm md:text-base">
+                  <div className="flex items-start gap-3 leading-6">
+                    <div className="shrink-0 text-[11px] md:text-xs font-semibold tracking-[0.12em] uppercase text-orange-500 pt-0.5">
+                      공급범위
                     </div>
-                    <div className="mt-2 text-sm md:text-base font-semibold leading-6 text-navy-900 break-keep">
-                      ◦ LFP<br/>◦ 납산 배터리
+                    <div className="font-semibold text-navy-900 break-keep">
+                      LFP, 납산배터리
                     </div>
                   </div>
 
-                  <div className="rounded-xl bg-gray-50 px-4 py-4">
-                    <div className="text-[11px] font-semibold tracking-[0.12em] uppercase text-orange-500">
-                      적용 장비
+                  <div className="flex items-start gap-3 leading-6">
+                    <div className="shrink-0 text-[11px] md:text-xs font-semibold tracking-[0.12em] uppercase text-orange-500 pt-0.5">
+                      적용장비
                     </div>
-                    <div className="mt-2 text-sm md:text-base font-semibold leading-6 text-navy-900 break-keep">
-                      ◦ 지게차<br/>◦ 고소작업대<br/>◦ 골프카트
+                    <div className="font-semibold text-navy-900 break-keep">
+                      지게차, 고소작업대, 골프카트
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-4 flex flex-col sm:flex-row gap-3">
+                <div className="mt-3 flex flex-col sm:flex-row gap-3">
                   <a
                     href="tel:1551-1873"
                     className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-orange-500 text-white font-semibold text-sm hover:bg-orange-600 transition-all shadow-sm hover:shadow-md"
@@ -307,11 +307,11 @@ export default function BatteryPage() {
         }
       />
 
-      <section className="py-16 md:py-20 border-t border-gray-100">
-        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-10">
+      <section className="py-6 md:py-8 border-t border-gray-100">
+        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-4">
           <SectionHeader
             eyebrow="Program"
-            title="RNF Battery Rental Structure"
+            title="RNF Battery Rental Program"
             description="공급사, 렌탈 구조, RNF의 역할을 한 눈에 이해되도록 정리했습니다."
           />
 
@@ -346,8 +346,8 @@ export default function BatteryPage() {
         </div>
       </section>
 
-      <section className="py-16 md:py-20 border-t border-gray-100 bg-gray-50/70">
-        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-10">
+      <section className="py-6 md:py-8 border-t border-gray-100 bg-gray-50/70">
+        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-4">
           <SectionHeader
             eyebrow="Application"
             title="장비별 배터리 솔루션"
@@ -390,8 +390,8 @@ export default function BatteryPage() {
         </div>
       </section>
 
-      <section className="py-16 md:py-20 border-t border-gray-100">
-        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-10">
+      <section className="py-6 md:py-8 border-t border-gray-100">
+        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-4">
           <SectionHeader
             eyebrow="Project"
             title="배터리 전환 프로젝트 프로세스"
@@ -417,8 +417,8 @@ export default function BatteryPage() {
         </div>
       </section>
 
-      <section className="py-16 md:py-20 border-t border-gray-100">
-        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-10">
+      <section className="py-6 md:py-8 border-t border-gray-100">
+        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-4">
           <div className="rounded-3xl border border-orange-200 bg-orange-50 p-6 md:p-7">
             <div className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
               Why Rental
@@ -449,7 +449,7 @@ export default function BatteryPage() {
         </div>
       </section>
 
-      <section className="py-16 md:py-20 border-t border-gray-100 bg-gray-50 px-6">
+      <section className="py-6 md:py-8 border-t border-gray-100 bg-gray-50 px-6">
         <div className="max-w-7xl mx-auto">
           <SectionHeader
             eyebrow="Case Study"

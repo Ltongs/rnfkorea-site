@@ -109,9 +109,9 @@ export default function FinancePage() {
 
   return (
     <div className="bg-white text-navy-900">
-      <section className="pt-16 pb-14 md:pt-20 md:pb-16 border-b border-gray-100">
+      <section className="pt-6 pb-5 md:pt-8 md:pb-6 border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10">
-          <div className="grid lg:grid-cols-12 gap-8 lg:gap-10 items-start">
+          <div className="grid lg:grid-cols-12 gap-8 lg:gap-6 items-start">
             <div className="lg:col-span-7">
               <div className="text-sm text-gray-500">
                 <Link to="/" className="hover:text-orange-500 transition-colors">
@@ -184,7 +184,7 @@ export default function FinancePage() {
         </div>
       </section>
 
-      <section className="py-16 md:py-20">
+      <section className="py-6 md:py-8">
         <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10">
           <SectionTitle
             eyebrow="Battery Finance"
@@ -238,7 +238,7 @@ export default function FinancePage() {
         </div>
       </section>
 
-      <section className="py-16 md:py-20 border-t border-gray-100">
+      <section className="py-6 md:py-8 border-t border-gray-100">
         <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10">
           <SectionTitle
             eyebrow="Products"
@@ -327,7 +327,7 @@ export default function FinancePage() {
         </div>
       </section>
 
-      <section className="py-16 md:py-20 border-t border-gray-100">
+      <section className="py-6 md:py-8 border-t border-gray-100">
         <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <SectionTitle
@@ -457,7 +457,7 @@ export default function FinancePage() {
         </div>
       </section>
 
-      <section className="py-16 md:py-20 border-t border-gray-100">
+      <section className="py-6 md:py-8 border-t border-gray-100">
         <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10">
           <div className="rounded-2xl border border-gray-200 bg-white p-6 md:p-7">
             <SectionTitle

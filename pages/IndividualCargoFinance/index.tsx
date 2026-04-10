@@ -16,9 +16,9 @@ type SectionHeaderProps = {
 
 function PageHero({ eyebrow, title, description }: PageHeroProps) {
   return (
-    <section className="pt-16 pb-14 md:pt-20 md:pb-16">
+    <section className="pt-6 pb-5 md:pt-8 md:pb-6">
       <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10">
-        <div className="grid lg:grid-cols-12 gap-8 lg:gap-10 items-start">
+        <div className="grid lg:grid-cols-12 gap-8 lg:gap-6 items-start">
           <div className="lg:col-span-7">
             <div className="text-sm text-gray-500">
               <Link to="/" className="hover:text-orange-500 transition-colors">
@@ -414,44 +414,46 @@ const IndividualCargoFinancePage: React.FC = () => {
   ];
 
   return (
-    <div className="space-y-12">
+    <div className="space-y-4">
       <PageHero
         eyebrow="Association Finance"
         title="개인(개별)화물협회 전용 금융상품"
         description="협회 회원 전용 조건으로, 초기 부담을 낮추고 운행 수익성 중심의 조달 구조(할부/리스)를 제안합니다."
       />
 
-      <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-12">
+      <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-4">
 
       {/* 상단 파트너 박스 */}
       <section className="border border-gray-200 rounded-2xl bg-white px-6 md:px-10 py-10 md:py-12 shadow-sm">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-8">
-          <div className="min-w-0">
-            <div className="inline-flex items-center gap-2 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-2">
-              <span className="text-xs md:text-sm font-semibold tracking-[0.16em] uppercase text-orange-600">
-                Official Finance Partner
-              </span>
-            </div>
+  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-8">
+    <div className="min-w-0">
 
-            <h2 className="text-2xl md:text-3xl font-semibold text-navy-900">
-롯데오토리스 협회 전용 금융상품
-</h2>
+      <div className="inline-flex items-center gap-2 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-2 mb-4">
+        <span className="text-xs md:text-sm font-semibold tracking-[0.16em] text-orange-500">
+          Official Finance Partner
+        </span>
+      </div>
 
-            <p className="mt-5 text-base md:text-xl text-gray-600 font-medium leading-relaxed">
-              본 상품은 롯데오토리스와 협회 간 협약을 기반으로 제공되는
-              회원 전용 금융 구조입니다.
-            </p>
-          </div>
+      <h2 className="text-2xl md:text-3xl font-semibold text-navy-900">
+        롯데오토리스 협회 전용 금융상품
+      </h2>
 
-          <div className="shrink-0 flex items-center md:justify-end">
-            <img
-              src="/logo/lotte.jpg"
-              alt="롯데오토리스"
-              className="h-14 md:h-20 w-auto object-contain"
-            />
-          </div>
-        </div>
-      </section>
+      <p className="mt-5 text-base md:text-xl text-gray-600 font-medium leading-relaxed">
+        본 상품은 롯데오토리스와 협회 간 협약을 기반으로 제공되는
+        회원 전용 금융 구조입니다.
+      </p>
+
+    </div>
+
+    <div className="shrink-0 flex items-center md:justify-end">
+      <img
+        src="/logo/lotte.jpg"
+        alt="롯데오토리스"
+        className="h-14 md:h-20 w-auto object-contain"
+      />
+    </div>
+  </div>
+</section>
 
       {/* Hero / Partnership */}
       <section className={cardBase}>
