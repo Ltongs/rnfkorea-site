@@ -24,6 +24,7 @@ export const ProjectConsultForm: React.FC<ProjectConsultFormProps> = ({
   const [status, setStatus] = useState<"idle" | "sending" | "ok" | "error">(
     "idle"
   );
+  const [errorMessage, setErrorMessage] = useState("");
 
   const canSubmit = useMemo(() => {
     const hasContact = phone.trim().length >= 7 || email.trim().length >= 5;
@@ -35,9 +36,9 @@ export const ProjectConsultForm: React.FC<ProjectConsultFormProps> = ({
     if (!canSubmit) return;
 
     setStatus("sending");
+    setErrorMessage("");
 
     try {
-      // ✅ 현재는 백엔드가 없으니 로컬 저장 + 안내만
       const payload = {
         project,
         financeType: defaultFinanceType,
@@ -46,16 +47,23 @@ export const ProjectConsultForm: React.FC<ProjectConsultFormProps> = ({
         phone: phone.trim(),
         email: email.trim(),
         memo: memo.trim(),
-        createdAt: new Date().toISOString(),
       };
 
-      // 필요하면 나중에 여기서 fetch("/api/lead", { method:"POST", ... })로 교체
-      console.log("[ProjectConsultForm]", payload);
+      const res = await fetch("/.netlify/functions/send-consult", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
 
-      // 간단 저장(원치 않으면 지우셔도 됩니다)
-      const key = "rnf_consult_leads";
-      const prev = JSON.parse(localStorage.getItem(key) || "[]");
-      localStorage.setItem(key, JSON.stringify([payload, ...prev].slice(0, 50)));
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(
+          data?.message || "상담 접수 중 오류가 발생했습니다."
+        );
+      }
 
       setStatus("ok");
       setName("");
@@ -65,6 +73,11 @@ export const ProjectConsultForm: React.FC<ProjectConsultFormProps> = ({
     } catch (err) {
       console.error(err);
       setStatus("error");
+      setErrorMessage(
+        err instanceof Error
+          ? err.message
+          : "전송 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
+      );
     }
   };
 
@@ -85,18 +98,21 @@ export const ProjectConsultForm: React.FC<ProjectConsultFormProps> = ({
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
+
         <input
           className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-gray-300"
           placeholder="연락처(필수: 연락처 또는 이메일)"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
         />
+
         <input
           className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-gray-300 md:col-span-2"
           placeholder="이메일(필수: 연락처 또는 이메일)"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
+
         <textarea
           className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-gray-300 md:col-span-2 min-h-[110px]"
           placeholder="요청사항(선택)"
@@ -108,12 +124,11 @@ export const ProjectConsultForm: React.FC<ProjectConsultFormProps> = ({
           <button
             type="submit"
             disabled={!canSubmit}
-            className={`inline-flex items-center justify-center px-6 py-3 rounded-xl font-extrabold transition-all
-              ${
-                canSubmit
-                  ? "bg-orange-500 text-white hover:bg-orange-600"
-                  : "bg-gray-100 text-gray-400 cursor-not-allowed"
-              }`}
+            className={`inline-flex items-center justify-center px-6 py-3 rounded-xl font-extrabold transition-all ${
+              canSubmit
+                ? "bg-orange-500 text-white hover:bg-orange-600"
+                : "bg-gray-100 text-gray-400 cursor-not-allowed"
+            }`}
           >
             {status === "sending" ? "전송 중..." : "상담 접수"}
           </button>
@@ -134,7 +149,7 @@ export const ProjectConsultForm: React.FC<ProjectConsultFormProps> = ({
 
         {status === "error" && (
           <div className="md:col-span-2 text-sm font-bold text-red-600">
-            전송 오류가 발생했습니다. 잠시 후 다시 시도해주세요.
+            {errorMessage || "전송 오류가 발생했습니다. 잠시 후 다시 시도해주세요."}
           </div>
         )}
 
