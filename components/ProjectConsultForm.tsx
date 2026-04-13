@@ -106,12 +106,7 @@ export const ProjectConsultForm: React.FC<ProjectConsultFormProps> = ({
           onChange={(e) => setPhone(e.target.value)}
         />
 
-        <input
-          className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-gray-300 md:col-span-2"
-          placeholder="이메일(필수: 연락처 또는 이메일)"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
+        
 
         <textarea
           className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-gray-300 md:col-span-2 min-h-[110px]"

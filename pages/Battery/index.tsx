@@ -181,7 +181,7 @@ const supplyCards = [
     title: "배터리 공급",
     accent: "LFP / 납산",
     body: [
-      "LFP : 리텐에너지솔루션",
+      "LFP : 리텐에너지솔루션 · SPIDERWAY",
       "납산 : (주)아이티앤티전기 · EXIED",
     ],
   },
@@ -203,7 +203,7 @@ const productCards = [
     subtitle: "Forklift Battery Solution",
     image: "/home/forklift.jpg",
     lines: [
-      { label: "LFP", desc: "긴 수명 · 유지보수 최소화" },
+      { label: "LFP (SPIDERWAY)", desc: "긴 수명 · 유지보수 최소화" },
       { label: "납산 (EXIED)", desc: "아이티앤티전기 · 빠른 납품과 부담 없는 렌탈 공급" },
     ],
   },
@@ -212,7 +212,7 @@ const productCards = [
     subtitle: "AWP Battery Solution",
     image: "/home/awp.jpg",
     lines: [
-      { label: "LFP", desc: "충전 효율 향상 · 장비 가동률 개선" },
+      { label: "LFP (SPIDERWAY)", desc: "충전 효율 향상 · 장비 가동률 개선" },
       { label: "납산 (EXIED)", desc: "비용 효율 중심 · 대체 공급 가능" },
     ],
   },
@@ -230,7 +230,7 @@ const productCards = [
 const benefitCards = [
   {
     title: "초기비용 제거",
-    body: "선수금 0원 구조로 고민을 없애드립니다.",
+    body: "선수금 0원 구조로 부담을 덜어드립니다.",
   },
   {
     title: "신용부담 최소화",
@@ -517,13 +517,13 @@ export default function BatteryPage() {
             </a>
 
             <a
-              href="https://www.exied.co.kr/"
+              href="http://www.itntbattery.com"
               target="_blank"
               rel="noreferrer"
               className="rounded-2xl border border-gray-200 bg-white p-5 hover:shadow-sm transition-all"
             >
               <div className="text-[11px] font-semibold tracking-[0.12em] text-gray-500 uppercase">Lead Acid Supplier</div>
-              <div className="mt-2 text-xl font-semibold text-gray-900">EXIED</div>
+              <div className="mt-2 text-xl font-semibold text-gray-900">(주)아이티엔티전기</div>
               <div className="mt-1 text-sm text-gray-600">납산 공급 파트너 홈페이지 이동 ↩︎</div>
             </a>
           </div>
