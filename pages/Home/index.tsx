@@ -1,6 +1,7 @@
 import React, { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Phone, Loader2, Send } from "lucide-react";
+import { Battery, Truck, Wallet, Check } from "lucide-react";
 
 const heroShowcaseItems = [
   {
@@ -217,9 +218,16 @@ const Services: React.FC = () => {
   return (
     <section id="products" className="py-24 bg-white scroll-mt-20">
       <div className="container mx-auto px-4">
-        <SectionTitle centered subtitle="Our Solutions">
-          현장 효율을 극대화하는<br className="md:hidden" /> 3대 핵심 서비스
-        </SectionTitle>
+        <div className="text-center mb-12">
+  <div className="text-sm font-semibold tracking-[0.18em] uppercase text-orange-500">
+    Our Solutions
+  </div>
+  <h2 className="mt-3 text-2xl md:text-4xl font-bold text-navy-900 leading-tight">
+    현장 효율을 극대화하는
+    <br className="md:hidden" />
+    3대 핵심 서비스
+  </h2>
+</div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* LFP Battery (Also Primary Product) */}
@@ -294,38 +302,39 @@ const CatalogForm: React.FC = () => {
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  e.preventDefault();
+  setIsSubmitting(true);
 
-    if (!formData.phone && !formData.email) {
-      alert("연락처 또는 이메일 주소 중 하나는 반드시 입력해주세요.");
-      return;
-    }
+  try {
+    await fetch("/.netlify/functions/send-consult", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        project: "FINANCE",
+        name: formData.contactName,
+        phone: formData.phone,
+        email: formData.email,
+        memo: "",
+      }),
+    });
 
-    setIsSubmitting(true);
+    alert("상담 신청이 접수되었습니다.\n담당자가 확인 후 연락드리겠습니다.");
 
-    try {
-      const payload = {
-        "form-name": "catalog",
-        companyName: formData.companyName || "(미입력)",
-        contactName: formData.contactName || "(미입력)",
-        phone: formData.phone || "(미입력)",
-        email: formData.email || "(미입력)",
-      };
+    setFormData({
+      companyName: "",
+      contactName: "",
+      phone: "",
+      email: "",
+    });
 
-      await fetch("/", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: encode(payload),
-      });
-
-      alert("상담 신청이 접수되었습니다.\n담당자가 확인 후 연락드리겠습니다.");
-      setFormData({ companyName: "", contactName: "", phone: "", email: "" });
-    } catch {
-      alert("전송에 실패했습니다.\n대표번호 1551-1873 으로 문의 부탁드립니다.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  } catch (error) {
+    alert("전송에 실패했습니다.\n대표번호 1551-1873 으로 문의 부탁드립니다.");
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   // ✅ 높이 줄인 버전
   const inputBase =
