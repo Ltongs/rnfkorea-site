@@ -62,6 +62,7 @@ import HomePage from "./pages/Home";
 import FinancePage from "./pages/Finance/index";
 import TiresPage from "./pages/Tires/index";
 import ExportPage from "./pages/Export/index";
+import BatteryShopPage from "./pages/battery-shop";
 
 /* utils / config */
 import { fetchTireRows } from "./lib/tiresCsv";
@@ -1938,6 +1939,7 @@ const AppRoutes = () => {
             {/* Shop */}
             <Route path="/tires-shop" element={<TireShopPage />} />
             <Route path="/tires-shop/:sku" element={<TireShopDetailPage />} />
+            <Route path="/battery-shop" element={<BatteryShopPage />} />
 
             {/* Narumi */}
             <Route path="/narumi/login" element={<NarumiLoginPage />} />

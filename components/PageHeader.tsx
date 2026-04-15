@@ -457,7 +457,7 @@ export default function PageHeader() {
                     className={dropItem}
                     onClick={handleMenuNavigate}
                   >
-                    배터리 쇼핑몰 (준비중)
+                    배터리 쇼핑몰
                   </Link>
                 </div>
               </>

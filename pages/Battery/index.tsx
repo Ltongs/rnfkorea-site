@@ -252,6 +252,16 @@ export default function BatteryPage() {
         right={
           <div className="rounded-3xl border border-gray-200 bg-gradient-to-br from-white to-slate-50 p-6 md:p-7 shadow-sm">
             <div className="space-y-4">
+              <div className="flex justify-end">
+                <Link
+                  to="/battery-shop"
+                  className="inline-flex items-center gap-2 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-2 text-sm font-semibold text-orange-600 transition-all hover:border-orange-300 hover:bg-orange-100"
+                >
+                  배터리 쇼핑몰 바로가기
+                  <span>→</span>
+                </Link>
+              </div>
+
               <div className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
                 Rental Program
               </div>
