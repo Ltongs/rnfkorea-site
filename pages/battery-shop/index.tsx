@@ -190,7 +190,7 @@ function ApplyModelsTooltip({ items }: { items: ApplyModel[] }) {
       </button>
 
       <div
-        className={`absolute left-0 bottom-full mb-2 w-[420px] max-w-[calc(100vw-3rem)] rounded-[28px] border border-gray-200 bg-white p-5 shadow-2xl transition-all duration-150 ${
+        className={`absolute left-0 top-full z-40 mt-2 w-[420px] max-w-[calc(100vw-3rem)] rounded-[28px] border border-gray-200 bg-white p-5 shadow-2xl transition-all duration-150 ${
           open
             ? "visible translate-y-0 opacity-100"
             : "invisible translate-y-1 opacity-0"
@@ -223,7 +223,7 @@ function RentalCard({ item }: { item: RentalItem }) {
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="text-xl font-semibold text-gray-900">{item.model}</div>
-          <div className="mb-2 text-sm font-medium text-orange-600">{item.capacity}</div>
+          <div className="mt-2 text-sm font-medium text-orange-600">{item.capacity}</div>
         </div>
 
         <div className="rounded-2xl bg-orange-50 px-3 py-2 text-right">
@@ -238,7 +238,7 @@ function RentalCard({ item }: { item: RentalItem }) {
         <div>{!!item.applyModels?.length && <ApplyModelsTooltip items={item.applyModels} />}</div>
       </div>
 
-      <div className="mb-2">
+      <div className="mt-2">
         <div className="mb-2 grid grid-cols-3 gap-3 text-center">
           <div />
           <div />
@@ -292,7 +292,7 @@ function QuoteOnlyCard({
 
       <div className="mt-6 rounded-2xl border border-orange-200 bg-orange-50 px-5 py-5">
         <div className="text-sm font-semibold text-orange-700">맞춤 견적 안내</div>
-        <p className="mb-2 break-keep text-sm leading-6 text-gray-700">{note}</p>
+        <p className="mt-2 break-keep text-sm leading-6 text-gray-700">{note}</p>
       </div>
     </div>
   );
@@ -383,7 +383,7 @@ export default function BatteryShopPage() {
         </div>
       </section>
 
-      <section id="forklift" className="scroll-mb-28 border-b border-gray-200 bg-white">
+      <section id="forklift" className="scroll-mt-28 border-b border-gray-200 bg-white">
         <div className="mx-auto max-w-7xl px-6 py-12 md:px-10 md:py-16">
           <CategoryHeader
             eyebrow="Forklift Battery"
@@ -399,7 +399,7 @@ export default function BatteryShopPage() {
         </div>
       </section>
 
-      <section id="awp" className="scroll-mb-28 border-b border-gray-200 bg-gray-50">
+      <section id="awp" className="scroll-mt-28 border-b border-gray-200 bg-gray-50">
         <div className="mx-auto max-w-7xl px-6 py-12 md:px-10 md:py-16">
           <CategoryHeader
             eyebrow="Aerial Work Platform Battery"
@@ -422,7 +422,7 @@ export default function BatteryShopPage() {
         </div>
       </section>
 
-      <section id="golfcart" className="scroll-mb-28 border-b border-gray-200 bg-white">
+      <section id="golfcart" className="scroll-mt-28 border-b border-gray-200 bg-white">
         <div className="mx-auto max-w-7xl px-6 py-12 md:px-10 md:py-16">
           <CategoryHeader
             eyebrow="Golf Cart Battery"
@@ -445,7 +445,7 @@ export default function BatteryShopPage() {
         </div>
       </section>
 
-      <section id="consultation" className="scroll-mb-28 bg-gray-900">
+      <section id="consultation" className="scroll-mt-28 bg-gray-900">
         <div className="mx-auto max-w-7xl px-6 py-14 md:px-10 md:py-20">
           <div className="rounded-[2rem] bg-white px-6 py-8 md:px-10 md:py-10">
             <div className="max-w-3xl">
