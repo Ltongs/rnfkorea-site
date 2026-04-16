@@ -1,503 +1,701 @@
-import React from "react";
-import { Link } from "react-router-dom";
+// pages/Export/ExportShopPage.tsx
+import React, { useEffect, useMemo, useState, createContext, useContext } from "react";
+import { Link, useLocation } from "react-router-dom";
+import { Loader2 } from "lucide-react";
+
+type EquipmentType = "forklift" | "excavator";
+
+type SpecRow = {
+  key?: string;   // ✅ optional 로 변경
+  label: string;
+  value?: string;
+};
+
+type Filter = "all" | EquipmentType;
 
 
 type PageHeroProps = {
   eyebrow?: string;
   title: string;
   description?: string;
-  right?: React.ReactNode;
 };
 
-type SectionHeaderProps = {
-  eyebrow?: string;
-  title: string;
-  description?: string;
-};
-
-function PageHero({ eyebrow, title, description, right }: PageHeroProps) {
+function PageHero({ eyebrow, title, description }: PageHeroProps) {
   return (
     <section className="pt-16 pb-14 md:pt-20 md:pb-16 border-b border-gray-100">
       <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10">
-        <div className="grid lg:grid-cols-12 gap-8 lg:gap-10 items-start">
-          <div className="lg:col-span-7">
-            <div className="text-sm text-gray-500">
-              <Link to="/" className="hover:text-orange-500 transition-colors">
-                Home
-              </Link>
-              <span className="mx-2">/</span>
-              <span className="text-gray-700 font-semibold">장비수출</span>
-            </div>
-
-            {eyebrow && (
-              <div className="mt-4 text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
-                {eyebrow}
-              </div>
-            )}
-
-            <h1 className="mt-4 text-3xl md:text-4xl lg:text-5xl font-semibold leading-[1.15] text-navy-900 break-keep">
-              {title}
-            </h1>
-
-            {description && (
-              <p className="mt-4 text-base md:text-lg leading-7 text-neutral-600 max-w-3xl break-keep">
-                {description}
-              </p>
-            )}
+        <div className="max-w-3xl">
+          <div className="text-sm text-gray-500">
+            <Link to="/" className="hover:text-orange-500 transition-colors">
+              Home
+            </Link>
+            <span className="mx-2">/</span>
+            <span className="text-gray-700 font-semibold">수출용 쇼핑몰</span>
           </div>
 
-          {right && <div className="lg:col-span-5">{right}</div>}
+          {eyebrow && (
+            <div className="mt-4 text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
+              {eyebrow}
+            </div>
+          )}
+
+          <h1 className="mt-4 text-3xl md:text-4xl lg:text-5xl font-semibold leading-[1.15] text-navy-900 break-keep">
+            {title}
+          </h1>
+
+          {description && (
+            <p className="mt-4 text-base md:text-lg leading-7 text-gray-600 max-w-3xl break-keep">
+              {description}
+            </p>
+          )}
         </div>
       </div>
     </section>
   );
 }
 
-function SectionHeader({ eyebrow, title, description }: SectionHeaderProps) {
-  return (
-    <div className="max-w-3xl">
-      {eyebrow && (
-        <div className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
-          {eyebrow}
-        </div>
-      )}
-      <h2 className="mt-3 text-2xl md:text-3xl font-semibold leading-[1.2] text-navy-900 break-keep">
-        {title}
-      </h2>
-      {description && (
-        <p className="mt-3 text-base leading-7 text-neutral-600 break-keep">
-          {description}
-        </p>
-      )}
-    </div>
-  );
+type InventoryCsvRow = {
+  id: string;
+  type: "forklift" | "excavator";
+  title: string;
+
+  year?: string;
+  brand?: string;
+  capacity?: string;
+  mast?: string;
+  hours?: string;
+  condition?: string;
+  remarks?: string;
+
+  imgCount?: number; // ✅ number로 통일
+};
+
+function parseCSV(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const next = text[i + 1];
+
+    if (ch === '"' && inQuotes && next === '"') {
+      cell += '"';
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (!inQuotes && ch === ",") {
+      row.push(cell);
+      cell = "";
+      continue;
+    }
+    if (!inQuotes && (ch === "\n" || ch === "\r")) {
+      if (ch === "\r" && next === "\n") i++;
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+      continue;
+    }
+    cell += ch;
+  }
+
+  if (cell.length > 0 || row.length > 0) {
+    row.push(cell);
+    rows.push(row);
+  }
+
+  return rows.map((r) => r.map((c) => (c ?? "").trim()));
 }
 
+async function fetchInventoryRows(csvUrl: string): Promise<InventoryCsvRow[]> {
+  const res = await fetch(csvUrl, { cache: "no-store" });
+  if (!res.ok) throw new Error(`CSV fetch failed: ${res.status}`);
 
-const ExportOverviewPage: React.FC = () => {
-  const card =
-    "border border-gray-200 rounded-2xl bg-white p-6 " +
-    "shadow-[0_10px_30px_rgba(15,23,42,0.06)]";
+  const text = await res.text();
+  const grid = parseCSV(text);
+  if (grid.length < 2) return [];
 
-  // ✅ 동일 높이 + 내부 요소 정렬을 위해 flex + h-full 사용
-  const stepCard =
-    "relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-6 " +
-    "shadow-sm hover:shadow-md transition-all h-full flex flex-col";
+  return grid
+    .slice(1)
+    .filter((r) => (r[0] ?? "").trim() !== "")
+    .map((r) => {
+      const id = (r[0] ?? "").trim();
+      const typeRaw = (r[1] ?? "forklift").trim().toLowerCase();
+      const type: "forklift" | "excavator" =
+        typeRaw === "excavator" ? "excavator" : "forklift";
 
-  const iconWrap =
-    "h-11 w-11 rounded-2xl border border-gray-200 bg-white flex items-center justify-center shadow-sm";
+      const imgCountNum = Number((r[10] ?? "").trim());
+      const imgCount = Number.isFinite(imgCountNum) && imgCountNum > 0 ? imgCountNum : 5;
 
-  // ✅ 밸류체인 카드 하단 영역(로고/전화) 높이 고정 (3카드 완전 동일)
-  const bottomBar = "mt-auto pt-4 border-t border-gray-100 min-h-[56px] flex items-center";
+      return {
+        id,
+        type,
+        title: (r[2] ?? "").trim() || `${type} (${type === "forklift" ? "F" : "X"})${id}`,
+        year: (r[3] ?? "").trim(),
+        brand: (r[4] ?? "").trim(),
+        capacity: (r[5] ?? "").trim(),
+        mast: (r[6] ?? "").trim(),
+        hours: (r[7] ?? "").trim(),
+        condition: (r[8] ?? "").trim(),
+        remarks: (r[9] ?? "").trim(),
+        imgCount,
+      };
+    });
+}
+
+type InventoryItem = {
+  id: string;                // "1544"
+  type: EquipmentType;       // forklift / excavator
+  title: string;             // 카드 제목
+  folder: string;            // "(F)1544"
+  images: string[];          // "/image/(F)1544/F_1544_1.jpg" ...
+  specs?: SpecRow[];         // 스펙 테이블
+};
+
+function buildImages(type: EquipmentType, id: string) {
+  const prefix = type === "forklift" ? "F" : "X";
+  const folder = `(${prefix})${id}`;
+  return Array.from({ length: 5 }, (_, i) => `/image/${folder}/${prefix}_${id}_${i + 1}.webp`);
+}
+
+// -------------------------
+// ClickableThumb
+// - 실패 시 대체 UI
+// -------------------------
+const ClickableThumb: React.FC<{
+  src?: string;
+  alt?: string;
+  className?: string;
+  onClick?: () => void;
+  onMouseEnter?: React.MouseEventHandler<HTMLButtonElement>;
+  onFocus?: React.FocusEventHandler<HTMLButtonElement>;
+  title?: string;
+}> = ({ src, alt = "", className = "", onClick, onMouseEnter, onFocus, title }) => {
+  const [ok, setOk] = useState(true);
+
+  useEffect(() => {
+    setOk(true);
+  }, [src]);
 
   return (
-    <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-12">
-      {/* ===================== PAGE HEADER ===================== */}
-      <section className="border-b border-gray-200 py-12 md:py-16">
-        <div className="grid md:grid-cols-12 gap-8 items-start">
-          <div className="md:col-span-7 space-y-4">
-            <div className="text-sm text-gray-500">
-              <Link to="/" className="hover:text-orange-500 transition-colors">
-                Home
-              </Link>
-              <span className="mx-2">/</span>
-              <span className="text-gray-700 font-semibold">수출용 쇼핑몰</span>
-            </div>
+    <button
+      type="button"
+      className={`relative block ${className}`}
+      onClick={onClick}
+      onMouseEnter={onMouseEnter}
+      onFocus={onFocus}
+      title={title}
+    >
+      {src && ok ? (
+        <img
+          src={src}
+          alt={alt}
+          className="w-full h-full object-cover"
+          loading="lazy"
+          onError={() => setOk(false)}
+        />
+      ) : (
+        <div className="w-full h-full flex flex-col items-center justify-center bg-gray-100 text-gray-500">
+          <div className="text-sm font-semibold">Image unavailable</div>
+          {src && <div className="text-[11px] mt-1 break-all px-3 opacity-80">{src}</div>}
+        </div>
+      )}
+    </button>
+  );
+};
 
-            <div className="text-sm font-medium tracking-[0.22em] uppercase text-orange-500">
-              EXPORT SHOP
-            </div>
+// -------------------------
+// Lightbox (Provider 방식)
+// -------------------------
+type LightboxState = {
+  isOpen: boolean;
+  images: string[];
+  index: number;
+  title?: string;
+};
 
-            <h1 className="text-4xl md:text-5xl font-semibold text-navy-900 tracking-tight break-keep">
-              수출용 쇼핑몰
-            </h1>
+const LightboxContext = createContext<{
+  state: LightboxState;
+  openAt: (title: string, images: string[], index?: number) => void;
+  close: () => void;
+  next: () => void;
+  prev: () => void;
+  setIndex: (i: number) => void;
+} | null>(null);
 
-            <p className="text-gray-600 text-base md:text-lg max-w-3xl leading-relaxed break-keep">
-              수출용 매물을 확인하고, 필요 시 스펙·가격·선적 조건을 요청하실 수 있습니다.
-            </p>
+function useLightbox() {
+  const ctx = useContext(LightboxContext);
+  if (!ctx) throw new Error("useLightbox must be used within <LightboxProvider />");
+  return ctx;
+}
+
+const LightboxProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [state, setState] = useState<LightboxState>({
+    isOpen: false,
+    images: [],
+    index: 0,
+    title: "",
+  });
+
+  const openAt = (title: string, images: string[], index = 0) => {
+    setState({
+      isOpen: true,
+      images,
+      index: Math.max(0, Math.min(index, images.length - 1)),
+      title,
+    });
+  };
+
+  const close = () => setState((s) => ({ ...s, isOpen: false }));
+
+  const setIndex = (i: number) =>
+    setState((s) => ({
+      ...s,
+      index: Math.max(0, Math.min(i, s.images.length - 1)),
+    }));
+
+  const next = () => setState((s) => ({ ...s, index: Math.min(s.index + 1, s.images.length - 1) }));
+  const prev = () => setState((s) => ({ ...s, index: Math.max(s.index - 1, 0) }));
+
+  useEffect(() => {
+    if (!state.isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+      if (e.key === "ArrowRight") next();
+      if (e.key === "ArrowLeft") prev();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.isOpen, state.images.length, state.index]);
+
+  return (
+    <LightboxContext.Provider value={{ state, openAt, close, next, prev, setIndex }}>
+      {children}
+      <LightboxModal />
+    </LightboxContext.Provider>
+  );
+};
+
+const LightboxModal: React.FC = () => {
+  const ctx = useContext(LightboxContext);
+  if (!ctx) return null;
+
+  const { state, close, next, prev } = ctx;
+  if (!state.isOpen) return null;
+
+  const src = state.images[state.index];
+
+  return (
+    <div
+      className="fixed inset-0 z-[999999] bg-black/70 flex items-center justify-center p-4"
+      onMouseDown={close}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="w-full max-w-5xl bg-white rounded-2xl overflow-hidden shadow-2xl"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b">
+          <div className="font-bold text-navy-900">
+            {state.title || "Preview"}{" "}
+            <span className="ml-2 text-sm text-gray-500">
+              ({state.index + 1}/{state.images.length})
+            </span>
           </div>
-
-          <div className="md:col-span-5 space-y-4">
-            <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
-              <div className="min-w-0">
-                <img
-                  src="/logo/cleanearth.png"
-                  alt="CleanEarth 로고"
-                  className="h-12 w-auto object-contain"
-                  loading="lazy"
-                />
-                <p className="mt-4 text-base font-semibold leading-7 text-navy-900 break-keep">
-                  이 사업은 지구를 깨끗하게 크린어스(CleanEarth)
-                  <br />
-                  (주)크린어스와 함께합니다.
-                </p>
-                <div className="mt-4 text-sm font-semibold text-navy-900">
-                  www.cleanearth.kr
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-orange-300 bg-white p-5 shadow-sm">
-              <div className="min-w-0">
-                <img
-                  src="/logo/hyundai-brotherlift.png"
-                  alt="현대지게차 경기북부판매 로고"
-                  className="h-12 w-auto object-contain"
-                  loading="lazy"
-                />
-                <p className="mt-4 text-base font-semibold leading-7 text-navy-900 break-keep">
-                  아래 차량들은 국내 최고의 지게차 정비업체
-                  <br />
-                  현대지게차 경기북부판매(형제중기)에서 관리합니다.
-                </p>
-                <div className="mt-2 text-sm font-semibold text-navy-900">
-                  1899-1373
-                </div>
-                <div className="mt-1 text-sm font-semibold text-navy-900">
-                  www.brotherlift.com
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="py-16 md:py-20">
-        <div className="space-y-12">
-
-      {/* ===================== 시장 개요 ===================== */}
-      <section className="space-y-6">
-        <div className="flex items-start gap-3">
-          <div className="mt-1 h-6 w-1.5 rounded bg-orange-500" />
-          <div>
-            <h2 className="text-2xl md:text-3xl font-semibold text-navy-900 tracking-tight">
-              시장 개요
-            </h2>
-            <p className="text-gray-600 mt-2 leading-relaxed">
-              국내는 환경규제 강화로 노후 디젤 장비 교체가 가속화되고,
-              신흥국은 제조·물류 인프라 확대로 지게차 수요가 증가합니다.
-            </p>
-          </div>
+          <button className="px-3 py-1 rounded-md hover:bg-gray-100" onClick={close}>
+            Close
+          </button>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-6">
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md transition-all">
-            <div className="text-[11px] font-semibold tracking-wider text-blue-600 mb-3">
-              STEP 1 · 국내 공급
-            </div>
-            <h3 className="text-lg font-extrabold text-navy-900 mb-3">
-              연간 약 1만 대 폐차 대상 발생
-            </h3>
-            <p className="text-gray-600 leading-relaxed text-sm">
-              국내에서 매년 약 1만 대 이상의 노후 지게차가 교체 또는 폐차 대상으로 분류됩니다.
-              단순 폐기 시 자원 손실과 비용 부담이 발생합니다.
-            </p>
-          </div>
+        <div className="relative bg-black">
+          <img src={src} alt="" className="w-full max-h-[75vh] object-contain" />
 
-          <div className="rounded-2xl border-2 border-orange-400 bg-orange-50 p-6 shadow-md hover:shadow-lg transition-all">
-            <div className="text-[11px] font-semibold tracking-wider text-orange-600 mb-3">
-              STEP 2 · RNF 재상품화
-            </div>
-            <h3 className="text-lg font-extrabold text-navy-900 mb-3">
-              정비 · 등급화 · 수출 표준화
-            </h3>
-            <p className="text-gray-700 leading-relaxed text-sm">
-              전문 정비(PDI) 및 등급화를 통해 수출 가능한 상품으로 재탄생시킵니다.
-              가격 경쟁력과 품질 신뢰를 동시에 확보합니다.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md transition-all">
-            <div className="text-[11px] font-semibold tracking-wider text-green-600 mb-3">
-              STEP 3 · 해외 수요
-            </div>
-            <h3 className="text-lg font-extrabold text-navy-900 mb-3">
-              신흥국 산업·물류 인프라 확대
-            </h3>
-            <p className="text-gray-600 leading-relaxed text-sm">
-              제조 및 물류 인프라가 빠르게 성장하는 신흥국 시장에 재공급함으로써
-              자원 재생·순환 경제에 기여하는 수출 모델을 구축합니다.
-            </p>
-            <div className="mt-5 flex items-center gap-2 text-green-600 text-sm font-bold">
-              <span className="text-base">♻</span>
-              자원 재생 · 순환 경제 기여
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ===================== 수출 대상 장비 ===================== */}
-      <section className="space-y-6">
-        <div className="flex items-start gap-3">
-          <div className="mt-1 h-6 w-1.5 rounded bg-orange-500" />
-          <div>
-            <h2 className="text-2xl md:text-3xl font-semibold text-navy-900 tracking-tight">
-              수출 대상 장비
-            </h2>
-            <p className="text-gray-600 mt-2 max-w-3xl leading-relaxed">
-              국내 사용/유통이 제한된 장비에 새로운 생명력을 부여합니다.
-            </p>
-          </div>
-        </div>
-
-        <div className="grid md:grid-cols-4 gap-4">
-          {[
-            ["연식", "8년~15년"],
-            ["엔진", "디젤"],
-            ["톤수", "2.5~7톤"],
-            ["브랜드", "현대/두산 중심"],
-          ].map(([k, v]) => (
-            <div key={k} className="rounded-2xl border border-gray-200 bg-white p-5">
-              <div className="text-[11px] font-semibold text-gray-500">{k}</div>
-              <div className="mt-2 text-lg font-extrabold text-navy-900">{v}</div>
-            </div>
-          ))}
-        </div>
-
-        <div className="rounded-2xl border border-gray-200 bg-white p-6">
-          <div className="text-sm font-semibold text-navy-900">등급 체계</div>
-          <p className="mt-2 text-sm text-gray-600 leading-relaxed">
-            A/B/C 등급으로 상태를 표준화하고, 정비 리포트/부품 패키지로 “품질 불균형” 문제를 줄입니다.
-          </p>
-        </div>
-      </section>
-
-      {/* ===================== 정비/부품 패키지 ===================== */}
-      <section className="space-y-6">
-        <div className="flex items-start gap-3">
-          <div className="mt-1 h-6 w-1.5 rounded bg-orange-500" />
-          <div>
-            <h2 className="text-2xl md:text-3xl font-semibold text-navy-900 tracking-tight">
-              정비 패키지 & 부품 패키지
-            </h2>
-            <p className="text-gray-600 mt-2 max-w-3xl leading-relaxed">
-              “장비만”이 아니라, 운영 가능 상태로 납품하는 구조입니다.
-            </p>
-          </div>
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-6">
-          <div className={card}>
-            <div className="text-lg font-extrabold text-navy-900">정비 패키지(예시)</div>
-            <ul className="mt-4 space-y-2 text-sm text-gray-700">
-              <li>• Basic: 엔진/미션/누유 기본 점검</li>
-              <li>• Standard: 유압·브레이크·마스트·전장 (+$700)</li>
-              <li>• Premium: 도장·오버홀 (+$1,500)</li>
-            </ul>
-          </div>
-
-          <div className={card}>
-            <div className="text-lg font-extrabold text-navy-900">부품 패키지(예시)</div>
-            <ul className="mt-4 space-y-2 text-sm text-gray-700">
-              <li>• 소모품 패키지 (+$1,000)</li>
-              <li>• 타이어 패키지 (+$600)</li>
-            </ul>
-          </div>
-        </div>
-      </section>
-
-      {/* ===================== 밸류체인 ===================== */}
-<section className="space-y-6">
-  <div className="flex items-start gap-3">
-    <div className="mt-1 h-6 w-1.5 rounded bg-orange-500" />
-    <div>
-      <h2 className="text-2xl md:text-3xl font-semibold text-navy-900 tracking-tight">
-        운영 구조(밸류체인)
-      </h2>
-      <p className="text-gray-600 mt-2 max-w-3xl leading-relaxed">
-        매입 → 정비/상품화 → 수출/계약/물류를 하나의 파이프라인으로 묶어
-        리드타임과 품질 리스크를 줄입니다.
-      </p>
-    </div>
-  </div>
-
-  <div className="rounded-3xl border border-gray-200 bg-white p-6 md:p-8 shadow-sm">
-    {/* DESKTOP CONNECTOR */}
-    <div className="relative hidden md:block mb-6">
-      <div className="absolute left-1/3 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-2">
-        <div className="h-[2px] w-16 bg-gray-200" />
-        <div className="h-2 w-2 rounded-full bg-gray-300" />
-        <div className="h-2 w-2 rounded-full bg-gray-300" />
-        <div className="h-2 w-2 rounded-full bg-gray-300" />
-        <div className="h-[2px] w-16 bg-gray-200" />
-      </div>
-
-      <div className="absolute left-2/3 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-2">
-        <div className="h-[2px] w-16 bg-gray-200" />
-        <div className="h-2 w-2 rounded-full bg-gray-300" />
-        <div className="h-2 w-2 rounded-full bg-gray-300" />
-        <div className="h-2 w-2 rounded-full bg-gray-300" />
-        <div className="h-[2px] w-16 bg-gray-200" />
-      </div>
-    </div>
-
-    {/* CARDS */}
-    <div className="grid md:grid-cols-3 gap-4 items-stretch">
-      {/* STEP 1 */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md transition-all h-full flex flex-col">
-        <div className="flex items-center gap-3">
-          <div className="h-11 w-11 rounded-2xl border border-gray-200 flex items-center justify-center shadow-sm">
-            <span className="text-xl">🧲</span>
-          </div>
-          <div>
-            <div className="text-[11px] font-semibold text-gray-500">STEP 1</div>
-            <div className="text-lg font-extrabold text-navy-900">매입</div>
-          </div>
-        </div>
-
-        <div className="mt-5 text-base font-extrabold text-navy-900">
-          (주)크린어스
-        </div>
-
-        <ul className="mt-4 text-sm text-gray-600 space-y-2 leading-relaxed">
-          <li>• 수출 가능 물량 선별</li>
-          <li>• 매입 및 인수 절차 관리</li>
-          <li>• 입고 스케줄 통합 관리</li>
-        </ul>
-
-        <div className="mt-auto pt-6 border-t border-gray-100 text-xs text-gray-500 font-medium">
-          국내 공급 파트너
-        </div>
-      </div>
-
-      {/* STEP 2 */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md transition-all h-full flex flex-col">
-        <div className="flex items-center gap-3">
-          <div className="h-11 w-11 rounded-2xl border border-gray-200 flex items-center justify-center shadow-sm">
-            <span className="text-xl">🛠️</span>
-          </div>
-          <div>
-            <div className="text-[11px] font-semibold text-gray-500">STEP 2</div>
-            <div className="text-lg font-extrabold text-navy-900">정비 / 상품화</div>
-          </div>
-        </div>
-
-        <div className="mt-5 text-base font-extrabold text-navy-900">
-          현대지게차경기북부판매 (형제중기)
-        </div>
-
-        <ul className="mt-4 text-sm text-gray-600 space-y-2 leading-relaxed">
-          <li>• A/B/C 등급 구분</li>
-          <li>• PDI 및 리컨디션</li>
-          <li>• 품질 리포트 및 부품 패키지 구성</li>
-        </ul>
-
-        <div className="mt-auto pt-6 border-t border-gray-100 text-xs text-gray-500 font-medium">
-          정비 및 품질 관리 파트너
-        </div>
-      </div>
-
-      {/* STEP 3 */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md transition-all h-full flex flex-col">
-        <div className="flex items-center gap-3">
-          <div className="h-11 w-11 rounded-2xl border border-gray-200 flex items-center justify-center shadow-sm">
-            <span className="text-xl">🚢</span>
-          </div>
-          <div>
-            <div className="text-[11px] font-semibold text-gray-500">STEP 3</div>
-            <div className="text-lg font-extrabold text-navy-900">수출 / 계약 / 물류</div>
-          </div>
-        </div>
-
-        <div className="mt-5 text-base font-extrabold text-navy-900">
-          RNF KOREA
-        </div>
-
-        <ul className="mt-4 text-sm text-gray-600 space-y-2 leading-relaxed">
-          <li>• 해외 바이어 개발</li>
-          <li>• 계약 및 수출 서류 관리</li>
-          <li>• 선적 및 클레임 대응</li>
-        </ul>
-
-        <div className="mt-auto pt-6 border-t border-gray-100 text-xs text-gray-500 font-medium">
-          수출 총괄 운영
-        </div>
-      </div>
-    </div>
-
-    {/* MOBILE CONNECTOR */}
-    <div className="md:hidden mt-6 flex flex-col items-center gap-4">
-      <div className="w-[2px] h-8 bg-gray-200" />
-      <div className="flex gap-2">
-        <div className="h-2 w-2 rounded-full bg-gray-300" />
-        <div className="h-2 w-2 rounded-full bg-gray-300" />
-        <div className="h-2 w-2 rounded-full bg-gray-300" />
-      </div>
-      <div className="w-[2px] h-8 bg-gray-200" />
-    </div>
-
-    {/* KPI STRIP */}
-    <div className="mt-8 grid md:grid-cols-3 gap-4">
-      {[
-        ["리드타임", "입고 → 선적", "프로세스 표준화"],
-        ["품질", "A/B/C 등급 판정 및 상품화", "정비 리포트 제공"],
-        ["신뢰", "부품 패키지 포함", "운영 가능 상태 납품"],
-      ].map(([k, v, d]) => (
-        <div key={k} className="rounded-2xl border border-gray-200 bg-gray-50 p-4 h-full">
-          <div className="text-[11px] font-semibold text-gray-500">{k}</div>
-          <div className="mt-1 text-sm font-semibold text-navy-900">{v}</div>
-          <div className="mt-1 text-xs text-gray-600">{d}</div>
-        </div>
-      ))}
-    </div>
-  </div>
-</section>
-
-      {/* ===================== 3개년 로드맵 ===================== */}
-      <section className="space-y-6">
-        <div className="flex items-start gap-3">
-          <div className="mt-1 h-6 w-1.5 rounded bg-orange-500" />
-          <div>
-            <h2 className="text-2xl md:text-3xl font-semibold text-navy-900 tracking-tight">
-              3개년 확장 로드맵
-            </h2>
-          </div>
-        </div>
-
-        <div className="grid md:grid-cols-3 gap-6">
-          {[
-            ["[1년차]", "150대/y", "표준화/레퍼런스 확보, 핵심 거래선 구축"],
-            ["[2년차]", "300대/y", "현지 파트너십 확장, 운영 효율화"],
-            ["[3년차]", "800대/y", "수출국 확대/거점센터, 품목 확장"],
-          ].map(([y, n, d]) => (
-            <div key={y} className={card}>
-              <div className="text-sm font-medium text-gray-500">{y}</div>
-              <div className="mt-2 text-2xl font-extrabold text-navy-900">{n}</div>
-              <div className="mt-3 text-sm text-gray-600 leading-relaxed">{d}</div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ===================== (하단) 상담 폼으로 유도 ===================== */}
-      <section className="border-t border-gray-200 pt-10">
-        <div className="rounded-2xl border border-gray-200 bg-white p-6">
-          <div className="flex items-start gap-3">
-            <div className="mt-1 h-5 w-1.5 rounded bg-orange-500" />
-            <div className="space-y-2">
-              <div className="text-sm font-semibold text-navy-900">문의 안내</div>
-              <p className="text-sm text-gray-600 leading-relaxed">
-                수출 대상 장비(톤수/연식/수량)와 희망 선적 조건을 알려주시면,
-                정비 등급/부품 패키지 포함 견적과 리드타임을 함께 제안드립니다.
-              </p>
+          {state.images.length > 1 && (
+            <>
               <button
-                type="button"
-                onClick={() => {
-                  const el = document.getElementById("catalog-form");
-                  el?.scrollIntoView({ behavior: "smooth" });
-                }}
-                className="mt-2 inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-orange-500 text-white font-extrabold hover:bg-orange-600 transition-all"
+                className="absolute left-3 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white rounded-full w-10 h-10 flex items-center justify-center"
+                onClick={prev}
+                aria-label="Previous"
               >
-                상담/견적 폼으로 이동 →
+                ‹
               </button>
-            </div>
-          </div>
+              <button
+                className="absolute right-3 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white rounded-full w-10 h-10 flex items-center justify-center"
+                onClick={next}
+                aria-label="Next"
+              >
+                ›
+              </button>
+            </>
+          )}
         </div>
-      </section>
-        </div>
-      </section>
+      </div>
     </div>
   );
 };
 
-export default ExportOverviewPage;
+// -------------------------
+// InventoryCard (단 1개만)
+// - 썸네일 hover 시 대표이미지 변경
+// - preload 성공한 이미지들만 Set으로 관리(순서 유지)
+// -------------------------
+const InventoryCard: React.FC<{ item: InventoryItem }> = ({ item }) => {
+  const { openAt } = useLightbox();
+
+  const [okSet, setOkSet] = useState<Set<string>>(new Set());
+  const [heroIndex, setHeroIndex] = useState(0);
+
+  useEffect(() => {
+    setHeroIndex(0);
+    setOkSet(new Set());
+  }, [item.id]);
+
+  const preload = useMemo(() => item.images.slice(0, 6), [item.images]);
+
+  const displayImages = useMemo(() => {
+    return okSet.size > 0 ? item.images.filter((src) => okSet.has(src)) : item.images;
+  }, [item.images, okSet]);
+
+  useEffect(() => {
+    if (heroIndex >= displayImages.length) setHeroIndex(0);
+  }, [displayImages.length, heroIndex]);
+
+  const heroSrc = displayImages[heroIndex] ?? displayImages[0];
+
+  return (
+    <div
+      className="border border-gray-200 rounded-2xl overflow-hidden bg-white shadow-sm hover:shadow-md transition-all"
+      onMouseLeave={() => setHeroIndex(0)}
+    >
+      <ClickableThumb
+        src={heroSrc}
+        alt={item.title}
+        className="w-full h-56 bg-gray-50"
+        onClick={() => openAt(item.title, displayImages, heroIndex)}
+      />
+
+      <div className="p-4 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-sm text-gray-500">{item.type === "forklift" ? "Forklift" : "Excavator"}</div>
+            <div className="text-lg md:text-xl font-semibold text-navy-900 break-keep">{item.title}</div>
+          </div>
+          <span className="text-[11px] font-semibold tracking-[0.12em] uppercase bg-orange-50 text-orange-600 border border-orange-200 px-2.5 py-1 rounded-full">
+            {item.type === "forklift" ? "FORKLIFT" : "EXCAVATOR"}
+          </span>
+        </div>
+
+        {/* preload hidden */}
+        <div className="hidden">
+          {preload.map((src) => (
+            <img
+              key={src}
+              src={src}
+              alt=""
+              onLoad={() => {
+                setOkSet((prev) => {
+                  if (prev.has(src)) return prev;
+                  const next = new Set(prev);
+                  next.add(src);
+                  return next;
+                });
+              }}
+            />
+          ))}
+        </div>
+
+        {displayImages.length > 1 && (
+  <div
+    className="flex gap-2"
+    onMouseLeave={() => setHeroIndex(0)}   // ✅ 썸네일 영역 이탈 시 0번 복귀
+  >
+    {displayImages.slice(0, 6).map((src) => (
+  <ClickableThumb
+    key={src}
+    src={src}
+    className={`w-14 h-14 rounded-md border transition-all ${
+      src === heroSrc ? "border-orange-500" : "border-gray-200 hover:border-orange-300"
+    }`}
+    onMouseEnter={() => {
+      const i = displayImages.indexOf(src);
+      setHeroIndex(i >= 0 ? i : 0);
+    }}
+    onFocus={() => {
+      const i = displayImages.indexOf(src);
+      setHeroIndex(i >= 0 ? i : 0);
+    }}
+    onClick={() => {
+      const i = displayImages.indexOf(src);
+      openAt(item.title, displayImages, i >= 0 ? i : 0);
+    }}
+  />
+))}
+  </div>
+)}
+
+        {item.specs && item.specs.length > 0 && (
+          <div className="border-t pt-3">
+            <table className="w-full text-sm">
+              <tbody>
+                {item.specs.map((row) => (
+                  <tr key={row.label} className="border-b last:border-b-0">
+                    <td className="py-2 pr-3 text-gray-500 whitespace-nowrap w-28">{row.label}</td>
+                    <td className="py-2 text-navy-900 font-medium">{row.value}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const CSV_URL =
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vStUJkHotLlVECjJPyaxIWnYTl45_0Fw9IAtgIUzkRjScPYWE_lYJfk2_38Uqn9Y40kP-5pv3UXeRJf/pub?gid=0&single=true&output=csv";
+
+const ExportShopPage: React.FC = () => {
+  const [filter, setFilter] = useState<Filter>("all");
+
+  // ✅ 구글시트 rows 상태 추가 (여기서 rows가 생깁니다)
+  const [rows, setRows] = useState<InventoryCsvRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [errMsg, setErrMsg] = useState<string>("");
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLoading(true);
+      setErrMsg("");
+      try {
+        const data = await fetchInventoryRows(CSV_URL);
+        if (!alive) return;
+        setRows(data);
+      } catch (e: any) {
+        if (!alive) return;
+        setErrMsg(e?.message || "CSV load failed");
+      } finally {
+        if (!alive) return;
+        setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // ✅ rows -> InventoryItem[] 변환
+  const inventory: InventoryItem[] = useMemo(() => {
+    return rows.map((r) => {
+      const count = r.imgCount ?? 5; // ✅ number
+      const prefix = r.type === "forklift" ? "F" : "X";
+      const folder = `(${prefix})${r.id}`;
+
+      const images = Array.from({ length: count }, (_, i) => `/image/${folder}/${prefix}_${r.id}_${i + 1}.webp`);
+
+      const specs: SpecRow[] = [
+        ...(r.brand ? [{ label: "Brand", value: r.brand }] : []),
+        ...(r.year ? [{ label: "Year", value: r.year }] : []),
+        ...(r.capacity ? [{ label: "Capacity", value: r.capacity }] : []),
+        ...(r.mast ? [{ label: "Mast", value: r.mast }] : []),
+        ...(r.hours ? [{ label: "Hours", value: r.hours }] : []),
+        ...(r.condition ? [{ label: "Condition", value: r.condition }] : []),
+        ...(r.remarks ? [{ label: "Remarks", value: r.remarks }] : []),
+      ];
+
+      return {
+        id: r.id,
+        type: r.type,
+        title: r.title,
+        folder,
+        images,
+        specs,
+      };
+    });
+  }, [rows]);
+
+  const totalCount = inventory.length;
+  const forkliftCount = inventory.filter((x) => x.type === "forklift").length;
+  const excavatorCount = inventory.filter((x) => x.type === "excavator").length;
+
+  const filtered = filter === "all" ? inventory : inventory.filter((x) => x.type === filter);
+
+  const pillBase = "px-4 py-2 rounded-full text-sm font-semibold border transition-all duration-200";
+  const pillOn = "bg-orange-500 text-white border-orange-500 shadow-sm";
+  const pillOff = "bg-white text-navy-900 border-gray-200 hover:border-orange-300 hover:text-orange-600";
+
+  return (
+    <LightboxProvider>
+      <div className="bg-white text-navy-900">
+        <PageHero
+          eyebrow="Export Shop"
+          title="수출용 쇼핑몰"
+          description="수출용 매물을 확인하고, 필요 시 스펙·가격·선적 조건을 요청하실 수 있습니다."
+        />
+
+        <section className="py-16 md:py-20">
+          <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-8">
+            <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                </div>
+
+  {/* ===================== CLEANEARTH ===================== */}
+  <a
+    href="http://www.cleanearth.kr/"
+    target="_blank"
+    rel="noreferrer"
+    className="
+      group rounded-2xl border border-gray-200 bg-white
+      px-5 py-4
+      hover:border-orange-300 hover:shadow-sm
+      transition-all
+      min-h-[110px]
+      flex flex-col justify-center
+    "
+    title="(주)크린어스 홈페이지로 이동"
+  >
+    {/* 로고 */}
+    <div className="flex items-center">
+      <img
+        src="/logo/cleanearth.png"
+        alt="(주)크린어스 로고"
+        className="h-10 md:h-9 w-auto object-contain"
+        loading="lazy"
+      />
+    </div>
+
+    {/* 텍스트 */}
+    <div className="mt-3 text-sm font-semibold text-navy-900 leading-snug">
+      이 사업은 지구를 깨끗하게 크린어스(CleanEarth)
+      <br />(주)크린어스와 함께합니다.
+    </div>
+
+    {/* URL (완전 통일 스타일) */}
+    <div className="mt-1 text-xs font-semibold text-navy-900">
+      www.cleanearth.kr
+    </div>
+  </a>
+
+  {/* ===================== BROTHERLIFT ===================== */}
+  <a
+    href="http://www.brotherlift.com"
+    target="_blank"
+    rel="noreferrer"
+    className="
+      group rounded-2xl border border-gray-200 bg-white
+      px-5 py-4
+      hover:border-orange-300 hover:shadow-sm
+      transition-all
+      min-h-[110px]
+      flex flex-col justify-center
+    "
+    title="현대지게차 경기북부판매 – 웹사이트 바로가기"
+  >
+    {/* 로고 */}
+    <div className="flex items-center">
+      <img
+        src="/logo/brotherlift.png"
+        alt="현대지게차 경기북부판매 로고"
+        className="h-12 md:h-10 w-auto object-contain"
+        loading="lazy"
+      />
+    </div>
+
+    {/* 텍스트 */}
+    <div className="mt-3 text-sm font-semibold text-navy-900 leading-snug">
+      아래 차량들은 국내 최고의 지게차 정비업체<br />
+      현대지게차 경기북부판매(형제중기)에서 관리합니다.
+    </div>
+
+    {/* 전화번호 */}
+    <div className="text-xs font-medium text-gray-600 mt-1">
+      📞{" "}
+      <span
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <a
+          href="tel:1899-1373"
+          className="hover:text-orange-600 transition-colors"
+        >
+          1899-1373
+        </a>
+      </span>
+    </div>
+
+    {/* URL (스타일 완전 통일) */}
+    <div className="mt-1 text-xs font-semibold text-navy-900">
+      www.brotherlift.com
+    </div>
+  </a>
+
+</div>
+
+              {/* ✅ 로딩/에러 표시 */}
+              {loading && <div className="text-sm text-gray-500 mt-2">상품 정보를 불러오는 중입니다...</div>}
+              {!!errMsg && <div className="text-sm text-red-600 mt-2">{errMsg}</div>}
+            </div>
+
+            {/* 필터 */}
+            <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm">
+              <div className="flex flex-wrap gap-3 items-center">
+          <button className={`${pillBase} ${filter === "all" ? pillOn : pillOff}`} onClick={() => setFilter("all")}>
+            전체 ({totalCount})
+          </button>
+          <button className={`${pillBase} ${filter === "forklift" ? pillOn : pillOff}`} onClick={() => setFilter("forklift")}>
+            지게차 ({forkliftCount})
+          </button>
+          <button className={`${pillBase} ${filter === "excavator" ? pillOn : pillOff}`} onClick={() => setFilter("excavator")}>
+            굴삭기 ({excavatorCount})
+          </button>
+        </div>
+
+        {/* 리스트 */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {filtered.map((item) => (
+            <InventoryCard key={`${item.type}-${item.id}`} item={item} />
+          ))}
+        </div>
+          </div>
+        </section>
+      </div>
+    </LightboxProvider>
+  );
+};
+
+const PartnerLogos: React.FC<{ logos: string[]; label?: string }> = ({ logos, label }) => (
+  <div className="mt-5 pt-4 border-t border-gray-100">
+    {label && <div className="text-xs font-bold text-gray-500 mb-2">{label}</div>}
+
+    {/* ✅ 모바일 줄바꿈 제어: nowrap + 가로 스크롤(필요 시) */}
+    <div className="flex items-center gap-4 overflow-x-auto no-scrollbar py-1">
+      {logos.map((src) => (
+        <img
+          key={src}
+          src={src}
+          alt=""
+          loading="lazy"
+          className="
+            h-6 w-auto object-contain shrink-0
+            opacity-70 grayscale
+            transition-all duration-200
+            group-hover:opacity-100 group-hover:grayscale-0
+            group-hover:contrast-125 group-hover:saturate-125
+            hover:opacity-100 hover:grayscale-0 hover:contrast-125 hover:saturate-125
+          "
+        />
+      ))}
+    </div>
+  </div>
+);
+
+export default ExportShopPage;
