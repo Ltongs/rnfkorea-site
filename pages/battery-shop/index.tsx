@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 type ApplyModel = {
   label: string;
@@ -141,6 +141,47 @@ function CategoryHeader({
       </div>
       <h2 className="mt-4 text-2xl font-semibold text-gray-900 md:text-3xl">{title}</h2>
       <p className="mt-4 break-keep text-base leading-7 text-gray-600">{desc}</p>
+    </div>
+  );
+}
+
+
+const forkliftHeroImage = "/home/ITNT_FL.png";
+const awpHeroImage = "/home/ITNT_AWP.png";
+
+function CategoryHero({
+  eyebrow,
+  title,
+  desc,
+  imageSrc,
+  imageAlt,
+  imageContent,
+}: {
+  eyebrow: string;
+  title: string;
+  desc: string;
+  imageSrc?: string;
+  imageAlt?: string;
+  imageContent?: ReactNode;
+}) {
+  return (
+    <div className="grid items-center gap-8 lg:grid-cols-[minmax(0,1fr)_560px] lg:gap-10">
+      <CategoryHeader eyebrow={eyebrow} title={title} desc={desc} />
+
+      {imageContent ? (
+        <div className="mx-auto w-full max-w-[560px] lg:mx-0 lg:ml-auto">
+          {imageContent}
+        </div>
+      ) : imageSrc ? (
+        <div className="mx-auto w-full max-w-[260px] rounded-[2rem] border border-gray-200 bg-white p-4 shadow-sm lg:mx-0 lg:ml-auto">
+          <img
+            src={imageSrc}
+            alt={imageAlt ?? title}
+            className="h-[220px] w-full object-contain"
+            loading="lazy"
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -385,10 +426,36 @@ export default function BatteryShopPage() {
 
       <section id="forklift" className="scroll-mt-28 border-b border-gray-200 bg-white">
         <div className="mx-auto max-w-7xl px-6 py-12 md:px-10 md:py-16">
-          <CategoryHeader
+          <CategoryHero
             eyebrow="Forklift Battery"
-            title="지게차용 배터리 (납산)"
+            title="지게차용 배터리 (납산) by ITNT"
             desc="전동지게차용 배터리 기본 렌탈료입니다. 아래에서 모델별 월 렌탈료를 바로 확인하실 수 있습니다."
+            imageContent={
+              <div className="flex gap-4 justify-end">
+                <figure className="w-[260px] rounded-[2rem] border border-gray-200 bg-white p-4 shadow-sm">
+                  <img
+                    src="/home/ITNT_HQ.jpg"
+                    alt="ITNT 본사 전경"
+                    className="h-[220px] w-full object-cover rounded-xl"
+                    loading="lazy"
+                  />
+                  <figcaption className="mt-3 text-center text-xs text-gray-500">
+                    (ITNT 본사전경)
+                  </figcaption>
+                </figure>
+                <figure className="w-[260px] rounded-[2rem] border border-gray-200 bg-white p-4 shadow-sm">
+                  <img
+                    src={forkliftHeroImage}
+                    alt="지게차용 납산 배터리"
+                    className="h-[220px] w-full object-contain"
+                    loading="lazy"
+                  />
+                  <figcaption className="mt-3 text-center text-xs text-gray-500">
+                    (EXMILE 제품이미지)
+                  </figcaption>
+                </figure>
+              </div>
+            }
           />
 
           <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -401,10 +468,12 @@ export default function BatteryShopPage() {
 
       <section id="awp" className="scroll-mt-28 border-b border-gray-200 bg-gray-50">
         <div className="mx-auto max-w-7xl px-6 py-12 md:px-10 md:py-16">
-          <CategoryHeader
+          <CategoryHero
             eyebrow="Aerial Work Platform Battery"
             title="고소작업대용 배터리"
-            desc="시저리프트 및 붐리프트는 장비별 배터리 사양이 다양하므로 모델 확인 후 맞춤 견적을 제공합니다."
+            desc="시저리프트 및 붐리프트는 장비별 배터리 사양이 다양하며, 무보수(MF) 타입과 LFP(리튬인산철) 배터리 모두 공급 가능합니다. 모델 확인 후 맞춤 견적을 제공합니다."
+            imageSrc={awpHeroImage}
+            imageAlt="고소작업대용 배터리"
           />
 
           <div className="mt-8 grid gap-6 lg:grid-cols-2">
@@ -415,8 +484,8 @@ export default function BatteryShopPage() {
             />
             <QuoteOnlyCard
               title="배터리 교체 / 전환 검토"
-              desc="기존 배터리 교체뿐 아니라 LFP 전환 검토도 가능합니다."
-              note="현장 사용환경과 장비 조건을 바탕으로 적합한 교체 구조를 제안드립니다."
+              desc="기존 무보수(MF) 배터리 교체는 물론, LFP 전환 검토도 가능합니다."
+              note="현장 사용환경과 장비 조건을 바탕으로 무보수(MF) 유지 또는 LFP 전환 중 적합한 구조를 제안드립니다."
             />
           </div>
         </div>
