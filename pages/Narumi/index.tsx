@@ -202,19 +202,19 @@ function formatCreatedAt(s?: string) {
 }
 
 const pillBase =
-  "inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold border";
+  "inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border";
 const pillDone = "bg-emerald-50 text-emerald-700 border-emerald-200";
 const pillProg = "bg-orange-50 text-orange-700 border-orange-200";
 const pillGray = "bg-gray-50 text-gray-700 border-gray-200";
 
 const btnBase =
-  "w-[88px] h-[40px] inline-flex items-center justify-center px-2 py-1 rounded-lg text-xs font-extrabold border transition-all text-center whitespace-nowrap shrink-0";
+  "w-[88px] h-[40px] inline-flex items-center justify-center px-2 py-1 rounded-lg text-xs font-semibold border transition-all text-center whitespace-nowrap shrink-0";
 const btnOn = "bg-navy-900 text-white border-navy-900";
 const btnOff =
   "bg-white text-navy-900 border-gray-200 hover:border-orange-300 hover:text-orange-600";
 const btnDisabled = "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-50";
 
-const labelClass = "text-xs font-extrabold text-gray-500 block mb-2";
+const labelClass = "text-xs font-semibold text-gray-500 block mb-2";
 const compactInputClass =
   "h-[44px] w-full px-3 rounded-lg border border-gray-200 bg-white " +
   "text-sm font-medium text-navy-900 focus:border-orange-400 focus:ring-4 " +
@@ -222,14 +222,14 @@ const compactInputClass =
 
 const compactButtonClass =
   "h-[44px] w-full px-3 rounded-lg border border-gray-200 bg-white " +
-  "text-sm font-bold text-navy-900 hover:border-orange-300 disabled:opacity-60";
+  "text-sm font-medium text-navy-900 hover:border-orange-300 disabled:opacity-60";
 
 const cardClass = "border border-gray-200 rounded-2xl bg-white shadow-sm";
 
-const infoLabel = "text-xs font-extrabold text-gray-400";
-const infoValue = "mt-1 text-sm font-extrabold text-navy-900 break-all";
+const infoLabel = "text-xs font-semibold text-gray-400";
+const infoValue = "mt-1 text-sm font-semibold text-navy-900 break-all";
 const summaryBadgeBase =
-  "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-extrabold whitespace-nowrap";
+  "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold whitespace-nowrap";
 
 type SummaryFilter = "all" | "hold" | "insurance_waiting" | "docs_waiting" | "register_waiting" | "completed";
 
@@ -1352,7 +1352,7 @@ VIN: ${nextVin}`);
               * 차량등록증 업로드 완료 건은 일반 사용자는 최근 {HIDE_UPLOADED_AFTER_DAYS_FOR_NON_ADMIN}일 이내만 표시되며, 그 이후는 관리자/보험전담 계정만 볼 수 있습니다.
             </div>
 
-            <div className="text-xs font-extrabold text-gray-500">
+            <div className="text-xs font-semibold text-gray-500">
               로그인:{" "}
               <span
                 className={
@@ -1370,7 +1370,7 @@ VIN: ${nextVin}`);
                 {loginRoleLabel}
               </span>
               {user?.email ? (
-                <span className="ml-2 text-gray-400 font-bold">({user.email})</span>
+                <span className="ml-2 text-gray-400 font-medium">({user.email})</span>
               ) : null}
             </div>
           </div>
@@ -1379,14 +1379,14 @@ VIN: ${nextVin}`);
             <button
               type="button"
               onClick={fetchRows}
-              className="px-5 py-3 rounded-xl border border-gray-200 text-navy-900 font-extrabold hover:border-gray-300 whitespace-nowrap"
+              className="px-5 py-3 rounded-xl border border-gray-200 text-navy-900 font-semibold hover:border-gray-300 whitespace-nowrap"
             >
               새로고침
             </button>
             <button
               type="button"
               onClick={logout}
-              className="px-5 py-3 rounded-xl border border-red-200 text-red-600 font-extrabold hover:bg-red-50 whitespace-nowrap"
+              className="px-5 py-3 rounded-xl border border-red-200 text-red-600 font-semibold hover:bg-red-50 whitespace-nowrap"
             >
               로그아웃
             </button>
@@ -1409,7 +1409,7 @@ VIN: ${nextVin}`);
       <div className="flex items-start gap-3">
         <div className="mt-1 h-5 w-1.5 rounded bg-orange-500" />
         <div>
-          <div className="text-lg font-extrabold text-navy-900">
+          <div className="text-lg font-semibold text-navy-900">
             신규 입력
           </div>
           <div className="text-sm text-gray-500 mt-1">
@@ -1420,7 +1420,7 @@ VIN: ${nextVin}`);
       <button
         type="button"
         onClick={() => setShowCreatePanel((prev) => !prev)}
-        className="h-9 w-9 shrink-0 rounded-lg border border-gray-200 bg-white text-lg font-extrabold text-navy-900 hover:border-gray-300"
+        className="h-9 w-9 shrink-0 rounded-lg border border-gray-200 bg-white text-lg font-semibold text-navy-900 hover:border-gray-300"
         aria-label={showCreatePanel ? "신규입력 접기" : "신규입력 펼치기"}
         title={showCreatePanel ? "신규입력 접기" : "신규입력 펼치기"}
       >
@@ -1495,7 +1495,7 @@ VIN: ${nextVin}`);
                 if (manufactureInputRef.current) manufactureInputRef.current.value = "";
               }}
               disabled={!canCreate}
-              className="mt-1 text-[11px] font-bold text-red-600 hover:underline disabled:opacity-60"
+              className="mt-1 text-[11px] font-medium text-red-600 hover:underline disabled:opacity-60"
             >
               첨부 제거
             </button>
@@ -1517,7 +1517,7 @@ VIN: ${nextVin}`);
         <div>
           <label className={labelClass}>롯데오토리스</label>
           <div className="h-[44px] w-full rounded-lg border border-gray-200 bg-white flex items-center gap-4 px-3">
-            <label className="inline-flex items-center gap-1.5 text-sm font-bold text-navy-900 cursor-pointer">
+            <label className="inline-flex items-center gap-1.5 text-sm font-medium text-navy-900 cursor-pointer">
               <input
                 type="radio"
                 name="lotte"
@@ -1528,7 +1528,7 @@ VIN: ${nextVin}`);
               />
               Y
             </label>
-            <label className="inline-flex items-center gap-1.5 text-sm font-bold text-navy-900 cursor-pointer">
+            <label className="inline-flex items-center gap-1.5 text-sm font-medium text-navy-900 cursor-pointer">
               <input
                 type="radio"
                 name="lotte"
@@ -1601,7 +1601,7 @@ VIN: ${nextVin}`);
       type="button"
       onClick={onAdd}
       disabled={saving || !canCreate}
-      className="h-[40px] w-full rounded-lg bg-orange-500 text-white text-sm font-extrabold hover:bg-orange-600 disabled:opacity-60"
+      className="h-[40px] w-full rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 disabled:opacity-60"
     >
       {saving ? "추가 중..." : "추가"}
     </button>
@@ -1610,7 +1610,7 @@ VIN: ${nextVin}`);
       type="button"
       onClick={onReset}
       disabled={!canCreate}
-      className="h-[40px] w-full rounded-lg border border-gray-200 text-navy-900 text-sm font-extrabold hover:border-gray-300 disabled:opacity-60"
+      className="h-[40px] w-full rounded-lg border border-gray-200 text-navy-900 text-sm font-semibold hover:border-gray-300 disabled:opacity-60"
     >
       초기화
     </button>
@@ -1628,7 +1628,7 @@ VIN: ${nextVin}`);
                   <div className="flex items-start gap-3">
                     <div className="mt-1 h-5 w-1.5 rounded bg-orange-500" />
                     <div>
-                      <div className="text-lg font-extrabold text-navy-900">
+                      <div className="text-lg font-semibold text-navy-900">
                         조회 / 검색
                       </div>
                       <div className="text-sm text-gray-500 mt-1">
@@ -1640,7 +1640,7 @@ VIN: ${nextVin}`);
                   <button
                     type="button"
                     onClick={() => setShowSearchPanel((prev) => !prev)}
-                    className="h-9 w-9 shrink-0 rounded-lg border border-gray-200 bg-white text-lg font-extrabold text-navy-900 hover:border-gray-300"
+                    className="h-9 w-9 shrink-0 rounded-lg border border-gray-200 bg-white text-lg font-semibold text-navy-900 hover:border-gray-300"
                     aria-label={showSearchPanel ? "조회/검색 접기" : "조회/검색 펼치기"}
                     title={showSearchPanel ? "조회/검색 접기" : "조회/검색 펼치기"}
                   >
@@ -1682,7 +1682,7 @@ VIN: ${nextVin}`);
                     <div>
                       <label className={labelClass}>오래된 업로드 건</label>
                       <div className="h-[88px] flex flex-col justify-between gap-3">
-                        <label className="h-[40px] w-full rounded-lg border border-gray-200 bg-white flex items-center gap-3 px-3 cursor-pointer text-sm font-bold text-navy-900">
+                        <label className="h-[40px] w-full rounded-lg border border-gray-200 bg-white flex items-center gap-3 px-3 cursor-pointer text-sm font-medium text-navy-900">
                           <input
                             type="checkbox"
                             checked={showOldUploaded}
@@ -1696,7 +1696,7 @@ VIN: ${nextVin}`);
                         <button
                           type="button"
                           onClick={fetchRows}
-                          className="h-[40px] w-full rounded-lg border border-gray-200 text-navy-900 text-sm font-extrabold hover:border-gray-300"
+                          className="h-[40px] w-full rounded-lg border border-gray-200 text-navy-900 text-sm font-semibold hover:border-gray-300"
                         >
                           조회 / 새로고침
                         </button>
@@ -1723,10 +1723,10 @@ VIN: ${nextVin}`);
           <div className="mt-1 h-5 w-1.5 rounded bg-orange-500" />
           <div className="flex-1">
             <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div className="text-lg font-extrabold text-navy-900">
+              <div className="text-lg font-semibold text-navy-900">
                 업무 목록 ({filteredRows.length})
                 {summaryFilter !== "all" && (
-                  <span className="ml-2 text-sm font-bold text-orange-600">· 배지 필터 적용중</span>
+                  <span className="ml-2 text-sm font-medium text-orange-600">· 배지 필터 적용중</span>
                 )}
               </div>
 
@@ -1866,18 +1866,18 @@ VIN: ${nextVin}`);
                           {held ? "보류" : statusLabel(currentStatus)}
                         </span>
 
-                        <span className="text-xs font-extrabold text-gray-500">
+                        <span className="text-xs font-semibold text-gray-500">
                           ID {String(r.id)}
                         </span>
 
                         {locked && (
-                          <span className="text-xs font-bold text-gray-400">
+                          <span className="text-xs font-medium text-gray-400">
                             업로드 완료(잠금)
                           </span>
                         )}
 
                         {held && (
-                          <span className="text-xs font-bold text-slate-500">등록업무 보류중</span>
+                          <span className="text-xs font-medium text-slate-500">등록업무 보류중</span>
                         )}
                       </div>
 
@@ -1886,7 +1886,7 @@ VIN: ${nextVin}`);
                           <div className={infoLabel}>차대번호(VIN)</div>
                           <div className={`${infoValue} text-[15px] leading-tight`}>
                             <div className="break-all">{(r.vin ?? "").slice(0, -6)}</div>
-                            <div className="font-extrabold tracking-wider text-orange-500">{(r.vin ?? "").slice(-6)}</div>
+                            <div className="font-semibold tracking-wider text-orange-500">{(r.vin ?? "").slice(-6)}</div>
                           </div>
                         </div>
 
@@ -1962,7 +1962,7 @@ VIN: ${nextVin}`);
 
                     <div className="p-3 xl:col-span-6 flex flex-col gap-3 min-w-0">
                       <div>
-                        <div className="text-sm font-extrabold text-gray-500 mb-2">
+                        <div className="text-sm font-semibold text-gray-500 mb-2">
                           RNF 단계
                         </div>
 
@@ -2106,7 +2106,7 @@ VIN: ${nextVin}`);
                         <div className="rounded-xl border border-orange-200 bg-orange-50/50 px-3 py-3">
                           <div className="grid grid-cols-[minmax(0,0.7fr)_128px_1fr] gap-2 items-end">
                             <div className="min-w-0">
-                              <label className="mb-1 block text-[11px] font-bold text-gray-500">등기번호</label>
+                              <label className="mb-1 block text-[11px] font-medium text-gray-500">등기번호</label>
                               <input
                                 value={postalTrackingNo}
                                 onChange={(e) => setPostalTrackingNo(e.target.value)}
@@ -2116,7 +2116,7 @@ VIN: ${nextVin}`);
                             </div>
 
                             <div className="min-w-0">
-                              <label className="mb-1 block text-[11px] font-bold text-gray-500">발송일자</label>
+                              <label className="mb-1 block text-[11px] font-medium text-gray-500">발송일자</label>
                               <input
                                 type="date"
                                 value={postalSentDate}
@@ -2133,7 +2133,7 @@ VIN: ${nextVin}`);
                                   e.stopPropagation();
                                   openPostalTrackingLookup(postalTrackingNo);
                                 }}
-                                className="h-[44px] w-[72px] shrink-0 px-0 rounded-lg border border-gray-200 bg-white text-sm font-extrabold text-navy-900 whitespace-nowrap hover:border-orange-300"
+                                className="h-[44px] w-[72px] shrink-0 px-0 rounded-lg border border-gray-200 bg-white text-sm font-semibold text-navy-900 whitespace-nowrap hover:border-orange-300"
                               >
                                 조회
                               </button>
@@ -2142,7 +2142,7 @@ VIN: ${nextVin}`);
                                 type="button"
                                 onClick={() => savePostalInfo(r)}
                                 disabled={postalSavingId === r.id}
-                                className="h-[44px] w-[72px] shrink-0 px-0 rounded-lg bg-orange-500 text-white text-sm font-extrabold whitespace-nowrap hover:bg-orange-600 disabled:opacity-60"
+                                className="h-[44px] w-[72px] shrink-0 px-0 rounded-lg bg-orange-500 text-white text-sm font-semibold whitespace-nowrap hover:bg-orange-600 disabled:opacity-60"
                               >
                                 {postalSavingId === r.id ? "저장중..." : "저장"}
                               </button>
@@ -2151,7 +2151,7 @@ VIN: ${nextVin}`);
                                 type="button"
                                 onClick={closePostalForm}
                                 disabled={postalSavingId === r.id}
-                                className="h-[44px] w-[72px] shrink-0 px-0 rounded-lg border border-gray-200 bg-white text-sm font-extrabold text-gray-700 whitespace-nowrap hover:border-gray-300 disabled:opacity-60"
+                                className="h-[44px] w-[72px] shrink-0 px-0 rounded-lg border border-gray-200 bg-white text-sm font-semibold text-gray-700 whitespace-nowrap hover:border-gray-300 disabled:opacity-60"
                               >
                                 취소
                               </button>
@@ -2168,14 +2168,14 @@ VIN: ${nextVin}`);
 
                       <div>
                         <div className="flex items-center justify-between gap-3 mb-2 min-w-0">
-                          <div className="text-sm font-extrabold text-gray-500">메모</div>
+                          <div className="text-sm font-semibold text-gray-500">메모</div>
 
                           {canEditMemo && (
                             <div className="flex items-center gap-2 shrink-0">
                               <button
                                 type="button"
                                 onClick={() => resetMemoDraft(r)}
-                                className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-extrabold text-gray-700 hover:border-gray-300"
+                                className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700 hover:border-gray-300"
                               >
                                 되돌리기
                               </button>
@@ -2183,7 +2183,7 @@ VIN: ${nextVin}`);
                                 type="button"
                                 onClick={() => saveMemo(r.id)}
                                 disabled={memoSavingId === r.id}
-                                className="px-3 py-1.5 rounded-lg bg-orange-500 text-white text-xs font-extrabold hover:bg-orange-600 disabled:opacity-60"
+                                className="px-3 py-1.5 rounded-lg bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 disabled:opacity-60"
                               >
                                 {memoSavingId === r.id ? "저장중..." : "저장"}
                               </button>
@@ -2231,7 +2231,7 @@ VIN: ${nextVin}`);
           <div className="w-full max-w-2xl rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-lg font-extrabold text-navy-900">기본정보 수정</div>
+                <div className="text-lg font-semibold text-navy-900">기본정보 수정</div>
                 <div className="mt-1 text-sm text-gray-500">
                   차대번호, 고객명, 전화번호, 영업사원 정보, 특이사항을 수정합니다.
                 </div>
@@ -2241,7 +2241,7 @@ VIN: ${nextVin}`);
                 type="button"
                 onClick={closeEditModal}
                 disabled={editSaving}
-                className="h-9 w-9 rounded-lg border border-gray-200 bg-white text-lg font-extrabold text-navy-900 hover:border-gray-300 disabled:opacity-60"
+                className="h-9 w-9 rounded-lg border border-gray-200 bg-white text-lg font-semibold text-navy-900 hover:border-gray-300 disabled:opacity-60"
               >
                 ×
               </button>
@@ -2350,7 +2350,7 @@ VIN: ${nextVin}`);
                 type="button"
                 onClick={closeEditModal}
                 disabled={editSaving}
-                className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-extrabold text-gray-700 hover:border-gray-300 disabled:opacity-60"
+                className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:border-gray-300 disabled:opacity-60"
               >
                 취소
               </button>
@@ -2358,7 +2358,7 @@ VIN: ${nextVin}`);
                 type="button"
                 onClick={saveEditRow}
                 disabled={editSaving}
-                className="rounded-xl border border-orange-500 bg-orange-500 px-4 py-2 text-sm font-extrabold text-white hover:bg-orange-600 disabled:opacity-60"
+                className="rounded-xl border border-orange-500 bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
               >
                 {editSaving ? "저장중..." : "저장"}
               </button>
@@ -2370,7 +2370,7 @@ VIN: ${nextVin}`);
       {insuranceModalRow && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl">
-            <div className="text-lg font-extrabold text-navy-900">당사에서 가입하나요?</div>
+            <div className="text-lg font-semibold text-navy-900">당사에서 가입하나요?</div>
             <div className="mt-2 text-sm leading-6 text-gray-600">
               Y를 선택하면 상담관리 페이지의 보험 상담등록 화면으로 이동합니다.
               <br />
@@ -2379,21 +2379,21 @@ VIN: ${nextVin}`);
             <div className="mt-5 flex items-center justify-end gap-2">
               <button
                 type="button"
-                className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-extrabold text-gray-700 hover:border-gray-300"
+                className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:border-gray-300"
                 onClick={() => setInsuranceModalRow(null)}
               >
                 취소
               </button>
               <button
                 type="button"
-                className="rounded-xl border border-emerald-600 bg-emerald-600 px-4 py-2 text-sm font-extrabold text-white hover:bg-emerald-700"
+                className="rounded-xl border border-emerald-600 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
                 onClick={completeInsuranceAsN}
               >
                 N
               </button>
               <button
                 type="button"
-                className="rounded-xl border border-orange-500 bg-orange-500 px-4 py-2 text-sm font-extrabold text-white hover:bg-orange-600"
+                className="rounded-xl border border-orange-500 bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600"
                 onClick={moveToCallManagementForInsurance}
               >
                 Y

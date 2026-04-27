@@ -103,11 +103,11 @@ const cardClass =
   "border border-gray-200 rounded-2xl bg-white p-5 shadow-[0_8px_24px_rgba(15,23,42,0.05)]";
 const subCardClass = "border border-gray-200 rounded-xl bg-gray-50 p-4";
 const sectionTitleClass =
-  "text-base font-extrabold text-navy-900 flex items-center gap-2";
-const labelClass = "text-xs font-bold text-gray-500 uppercase tracking-wide";
-const valueClass = "mt-2 text-2xl font-extrabold text-navy-900";
+  "text-base font-semibold text-navy-900 flex items-center gap-2";
+const labelClass = "text-xs font-medium text-gray-500 uppercase tracking-wide";
+const valueClass = "mt-2 text-2xl font-semibold text-navy-900";
 const chipClass =
-  "inline-flex items-center rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-bold text-gray-600";
+  "inline-flex items-center rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-600";
 
 function startOfMonth(year: number, month: number) {
   return new Date(year, month - 1, 1, 0, 0, 0, 0);
@@ -573,7 +573,7 @@ const DashboardPage: React.FC = () => {
       <div className={cardClass}>
         <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 text-navy-900 font-extrabold text-lg">
+            <div className="flex items-center gap-2 text-navy-900 font-bold text-lg">
               <CalendarDays className="w-5 h-5 text-orange-500" />
               월 기준 운영 현황
             </div>
@@ -583,7 +583,7 @@ const DashboardPage: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3 min-w-[280px]">
-            <label className="text-sm font-semibold text-gray-700">
+            <label className="text-sm font-medium text-gray-700">
               연도
               <select
                 value={selectedYear}
@@ -598,7 +598,7 @@ const DashboardPage: React.FC = () => {
               </select>
             </label>
 
-            <label className="text-sm font-semibold text-gray-700">
+            <label className="text-sm font-medium text-gray-700">
               월
               <select
                 value={selectedMonth}
@@ -614,7 +614,7 @@ const DashboardPage: React.FC = () => {
             </label>
 
             <div className="flex items-end">
-              <div className="w-full h-11 rounded-xl bg-gray-50 border border-gray-200 px-3 flex items-center text-sm font-bold text-gray-700">
+              <div className="w-full h-11 rounded-xl bg-gray-50 border border-gray-200 px-3 flex items-center text-sm font-medium text-gray-700">
                 기준: {monthLabel}
               </div>
             </div>
@@ -664,7 +664,7 @@ const DashboardPage: React.FC = () => {
 
             <div className={cardClass}>
               <div className={labelClass}>금융 확정금액</div>
-              <div className="mt-2 text-2xl font-extrabold text-navy-900 break-words">
+              <div className="mt-2 text-2xl font-semibold text-navy-900 break-words">
                 {formatCurrency(financeSummary.confirmedAmount.month)}
               </div>
               <div className="mt-2 flex items-center gap-2 text-sm text-gray-600">
@@ -704,8 +704,8 @@ const DashboardPage: React.FC = () => {
                   { key: "total", label: "전체", month: inflowSummary.total.month, ytd: inflowSummary.total.ytd },
                 ].map((item) => (
                   <div key={item.key} className={subCardClass}>
-                    <div className="text-sm font-bold text-gray-700">{item.label}</div>
-                    <div className="mt-2 text-2xl font-extrabold text-navy-900">{formatCount(item.month)}</div>
+                    <div className="text-sm font-medium text-gray-700">{item.label}</div>
+                    <div className="mt-2 text-2xl font-semibold text-navy-900">{formatCount(item.month)}</div>
                     <div className="mt-1 text-xs text-gray-500">{ytdLabel} {formatCount(item.ytd)}</div>
                   </div>
                 ))}
@@ -720,8 +720,8 @@ const DashboardPage: React.FC = () => {
                   { key: "미지정", data: inflowSummary.unknownAssociation },
                 ].map((item) => (
                   <div key={item.key} className={subCardClass}>
-                    <div className="text-xs font-bold text-gray-500">협회 · {item.key}</div>
-                    <div className="mt-2 text-xl font-extrabold text-navy-900">{formatCount(item.data.month)}</div>
+                    <div className="text-xs font-medium text-gray-500">협회 · {item.key}</div>
+                    <div className="mt-2 text-xl font-semibold text-navy-900">{formatCount(item.data.month)}</div>
                     <div className="mt-1 text-xs text-gray-500">{ytdLabel} {formatCount(item.data.ytd)}</div>
                   </div>
                 ))}
@@ -729,7 +729,7 @@ const DashboardPage: React.FC = () => {
 
               <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                 <div className="flex items-center justify-between gap-3 mb-3">
-                  <div className="text-sm font-extrabold text-navy-900">일별 유입현황</div>
+                  <div className="text-sm font-semibold text-navy-900">일별 유입현황</div>
                   <div className="text-xs text-gray-500">세로축 최대 10건</div>
                 </div>
 
@@ -742,7 +742,7 @@ const DashboardPage: React.FC = () => {
                         className="min-w-[22px] flex-1 flex flex-col items-center justify-end gap-2"
                         title={`${item.day}일 · ${item.count}건`}
                       >
-                        <div className="text-[10px] font-bold text-gray-500">{item.count}</div>
+                        <div className="text-[10px] font-medium text-gray-500">{item.count}</div>
                         <div className="w-full h-44 flex items-end">
                           <div
                             className="w-full rounded-t-md bg-orange-500/85"
@@ -777,10 +777,10 @@ const DashboardPage: React.FC = () => {
                     hotList.map((item, index) => (
                       <div key={`${item.type}-${index}`} className={subCardClass}>
                         <div className="flex items-center justify-between gap-3">
-                          <span className="text-xs font-extrabold text-orange-600">{item.type}</span>
+                          <span className="text-xs font-bold text-orange-600">{item.type}</span>
                           <span className={chipClass}>새 탭 열기</span>
                         </div>
-                        <div className="mt-2 text-sm font-bold text-navy-900">{item.label}</div>
+                        <div className="mt-2 text-sm font-semibold text-navy-900">{item.label}</div>
                         <div className="mt-1 text-xs text-gray-500">{item.sub}</div>
                       </div>
                     ))
@@ -806,7 +806,7 @@ const DashboardPage: React.FC = () => {
                     const consultation = consultationMap.get(row.consultation_id);
                     return (
                       <div key={row.consultation_id} className={subCardClass}>
-                        <div className="font-bold text-navy-900">{consultation?.customer_name || "고객명없음"}</div>
+                        <div className="font-semibold text-navy-900">{consultation?.customer_name || "고객명없음"}</div>
                         <div className="mt-1 text-gray-600">
                           {row.insurance_company || "보험사 미입력"} · {insuranceStep(row)}
                         </div>
@@ -838,7 +838,7 @@ const DashboardPage: React.FC = () => {
 
                     return (
                       <div key={row.consultation_id} className={subCardClass}>
-                        <div className="font-bold text-navy-900">{consultation?.customer_name || "고객명없음"}</div>
+                        <div className="font-semibold text-navy-900">{consultation?.customer_name || "고객명없음"}</div>
                         <div className="mt-1 text-gray-600">
                           {financeStageLabel(row.finance_stage)} · {row.finance_company || "금융사 미입력"}
                         </div>
@@ -870,7 +870,7 @@ const DashboardPage: React.FC = () => {
                     const consultation = consultationMap.get(row.consultation_id);
                     return (
                       <div key={`${row.consultation_id}-${index}`} className={subCardClass}>
-                        <div className="font-bold text-navy-900">{consultation?.customer_name || "고객명없음"}</div>
+                        <div className="font-semibold text-navy-900">{consultation?.customer_name || "고객명없음"}</div>
                         <div className="mt-1 text-gray-600">
                           {tireStageLabel(row.process_status)} · {row.current_brand || "브랜드 미입력"}
                         </div>

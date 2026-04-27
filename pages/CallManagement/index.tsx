@@ -168,12 +168,12 @@ const TIRE_INFLOW_CHANNELS = ["association", "gotruck", "etc"] as const;
 const TIRE_ASSOCIATIONS = ["서울", "광주", "경북", "경남"] as const;
 
 const tabBase =
-  "px-4 py-2 rounded-xl text-sm font-bold border transition";
+  "px-4 py-2 rounded-xl text-sm font-medium border transition";
 const tabActive = "bg-gray-100 text-gray-900 border-gray-300";
 const tabInactive = "bg-white text-gray-400 border-gray-200";
 
 const typeBtnBase =
-  "px-4 py-2 rounded-xl text-sm font-bold border transition";
+  "px-4 py-2 rounded-xl text-sm font-medium border transition";
 const typeBtnActive =
   "bg-orange-500 text-white border-orange-500 shadow-sm";
 const typeBtnInactive =
@@ -208,18 +208,18 @@ const labelClass = "block text-sm font-semibold text-gray-700 mb-1";
 const compactLabelClass = "block text-xs font-semibold text-gray-600 mb-1";
 
 const thClass =
-  "px-4 py-3 text-left text-sm font-bold text-navy-900 border-b border-gray-200 whitespace-nowrap";
+  "px-4 py-3 text-left text-sm font-medium text-navy-900 border-b border-gray-200 whitespace-nowrap";
 const tdClass =
   "px-4 py-3 text-sm text-gray-700 border-b border-gray-100 align-top whitespace-nowrap";
 
 const actionBtnClass =
-  "px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-300 text-gray-700 hover:bg-gray-50 whitespace-nowrap";
+  "px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 whitespace-nowrap";
 const completeBtnClass =
-  "px-3 py-1.5 rounded-lg text-xs font-bold bg-green-600 text-white hover:bg-green-700 whitespace-nowrap";
+  "px-3 py-1.5 rounded-lg text-xs font-medium bg-green-600 text-white hover:bg-green-700 whitespace-nowrap";
 const sectionTitleClass =
-  "text-sm font-extrabold text-navy-900 border-b border-gray-200 pb-1";
+  "text-sm font-semibold text-navy-900 border-b border-gray-200 pb-1";
 
-const detailLabelClass = "text-[10px] leading-3 font-bold text-gray-500 whitespace-nowrap";
+const detailLabelClass = "text-[10px] leading-3 font-medium text-gray-500 whitespace-nowrap";
 const detailValueClass = "text-[11px] leading-3 text-gray-800 mt-0 whitespace-nowrap";
 const inlineDetailBoxClass =
   "bg-orange-50/40 border border-orange-200 rounded-xl p-2";
@@ -2113,7 +2113,7 @@ const CallManagementPage: React.FC = () => {
     return (
       <div className="container mx-auto px-4 py-12">
         <div className="max-w-xl mx-auto border border-red-200 bg-red-50 rounded-2xl p-6">
-          <div className="text-lg font-extrabold text-red-700 mb-2">
+          <div className="text-lg font-semibold text-red-700 mb-2">
             접근 권한이 없습니다.
           </div>
           <div className="text-sm text-red-700 leading-relaxed">
@@ -2156,7 +2156,7 @@ const CallManagementPage: React.FC = () => {
 
       <div className={card}>
         <div className="flex flex-col gap-3 mb-4 md:flex-row md:items-center md:justify-between">
-          <div className="text-lg font-extrabold text-navy-900">{title}</div>
+          <div className="text-lg font-semibold text-navy-900">{title}</div>
 
           {tab === "new" && (
             <div className="flex items-center gap-2 flex-wrap">
@@ -2223,7 +2223,7 @@ const CallManagementPage: React.FC = () => {
             <form ref={newFormTopRef} className="space-y-6" onSubmit={handleSubmit}>
             {editingCaseId && (
               <div className="flex items-center justify-between rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3">
-                <div className="text-sm font-bold text-orange-700">
+                <div className="text-sm font-medium text-orange-700">
                   상담내역 수정 중입니다. 저장하면 기존 상담건이 업데이트됩니다.
                 </div>
                 <button
@@ -2239,13 +2239,13 @@ const CallManagementPage: React.FC = () => {
             <div className="rounded-2xl border border-gray-200 bg-gray-50/70 px-4 py-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm font-extrabold text-navy-900">To-Do</div>
+                  <div className="text-sm font-semibold text-navy-900">To-Do</div>
                   <div className="text-xs text-gray-500">사후관리의 당일 + 익일 할 일 목록</div>
                 </div>
 
                 <button
                   type="button"
-                  className="inline-flex h-9 min-w-[42px] items-center justify-center rounded-xl border border-gray-200 bg-white px-3 text-sm font-extrabold text-gray-700 hover:border-gray-300"
+                  className="inline-flex h-9 min-w-[42px] items-center justify-center rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-700 hover:border-gray-300"
                   onClick={() => setShowTodoBox((prev) => !prev)}
                   aria-expanded={showTodoBox}
                   aria-label={showTodoBox ? 'To-Do 접기' : 'To-Do 펼치기'}
@@ -2460,7 +2460,7 @@ const CallManagementPage: React.FC = () => {
 
 
             <div className={compactCard}>
-                  <div className="text-sm font-extrabold text-navy-900 mb-2">
+                  <div className="text-sm font-semibold text-navy-900 mb-2">
                     보험 진행상태
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -3142,7 +3142,7 @@ const CallManagementPage: React.FC = () => {
             <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
-                className="px-6 py-2 rounded-xl border border-gray-300 text-gray-700 font-bold hover:bg-gray-50"
+                className="px-6 py-2 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-50"
                 onClick={resetForm}
               >
                 초기화
@@ -3150,7 +3150,7 @@ const CallManagementPage: React.FC = () => {
 
               <button
                 type="submit"
-                className="px-6 py-2 rounded-xl bg-orange-500 text-white font-bold hover:bg-orange-600"
+                className="px-6 py-2 rounded-xl bg-orange-500 text-white font-medium hover:bg-orange-600"
               >
                 {editingCaseId ? "수정 저장" : "저장"}
               </button>
@@ -3160,10 +3160,10 @@ const CallManagementPage: React.FC = () => {
             <div className={`${dashboardGridClass} pt-2`}>
               <div className={dashboardCard}>
                 <div className="flex items-center justify-between mb-3">
-                  <div className="text-sm font-extrabold text-navy-900">
+                  <div className="text-sm font-semibold text-navy-900">
                     보험만기예정
                   </div>
-                  <div className="text-xs font-bold text-orange-600">
+                  <div className="text-xs font-medium text-orange-600">
                     30일 이내
                   </div>
                 </div>
@@ -3197,10 +3197,10 @@ const CallManagementPage: React.FC = () => {
                             className="rounded-xl border border-gray-200 p-3"
                           >
                             <div className="flex items-center justify-between gap-3">
-                              <div className="text-sm font-bold text-navy-900">
+                              <div className="text-sm font-medium text-navy-900">
                                 {c?.customer_name || "-"}
                               </div>
-                              <div className="text-xs font-bold text-red-600">
+                              <div className="text-xs font-medium text-red-600">
                                 {daysLeft !== null ? `D-${daysLeft}` : "-"}
                               </div>
                             </div>
@@ -3223,10 +3223,10 @@ const CallManagementPage: React.FC = () => {
 
               <div className={dashboardCard}>
                 <div className="flex items-center justify-between mb-3">
-                  <div className="text-sm font-extrabold text-navy-900">
+                  <div className="text-sm font-semibold text-navy-900">
                     최근상담
                   </div>
-                  <div className="text-xs font-bold text-gray-500">
+                  <div className="text-xs font-medium text-gray-500">
                     최신 5건
                   </div>
                 </div>
@@ -3245,10 +3245,10 @@ const CallManagementPage: React.FC = () => {
                         }}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <div className="text-sm font-bold text-navy-900">
+                          <div className="text-sm font-medium text-navy-900">
                             {row.customer_name}
                           </div>
-                          <div className="text-xs font-bold text-gray-500">
+                          <div className="text-xs font-medium text-gray-500">
                             {formatWorkType(row.work_type)}
                           </div>
                         </div>
@@ -3269,10 +3269,10 @@ const CallManagementPage: React.FC = () => {
 
               <div className={dashboardCard}>
                 <div className="flex items-center justify-between mb-3">
-                  <div className="text-sm font-extrabold text-navy-900">
+                  <div className="text-sm font-semibold text-navy-900">
                     빠른연락
                   </div>
-                  <div className="text-xs font-bold text-gray-500">
+                  <div className="text-xs font-medium text-gray-500">
                     최근 고객
                   </div>
                 </div>
@@ -3287,10 +3287,10 @@ const CallManagementPage: React.FC = () => {
                     }`}
                     onClick={() => applyQuickListScope("all")}
                   >
-                    <div className="text-xs font-bold text-gray-500">
+                    <div className="text-xs font-medium text-gray-500">
                       전체 상담
                     </div>
-                    <div className="text-2xl font-extrabold text-navy-900 mt-1">
+                    <div className="text-2xl font-semibold text-navy-900 mt-1">
                       {rows.length}
                     </div>
                   </button>
@@ -3304,10 +3304,10 @@ const CallManagementPage: React.FC = () => {
                     }`}
                     onClick={() => applyQuickListScope("followup")}
                   >
-                    <div className="text-xs font-bold text-gray-500">
+                    <div className="text-xs font-medium text-gray-500">
                       사후관리 필요
                     </div>
-                    <div className="text-2xl font-extrabold text-orange-600 mt-1">
+                    <div className="text-2xl font-semibold text-orange-600 mt-1">
                       {rows.filter((r) => r.followup_needed).length}
                     </div>
                   </button>
@@ -3320,7 +3320,7 @@ const CallManagementPage: React.FC = () => {
                       className="flex items-center justify-between rounded-xl border border-gray-200 px-3 py-2"
                     >
                       <div>
-                        <div className="text-sm font-bold text-navy-900">
+                        <div className="text-sm font-medium text-navy-900">
                           {row.customer_name}
                         </div>
                         <div className="text-xs text-gray-500">
@@ -3329,7 +3329,7 @@ const CallManagementPage: React.FC = () => {
                       </div>
                       <a
                         href={`tel:${onlyDigits(row.phone)}`}
-                        className="px-3 py-1.5 rounded-lg text-xs font-bold border border-orange-300 text-orange-600 hover:bg-orange-50"
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium border border-orange-300 text-orange-600 hover:bg-orange-50"
                       >
                         전화
                       </a>
@@ -3345,13 +3345,13 @@ const CallManagementPage: React.FC = () => {
           <div className="space-y-4">
             <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
-                <div className="text-sm font-extrabold text-navy-900">
+                <div className="text-sm font-semibold text-navy-900">
                   상담내역 검색 / 필터
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowListFilters((prev) => !prev)}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-base font-extrabold text-gray-700 hover:bg-gray-50"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-base font-semibold text-gray-700 hover:bg-gray-50"
                   title={showListFilters ? "접기" : "펼치기"}
                 >
                   {showListFilters ? "−" : "+"}
@@ -3445,7 +3445,7 @@ const CallManagementPage: React.FC = () => {
             <div className="flex items-center justify-between gap-3 text-sm text-gray-600">
               <div>필터 선택 시 목록에 자동 반영되며, 목록을 클릭하면 바로 아래에 상세 내역이 열립니다.</div>
               <div className="flex items-center gap-2">
-                <div className="font-bold text-orange-600 whitespace-nowrap">
+                <div className="font-medium text-orange-600 whitespace-nowrap">
                   {listQuickScope === "followup" ? "사후관리 대상만 표시 중" : "전체 상담 표시 중"}
                 </div>
                 <button
@@ -3519,7 +3519,7 @@ const CallManagementPage: React.FC = () => {
                           <td className={tdClass}>
                             <a
                               href={`tel:${onlyDigits(row.phone)}`}
-                              className="text-orange-600 font-bold hover:underline"
+                              className="text-orange-600 font-medium hover:underline"
                               onClick={(e) => e.stopPropagation()}
                             >
                               {row.phone}
@@ -3574,7 +3574,7 @@ const CallManagementPage: React.FC = () => {
                                 {!loadingDetail && !detailError && (
                                   <div className="space-y-3">
                                     <div className="flex items-center justify-between mb-1">
-                                      <div className="text-sm font-extrabold text-navy-900">
+                                      <div className="text-sm font-semibold text-navy-900">
                                         {row.customer_name} 상세내역
                                       </div>
                                       <div className="flex items-center gap-2">
@@ -3629,7 +3629,7 @@ const CallManagementPage: React.FC = () => {
                                             <div className={detailValueClass}>
                                               <a
                                                 href={`tel:${onlyDigits(row.phone)}`}
-                                                className="text-orange-600 font-bold hover:underline"
+                                                className="text-orange-600 font-medium hover:underline"
                                               >
                                                 {row.phone}
                                               </a>
@@ -4148,13 +4148,13 @@ const CallManagementPage: React.FC = () => {
           <div className="space-y-4">
             <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
-                <div className="text-sm font-extrabold text-navy-900">
+                <div className="text-sm font-semibold text-navy-900">
                   사후관리 검색 / 필터
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowFollowupFilters((prev) => !prev)}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-base font-extrabold text-gray-700 hover:bg-gray-50"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-base font-semibold text-gray-700 hover:bg-gray-50"
                   title={showFollowupFilters ? "접기" : "펼치기"}
                 >
                   {showFollowupFilters ? "−" : "+"}
@@ -4268,7 +4268,7 @@ const CallManagementPage: React.FC = () => {
                         <td className={tdClass}>
                           <a
                             href={`tel:${onlyDigits(row.phone)}`}
-                            className="text-orange-600 font-bold hover:underline"
+                            className="text-orange-600 font-medium hover:underline"
                           >
                             {row.phone}
                           </a>

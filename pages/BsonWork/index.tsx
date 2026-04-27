@@ -392,12 +392,12 @@ export default function BsonWorkPage() {
   // ✅ 다운로드 버튼: 흰 배경 + 진한 글자(테두리) → 글자 안 보이는 이슈 제거
   const dlBtnEnabled =
     "inline-flex items-center justify-center px-4 py-2 rounded-xl " +
-    "bg-white border border-navy-900 text-navy-900 font-extrabold " +
+    "bg-white border border-navy-900 text-navy-900 font-bold " +
     "hover:bg-navy-900 hover:text-white transition";
 
   const dlBtnDisabled =
     "inline-flex items-center justify-center px-4 py-2 rounded-xl " +
-    "bg-gray-100 border border-gray-200 text-gray-400 font-extrabold cursor-not-allowed";
+    "bg-gray-100 border border-gray-200 text-gray-400 font-bold cursor-not-allowed";
 
 
   const exportBtnClass =
@@ -529,7 +529,7 @@ export default function BsonWorkPage() {
       <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
         <div>
           <div className="text-sm font-bold text-gray-500">BS_ON · 렌탈 딜 자산 관리</div>
-          <h1 className="text-2xl md:text-3xl font-extrabold text-navy-900 mt-1">
+          <h1 className="text-2xl md:text-3xl font-bold text-navy-900 mt-1">
             딜: {dealName || "—"}
           </h1>
         </div>
@@ -537,13 +537,13 @@ export default function BsonWorkPage() {
         <div className="flex flex-col sm:flex-row sm:items-end gap-3">
           {/* 딜 이름 */}
           <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
-            <div className="text-[11px] font-extrabold text-gray-500">
+            <div className="text-[11px] font-bold text-gray-500">
               딜 이름(시트명 정확히 입력)
             </div>
             <input
               value={dealName}
               onChange={(e) => setDealName(e.target.value)}
-              className="mt-1 w-[260px] outline-none font-extrabold text-navy-900"
+              className="mt-1 w-[260px] outline-none font-bold text-navy-900"
               placeholder="예: RNF"
             />
             <div className="mt-2 text-[11px] font-bold">
@@ -557,7 +557,7 @@ export default function BsonWorkPage() {
 
           {/* 장비번호 검색 */}
           <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
-            <div className="text-[11px] font-extrabold text-gray-500">
+            <div className="text-[11px] font-bold text-gray-500">
               장비번호 검색(끝 4자리)
             </div>
             <input
@@ -566,7 +566,7 @@ export default function BsonWorkPage() {
                 const raw = e.target.value.replace(/\s+/g, "");
                 setEquipmentSearch(raw.slice(0, 4));
               }}
-              className="mt-1 w-[180px] outline-none font-extrabold text-navy-900"
+              className="mt-1 w-[180px] outline-none font-bold text-navy-900"
               placeholder="예: 1234"
               inputMode="numeric"
               maxLength={4}
@@ -580,17 +580,17 @@ export default function BsonWorkPage() {
 
           {/* 진척율 박스 (잠금 해제 시만 의미있게 표시) */}
           <div className="rounded-2xl border border-gray-200 bg-white px-5 py-4 min-w-[280px]">
-            <div className="text-[11px] font-extrabold text-gray-500">사진 진척율</div>
+            <div className="text-[11px] font-bold text-gray-500">사진 진척율</div>
 
             {!isUnlocked ? (
-              <div className="mt-2 text-sm font-extrabold text-gray-500 leading-relaxed">
+              <div className="mt-2 text-sm font-bold text-gray-500 leading-relaxed">
                 딜 이름을 입력하세요
               </div>
             ) : (
               <>
                 <div className="mt-1 flex items-end justify-between gap-3">
-                  <div className="text-2xl font-extrabold text-navy-900">{progress.pct}%</div>
-                  <div className="text-sm font-extrabold text-gray-700">
+                  <div className="text-2xl font-bold text-navy-900">{progress.pct}%</div>
+                  <div className="text-sm font-bold text-gray-700">
                     {progress.hasAny}/{progress.total}
                   </div>
                 </div>
@@ -608,7 +608,7 @@ export default function BsonWorkPage() {
 
       {/* 안내 */}
       <div className="rounded-2xl border border-orange-200 bg-orange-50 p-5">
-        <div className="font-extrabold text-orange-700">다운로드 전용 안내</div>
+        <div className="font-bold text-orange-700">다운로드 전용 안내</div>
         <div className="text-sm text-orange-700/90 mt-1 leading-relaxed">
           이 페이지는 <b>있음/없음 + 다운로드</b> 전용입니다.
         </div>
@@ -617,7 +617,7 @@ export default function BsonWorkPage() {
       {/* 잠금 안내 (자산 숨김 상태) */}
       {!isUnlocked && (
         <div className="rounded-2xl border border-gray-200 bg-white p-6">
-          <div className="text-lg font-extrabold text-navy-900">딜 이름 입력 필요</div>
+          <div className="text-lg font-bold text-navy-900">딜 이름 입력 필요</div>
           <div className="mt-2 text-sm text-gray-600 leading-relaxed">
             딜 이름(=시트명)을 정확히 입력하면 자산 목록이 표시됩니다.
           </div>
@@ -632,7 +632,7 @@ export default function BsonWorkPage() {
         <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
             <div>
-              <div className="font-extrabold text-navy-900">
+              <div className="font-bold text-navy-900">
                 자산 {visibleRows.length.toLocaleString()}개
               </div>
               {normalizedEquipmentSearch && (
@@ -656,7 +656,7 @@ export default function BsonWorkPage() {
               )}
 
               {loading && <div className="text-sm font-bold text-gray-500">불러오는 중…</div>}
-              {err && <div className="text-sm font-extrabold text-red-600">에러: {err}</div>}
+              {err && <div className="text-sm font-bold text-red-600">에러: {err}</div>}
             </div>
           </div>
 
@@ -664,16 +664,16 @@ export default function BsonWorkPage() {
             <table className="min-w-[1550px] w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr className="text-left text-gray-600">
-                  <th className="px-4 py-3 font-extrabold w-[70px]">순번</th>
-                  <th className="px-4 py-3 font-extrabold w-[180px]">장비번호</th>
-                  <th className="px-4 py-3 font-extrabold w-[240px]">모델명</th>
-                  <th className="px-4 py-3 font-extrabold w-[240px]">차대번호</th>
-                  <th className="px-4 py-3 font-extrabold w-[180px]">현장명</th>
-                  <th className="px-4 py-3 font-extrabold w-[320px]">현장주소</th>
-                  <th className="px-4 py-3 font-extrabold w-[140px]">사진1</th>
-                  <th className="px-4 py-3 font-extrabold w-[180px]">다운로드1</th>
-                  <th className="px-4 py-3 font-extrabold w-[140px]">사진2</th>
-                  <th className="px-4 py-3 font-extrabold w-[180px]">다운로드2</th>
+                  <th className="px-4 py-3 font-bold w-[70px]">순번</th>
+                  <th className="px-4 py-3 font-bold w-[180px]">장비번호</th>
+                  <th className="px-4 py-3 font-bold w-[240px]">모델명</th>
+                  <th className="px-4 py-3 font-bold w-[240px]">차대번호</th>
+                  <th className="px-4 py-3 font-bold w-[180px]">현장명</th>
+                  <th className="px-4 py-3 font-bold w-[320px]">현장주소</th>
+                  <th className="px-4 py-3 font-bold w-[140px]">사진1</th>
+                  <th className="px-4 py-3 font-bold w-[180px]">다운로드1</th>
+                  <th className="px-4 py-3 font-bold w-[140px]">사진2</th>
+                  <th className="px-4 py-3 font-bold w-[180px]">다운로드2</th>
                 </tr>
               </thead>
 
@@ -693,12 +693,12 @@ export default function BsonWorkPage() {
                       key={`${r.vin ?? ""}-${idx}`}
                       className="border-b border-gray-100 hover:bg-gray-50"
                     >
-                      <td className="px-4 py-3 font-extrabold text-gray-700">
+                      <td className="px-4 py-3 font-bold text-gray-700">
                         {r.no ?? idx + 1}
                       </td>
 
                       <td className="px-4 py-3">
-                        <div className="font-extrabold text-navy-900">
+                        <div className="font-bold text-navy-900">
                           {r.equipNo || r.assetNo || "-"}
                         </div>
                         <div className="text-[11px] text-gray-500 mt-0.5">
@@ -719,7 +719,7 @@ export default function BsonWorkPage() {
                       <td className="px-4 py-3">
                         {last4 ? (
                           <span
-                            className={`inline-flex items-center px-3 py-1 rounded-full border text-xs font-extrabold ${badge(
+                            className={`inline-flex items-center px-3 py-1 rounded-full border text-xs font-bold ${badge(
                               p1
                             )}`}
                           >
@@ -761,7 +761,7 @@ export default function BsonWorkPage() {
                       <td className="px-4 py-3">
                         {last4 ? (
                           <span
-                            className={`inline-flex items-center px-3 py-1 rounded-full border text-xs font-extrabold ${badge(
+                            className={`inline-flex items-center px-3 py-1 rounded-full border text-xs font-bold ${badge(
                               p2
                             )}`}
                           >
