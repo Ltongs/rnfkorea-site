@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import Seo from "@/src/components/Seo";
 
 import { fetchTireRows } from "../../lib/tiresCsv";
 import { TIRE_CSV_URL } from "../TireShop/config";
@@ -395,6 +396,11 @@ export default function TiresPage() {
 
   return (
     <div className="bg-white text-navy-900">
+      <Seo
+        title="산업용 타이어 공급 | RNF KOREA"
+        description="지게차·고소작업대 등 산업장비용 타이어를 공급합니다. 현장 운용 조건에 맞는 제품 제안과 상담을 RNF KOREA에서 제공합니다."
+        path="/tires"
+      />
       <PageHero
         eyebrow="Tire Solution"
         title="상용·산업용 타이어 솔루션"

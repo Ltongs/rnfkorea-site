@@ -1,5 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import Seo from "@/src/components/Seo";
 import { Battery, Check, Truck, Wallet } from "lucide-react";
 
 type LogoSpec = {
@@ -109,6 +110,11 @@ export default function FinancePage() {
 
   return (
     <div className="bg-white text-navy-900">
+      <Seo
+        title="산업장비 금융 솔루션 | RNF KOREA"
+        description="지게차, 고소작업대 등 산업장비를 위한 리스·렌탈 금융 솔루션을 제공합니다. 초기 비용 절감과 운영 효율을 동시에 확보하세요."
+        path="/finance"
+      />
       <section className="pt-6 pb-5 md:pt-8 md:pb-6 border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10">
           <div className="grid lg:grid-cols-12 gap-8 lg:gap-6 items-start">

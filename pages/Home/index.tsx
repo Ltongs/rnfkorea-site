@@ -2,6 +2,7 @@ import React, { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Phone, Loader2, Send } from "lucide-react";
 import { Battery, Truck, Wallet, Check } from "lucide-react";
+import Seo from "@/src/components/Seo";
 
 const heroShowcaseItems = [
   {
@@ -497,6 +498,11 @@ const CTASection: React.FC = () => {
 };
 const HomePage: React.FC = () => (
   <>
+    <Seo
+      title="RNF KOREA | 산업용 에너지 & 모빌리티 솔루션"
+      description="RNF KOREA는 산업용 타이어, LFP 배터리, 노후장비 수출, 금융 솔루션을 통합 제공하는 산업장비 전문 파트너입니다."
+      path="/"
+    />
     <Hero />
 
 <section id="business" className="pt-14 pb-12 md:pb-14 bg-white">

@@ -22,7 +22,6 @@ import {
 } from "lucide-react";
 
 import {
-  BrowserRouter,
   Routes,
   Route,
   Link,
@@ -1919,7 +1918,6 @@ const AppRoutes = () => {
   const { isAdmin } = useAuth() as any;
 
   return (
-    <BrowserRouter>
       <div className="min-h-screen overflow-x-hidden bg-white">
         <ScrollToTop />
         <ScrollToTopButton />
@@ -1977,18 +1975,20 @@ const AppRoutes = () => {
 
         <Footer />
       </div>
-    </BrowserRouter>
   );
 };
 
 const App = () => {
   const [lang, setLang] = useState<Lang>(() => {
-    const saved = localStorage.getItem("lang");
-    return (saved === "en" || saved === "ko") ? saved : "ko";
+    if (typeof window === "undefined") return "ko";
+    const saved = window.localStorage.getItem("lang");
+    return saved === "en" || saved === "ko" ? saved : "ko";
   });
 
   useEffect(() => {
-    localStorage.setItem("lang", lang);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("lang", lang);
+    }
   }, [lang]);
 
   const t = (key: CopyKey) => COPY[lang][key];

@@ -1,5 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import Seo from "@/src/components/Seo";
 import { Phone, Truck, Check } from "lucide-react";
 
 

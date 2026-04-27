@@ -1,5 +1,6 @@
 import React, { useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import Seo from "@/src/components/Seo";
 
 import { ProjectConsultForm } from "../../components/ProjectConsultForm";
 
@@ -245,6 +246,11 @@ const benefitCards = [
 export default function BatteryPage() {
   return (
     <div className="bg-white text-navy-900">
+      <Seo
+        title="LFP 배터리 솔루션 | RNF KOREA"
+        description="지게차, 고소작업대, 골프카트용 LFP 및 산업용 배터리 솔루션을 제공합니다. 장비별 적용 상담과 공급 구조를 RNF KOREA에서 확인하세요."
+        path="/battery"
+      />
       <PageHero
         eyebrow="Battery Solution"
         title="모든 산업재의 배터리 전환 솔루션"
