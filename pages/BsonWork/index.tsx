@@ -33,7 +33,23 @@ const CSV_URL_MAP: Record<string, string[]> = {
 };
 
 const PHOTO_BASE = "/asset/samwoo"; // public/asset/samwoo
-const EXT = "webp" as const;
+
+// ✅ 사진 확장자 후보
+// - 기존 webp 우선
+// - jpg/jpeg 원본이 public/asset/samwoo에 올라간 경우도 자동 인식
+// - Netlify/Linux 배포 환경은 대소문자를 구분하므로 JPG/JPEG도 함께 확인
+const PHOTO_EXTENSIONS = ["webp", "jpg", "jpeg", "JPG", "JPEG"] as const;
+type PhotoExt = (typeof PHOTO_EXTENSIONS)[number];
+type PhotoSlot = {
+  exists: boolean;
+  url: string;
+  filename: string;
+  ext: PhotoExt | "";
+};
+type PhotoExist = {
+  p1: PhotoSlot;
+  p2: PhotoSlot;
+};
 
 // -------------------------
 // CSV Parser (quotes/commas 지원)
@@ -113,12 +129,33 @@ function getPhotoMatchKey(row: Row, dealName: string) {
   return last4FromText(row.vin ?? "");
 }
 
-function photoUrl(last4: string, which: 1 | 2) {
-  return encodeURI(`${PHOTO_BASE}/${last4}(${which}).${EXT}`);
+function photoUrl(last4: string, which: 1 | 2, ext: PhotoExt) {
+  return encodeURI(`${PHOTO_BASE}/${last4}(${which}).${ext}`);
 }
 
-function downloadName(last4: string, which: 1 | 2) {
-  return `${last4}(${which}).${EXT}`;
+function downloadName(last4: string, which: 1 | 2, ext: PhotoExt) {
+  return `${last4}(${which}).${ext}`;
+}
+
+function emptyPhotoSlot(): PhotoSlot {
+  return { exists: false, url: "", filename: "", ext: "" };
+}
+
+async function resolvePhotoSlot(last4: string, which: 1 | 2): Promise<PhotoSlot> {
+  for (const ext of PHOTO_EXTENSIONS) {
+    const url = photoUrl(last4, which, ext);
+    const exists = await existsStaticFile(url);
+    if (exists) {
+      return {
+        exists: true,
+        url,
+        filename: downloadName(last4, which, ext),
+        ext,
+      };
+    }
+  }
+
+  return emptyPhotoSlot();
 }
 
 
@@ -186,7 +223,7 @@ export default function BsonWorkPage() {
 
   // 파일 존재 캐시
   const [photoExistMap, setPhotoExistMap] = useState<
-    Record<string, { p1: boolean; p2: boolean }>
+    Record<string, PhotoExist>
   >({});
 
   const normalizedDealName = useMemo(() => norm(dealName), [dealName]);
@@ -309,9 +346,7 @@ export default function BsonWorkPage() {
 
         const results = await Promise.all(
           chunk.map(async (k) => {
-            const u1 = photoUrl(k, 1);
-            const u2 = photoUrl(k, 2);
-            const [p1, p2] = await Promise.all([existsStaticFile(u1), existsStaticFile(u2)]);
+            const [p1, p2] = await Promise.all([resolvePhotoSlot(k, 1), resolvePhotoSlot(k, 2)]);
             return { k, p1, p2 };
           })
         );
@@ -342,7 +377,7 @@ export default function BsonWorkPage() {
       const k = getPhotoMatchKey(r, normalizedDealName);
       if (!k) continue;
       const ex = photoExistMap[k];
-      if (ex && (ex.p1 || ex.p2)) hasAny++;
+      if (ex && (ex.p1.exists || ex.p2.exists)) hasAny++;
     }
 
     const pct = Math.round((hasAny / total) * 100);
@@ -386,14 +421,14 @@ export default function BsonWorkPage() {
       )
     );
 
-    let mergedMap: Record<string, { p1: boolean; p2: boolean }> = { ...photoExistMap };
+    let mergedMap: Record<string, PhotoExist> = { ...photoExistMap };
 
     if (missingKeys.length > 0) {
       const results = await Promise.all(
         missingKeys.map(async (key) => {
           const [p1, p2] = await Promise.all([
-            existsStaticFile(photoUrl(key, 1)),
-            existsStaticFile(photoUrl(key, 2)),
+            resolvePhotoSlot(key, 1),
+            resolvePhotoSlot(key, 2),
           ]);
           return { key, p1, p2 };
         })
@@ -409,7 +444,7 @@ export default function BsonWorkPage() {
     const noPhotoRows = targets
       .filter(({ key }) => {
         const ex = mergedMap[key as string];
-        return ex && !ex.p1 && !ex.p2;
+        return ex && !ex.p1.exists && !ex.p2.exists;
       })
       .map(({ row, key }) => ({
         no: row.no ?? "",
@@ -645,12 +680,13 @@ export default function BsonWorkPage() {
               <tbody>
                 {visibleRows.map((r, idx) => {
                   const last4 = getPhotoMatchKey(r, normalizedDealName);
-                  const u1 = last4 ? photoUrl(last4, 1) : "";
-                  const u2 = last4 ? photoUrl(last4, 2) : "";
-
                   const ex = last4 ? photoExistMap[last4] : undefined;
-                  const p1 = !!ex?.p1;
-                  const p2 = !!ex?.p2;
+                  const p1 = !!ex?.p1.exists;
+                  const p2 = !!ex?.p2.exists;
+                  const u1 = ex?.p1.url || "";
+                  const u2 = ex?.p2.url || "";
+                  const name1 = ex?.p1.filename || "";
+                  const name2 = ex?.p2.filename || "";
 
                   return (
                     <tr
@@ -700,7 +736,7 @@ export default function BsonWorkPage() {
                           p1 ? (
                             <a
                               href={u1}
-                              download={downloadName(last4, 1)}
+                              download={name1}
                               className={dlBtnEnabled}
                               title="다운로드"
                             >
@@ -742,7 +778,7 @@ export default function BsonWorkPage() {
                           p2 ? (
                             <a
                               href={u2}
-                              download={downloadName(last4, 2)}
+                              download={name2}
                               className={dlBtnEnabled}
                               title="다운로드"
                             >
@@ -781,7 +817,7 @@ export default function BsonWorkPage() {
           </div>
 
           <div className="px-5 py-4 text-[12px] text-gray-500 bg-white border-t border-gray-100">
-            사진 파일은 <b>{PHOTO_BASE}</b> 아래에 {normalizedDealName === "삼우2" ? (<><b>자산번호끝4자리(1).webp</b>, <b>자산번호끝4자리(2).webp</b></>) : (<><b>VIN끝4자리(1).webp</b>, <b>VIN끝4자리(2).webp</b></>)} 규칙으로 두면 자동 연결됩니다.
+            사진 파일은 <b>{PHOTO_BASE}</b> 아래에 {normalizedDealName === "삼우2" ? (<><b>자산번호끝4자리(1).webp/jpg/jpeg</b>, <b>자산번호끝4자리(2).webp/jpg/jpeg</b></>) : (<><b>VIN끝4자리(1).webp/jpg/jpeg</b>, <b>VIN끝4자리(2).webp/jpg/jpeg</b></>)} 규칙으로 두면 자동 연결됩니다.
           </div>
         </div>
       )}

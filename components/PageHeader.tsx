@@ -10,7 +10,7 @@ const BRIDGE_H = "h-4";
 
 const topBtnBase =
   "relative inline-flex items-center gap-1.5 md:gap-2 px-2.5 md:px-4 py-2 rounded-xl " +
-  "text-[13px] md:text-sm font-extrabold text-navy-900 " +
+  "text-[13px] md:text-sm font-normal text-navy-900 " +
   "hover:bg-gray-50 border border-transparent hover:border-gray-200 " +
   "transition-all whitespace-nowrap";
 
@@ -23,7 +23,7 @@ const underlineHover =
 const underlineActive = "text-orange-600 after:scale-x-100";
 
 const dropItem =
-  "block w-full text-left px-4 py-3 text-sm font-extrabold text-navy-900 " +
+  "block w-full text-left px-4 py-3 text-sm font-normal text-navy-900 " +
   "hover:bg-gray-50 transition-all break-keep";
 
 const desktopDropBoxBase =
@@ -559,7 +559,7 @@ export default function PageHeader() {
 
           <a
             href="tel:1551-1873"
-            className="ml-1 md:ml-2 hidden md:inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-navy-900 text-navy-900 font-extrabold text-sm hover:bg-navy-900 hover:text-white transition-all"
+            className="ml-1 md:ml-2 hidden md:inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-navy-900 text-navy-900 font-normal text-sm hover:bg-navy-900 hover:text-white transition-all"
             title="대표번호 1551-1873"
           >
             <Phone size={16} />
