@@ -164,12 +164,27 @@ function normalize(value: string) {
   return String(value || "").trim();
 }
 
+function normalizeSizeKey(value: string) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, "")
+    .toUpperCase();
+}
+
 function upper(value: string) {
   return normalize(value).toUpperCase();
 }
 
 function cleanTonClass(value: string) {
-  return upper(value).replace(/\s+/g, "");
+  return upper(value)
+    .replace(/\s+/g, "")
+    .replace(/톤/g, "T")
+    .replace(/TON/g, "T")
+    .replace(/[~～−–—]/g, "-");
+}
+
+function includesAny(value: string, patterns: string[]) {
+  return patterns.some((pattern) => value.includes(pattern));
 }
 
 function toNumber(value: string) {
@@ -187,42 +202,44 @@ function formatPrice(value: string | number) {
 function getVehicleGroup(row: TireRow): Exclude<VehicleGroup, "전체"> {
   const vehicleType = upper(row.vehicle_type);
   const tonClass = cleanTonClass(row.ton_class);
+  const fitment = cleanTonClass(row.oe_fitment);
+  const combined = `${vehicleType}|${tonClass}|${fitment}`;
 
-  if (vehicleType === "BUS") return "버스";
-  if (vehicleType === "TRAILER") return "트레일러";
-  if (vehicleType === "DUMP") return "덤프";
-  if (vehicleType === "TRACTOR") return "11톤 초과";
+  if (vehicleType === "BUS" || combined.includes("버스")) return "버스";
+  if (vehicleType === "TRAILER" || combined.includes("트레일러")) return "트레일러";
+  if (vehicleType === "DUMP" || combined.includes("덤프")) return "덤프";
 
-  if (vehicleType === "CARGO") {
-    if (
-      tonClass === "1T" ||
-      tonClass === "1TON" ||
-      tonClass === "2.5T" ||
-      tonClass === "2.5TON" ||
-      tonClass === "2.5T이하" ||
-      tonClass === "3.5T" ||
-      tonClass === "3.5TON"
-    ) {
-      return "1톤~3.5톤 이하";
-    }
+  if (
+    includesAny(combined, [
+      "1-3.5",
+      "1T-3.5T",
+      "1T~3.5T",
+      "1~3.5",
+      "1T",
+      "2.5T",
+      "3.5T",
+      "1-3.5T",
+      "1.0-3.5",
+    ])
+  ) {
+    return "1톤~3.5톤 이하";
+  }
 
-    if (
-      tonClass === "5T" ||
-      tonClass === "5TON" ||
-      tonClass === "8T" ||
-      tonClass === "8TON" ||
-      tonClass === "10T" ||
-      tonClass === "10TON"
-    ) {
-      return "5톤~10톤 이하";
-    }
-
-    return "11톤 초과";
+  if (
+    includesAny(combined, [
+      "5-10",
+      "5T-10T",
+      "5~10",
+      "5T",
+      "8T",
+      "10T",
+    ])
+  ) {
+    return "5톤~10톤 이하";
   }
 
   return "11톤 초과";
 }
-
 function getAxleCode(value: string) {
   const axle = upper(value);
   if (axle === "STEER") return "STEER";
@@ -329,7 +346,7 @@ export default function TiresShop() {
 
   const [vehicleFilter, setVehicleFilter] = useState<VehicleGroup>("전체");
   const [axleFilter, setAxleFilter] = useState<AxleFilter>("전체");
-  const [sizeFilter, setSizeFilter] = useState("전체");
+  const [sizeFilterKey, setSizeFilterKey] = useState("ALL");
   const [search, setSearch] = useState("");
   const [selectedRow, setSelectedRow] = useState<TireRow | null>(null);
   const [quantity, setQuantity] = useState(1);
@@ -361,7 +378,7 @@ export default function TiresShop() {
           new Map(
             data.map((row) => {
               const key = [
-                normalize(row.size),
+                normalizeSizeKey(row.size),
                 normalize(row.pr),
                 normalize(row.brand),
                 normalize(row.model_line),
@@ -395,18 +412,25 @@ export default function TiresShop() {
       return true;
     });
 
-    const sizes = Array.from(new Set(scoped.map((row) => normalize(row.size)))).sort((a, b) =>
-      a.localeCompare(b, "ko")
-    );
+    const sizeMap = new Map<string, string>();
+    scoped.forEach((row) => {
+      const label = normalize(row.size);
+      const key = normalizeSizeKey(label);
+      if (label && key && !sizeMap.has(key)) sizeMap.set(key, label);
+    });
 
-    return ["전체", ...sizes];
+    const sizes = Array.from(sizeMap.entries())
+      .map(([key, label]) => ({ key, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, "ko"));
+
+    return [{ key: "ALL", label: "전체" }, ...sizes];
   }, [rows, vehicleFilter, axleFilter]);
 
   useEffect(() => {
-    if (!sizeOptions.includes(sizeFilter)) {
-      setSizeFilter("전체");
+    if (!sizeOptions.some((option) => option.key === sizeFilterKey)) {
+      setSizeFilterKey("ALL");
     }
-  }, [sizeOptions, sizeFilter]);
+  }, [sizeOptions, sizeFilterKey]);
 
   const filteredRows = useMemo(() => {
     let result = [...rows];
@@ -417,8 +441,8 @@ export default function TiresShop() {
 
     result = result.filter((row) => matchesAxleFilter(row, axleFilter));
 
-    if (sizeFilter !== "전체") {
-      result = result.filter((row) => normalize(row.size) === sizeFilter);
+    if (sizeFilterKey !== "ALL") {
+      result = result.filter((row) => normalizeSizeKey(row.size) === sizeFilterKey);
     }
 
     if (search.trim()) {
@@ -441,7 +465,7 @@ export default function TiresShop() {
     });
 
     return result;
-  }, [rows, vehicleFilter, axleFilter, sizeFilter, search]);
+  }, [rows, vehicleFilter, axleFilter, sizeFilterKey, search]);
 
   const selectedPrice = selectedRow ? toNumber(selectedRow.price) : 0;
   const selectedProductTotal = selectedPrice * quantity;
@@ -530,7 +554,7 @@ export default function TiresShop() {
               <button
                 key={size}
                 type="button"
-                onClick={() => setSizeFilter(size)}
+                onClick={() => setSizeFilterKey(normalizeSizeKey(size))}
                 className="h-10 px-4 rounded-full border border-orange-300 bg-orange-50 text-orange-700 font-semibold hover:bg-orange-500 hover:text-white"
               >
                 {size}
@@ -582,21 +606,21 @@ export default function TiresShop() {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              {sizeOptions.map((size) => {
-                const active = sizeFilter === size;
+              {sizeOptions.map((option) => {
+                const active = sizeFilterKey === option.key;
 
                 return (
                   <button
-                    key={size}
+                    key={option.key}
                     type="button"
-                    onClick={() => setSizeFilter(size)}
+                    onClick={() => setSizeFilterKey(option.key)}
                     className={`h-10 px-4 rounded-full text-sm font-semibold border ${
                       active
                         ? "border-orange-500 bg-orange-500 text-white"
                         : "border-gray-200 bg-white text-gray-700 hover:border-orange-300"
                     }`}
                   >
-                    {size}
+                    {option.label}
                   </button>
                 );
               })}
