@@ -2,9 +2,17 @@ import React, { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Phone, Loader2, Send } from "lucide-react";
 import { Battery, Truck, Wallet, Check } from "lucide-react";
-import Seo from "@/src/components/Seo";
 
-const heroShowcaseItems = [
+type HeroShowcaseItem = {
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  description: string;
+  image: string | string[];
+  to: string;
+};
+
+const heroShowcaseItems: HeroShowcaseItem[] = [
   {
     eyebrow: "최근 납품실적",
     title: "골프카트용 LFP 배터리 공급",
@@ -39,13 +47,21 @@ const heroShowcaseItems = [
     to: "/battery",
   },
   {
-  eyebrow: "수출 사업",
-  title: "노후장비 수출사업",
-  subtitle: "(주)크린어스",
-  description: "국내 노후 장비를 재정비·등급화해 신흥국 산업 현장으로 공급하는 수출 모델",
-  image: "/home/export.jpg",
-  to: "/export",
-},
+    eyebrow: "수출 사업",
+    title: "노후장비 수출사업",
+    subtitle: "(주)크린어스",
+    description: "국내 노후 장비를 재정비·등급화해 신흥국 산업 현장으로 공급하는 수출 모델",
+    image: "/home/export.jpg",
+    to: "/export",
+  },
+  {
+    eyebrow: "수출 사업",
+    title: "중고 고소작업대 수출",
+    subtitle: "정비 · 해외 공급",
+    description: "중고 고소작업대를 선별·정비해 해외 산업 현장으로 공급하는 수출 사례",
+    image: ["/home/awp_export_1.jpg", "/home/awp_export_2.jpg"],
+    to: "/export",
+  },
 ];
 
 const HeroShowcaseSlider: React.FC = () => {
@@ -81,12 +97,27 @@ const HeroShowcaseSlider: React.FC = () => {
   </span>
 </div>
               <div className="absolute inset-0 overflow-hidden">
-                <img
-                  src={item.image}
-                  alt={`${item.title} ${item.subtitle}`}
-                  className="h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-105"
-                  loading="lazy"
-                />
+                {Array.isArray(item.image) ? (
+                  <div className="grid h-full w-full grid-rows-2 transition-transform duration-500 group-hover:scale-105">
+                    {item.image.map((src, imageIdx) => (
+                      <div key={src} className="relative min-h-0 overflow-hidden">
+                        <img
+                          src={src}
+                          alt={`${item.title} ${item.subtitle} ${imageIdx + 1}`}
+                          className="h-full w-full object-cover object-center"
+                          loading="lazy"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <img
+                    src={item.image}
+                    alt={`${item.title} ${item.subtitle}`}
+                    className="h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-105"
+                    loading="lazy"
+                  />
+                )}
               </div>
 
               <div className="absolute inset-0 bg-gradient-to-t from-[#07111f] via-[#07111f]/55 to-transparent" />
@@ -498,11 +529,7 @@ const CTASection: React.FC = () => {
 };
 const HomePage: React.FC = () => (
   <>
-    <Seo
-      title="RNF KOREA | 산업용 에너지 & 모빌리티 솔루션"
-      description="RNF KOREA는 산업용 타이어, LFP 배터리, 노후장비 수출, 금융 솔루션을 통합 제공하는 산업장비 전문 파트너입니다."
-      path="/"
-    />
+
     <Hero />
 
 <section id="business" className="pt-14 pb-12 md:pb-14 bg-white">

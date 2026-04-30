@@ -263,7 +263,9 @@ function ScrollToTop() {
 }
 
 function ScrollToTopButton() {
+  const { pathname } = useLocation();
   const [visible, setVisible] = useState(false);
+  const hideOnMobile = pathname.startsWith("/tires-shop");
 
   useEffect(() => {
     const onScroll = () => setVisible(window.scrollY > 200);
@@ -278,16 +280,18 @@ function ScrollToTopButton() {
     <button
   type="button"
   onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-  className="
+  className={`
+    ${hideOnMobile ? "hidden md:inline-flex" : "inline-flex"}
     fixed bottom-6 right-6 z-[999999]
     h-12 px-5
+    items-center justify-center
     rounded-xl
     bg-orange-500 text-white font-extrabold
     shadow-lg
     hover:bg-orange-600 hover:-translate-y-0.5
     active:translate-y-0
     transition-all duration-200
-  "
+  `}
   aria-label="Back to top"
   title="맨 위로"
 >
