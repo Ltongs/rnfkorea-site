@@ -1735,8 +1735,26 @@ const Footer: React.FC = () => {
         </nav>
       </div>
 
-      <div className="container mx-auto px-4 mt-16 pt-8 border-t border-gray-100 text-center text-gray-400 text-xs">
-        &copy; {new Date().getFullYear()} (주)알앤에프코리아. All rights reserved.
+      {/* ✅ 법적 고지 — 전자상거래법 필수 표시 항목 */}
+      <div className="container mx-auto px-4 mt-16 pt-8 border-t border-gray-100 text-center text-gray-400 text-xs space-y-2">
+        <p className="leading-relaxed">
+          <span className="font-semibold text-gray-500">(주)알앤에프코리아</span>
+          &nbsp;|&nbsp; 대표: 이동수
+          &nbsp;|&nbsp; 사업자등록번호: 316-88-02901
+          &nbsp;|&nbsp; 통신판매업 신고번호: 신고 준비중
+        </p>
+        <p className="leading-relaxed">
+          경기도 안산시 단원구 산단로 325 제에프동 1167호 (신길동)
+          &nbsp;|&nbsp;
+          <a href="tel:1551-1873" className="hover:text-orange-400 transition-colors">
+            1551-1873
+          </a>
+          &nbsp;|&nbsp;
+          <a href="mailto:admin@rnfkorea.co.kr" className="hover:text-orange-400 transition-colors">
+            admin@rnfkorea.co.kr
+          </a>
+        </p>
+        <p>&copy; {new Date().getFullYear()} (주)알앤에프코리아. All rights reserved.</p>
       </div>
     </footer>
   );
