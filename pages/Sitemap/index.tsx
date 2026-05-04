@@ -85,7 +85,7 @@ const AppleSitemap: React.FC = () => {
             RNF KOREA
           </div>
 
-          <h1 className="mt-3 text-3xl md:text-4xl font-extrabold text-navy-900 tracking-tight">
+          <h1 className="mt-3 text-3xl md:text-4xl font-semibold text-navy-900 tracking-tight">
             Sitemap
           </h1>
 
@@ -103,7 +103,7 @@ const AppleSitemap: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-12">
             {sections.map((sec) => (
               <div key={sec.title} className="min-w-0">
-                <div className="text-xs font-extrabold tracking-[0.16em] text-gray-400 uppercase">
+                <div className="text-xs font-semibold tracking-[0.16em] text-gray-400 uppercase">
                   {sec.title}
                 </div>
 
@@ -134,10 +134,10 @@ const AppleSitemap: React.FC = () => {
                           <div className="flex items-start gap-3">
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2">
-                                <div className="text-sm font-extrabold text-navy-900 truncate">
+                                <div className="text-sm font-semibold text-navy-900 truncate">
                                   {l.label}
                                 </div>
-                                <span className="text-[10px] font-extrabold px-2 py-1 rounded-full bg-gray-100 text-gray-500">
+                                <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-gray-100 text-gray-500">
                                   {l.badge ?? "준비중"}
                                 </span>
                               </div>
@@ -161,19 +161,19 @@ const AppleSitemap: React.FC = () => {
                         <div className="flex items-start gap-3">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
-                              <div className="text-sm font-extrabold text-navy-900 truncate">
+                              <div className="text-sm font-semibold text-navy-900 truncate">
                                 {l.label}
                               </div>
 
                               {/* ✅ 일반 링크 배지(협회 전용 등) */}
                               {l.badge && !isCurrent && (
-                                <span className="text-[10px] font-extrabold px-2 py-1 rounded-full bg-orange-50 text-orange-600 border border-orange-200">
+                                <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-orange-50 text-orange-600 border border-orange-200">
                                   {l.badge}
                                 </span>
                               )}
 
                               {isCurrent && (
-                                <span className="text-[10px] font-extrabold px-2 py-1 rounded-full bg-gray-100 text-gray-500">
+                                <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-gray-100 text-gray-500">
                                   현재 페이지
                                 </span>
                               )}
