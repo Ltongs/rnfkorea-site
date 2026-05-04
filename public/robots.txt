@@ -1,4 +1,15 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://rnfkorea.co.kr/sitemap.xml
+# 업무용 내부 페이지 크롤링 차단
+Disallow: /narumi
+Disallow: /narumi/
+Disallow: /narumi/login
+Disallow: /narumi/admin
+Disallow: /bson
+Disallow: /work/
+Disallow: /work/bson
+Disallow: /work/call-management
+Disallow: /work/dashboard
+
+Sitemap: https://www.rnfkorea.co.kr/sitemap.xml

@@ -1,9 +1,75 @@
 import React, { useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import Seo from "@/src/components/Seo";
+import { Helmet } from "react-helmet-async";
 
 import { ProjectConsultForm } from "../../components/ProjectConsultForm";
 
+// ====================================================
+// SEO 설정
+// ====================================================
+const SEO_TITLE = "LFP 배터리 솔루션 | 지게차·고소작업대·골프카트 배터리 | RNF KOREA";
+const SEO_DESC =
+  "지게차, 고소작업대, 골프카트 전용 LFP·납산 배터리 공급 및 렌탈 프로그램. 초기비용 0원, 최대 36개월 분납, BSON 렌탈 구조. 배터리 전환 프로젝트 전문 상담 1551-1873.";
+const SEO_CANONICAL = "https://www.rnfkorea.co.kr/battery";
+const SEO_KEYWORDS =
+  "LFP배터리,지게차배터리,고소작업대배터리,골프카트배터리,납산배터리,배터리렌탈,배터리교체,BSON렌탈,리텐에너지솔루션,SPIDERWAY,배터리전환";
+const SEO_OG_IMAGE = "https://www.rnfkorea.co.kr/og-image.jpg";
+
+/**
+ * ✅ JSON-LD: Service 구조화 데이터
+ * → 구글 리치결과, 네이버 스마트블록에 서비스 정보로 노출될 수 있음
+ */
+const JSON_LD_SERVICE = {
+  "@context": "https://schema.org",
+  "@type": "Service",
+  name: "LFP 배터리 렌탈 솔루션",
+  alternateName: "RNF Battery Rental Program",
+  description:
+    "지게차, 고소작업대, 골프카트 전용 LFP 및 납산 배터리 공급·렌탈 서비스. 초기비용 0원, 최대 36개월 분납 구조.",
+  provider: {
+    "@type": "Organization",
+    name: "(주)알앤에프코리아",
+    url: "https://www.rnfkorea.co.kr",
+    telephone: "1551-1873",
+  },
+  areaServed: {
+    "@type": "Country",
+    name: "Korea",
+  },
+  serviceType: "산업용 배터리 렌탈 및 공급",
+  offers: {
+    "@type": "Offer",
+    priceCurrency: "KRW",
+    description: "선수금 0원, 최대 36개월 분납 렌탈 구조",
+  },
+};
+
+/**
+ * ✅ JSON-LD: BreadcrumbList
+ * → 구글·네이버 검색결과에 "홈 > 배터리" 경로 표시
+ */
+const JSON_LD_BREADCRUMB = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    {
+      "@type": "ListItem",
+      position: 1,
+      name: "홈",
+      item: "https://www.rnfkorea.co.kr/",
+    },
+    {
+      "@type": "ListItem",
+      position: 2,
+      name: "배터리 솔루션",
+      item: "https://www.rnfkorea.co.kr/battery",
+    },
+  ],
+};
+
+// ====================================================
+// 타입 정의
+// ====================================================
 type PageHeroProps = {
   eyebrow?: string;
   title: string;
@@ -17,26 +83,60 @@ type SectionHeaderProps = {
   description?: string;
 };
 
+// ====================================================
+// 공통 컴포넌트
+// ====================================================
 function PageHero({ eyebrow, title, description, right }: PageHeroProps) {
   return (
-    <section className="pt-6 pb-5 md:pt-8 md:pb-6">
+    <section
+      className="pt-6 pb-5 md:pt-8 md:pb-6"
+      aria-label="페이지 헤더"
+    >
       <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10">
         <div className="grid lg:grid-cols-12 gap-8 lg:gap-6 items-start">
           <div className="lg:col-span-7">
-            <div className="text-sm text-gray-500">
-              <Link to="/" className="hover:text-orange-500 transition-colors">
-                Home
-              </Link>
-              <span className="mx-2">/</span>
-              <span className="text-gray-700 font-semibold">배터리</span>
-            </div>
+            {/* ✅ Breadcrumb nav — 검색엔진 사이트링크 + 접근성 */}
+            <nav aria-label="breadcrumb">
+              <ol
+                className="flex items-center text-sm text-gray-500"
+                itemScope
+                itemType="https://schema.org/BreadcrumbList"
+              >
+                <li
+                  itemProp="itemListElement"
+                  itemScope
+                  itemType="https://schema.org/ListItem"
+                >
+                  <Link
+                    to="/"
+                    className="hover:text-orange-500 transition-colors"
+                    itemProp="item"
+                  >
+                    <span itemProp="name">Home</span>
+                  </Link>
+                  <meta itemProp="position" content="1" />
+                </li>
+                <li aria-hidden="true" className="mx-2">/</li>
+                <li
+                  className="text-gray-700 font-semibold"
+                  itemProp="itemListElement"
+                  itemScope
+                  itemType="https://schema.org/ListItem"
+                  aria-current="page"
+                >
+                  <span itemProp="name">배터리</span>
+                  <meta itemProp="position" content="2" />
+                </li>
+              </ol>
+            </nav>
 
             {eyebrow && (
-              <div className="mt-4 text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
+              <p className="mt-4 text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
                 {eyebrow}
-              </div>
+              </p>
             )}
 
+            {/* ✅ h1: 페이지당 반드시 1개, 핵심 키워드 포함 */}
             <h1 className="mt-4 text-3xl md:text-4xl lg:text-5xl font-semibold leading-[1.15] text-navy-900 break-keep">
               {title}
             </h1>
@@ -48,7 +148,11 @@ function PageHero({ eyebrow, title, description, right }: PageHeroProps) {
             )}
           </div>
 
-          {right && <div className="lg:col-span-5">{right}</div>}
+          {right && (
+            <aside className="lg:col-span-5" aria-label="배터리 렌탈 프로그램 요약">
+              {right}
+            </aside>
+          )}
         </div>
       </div>
     </section>
@@ -59,15 +163,14 @@ function SectionHeader({ eyebrow, title, description }: SectionHeaderProps) {
   return (
     <div className="max-w-3xl">
       {eyebrow && (
-        <div className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
+        <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
           {eyebrow}
-        </div>
+        </p>
       )}
-
+      {/* ✅ h2 사용: 페이지 내 섹션 계층 구조 명확화 */}
       <h2 className="mt-3 text-2xl md:text-3xl font-semibold leading-[1.2] text-navy-900 break-keep">
         {title}
       </h2>
-
       {description && (
         <p className="mt-3 text-base leading-7 text-neutral-600 break-keep">
           {description}
@@ -77,6 +180,9 @@ function SectionHeader({ eyebrow, title, description }: SectionHeaderProps) {
   );
 }
 
+// ====================================================
+// 이미지 호버 프리뷰 그리드
+// ====================================================
 const HoverPreviewGrid: React.FC<{
   images: string[];
   alt?: string;
@@ -109,12 +215,10 @@ const HoverPreviewGrid: React.FC<{
     const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-
     const cx0 = rect.width * (0.5 - centerRatio / 2);
     const cx1 = rect.width * (0.5 + centerRatio / 2);
     const cy0 = rect.height * (0.5 - centerRatio / 2);
     const cy1 = rect.height * (0.5 + centerRatio / 2);
-
     return x >= cx0 && x <= cx1 && y >= cy0 && y <= cy1;
   };
 
@@ -140,9 +244,10 @@ const HoverPreviewGrid: React.FC<{
 
   return (
     <>
-      <div className="grid md:grid-cols-3 gap-4">
-        {images.map((src) => (
-          <div
+      {/* ✅ role="list" + 각 항목 alt 텍스트 → 이미지 크롤링 가능 */}
+      <ul className="grid md:grid-cols-3 gap-4 list-none p-0" role="list">
+        {images.map((src, idx) => (
+          <li
             key={src}
             onMouseMove={(e) => handleMove(e, src)}
             onMouseLeave={handleLeave}
@@ -151,24 +256,31 @@ const HoverPreviewGrid: React.FC<{
             <div className={`${thumbClassName} w-full bg-gray-50 overflow-hidden`}>
               <img
                 src={src}
-                alt={alt}
+                alt={`${alt} ${idx + 1}`}
                 className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                loading="lazy"
+                width={600}
+                height={400}
               />
             </div>
-          </div>
+          </li>
         ))}
-      </div>
+      </ul>
 
+      {/* 이미지 확대 오버레이 */}
       <div
         className={`fixed inset-0 z-[99999] flex items-center justify-center pointer-events-none transition-opacity duration-200 ${
           hover ? "opacity-100" : "opacity-0"
         }`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="이미지 확대 보기"
       >
         <div className="absolute inset-0 bg-black/30" />
         <div className="relative bg-white p-3 rounded-2xl shadow-2xl">
           <img
             src={activeSrc}
-            alt="preview"
+            alt="확대 미리보기"
             className="block rounded-xl object-contain w-[70vw] max-w-[900px] max-h-[70vh]"
           />
         </div>
@@ -177,6 +289,9 @@ const HoverPreviewGrid: React.FC<{
   );
 };
 
+// ====================================================
+// 데이터 상수
+// ====================================================
 const supplyCards = [
   {
     title: "배터리 공급",
@@ -243,14 +358,80 @@ const benefitCards = [
   },
 ];
 
+const processSteps = [
+  { step: "01", title: "현장 진단", desc: "장비 사양, 사용 패턴 및 환경 검토" },
+  { step: "02", title: "배터리 제안", desc: "LFP / 납산 중 최적 스펙 제안" },
+  { step: "03", title: "렌탈 구조 설계", desc: "BSON 렌탈 적용 및 조건 설계" },
+  { step: "04", title: "설치 및 운영", desc: "설치 · 검수 · 운영 · A/S 지원" },
+];
+
+const caseImages = [
+  "/cases/golfcart/1.jpg",
+  "/cases/golfcart/2.jpg",
+  "/cases/golfcart/3.jpg",
+  "/cases/golfcart/4.jpg",
+  "/cases/golfcart/5.jpg",
+  "/cases/golfcart/6.jpg",
+];
+
+const caseTags = [
+  "설치장소 : 타미우스CC",
+  "차종 : 골프카트",
+  "배터리 : LFP 전환",
+  "작업 : 설치 / 배선 / 세팅",
+];
+
+// ====================================================
+// 메인 페이지 컴포넌트
+// ====================================================
 export default function BatteryPage() {
   return (
     <div className="bg-white text-navy-900">
-      <Seo
-        title="LFP 배터리 솔루션 | RNF KOREA"
-        description="지게차, 고소작업대, 골프카트용 LFP 및 산업용 배터리 솔루션을 제공합니다. 장비별 적용 상담과 공급 구조를 RNF KOREA에서 확인하세요."
-        path="/battery"
-      />
+
+      {/* ========================================================
+          ✅ SEO HEAD
+          - <title>, <meta description>, <canonical> 주입
+          - OG 태그 (카카오·네이버·링크 미리보기)
+          - JSON-LD 구조화 데이터 2종
+          ======================================================== */}
+      <Helmet>
+        <title>{SEO_TITLE}</title>
+        <meta name="description" content={SEO_DESC} />
+        <meta name="keywords" content={SEO_KEYWORDS} />
+        <link rel="canonical" href={SEO_CANONICAL} />
+        <meta name="robots" content="index, follow" />
+
+        {/* Open Graph */}
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="(주)알앤에프코리아" />
+        <meta property="og:title" content={SEO_TITLE} />
+        <meta property="og:description" content={SEO_DESC} />
+        <meta property="og:url" content={SEO_CANONICAL} />
+        <meta property="og:image" content={SEO_OG_IMAGE} />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta property="og:locale" content="ko_KR" />
+
+        {/* Twitter Card */}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={SEO_TITLE} />
+        <meta name="twitter:description" content={SEO_DESC} />
+        <meta name="twitter:image" content={SEO_OG_IMAGE} />
+
+        {/* JSON-LD: Service */}
+        <script type="application/ld+json">
+          {JSON.stringify(JSON_LD_SERVICE)}
+        </script>
+
+        {/* JSON-LD: Breadcrumb */}
+        <script type="application/ld+json">
+          {JSON.stringify(JSON_LD_BREADCRUMB)}
+        </script>
+      </Helmet>
+
+      {/* ========================================================
+          Hero Section
+          ======================================================== */}
       <PageHero
         eyebrow="Battery Solution"
         title="모든 산업재의 배터리 전환 솔루션"
@@ -264,42 +445,43 @@ export default function BatteryPage() {
                   className="inline-flex items-center gap-2 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-2 text-sm font-semibold text-orange-600 transition-all hover:border-orange-300 hover:bg-orange-100"
                 >
                   배터리 쇼핑몰 바로가기
-                  <span>→</span>
+                  <span aria-hidden="true">→</span>
                 </Link>
               </div>
 
-              <div className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
+              <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
                 Rental Program
-              </div>
+              </p>
 
-              <div className="text-xl md:text-2xl font-semibold leading-[1.2] text-navy-900 break-keep">
+              <p className="text-xl md:text-2xl font-semibold leading-[1.2] text-navy-900 break-keep">
                 RNF 배터리 렌탈 프로그램
-              </div>
+              </p>
 
               <p className="text-sm md:text-base leading-7 text-gray-600 break-keep">
-                초기비용을 없애고, 교체주기와 운용환경까지 고려한<br/>배터리 교체 프로그램을 제안합니다.
+                초기비용을 없애고, 교체주기와 운용환경까지 고려한
+                <br />
+                배터리 교체 프로그램을 제안합니다.
               </p>
 
               <div className="rounded-2xl border border-gray-200 bg-white/90 px-5 py-4 md:px-6 md:py-4">
-                <div className="space-y-2.5 text-sm md:text-base">
+                <dl className="space-y-2.5 text-sm md:text-base">
                   <div className="flex items-start gap-3 leading-6">
-                    <div className="shrink-0 text-[11px] md:text-xs font-semibold tracking-[0.12em] uppercase text-orange-500 pt-0.5">
+                    <dt className="shrink-0 text-[11px] md:text-xs font-semibold tracking-[0.12em] uppercase text-orange-500 pt-0.5">
                       공급범위
-                    </div>
-                    <div className="font-semibold text-navy-900 break-keep">
+                    </dt>
+                    <dd className="font-semibold text-navy-900 break-keep">
                       LFP, 납산배터리
-                    </div>
+                    </dd>
                   </div>
-
                   <div className="flex items-start gap-3 leading-6">
-                    <div className="shrink-0 text-[11px] md:text-xs font-semibold tracking-[0.12em] uppercase text-orange-500 pt-0.5">
+                    <dt className="shrink-0 text-[11px] md:text-xs font-semibold tracking-[0.12em] uppercase text-orange-500 pt-0.5">
                       적용장비
-                    </div>
-                    <div className="font-semibold text-navy-900 break-keep">
+                    </dt>
+                    <dd className="font-semibold text-navy-900 break-keep">
                       지게차, 고소작업대, 골프카트
-                    </div>
+                    </dd>
                   </div>
-                </div>
+                </dl>
 
                 <div className="mt-3 flex flex-col sm:flex-row gap-3">
                   <a
@@ -307,9 +489,8 @@ export default function BatteryPage() {
                     className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-orange-500 text-white font-semibold text-sm hover:bg-orange-600 transition-all shadow-sm hover:shadow-md"
                   >
                     상담 문의 1551-1873
-                    <span>→</span>
+                    <span aria-hidden="true">→</span>
                   </a>
-
                   <Link
                     to="/finance"
                     className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl border border-gray-200 bg-white text-navy-900 font-semibold text-sm hover:border-gray-300 hover:bg-gray-50 transition-all"
@@ -323,7 +504,13 @@ export default function BatteryPage() {
         }
       />
 
-      <section className="py-6 md:py-8 border-t border-gray-100">
+      {/* ========================================================
+          렌탈 프로그램 섹션
+          ======================================================== */}
+      <section
+        className="py-6 md:py-8 border-t border-gray-100"
+        aria-labelledby="program-heading"
+      >
         <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-4">
           <SectionHeader
             eyebrow="Program"
@@ -331,38 +518,47 @@ export default function BatteryPage() {
             description="공급사, 렌탈 구조, RNF의 역할을 한 눈에 이해되도록 정리했습니다."
           />
 
-          <div className="grid md:grid-cols-3 gap-6">
+          <ul className="grid md:grid-cols-3 gap-6 list-none p-0" role="list">
             {supplyCards.map((card, idx) => (
-              <div
+              <li
                 key={card.title}
                 className="rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm hover:shadow-md transition-all"
               >
-                <div className={`px-6 py-5 border-b ${idx === 1 ? "bg-orange-50 border-orange-100" : "bg-gray-50 border-gray-100"}`}>
-                  <div className="text-[11px] font-semibold tracking-[0.12em] uppercase text-orange-500">
+                <div
+                  className={`px-6 py-5 border-b ${
+                    idx === 1
+                      ? "bg-orange-50 border-orange-100"
+                      : "bg-gray-50 border-gray-100"
+                  }`}
+                >
+                  <p className="text-[11px] font-semibold tracking-[0.12em] uppercase text-orange-500">
                     {card.accent}
-                  </div>
+                  </p>
                   <h3 className="mt-2 text-xl font-semibold text-navy-900">{card.title}</h3>
                 </div>
-
-                <div className="p-6 space-y-3">
+                <ul className="p-6 space-y-3 list-none">
                   {card.body.map((line) => (
-                    <div
+                    <li
                       key={line}
                       className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-800"
                     >
                       {line}
-                    </div>
+                    </li>
                   ))}
-                </div>
-              </div>
+                </ul>
+              </li>
             ))}
-          </div>
-
-
+          </ul>
         </div>
       </section>
 
-      <section className="py-6 md:py-8 border-t border-gray-100 bg-gray-50/70">
+      {/* ========================================================
+          장비별 배터리 솔루션
+          ======================================================== */}
+      <section
+        className="py-6 md:py-8 border-t border-gray-100 bg-gray-50/70"
+        aria-labelledby="application-heading"
+      >
         <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-4">
           <SectionHeader
             eyebrow="Application"
@@ -370,43 +566,52 @@ export default function BatteryPage() {
             description="장비의 종류와 사용환경 등을 감안한 최적의 솔루션."
           />
 
-          <div className="grid md:grid-cols-3 gap-8">
+          <ul className="grid md:grid-cols-3 gap-8 list-none p-0" role="list">
             {productCards.map((card) => (
-              <div
+              <li
                 key={card.title}
                 className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-200 hover:shadow-md transition-all"
               >
                 <div className="h-48 overflow-hidden bg-gray-100">
                   <img
                     src={card.image}
-                    alt={card.title}
+                    alt={`${card.title} 배터리 솔루션`}
                     className="w-full h-full object-cover"
                     loading="lazy"
+                    width={600}
+                    height={400}
                   />
                 </div>
-
                 <div className="px-6 pt-5 pb-4 border-b border-gray-100">
                   <p className="text-[11px] font-semibold tracking-[0.12em] text-orange-500 uppercase">
                     {card.subtitle}
                   </p>
                   <h3 className="mt-2 font-semibold text-xl text-gray-900">{card.title}</h3>
                 </div>
-
-                <div className="p-6 space-y-4">
+                <dl className="p-6 space-y-4">
                   {card.lines.map((line) => (
-                    <div key={line.label} className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-4">
-                      <span className="text-sm font-semibold text-gray-900">{line.label}</span>
-                      <p className="text-sm text-gray-600 mt-1 leading-relaxed">{line.desc}</p>
+                    <div
+                      key={line.label}
+                      className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-4"
+                    >
+                      <dt className="text-sm font-semibold text-gray-900">{line.label}</dt>
+                      <dd className="text-sm text-gray-600 mt-1 leading-relaxed">{line.desc}</dd>
                     </div>
                   ))}
-                </div>
-              </div>
+                </dl>
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
       </section>
 
-      <section className="py-6 md:py-8 border-t border-gray-100">
+      {/* ========================================================
+          전환 프로젝트 프로세스
+          ======================================================== */}
+      <section
+        className="py-6 md:py-8 border-t border-gray-100"
+        aria-labelledby="process-heading"
+      >
         <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-4">
           <SectionHeader
             eyebrow="Project"
@@ -414,58 +619,73 @@ export default function BatteryPage() {
             description="현장 확인부터 제안, 렌탈 구조 설계, 설치와 운영까지 하나의 프로젝트 흐름으로 진행합니다."
           />
 
-          <div className="grid md:grid-cols-4 gap-4">
-            {[
-              ["01", "현장 진단", "장비 사양, 사용 패턴 및 환경 검토"],
-              ["02", "배터리 제안", "LFP / 납산 중 최적 스펙 제안"],
-              ["03", "렌탈 구조 설계", "BSON 렌탈 적용 및 조건 설계"],
-              ["04", "설치 및 운영", "설치 · 검수 · 운영 · A/S 지원"],
-            ].map(([step, title, desc]) => (
-              <div key={step} className="rounded-2xl border border-gray-200 p-6 md:p-7 bg-white text-left shadow-sm hover:shadow-md transition-all">
+          <ol className="grid md:grid-cols-4 gap-4 list-none p-0">
+            {processSteps.map(({ step, title, desc }) => (
+              <li
+                key={step}
+                className="rounded-2xl border border-gray-200 p-6 md:p-7 bg-white text-left shadow-sm hover:shadow-md transition-all"
+              >
                 <div className="inline-flex items-center justify-center rounded-full bg-orange-50 border border-orange-100 px-3 py-1.5 text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
                   STEP {step}
                 </div>
-                <h3 className="font-semibold text-lg md:text-xl text-navy-900 mt-4 mb-3 break-keep">{title}</h3>
+                <h3 className="font-semibold text-lg md:text-xl text-navy-900 mt-4 mb-3 break-keep">
+                  {title}
+                </h3>
                 <p className="text-sm md:text-base text-gray-600 leading-7 break-keep">{desc}</p>
-              </div>
+              </li>
             ))}
-          </div>
+          </ol>
         </div>
       </section>
 
-      <section className="py-6 md:py-8 border-t border-gray-100">
+      {/* ========================================================
+          왜 렌탈인가
+          ======================================================== */}
+      <section
+        className="py-6 md:py-8 border-t border-gray-100"
+        aria-labelledby="why-rental-heading"
+      >
         <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-4">
           <div className="rounded-3xl border border-orange-200 bg-orange-50 p-6 md:p-7">
-            <div className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
+            <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
               Why Rental
-            </div>
-            <h2 className="mt-3 text-2xl md:text-3xl font-semibold leading-[1.2] text-navy-900 break-keep">
+            </p>
+            <h2
+              id="why-rental-heading"
+              className="mt-3 text-2xl md:text-3xl font-semibold leading-[1.2] text-navy-900 break-keep"
+            >
               왜 렌탈인가
             </h2>
             <p className="mt-3 text-base leading-7 text-neutral-600 break-keep">
-              핵심은 현금흐름 개선과 편리성 입니다. 
+              핵심은 현금흐름 개선과 편리성입니다.
             </p>
 
-            <div className="mt-8 grid md:grid-cols-3 gap-6">
+            <ul className="mt-8 grid md:grid-cols-3 gap-6 list-none p-0" role="list">
               {benefitCards.map((item) => (
-              <div
-                key={item.title}
-                className="rounded-2xl border border-orange-200 bg-white p-6 md:p-7 text-left shadow-sm hover:shadow-md transition-all"
-              >
-                <div className="inline-block px-4 py-1.5 rounded-full bg-orange-500 text-white text-sm font-semibold">
-                  {item.title}
-                </div>
-                <p className="mt-4 text-sm md:text-base text-gray-600 leading-7 break-keep">
-                  {item.body}
-                </p>
-              </div>
-            ))}
-            </div>
+                <li
+                  key={item.title}
+                  className="rounded-2xl border border-orange-200 bg-white p-6 md:p-7 text-left shadow-sm hover:shadow-md transition-all"
+                >
+                  <div className="inline-block px-4 py-1.5 rounded-full bg-orange-500 text-white text-sm font-semibold">
+                    {item.title}
+                  </div>
+                  <p className="mt-4 text-sm md:text-base text-gray-600 leading-7 break-keep">
+                    {item.body}
+                  </p>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       </section>
 
-      <section className="py-6 md:py-8 border-t border-gray-100 bg-gray-50 px-6">
+      {/* ========================================================
+          설치 사례 (Case Study)
+          ======================================================== */}
+      <section
+        className="py-6 md:py-8 border-t border-gray-100 bg-gray-50 px-6"
+        aria-labelledby="case-study-heading"
+      >
         <div className="max-w-7xl mx-auto">
           <SectionHeader
             eyebrow="Case Study"
@@ -473,37 +693,35 @@ export default function BatteryPage() {
             description="기존 납산 대비 수명 2~3배, 충전 효율 개선, 유지보수 비용 절감 효과를 기대할 수 있습니다."
           />
 
-          <div className="mt-6 flex flex-wrap gap-2 mb-8">
-            {[
-              "설치장소 : 타미우스CC",
-              "차종 : 골프카트",
-              "배터리 : LFP 전환",
-              "작업 : 설치 / 배선 / 세팅",
-            ].map((item) => (
-              <span
+          {/* ✅ 사례 태그 — 검색엔진이 텍스트로 읽을 수 있도록 ul/li 처리 */}
+          <ul
+            className="mt-6 flex flex-wrap gap-2 mb-8 list-none p-0"
+            aria-label="설치 사례 정보"
+          >
+            {caseTags.map((item) => (
+              <li
                 key={item}
                 className="inline-flex items-center px-3 py-1.5 rounded-full text-xs md:text-sm font-semibold border border-gray-200 bg-white text-gray-700"
               >
                 {item}
-              </span>
+              </li>
             ))}
-          </div>
+          </ul>
 
           <HoverPreviewGrid
-            images={[
-              "/cases/golfcart/1.jpg",
-              "/cases/golfcart/2.jpg",
-              "/cases/golfcart/3.jpg",
-              "/cases/golfcart/4.jpg",
-              "/cases/golfcart/5.jpg",
-              "/cases/golfcart/6.jpg",
-            ]}
-            alt="골프카트 배터리 설치사례"
+            images={caseImages}
+            alt="타미우스CC 골프카트 LFP 배터리 설치사례"
           />
         </div>
       </section>
 
-      <section className="py-16 px-6">
+      {/* ========================================================
+          CTA / 상담 섹션
+          ======================================================== */}
+      <section
+        className="py-16 px-6"
+        aria-labelledby="cta-heading"
+      >
         <div className="max-w-7xl mx-auto">
           <SectionHeader
             eyebrow="CTA"
@@ -511,36 +729,42 @@ export default function BatteryPage() {
             description="장비별 최적 배터리와 렌탈 구조를 함께 제안드립니다."
           />
 
+          {/* ✅ 연락처 카드에 address 태그 + itemProp 마크업 */}
           <div className="mt-8 grid md:grid-cols-3 gap-4 mb-8 text-left">
-            <a
-              href="tel:1551-1873"
-              className="rounded-2xl border border-orange-200 bg-orange-50 p-5 hover:shadow-sm transition-all"
-            >
-              <div className="text-[11px] font-semibold tracking-[0.12em] text-orange-500 uppercase">Call</div>
-              <div className="mt-2 text-xl font-semibold text-gray-900">1551-1873</div>
-              <div className="mt-1 text-sm text-gray-600">전화로 바로 상담 연결</div>
-            </a>
+            <address className="not-italic">
+              <a
+                href="tel:1551-1873"
+                className="block rounded-2xl border border-orange-200 bg-orange-50 p-5 hover:shadow-sm transition-all"
+                aria-label="전화 상담 1551-1873"
+              >
+                <p className="text-[11px] font-semibold tracking-[0.12em] text-orange-500 uppercase">Call</p>
+                <p className="mt-2 text-xl font-semibold text-gray-900">1551-1873</p>
+                <p className="mt-1 text-sm text-gray-600">전화로 바로 상담 연결</p>
+              </a>
+            </address>
 
             <a
               href="https://www.retenensol.com/"
               target="_blank"
-              rel="noreferrer"
+              rel="noreferrer noopener"
               className="rounded-2xl border border-gray-200 bg-white p-5 hover:shadow-sm transition-all"
+              aria-label="LFP 공급사 리텐에너지솔루션 홈페이지 (새 탭)"
             >
-              <div className="text-[11px] font-semibold tracking-[0.12em] text-gray-500 uppercase">LFP Supplier</div>
-              <div className="mt-2 text-xl font-semibold text-gray-900">리텐에너지솔루션</div>
-              <div className="mt-1 text-sm text-gray-600">LFP 공급 파트너 홈페이지 이동 ↩︎</div>
+              <p className="text-[11px] font-semibold tracking-[0.12em] text-gray-500 uppercase">LFP Supplier</p>
+              <p className="mt-2 text-xl font-semibold text-gray-900">리텐에너지솔루션</p>
+              <p className="mt-1 text-sm text-gray-600">LFP 공급 파트너 홈페이지 이동 ↩︎</p>
             </a>
 
             <a
               href="http://www.itntbattery.com"
               target="_blank"
-              rel="noreferrer"
+              rel="noreferrer noopener"
               className="rounded-2xl border border-gray-200 bg-white p-5 hover:shadow-sm transition-all"
+              aria-label="납산 공급사 아이티엔티전기 홈페이지 (새 탭)"
             >
-              <div className="text-[11px] font-semibold tracking-[0.12em] text-gray-500 uppercase">Lead Acid Supplier</div>
-              <div className="mt-2 text-xl font-semibold text-gray-900">(주)아이티엔티전기</div>
-              <div className="mt-1 text-sm text-gray-600">납산 공급 파트너 홈페이지 이동 ↩︎</div>
+              <p className="text-[11px] font-semibold tracking-[0.12em] text-gray-500 uppercase">Lead Acid Supplier</p>
+              <p className="mt-2 text-xl font-semibold text-gray-900">(주)아이티엔티전기</p>
+              <p className="mt-1 text-sm text-gray-600">납산 공급 파트너 홈페이지 이동 ↩︎</p>
             </a>
           </div>
 

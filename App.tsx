@@ -31,6 +31,9 @@ import {
   useNavigate,
 } from "react-router-dom";
 
+// ✅ SEO: react-helmet-async (yarn add react-helmet-async / npm i react-helmet-async)
+import { Helmet, HelmetProvider } from "react-helmet-async";
+
 /* 아이콘 */
 import {
   IconConsult,
@@ -69,7 +72,235 @@ import { TIRE_CSV_URL } from "./pages/TireShop/config";
 
 import TiresShopPage from "./pages/TireShop";
 
-const CARD_H = "h-[168px] md:h-[176px]"; // ✅ 완전 고정 높이 (원하면 숫자만 조절)
+// =========================
+// SEO 상수
+// =========================
+const SITE_URL = "https://www.rnfkorea.co.kr";
+const SITE_NAME = "(주)알앤에프코리아";
+const DEFAULT_OG_IMAGE = `${SITE_URL}/og-image.jpg`; // 1200×630 권장
+
+/**
+ * ✅ 라우트별 SEO 메타 정보
+ * - title: 브라우저 탭 + 검색결과 제목 (40~55자 권장)
+ * - description: 검색결과 설명문 (80~155자 권장)
+ * - canonical: 정규 URL (중복 페이지 방지)
+ * - keywords: 네이버 웹마스터 보조 (구글은 무시하지만 네이버는 일부 반영)
+ */
+interface RouteSeoMeta {
+  title: string;
+  description: string;
+  canonical: string;
+  keywords?: string;
+  ogImage?: string;
+}
+
+const ROUTE_SEO: Record<string, RouteSeoMeta> = {
+  "/": {
+    title: "RNF KOREA | 산업용 배터리·타이어·금융솔루션 전문기업",
+    description:
+      "(주)알앤에프코리아는 물류기기용 LFP배터리, 산업용·화물용 타이어, 렌탈 및 금융 서비스를 제공하는 산업재 전문기업입니다. 장비의 구입부터 유지·보수·매각까지 전 LifeCycle을 지원합니다.",
+    canonical: `${SITE_URL}/`,
+    keywords: "LFP배터리,산업용타이어,화물타이어,지게차배터리,렌탈,금융솔루션,알앤에프코리아",
+  },
+  "/tires": {
+    title: "타이어 | 카고·덤프·버스 타이어 라인업 | RNF KOREA",
+    description:
+      "카고, 덤프, 버스용 산업용 타이어 전 라인업. 융하인리히·니찌유·Yale·Hyster 등 주요 고객사 납품 실적. 타이어 전문 상담 1551-1873.",
+    canonical: `${SITE_URL}/tires`,
+    keywords: "카고타이어,덤프타이어,버스타이어,산업용타이어,지게차타이어,화물타이어,타이어쇼핑몰",
+  },
+  "/battery": {
+    title: "LFP 배터리 | 물류기기용 리튬인산철 배터리 | RNF KOREA",
+    description:
+      "지게차·물류기기 전용 LFP(리튬인산철) 배터리 솔루션. 배터리 교체·렌탈·유지보수 서비스. 국내 최대 규모 운영 풀 보유. 문의 1551-1873.",
+    canonical: `${SITE_URL}/battery`,
+    keywords: "LFP배터리,리튬인산철배터리,지게차배터리,물류기기배터리,배터리렌탈,배터리교체",
+  },
+  "/export": {
+    title: "노후장비 수출 | 중고 지게차·굴삭기 해외수출 | RNF KOREA",
+    description:
+      "국내 최대 규모의 노후 디젤 지게차·굴삭기 해외 수출 전문. 롯데렌탈·현대캐피탈 등 대형 렌탈사 직수출 파트너. 수출 재고 문의 1551-1873.",
+    canonical: `${SITE_URL}/export`,
+    keywords: "중고지게차수출,노후지게차,굴삭기수출,중고장비수출,used forklift export,Korea",
+  },
+  "/finance": {
+    title: "금융솔루션 | 장비 렌탈·할부·리스 | RNF KOREA",
+    description:
+      "산업장비 구매를 위한 렌탈·할부·리스 금융솔루션. 롯데렌탈·현대캐피탈 등 주요 금융사 연계. 개인(개별)화물협회 전용 상품 운영. 1551-1873.",
+    canonical: `${SITE_URL}/finance`,
+    keywords: "장비렌탈,지게차할부,지게차리스,산업기기금융,화물금융,개인화물협회",
+  },
+  "/cargo-finance": {
+    title: "개인(개별)화물협회 전용 금융상품 | RNF KOREA",
+    description:
+      "개인화물·개별화물 협회 회원 전용 금융상품. 지게차·화물차량 구매 시 우대 금리 및 맞춤형 할부·렌탈 상품 제공. 문의 1551-1873.",
+    canonical: `${SITE_URL}/cargo-finance`,
+    keywords: "개인화물협회,개별화물협회,화물금융,지게차금융,우대금리,화물차금융",
+  },
+  "/tires-shop": {
+    title: "타이어 쇼핑몰 | 산업용·화물용 타이어 온라인 구매 | RNF KOREA",
+    description:
+      "카고·덤프·버스·산업용 타이어를 온라인으로 간편하게 구매하세요. 다양한 규격·브랜드 재고 보유. 빠른 배송. RNF KOREA 공식 쇼핑몰.",
+    canonical: `${SITE_URL}/tires-shop`,
+    keywords: "타이어쇼핑몰,산업용타이어구매,화물타이어온라인,카고타이어가격,덤프타이어",
+  },
+  "/export-shop": {
+    title: "수출용 중고장비 쇼핑몰 | 지게차·굴삭기 재고 | RNF KOREA",
+    description:
+      "수출용 중고 지게차·굴삭기 재고 목록. 연식·브랜드·용량별 필터 검색. 해외 바이어 직거래 가능. 수출 문의 admin@rnfkorea.co.kr",
+    canonical: `${SITE_URL}/export-shop`,
+    keywords: "중고지게차재고,수출용지게차,used forklift inventory,굴삭기재고,장비수출",
+  },
+  "/battery-shop": {
+    title: "배터리 쇼핑몰 (준비중) | RNF KOREA",
+    description:
+      "물류기기용 LFP 배터리 온라인 쇼핑몰 오픈 준비중입니다. 배터리 문의는 1551-1873으로 연락주세요.",
+    canonical: `${SITE_URL}/battery-shop`,
+    keywords: "LFP배터리쇼핑몰,지게차배터리구매,배터리온라인",
+  },
+  "/sitemap": {
+    title: "사이트맵 | RNF KOREA",
+    description: "(주)알앤에프코리아 전체 페이지 사이트맵입니다.",
+    canonical: `${SITE_URL}/sitemap`,
+  },
+};
+
+// =========================
+// ✅ SEO Head 컴포넌트
+// 각 라우트에서 <SeoHead /> 를 렌더링하면 해당 페이지의 메타태그가 주입됩니다.
+// 각 pages/*/index.tsx 에서도 동일하게 사용하세요.
+// =========================
+export const SeoHead: React.FC<Partial<RouteSeoMeta> & { jsonLd?: object }> = ({
+  title,
+  description,
+  canonical,
+  keywords,
+  ogImage = DEFAULT_OG_IMAGE,
+  jsonLd,
+}) => {
+  const { pathname } = useLocation();
+  const routeMeta = ROUTE_SEO[pathname] ?? ROUTE_SEO["/"];
+
+  const resolvedTitle = title ?? routeMeta.title;
+  const resolvedDesc = description ?? routeMeta.description;
+  const resolvedCanonical = canonical ?? routeMeta.canonical;
+  const resolvedKeywords = keywords ?? routeMeta.keywords;
+
+  return (
+    <Helmet>
+      {/* ── 기본 메타 ── */}
+      <title>{resolvedTitle}</title>
+      <meta name="description" content={resolvedDesc} />
+      {resolvedKeywords && <meta name="keywords" content={resolvedKeywords} />}
+      <link rel="canonical" href={resolvedCanonical} />
+
+      {/* ── Open Graph (카카오·네이버·페이스북 미리보기) ── */}
+      <meta property="og:type" content="website" />
+      <meta property="og:site_name" content={SITE_NAME} />
+      <meta property="og:title" content={resolvedTitle} />
+      <meta property="og:description" content={resolvedDesc} />
+      <meta property="og:url" content={resolvedCanonical} />
+      <meta property="og:image" content={ogImage} />
+      <meta property="og:image:width" content="1200" />
+      <meta property="og:image:height" content="630" />
+      <meta property="og:locale" content="ko_KR" />
+
+      {/* ── Twitter Card ── */}
+      <meta name="twitter:card" content="summary_large_image" />
+      <meta name="twitter:title" content={resolvedTitle} />
+      <meta name="twitter:description" content={resolvedDesc} />
+      <meta name="twitter:image" content={ogImage} />
+
+      {/* ── 네이버 웹마스터 도구 (naver-site-verification은 index.html에 넣을 것) ── */}
+      <meta name="robots" content="index, follow" />
+
+      {/* ── JSON-LD 구조화 데이터 (선택) ── */}
+      {jsonLd && (
+        <script type="application/ld+json">
+          {JSON.stringify(jsonLd)}
+        </script>
+      )}
+    </Helmet>
+  );
+};
+
+// =========================
+// ✅ 사이트 전역 JSON-LD (Organization + LocalBusiness)
+// 구글 지식 패널, 네이버 플레이스 연동에 도움
+// =========================
+const ORGANIZATION_JSON_LD = {
+  "@context": "https://schema.org",
+  "@type": ["Organization", "LocalBusiness"],
+  name: "(주)알앤에프코리아",
+  alternateName: "RNF KOREA",
+  url: SITE_URL,
+  logo: `${SITE_URL}/logo/rnf-logo.png`,
+  image: DEFAULT_OG_IMAGE,
+  description:
+    "물류기기용 LFP배터리, 산업용·화물용 타이어, 노후장비 수출, 렌탈·금융솔루션을 제공하는 산업재 전문기업",
+  foundingDate: "2022",
+  telephone: "1551-1873",
+  email: "admin@rnfkorea.co.kr",
+  address: {
+    "@type": "PostalAddress",
+    streetAddress: "산단로 325, 제에프동 1167호 (신길동)",
+    addressLocality: "안산시 단원구",
+    addressRegion: "경기도",
+    postalCode: "15434",
+    addressCountry: "KR",
+  },
+  geo: {
+    "@type": "GeoCoordinates",
+    latitude: 37.3219,
+    longitude: 126.8309,
+  },
+  openingHoursSpecification: [
+    {
+      "@type": "OpeningHoursSpecification",
+      dayOfWeek: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+      opens: "09:00",
+      closes: "18:00",
+    },
+  ],
+  sameAs: [
+    // 네이버 플레이스, 카카오맵 등 등록 후 URL 추가
+    // "https://place.naver.com/...",
+  ],
+};
+
+// =========================
+// ✅ 라우트별 SeoHead를 자동 주입하는 래퍼
+// AppRoutes 내부의 <Route> 마다 별도 SeoHead를 넣는 대신
+// 이 컴포넌트가 pathname을 보고 자동으로 주입합니다.
+// 개별 페이지에서 더 상세한 메타가 필요하면 각 pages/*/index.tsx 안에
+// <SeoHead title="..." description="..." /> 를 추가로 넣으면 마지막 것이 우선합니다.
+// =========================
+const AutoSeoHead: React.FC = () => {
+  const { pathname } = useLocation();
+
+  // /tires-shop/:sku 같은 동적 라우트는 detail 페이지에서 별도 처리
+  if (pathname.startsWith("/tires-shop/") && pathname !== "/tires-shop") return null;
+  // 업무용 페이지는 검색 노출 차단
+  if (
+    pathname.startsWith("/narumi") ||
+    pathname.startsWith("/bson") ||
+    pathname.startsWith("/work/")
+  ) {
+    return (
+      <Helmet>
+        <meta name="robots" content="noindex, nofollow" />
+      </Helmet>
+    );
+  }
+
+  return <SeoHead />;
+};
+
+// =========================
+// 기존 코드 (수정 없음)
+// =========================
+
+const CARD_H = "h-[168px] md:h-[176px]";
 
 const cardBase =
   `
@@ -84,8 +315,8 @@ const cardTitle =
   "text-lg font-extrabold text-navy-900 transition-colors duration-200 group-hover:text-orange-600";
 
 const cardDesc =
+  "text-sm text-gray-600 leading-snug line-clamp-2";
 
-  "text-sm text-gray-600 leading-snug line-clamp-2"; // ✅ 텍스트 길어져도 높이 유지 (2줄 컷)
 const CardShell: React.FC<{
   title: string;
   desc: string;
@@ -93,7 +324,6 @@ const CardShell: React.FC<{
   imgAlt: string;
 }> = ({ title, desc, imgSrc, imgAlt }) => (
   <div className="flex h-full">
-    {/* LEFT */}
     <div className="flex-1 min-w-0 p-6 flex flex-col justify-center">
       <div className="flex items-center gap-2 mb-2">
         <div className="h-4 w-1 rounded bg-orange-500" />
@@ -101,8 +331,6 @@ const CardShell: React.FC<{
       </div>
       <p className={cardDesc}>{desc}</p>
     </div>
-
-    {/* RIGHT */}
     <div className="relative w-[40%] min-w-[110px] h-full">
       <img
         src={imgSrc}
@@ -119,18 +347,12 @@ const CardShell: React.FC<{
   </div>
 );
 
-
-
 type TruckCategory = "cargo" | "dump" | "bus";
-// =========================
-// Inventory CSV (Google Sheets) Utils  ✅ (Single Source of Truth)
-// =========================
 
 type InventoryCsvRow = {
   id: string;
   type: "forklift" | "excavator";
   title: string;
-
   year?: string;
   brand?: string;
   capacity?: string;
@@ -138,8 +360,7 @@ type InventoryCsvRow = {
   hours?: string;
   condition?: string;
   remarks?: string;
-
-  imgCount?: number; // ✅ number로 통일
+  imgCount?: number;
 };
 
 type ExportFilter = "all" | "forklift" | "excavator";
@@ -246,14 +467,6 @@ type TruckProduct = {
   use2Img?: string[];
 };
 
-
-
-// =========================
-// Inventory CSV (Google Sheets) Utils
-// =========================
-
-
-
 function ScrollToTop() {
   const { pathname } = useLocation();
   useEffect(() => {
@@ -270,7 +483,7 @@ function ScrollToTopButton() {
   useEffect(() => {
     const onScroll = () => setVisible(window.scrollY > 200);
     window.addEventListener("scroll", onScroll);
-    onScroll(); // 초기 1회
+    onScroll();
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
@@ -278,82 +491,57 @@ function ScrollToTopButton() {
 
   return (
     <button
-  type="button"
-  onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-  className={`
-    ${hideOnMobile ? "hidden md:inline-flex" : "inline-flex"}
-    fixed bottom-6 right-6 z-[999999]
-    h-12 px-5
-    items-center justify-center
-    rounded-xl
-    bg-orange-500 text-white font-extrabold
-    shadow-lg
-    hover:bg-orange-600 hover:-translate-y-0.5
-    active:translate-y-0
-    transition-all duration-200
-  `}
-  aria-label="Back to top"
-  title="맨 위로"
->
-  to TOP↑
-</button>
+      type="button"
+      onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+      className={`
+        ${hideOnMobile ? "hidden md:inline-flex" : "inline-flex"}
+        fixed bottom-6 right-6 z-[999999]
+        h-12 px-5
+        items-center justify-center
+        rounded-xl
+        bg-orange-500 text-white font-extrabold
+        shadow-lg
+        hover:bg-orange-600 hover:-translate-y-0.5
+        active:translate-y-0
+        transition-all duration-200
+      `}
+      aria-label="Back to top"
+      title="맨 위로"
+    >
+      to TOP↑
+    </button>
   );
 }
 
-/**
- * Shared Components
- */
-
-// SVG Logo Component recreating the RNF KOREA brand identity based on the provided image
 const RnfLogo: React.FC<{ className?: string }> = ({ className = "h-10" }) => (
   <svg viewBox="0 0 300 85" className={className} fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="RNF KOREA Logo">
-    {/* Icon Group */}
     <g transform="translate(5, 5)">
-      {/* Forklift Cabin (Yellow Frame) */}
       <path d="M15 35 V22 C15 14 20 10 30 10 H40 V35" stroke="#FDB913" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M15 35 H40" stroke="#FDB913" strokeWidth="4" />
-      
-      {/* Forklift Body (Navy) */}
-      <path d="M5 35 H45 V52 H15 L5 48 Z" fill="#0A192F" /> 
-      
-      {/* Steering Detail */}
+      <path d="M5 35 H45 V52 H15 L5 48 Z" fill="#0A192F" />
       <path d="M25 35 V28 H32" stroke="#0A192F" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-
-      {/* Wheels */}
       <circle cx="15" cy="52" r="7" fill="#0A192F" />
       <circle cx="15" cy="52" r="2.5" fill="white" />
       <circle cx="40" cy="52" r="7" fill="#0A192F" />
       <circle cx="40" cy="52" r="2.5" fill="white" />
-      
-      {/* Mast (Navy) */}
       <rect x="46" y="5" width="5" height="48" rx="1" fill="#0A192F" />
-      
-      {/* Forks (Navy) */}
       <path d="M48 48 H62" stroke="#0A192F" strokeWidth="4" strokeLinecap="round" />
-      
-      {/* Battery (Red) with Lightning Bolt */}
       <g transform="translate(54, 18)">
-         <rect x="0" y="3" width="22" height="26" rx="2" fill="#DC2626" />
-         <rect x="6" y="0" width="10" height="3" fill="#DC2626" /> {/* Battery Terminal */}
-         {/* White Lightning Bolt */}
-         <path d="M12 6 L7 15 H13 L10 23 L17 12 H11 L15 6 Z" fill="white" />
+        <rect x="0" y="3" width="22" height="26" rx="2" fill="#DC2626" />
+        <rect x="6" y="0" width="10" height="3" fill="#DC2626" />
+        <path d="M12 6 L7 15 H13 L10 23 L17 12 H11 L15 6 Z" fill="white" />
       </g>
     </g>
-
-    {/* Text Group */}
     <g transform="translate(90, 0)">
-       <text x="0" y="40" fontFamily="sans-serif" fontWeight="900" fontSize="40" fill="#0A192F">RNF</text>
-       <text x="2" y="62" fontFamily="sans-serif" fontWeight="700" fontSize="17" fill="#0A192F" letterSpacing="0.05em">KOREA</text>
+      <text x="0" y="40" fontFamily="sans-serif" fontWeight="900" fontSize="40" fill="#0A192F">RNF</text>
+      <text x="2" y="62" fontFamily="sans-serif" fontWeight="700" fontSize="17" fill="#0A192F" letterSpacing="0.05em">KOREA</text>
     </g>
-
-    {/* Tagline Group */}
     <text x="5" y="80" fontFamily="sans-serif" fontWeight="700" fontSize="10.5" fill="#0A192F" letterSpacing="0.01em">BATTERY & PARTS • FINANCIAL SERVICE</text>
   </svg>
 );
 
-// Primary Call-to-Action Button
 const PrimaryButton: React.FC<{ children: React.ReactNode; onClick?: () => void; className?: string }> = ({ children, onClick, className = '' }) => (
-  <button 
+  <button
     onClick={onClick}
     className={`bg-brand-lime text-navy-900 font-bold text-lg px-8 py-3.5 rounded-md hover:bg-lime-400 hover:shadow-lg transition-all duration-300 flex items-center justify-center gap-2 ${className}`}
   >
@@ -370,27 +558,20 @@ const SectionTitle: React.FC<{ children: React.ReactNode; subtitle?: string; cla
   </div>
 );
 
-/**
- * Sub-Components
- */
-
-
 const COPY = {
   ko: {
-    // ✅ COPY.ko.menu 안에 추가/수정
-menu: {
-  biz: "사업영역",
-  tires: "타이어",
-  battery: "배터리",
-  export: "노후장비 수출사업",
-  finance: "금융솔루션",
-  narumi: "나르미업무",
-
-  shop: "쇼핑몰",
-  tiresShop: "타이어 쇼핑몰",
-  exportShop: "수출용 쇼핑몰",
-  batteryShop: "배터리 쇼핑몰 (준비중)",
-},
+    menu: {
+      biz: "사업영역",
+      tires: "타이어",
+      battery: "배터리",
+      export: "노후장비 수출사업",
+      finance: "금융솔루션",
+      narumi: "나르미업무",
+      shop: "쇼핑몰",
+      tiresShop: "타이어 쇼핑몰",
+      exportShop: "수출용 쇼핑몰",
+      batteryShop: "배터리 쇼핑몰 (준비중)",
+    },
     companyLine: "BATTERY & PARTS · FINANCIAL SERVICE",
     phoneLabel: "대표번호",
     phone: "1551-1873",
@@ -408,7 +589,7 @@ menu: {
     exportIntro: {
       companyName: "RNFKorea Co Ltd",
       founded: "2022",
-      address: "Sandanro 325, Danwongu, Ahsan, Gyreonggi, Koeea",
+      address: "Sandanro 325, Danwongu, Ahsan, Gyreonggi, Korea",
       oneLine: "노후 디젤지게차 수출 전문",
       strengths: [
         "Korea-based rental operator exporting directly",
@@ -428,9 +609,9 @@ menu: {
       narumi: "Narumi",
       sitemap: "Sitemap",
       shop: "Shop",
-tiresShop: "Tires Shop",
-exportShop: "Export Shop",
-batteryShop: "Battery Shop",
+      tiresShop: "Tires Shop",
+      exportShop: "Export Shop",
+      batteryShop: "Battery Shop",
     },
     companyLine: "BATTERY & PARTS · FINANCIAL SERVICE",
     phoneLabel: "Main",
@@ -449,7 +630,7 @@ batteryShop: "Battery Shop",
     exportIntro: {
       companyName: "RNFKorea Co Ltd",
       founded: "2022",
-      address: "Sandanro 325, Danwongu, Ahsan, Gyreonggi, Koeea",
+      address: "Sandanro 325, Danwongu, Ahsan, Gyreonggi, Korea",
       oneLine: "Specialized in exporting used diesel forklifts",
       strengths: [
         "Direct exporter operating a rental business in Korea",
@@ -458,7 +639,6 @@ batteryShop: "Battery Shop",
       ],
     },
   },
-  
 } as const;
 
 type Lang = "ko" | "en";
@@ -467,7 +647,7 @@ type CopyKey = keyof typeof COPY["ko"];
 const LangContext = createContext<{
   lang: Lang;
   setLang: React.Dispatch<React.SetStateAction<Lang>>;
-  t: (key: CopyKey) => any; // ✅ string → any (menu/pages 같이 객체도 반환 가능)
+  t: (key: CopyKey) => any;
 } | null>(null);
 
 function useLang() {
@@ -475,6 +655,7 @@ function useLang() {
   if (!ctx) throw new Error("useLang must be used within LangContext.Provider");
   return ctx;
 }
+
 const Header: React.FC = () => {
   const { lang } = useLang();
   const nav = useNavigate();
@@ -482,16 +663,10 @@ const Header: React.FC = () => {
   const { pathname } = useLocation();
 
   const [isScrolled, setIsScrolled] = useState(false);
-
-  // dropdown states
   const [bizOpen, setBizOpen] = useState(false);
   const [shopOpen, setShopOpen] = useState(false);
-
   const [workOpen, setWorkOpen] = useState(false);
-  // ✅ close delay timer (ONLY ONE)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // ✅ for outside click
   const headerRef = useRef<HTMLDivElement | null>(null);
 
   const scheduleClose = (setter: React.Dispatch<React.SetStateAction<boolean>>) => {
@@ -507,22 +682,18 @@ const Header: React.FC = () => {
   };
 
   const goWork = (path: string) => {
-  // ✅ BS_ON은 당분간 로그인 없이 열람 허용
-  if (path === "/work/bson") {
-    nav(path);
-    return;
-  }
-
-  // 나르미는 새 경로로 이동
-  if (path === "/work/narumi") {
-    if (user && canViewAll) nav("/narumi");
+    if (path === "/work/bson") {
+      nav(path);
+      return;
+    }
+    if (path === "/work/narumi") {
+      if (user && canViewAll) nav("/narumi");
+      else nav("/narumi/login");
+      return;
+    }
+    if (user && canViewAll) nav(path);
     else nav("/narumi/login");
-    return;
-  }
-
-  if (user && canViewAll) nav(path);
-  else nav("/narumi/login");
-};
+  };
 
   const closeAll = () => {
     setBizOpen(false);
@@ -531,7 +702,6 @@ const Header: React.FC = () => {
     cancelClose();
   };
 
-  // Active states
   const bizActive = ["/tires", "/battery", "/export", "/finance"].includes(pathname);
   const shopActive =
     pathname === "/tires-shop" ||
@@ -540,24 +710,21 @@ const Header: React.FC = () => {
     pathname.startsWith("/battery-shop/") ||
     pathname === "/export-shop" ||
     pathname.startsWith("/export-shop/");
-
-
   const workActive = pathname.startsWith("/work/") || pathname.startsWith("/narumi");
+
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // ✅ 헤더 밖 터치/클릭하면 드롭다운 닫기 (모바일 UX + 꼬임 방지)
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
       const el = headerRef.current;
       if (!el) return;
-      if (el.contains(e.target as Node)) return; // 헤더 안이면 무시
+      if (el.contains(e.target as Node)) return;
       closeAll();
     };
-
     window.addEventListener("pointerdown", onDown);
     return () => window.removeEventListener("pointerdown", onDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -568,8 +735,6 @@ const Header: React.FC = () => {
   const navItemActive = "text-orange-600";
   const underlineBase =
     "absolute left-0 -bottom-1 h-[2px] w-full bg-orange-500 transform transition-transform duration-300 origin-left";
-
-  // ✅ pointer-events-auto 추가 (덮임 방지)
   const dropBox =
     "absolute left-0 top-full mt-2 bg-white shadow-lg rounded-xl py-2 min-w-[240px] " +
     "z-[999999] border border-gray-200 pointer-events-auto";
@@ -586,13 +751,11 @@ const Header: React.FC = () => {
     >
       <div ref={headerRef} className="container mx-auto px-4 md:px-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between">
-          {/* Top Row */}
           <div className="flex justify-between items-center py-3 md:py-4">
             <Link to="/" className="flex items-center gap-2 z-50 group" onClick={closeAll}>
               <RnfLogo className="h-12 md:h-14 w-auto" />
             </Link>
 
-            {/* Mobile Right */}
             <div className="md:hidden flex items-center justify-end gap-2 flex-wrap">
               {user && canViewAll && (
                 <button
@@ -601,13 +764,7 @@ const Header: React.FC = () => {
                     logout();
                     nav("/narumi/login", { replace: true });
                   }}
-                  className="
-                    h-9 px-3 rounded-full
-                    border border-gray-200
-                    bg-white text-gray-700
-                    font-extrabold text-sm
-                    whitespace-nowrap
-                  "
+                  className="h-9 px-3 rounded-full border border-gray-200 bg-white text-gray-700 font-extrabold text-sm whitespace-nowrap"
                 >
                   로그아웃
                 </button>
@@ -616,32 +773,14 @@ const Header: React.FC = () => {
               <Link
                 to="/sitemap"
                 onClick={closeAll}
-                className="
-                  h-9 px-4 rounded-full
-                  border border-navy-900 text-navy-900
-                  bg-white
-                  font-bold text-sm
-                  flex items-center
-                  whitespace-nowrap
-                  hover:bg-navy-900 hover:text-white
-                  transition-all
-                "
+                className="h-9 px-4 rounded-full border border-navy-900 text-navy-900 bg-white font-bold text-sm flex items-center whitespace-nowrap hover:bg-navy-900 hover:text-white transition-all"
               >
                 사이트맵
               </Link>
 
               <a
                 href="tel:1551-1873"
-                className="
-                  h-9 px-3 rounded-full
-                  border border-navy-900 text-navy-900
-                  bg-white
-                  font-bold text-sm
-                  flex items-center gap-1.5
-                  flex-1 min-w-0 max-w-[56vw]
-                  hover:bg-navy-900 hover:text-white
-                  transition-all
-                "
+                className="h-9 px-3 rounded-full border border-navy-900 text-navy-900 bg-white font-bold text-sm flex items-center gap-1.5 flex-1 min-w-0 max-w-[56vw] hover:bg-navy-900 hover:text-white transition-all"
                 title="대표번호 1551-1873"
               >
                 <Phone size={14} className="shrink-0" />
@@ -650,109 +789,59 @@ const Header: React.FC = () => {
             </div>
           </div>
 
-          {/* Navigation */}
+          {/* ✅ aria-label로 네비게이션 역할 명시 → 검색엔진 사이트링크 추출에 도움 */}
           <nav
-            className="
-              flex items-center
-              gap-4 md:gap-8
-              text-navy-900 font-bold text-base md:text-lg
-              whitespace-nowrap
-              overflow-visible
-              pb-2
-            "
+            aria-label="주요 메뉴"
+            className="flex items-center gap-4 md:gap-8 text-navy-900 font-bold text-base md:text-lg whitespace-nowrap overflow-visible pb-2"
           >
-            {/* ===================== 사업영역 (드롭다운) ===================== */}
+            {/* 사업영역 드롭다운 */}
             <div
               className="relative z-[999999]"
-              onMouseEnter={() => {
-                cancelClose();
-                setBizOpen(true);
-                setShopOpen(false);
-                setWorkOpen(false);
-              }}
+              onMouseEnter={() => { cancelClose(); setBizOpen(true); setShopOpen(false); setWorkOpen(false); }}
               onMouseLeave={() => scheduleClose(setBizOpen)}
             >
               <button
                 type="button"
-                className={`relative group ${navItemBase} ${
-                  bizActive ? navItemActive : "text-navy-900"
-                }`}
-                // ✅ 모바일 포함: pointerdown에서만 토글 (버블링 차단)
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  cancelClose();
-                  setBizOpen((v) => !v);
-                  setShopOpen(false);
-                }}
+                className={`relative group ${navItemBase} ${bizActive ? navItemActive : "text-navy-900"}`}
+                onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); cancelClose(); setBizOpen((v) => !v); setShopOpen(false); }}
                 aria-haspopup="menu"
                 aria-expanded={bizOpen}
               >
                 {COPY[lang].menu.biz}
-                <span
-                  className={`${underlineBase} ${
-                    bizActive ? "scale-x-100" : "scale-x-0 group-hover:scale-x-100"
-                  }`}
-                />
+                <span className={`${underlineBase} ${bizActive ? "scale-x-100" : "scale-x-0 group-hover:scale-x-100"}`} />
               </button>
 
               {bizOpen && (
                 <div
                   className={dropBox}
                   role="menu"
-                  // ✅ 드롭박스 내부 터치가 위로 올라가 토글되는 것 방지
                   onPointerDown={(e) => e.stopPropagation()}
                   onMouseEnter={cancelClose}
                   onMouseLeave={() => scheduleClose(setBizOpen)}
                 >
-                  <Link to="/tires" className={dropItem} onClick={closeAll}>
-                    {COPY[lang].menu.tires}
-                  </Link>
-                  <Link to="/battery" className={dropItem} onClick={closeAll}>
-                    {COPY[lang].menu.battery}
-                  </Link>
-                  <Link to="/export" className={dropItem} onClick={closeAll}>
-                    {COPY[lang].menu.export}
-                  </Link>
-                  <Link to="/finance" className={dropItem} onClick={closeAll}>
-                    {COPY[lang].menu.finance}
-                  </Link>
+                  <Link to="/tires" className={dropItem} role="menuitem" onClick={closeAll}>{COPY[lang].menu.tires}</Link>
+                  <Link to="/battery" className={dropItem} role="menuitem" onClick={closeAll}>{COPY[lang].menu.battery}</Link>
+                  <Link to="/export" className={dropItem} role="menuitem" onClick={closeAll}>{COPY[lang].menu.export}</Link>
+                  <Link to="/finance" className={dropItem} role="menuitem" onClick={closeAll}>{COPY[lang].menu.finance}</Link>
                 </div>
               )}
             </div>
 
-            {/* ===================== 쇼핑몰 (드롭다운) ===================== */}
+            {/* 쇼핑몰 드롭다운 */}
             <div
               className="relative z-[999999]"
-              onMouseEnter={() => {
-                cancelClose();
-                setShopOpen(true);
-                setBizOpen(false);
-                setWorkOpen(false);
-              }}
+              onMouseEnter={() => { cancelClose(); setShopOpen(true); setBizOpen(false); setWorkOpen(false); }}
               onMouseLeave={() => scheduleClose(setShopOpen)}
             >
               <button
                 type="button"
-                className={`relative group ${navItemBase} ${
-                  shopActive ? navItemActive : "text-navy-900"
-                }`}
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  cancelClose();
-                  setShopOpen((v) => !v);
-                  setBizOpen(false);
-                }}
+                className={`relative group ${navItemBase} ${shopActive ? navItemActive : "text-navy-900"}`}
+                onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); cancelClose(); setShopOpen((v) => !v); setBizOpen(false); }}
                 aria-haspopup="menu"
                 aria-expanded={shopOpen}
               >
                 {COPY[lang].menu.shop ?? "쇼핑몰"}
-                <span
-                  className={`${underlineBase} ${
-                    shopActive ? "scale-x-100" : "scale-x-0 group-hover:scale-x-100"
-                  }`}
-                />
+                <span className={`${underlineBase} ${shopActive ? "scale-x-100" : "scale-x-0 group-hover:scale-x-100"}`} />
               </button>
 
               {shopOpen && (
@@ -763,55 +852,28 @@ const Header: React.FC = () => {
                   onMouseEnter={cancelClose}
                   onMouseLeave={() => scheduleClose(setShopOpen)}
                 >
-                  <Link to="/tires-shop" className={dropItem} onClick={closeAll}>
-                    {COPY[lang].menu.tiresShop ?? "타이어 쇼핑몰"}
-                  </Link>
-
-                  <Link to="/export-shop" className={dropItem} onClick={closeAll}>
-                    {COPY[lang].menu.exportShop ?? "수출용 쇼핑몰"}
-                  </Link>
-
-                  <Link to="/battery-shop" className={dropItem} onClick={closeAll}>
-                    {COPY[lang].menu.batteryShop ?? "배터리 쇼핑몰 (준비중)"}
-                  </Link>
+                  <Link to="/tires-shop" className={dropItem} role="menuitem" onClick={closeAll}>{COPY[lang].menu.tiresShop ?? "타이어 쇼핑몰"}</Link>
+                  <Link to="/export-shop" className={dropItem} role="menuitem" onClick={closeAll}>{COPY[lang].menu.exportShop ?? "수출용 쇼핑몰"}</Link>
+                  <Link to="/battery-shop" className={dropItem} role="menuitem" onClick={closeAll}>{COPY[lang].menu.batteryShop ?? "배터리 쇼핑몰 (준비중)"}</Link>
                 </div>
               )}
             </div>
 
-            
-            {/* ===================== 업무용 ===================== */}
+            {/* 업무용 드롭다운 */}
             <div
               className="relative overflow-visible"
-              onMouseEnter={() => {
-                cancelClose();
-                setWorkOpen(true);
-                setBizOpen(false);
-                setShopOpen(false);
-              }}
+              onMouseEnter={() => { cancelClose(); setWorkOpen(true); setBizOpen(false); setShopOpen(false); }}
               onMouseLeave={() => scheduleClose(setWorkOpen)}
             >
               <button
                 type="button"
-                className={`relative group ${navItemBase} ${
-                  workActive ? navItemActive : "text-navy-900"
-                }`}
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  cancelClose();
-                  setWorkOpen((v) => !v);
-                  setBizOpen(false);
-                  setShopOpen(false);
-                }}
+                className={`relative group ${navItemBase} ${workActive ? navItemActive : "text-navy-900"}`}
+                onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); cancelClose(); setWorkOpen((v) => !v); setBizOpen(false); setShopOpen(false); }}
                 aria-haspopup="menu"
                 aria-expanded={workOpen}
               >
                 업무용
-                <span
-                  className={`${underlineBase} ${
-                    workActive ? "scale-x-100" : "scale-x-0 group-hover:scale-x-100"
-                  }`}
-                />
+                <span className={`${underlineBase} ${workActive ? "scale-x-100" : "scale-x-0 group-hover:scale-x-100"}`} />
               </button>
 
               {workOpen && (
@@ -822,45 +884,19 @@ const Header: React.FC = () => {
                   onMouseEnter={cancelClose}
                   onMouseLeave={() => scheduleClose(setWorkOpen)}
                 >
-                  <button
-                    type="button"
-                    className={dropItem}
-                    onClick={() => {
-                      closeAll();
-                      goWork("/narumi");
-                    }}
-                  >
-                    나르미업무
-                  </button>
-
-                  <button
-                    type="button"
-                    className={dropItem}
-                    onClick={() => {
-                      closeAll();
-                      goWork("/work/bson");
-                    }}
-                  >
-                    BS_ON 업무
-                  </button>
+                  <button type="button" className={dropItem} role="menuitem" onClick={() => { closeAll(); goWork("/narumi"); }}>나르미업무</button>
+                  <button type="button" className={dropItem} role="menuitem" onClick={() => { closeAll(); goWork("/work/bson"); }}>BS_ON 업무</button>
                 </div>
               )}
             </div>
-</nav>
+          </nav>
 
           {/* Desktop Right Buttons */}
           <div className="hidden md:flex items-center gap-3">
             <Link
               to="/sitemap"
               onClick={closeAll}
-              className="
-                px-5 py-2.5 rounded
-                text-base font-bold transition-all
-                border border-navy-900 text-navy-900
-                hover:bg-navy-900 hover:text-white
-                flex items-center gap-2
-                whitespace-nowrap
-              "
+              className="px-5 py-2.5 rounded text-base font-bold transition-all border border-navy-900 text-navy-900 hover:bg-navy-900 hover:text-white flex items-center gap-2 whitespace-nowrap"
             >
               사이트맵
             </Link>
@@ -874,10 +910,7 @@ const Header: React.FC = () => {
             {user && canViewAll && (
               <button
                 type="button"
-                onClick={() => {
-                  logout();
-                  nav("/narumi/login", { replace: true });
-                }}
+                onClick={() => { logout(); nav("/narumi/login", { replace: true }); }}
                 className="px-4 py-2.5 rounded text-base font-extrabold border border-gray-200 text-gray-700 hover:bg-gray-100 transition-all whitespace-nowrap"
               >
                 로그아웃
@@ -898,6 +931,13 @@ const Header: React.FC = () => {
   );
 };
 
+type LogoSpec = {
+  src: string;
+  alt: string;
+  size?: string;
+  opacity?: string;
+  className?: string;
+};
 
 const BusinessPage: React.FC = () => (
   <div className="container mx-auto px-4 py-16">
@@ -908,10 +948,6 @@ const BusinessPage: React.FC = () => (
 
 type ProductCardProps = { p: TruckProduct };
 
-/**
- * 중앙 영역(가로/세로 각각 ratio) 안에 마우스가 들어왔는지 판별
- * ratio=0.4 -> 중앙 40%
- */
 function isInCenterArea(e: React.MouseEvent, ratio = 0.4) {
   const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
   const x = e.clientX - rect.left;
@@ -927,7 +963,6 @@ function isInCenterArea(e: React.MouseEvent, ratio = 0.4) {
 
 export const ProductCard: React.FC<ProductCardProps> = ({ p }) => {
   const [hover, setHover] = useState(false);
-
   const [activeSrc, setActiveSrc] = useState(p.thumb);
   useEffect(() => {
     setActiveSrc(p.thumb);
@@ -941,13 +976,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({ p }) => {
 
   return (
     <div className="border rounded-lg overflow-hidden bg-white">
-      {/* 텍스트 */}
       <div className="p-4 space-y-1">
         <div className="text-sm text-gray-500">{p.brand}</div>
         <div className="text-lg font-bold text-navy-900">{p.model}</div>
       </div>
 
-      {/* hover 감지 영역 */}
       <div
         className="relative"
         onMouseMove={(e) => {
@@ -961,13 +994,10 @@ export const ProductCard: React.FC<ProductCardProps> = ({ p }) => {
         <img src={p.thumb} alt={`${p.brand} ${p.model}`} className="w-full h-44 object-cover" loading="lazy" />
       </div>
 
-      {/* 내용 */}
       <div className="p-4">
         <div className="text-sm text-gray-600 whitespace-pre-line">{p.use}</div>
-
         {p.use2 && <div className="h-4" />}
         {p.use2 && <div className="text-sm text-gray-700 font-bold">{p.use2}</div>}
-
         {p.use2Img && p.use2Img.length > 0 && (
           <div className="flex gap-2 mt-2">
             {p.use2Img.map((img, idx) => (
@@ -977,7 +1007,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({ p }) => {
         )}
       </div>
 
-      {/* 중앙 프리뷰 오버레이 (1개만 유지) */}
       <div
         className={`
           fixed inset-0 z-[99999]
@@ -992,7 +1021,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({ p }) => {
         }}
       >
         <div className="absolute inset-0 bg-black/30" />
-
         <div
           className="relative bg-white p-3 rounded-2xl shadow-2xl"
           style={{
@@ -1025,76 +1053,32 @@ export const ProductCard: React.FC<ProductCardProps> = ({ p }) => {
 
 const IndustrialTireClients: React.FC = () => {
   const clients = [
-    {
-      logo: "/logo/TLS.png",
-      name: "티엘에스주식회사 : 융하인리히",
-    
-    },
-    {
-      logo: "/logo/NICHIYU.jpg",
-      name: "혁신상사 : 니찌유(NICHIYU)",
-      
-    },
-    {
-      logo: "/logo/yale.png",
-      name: "예일이큅먼트 : Yale",
-      
-    },
-    {
-      logo: "/logo/Hyster.png",
-      name: "하이스터코리아 : Hyster",
-      
-    },
-    {
-      logo: "/logo/brotherlift.png",
-      name: "현대지게차 경기북부판매",
-      
-    },
-    {
-      logo: "/logo/dpl.png",
-      name: "DPL : TOYOTA",
-      
-    },
+    { logo: "/logo/TLS.png", name: "티엘에스주식회사 : 융하인리히" },
+    { logo: "/logo/NICHIYU.jpg", name: "혁신상사 : 니찌유(NICHIYU)" },
+    { logo: "/logo/yale.png", name: "예일이큅먼트 : Yale" },
+    { logo: "/logo/Hyster.png", name: "하이스터코리아 : Hyster" },
+    { logo: "/logo/brotherlift.png", name: "현대지게차 경기북부판매" },
+    { logo: "/logo/dpl.png", name: "DPL : TOYOTA" },
   ];
 
   return (
     <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-6">
       <div className="flex items-start gap-3">
         <div className="mt-1 h-6 w-1.5 rounded bg-orange-500" />
-
         <div className="w-full">
-          <div className="text-lg font-extrabold text-navy-900">
-            산업용 타이어 주요 고객사
-          </div>
-
-          <div className="text-sm text-gray-600 mt-1">
-            실제 공급 및 운영 레퍼런스 기반
-          </div>
-
-          {/* ✅ 로고 + 상호 정렬 */}
+          <div className="text-lg font-extrabold text-navy-900">산업용 타이어 주요 고객사</div>
+          <div className="text-sm text-gray-600 mt-1">실제 공급 및 운영 레퍼런스 기반</div>
           <div className="mt-6 grid grid-cols-2 md:grid-cols-3 gap-x-10 gap-y-6">
             {clients.map((c) => (
               <div key={c.name} className="flex flex-col items-start">
                 {c.logo && (
-  <img
-    src={c.logo}
-    alt={c.name}
-    loading="lazy"
-    className="h-8 w-auto object-contain"
-  />
-)}
-
-                <div className="mt-2 text-sm font-extrabold text-navy-900 leading-tight">
-                  {c.name}
-                </div>
-
-                <div className="text-xs text-gray-500 font-bold">
-                  
-                </div>
+                  <img src={c.logo} alt={c.name} loading="lazy" className="h-8 w-auto object-contain" />
+                )}
+                <div className="mt-2 text-sm font-extrabold text-navy-900 leading-tight">{c.name}</div>
+                <div className="text-xs text-gray-500 font-bold" />
               </div>
             ))}
           </div>
-
           <div className="mt-5 text-[11px] text-gray-500">
             ※ 고객사 표기는 납품 및 운영 기준 레퍼런스 안내 목적입니다.
           </div>
@@ -1103,18 +1087,6 @@ const IndustrialTireClients: React.FC = () => {
     </div>
   );
 };
-
-
-/**
- * ✅ 프로젝트에 이미 있는 것들 가정:
- * - TIRE_CSV_URL (env or const)
- * - fetchTireRows(url) -> rows[]
- *
- * ✅ 페이지 내부에서 이미 쓰고 있는 것들:
- * - ProductCard
- * - TruckCategory, TruckProduct
- * - Link (react-router-dom)
- */
 
 const CleanEarthPartnerBox: React.FC = () => {
   return (
@@ -1135,29 +1107,20 @@ const CleanEarthPartnerBox: React.FC = () => {
       aria-label="이 사업은 (주)크린어스와 함께합니다 (클릭 시 홈페이지 이동)"
     >
       <div className="flex items-start justify-between gap-4">
-        {/* LEFT */}
         <div className="min-w-0">
           <div className="inline-flex items-center gap-2 text-xs font-extrabold text-orange-700 bg-orange-50 border border-orange-200 px-3 py-1 rounded-full">
             PARTNER
             <span className="inline-block w-2 h-2 rounded-full bg-orange-500 animate-ping" />
             <span className="inline-block w-2 h-2 rounded-full bg-orange-500 -ml-4" />
           </div>
-
           <div className="mt-3 text-lg md:text-xl font-extrabold text-navy-900 leading-snug">
             이 사업은 <span className="text-orange-600">(주)크린어스</span>와 함께합니다.
           </div>
-
           <div className="mt-2 text-sm text-gray-600 leading-relaxed">
-            수출 가능 물량 선별 및 매입 단계에서 파트너와 협력하여
-            공급 안정성과 품질 기준을 강화합니다.
+            수출 가능 물량 선별 및 매입 단계에서 파트너와 협력하여 공급 안정성과 품질 기준을 강화합니다.
           </div>
-
-          <div className="mt-2 text-xs font-extrabold text-navy-900">
-            www.cleanearth.kr
-          </div>
+          <div className="mt-2 text-xs font-extrabold text-navy-900">www.cleanearth.kr</div>
         </div>
-
-        {/* RIGHT */}
         <div className="shrink-0 flex items-center">
           <div className="h-12 md:h-14 w-[160px] md:w-[180px] rounded-2xl border border-gray-200 bg-white flex items-center justify-center px-4">
             <img
@@ -1169,15 +1132,12 @@ const CleanEarthPartnerBox: React.FC = () => {
           </div>
         </div>
       </div>
-
       <div className="mt-4 text-[11px] text-gray-400 leading-relaxed">
         * 로고 및 상호는 협업 관계 안내 목적이며, 각 사의 상표권을 존중합니다.
       </div>
     </a>
   );
 };
-
-
 
 const ClickableThumb: React.FC<{
   src?: string;
@@ -1328,7 +1288,6 @@ const LightboxModal: React.FC = () => {
 
         <div className="relative bg-black">
           <img src={src} alt="" className="w-full max-h-[75vh] object-contain" />
-
           {state.images.length > 1 && (
             <>
               <button
@@ -1354,9 +1313,7 @@ const LightboxModal: React.FC = () => {
 };
 
 // -------------------------
-// InventoryCard (단 1개만)
-// - 썸네일 hover 시 대표이미지 변경
-// - preload 성공한 이미지들만 Set으로 관리(순서 유지)
+// InventoryCard
 // -------------------------
 const InventoryCard: React.FC<{ item: InventoryItem }> = ({ item }) => {
   const { openAt } = useLightbox();
@@ -1424,33 +1381,30 @@ const InventoryCard: React.FC<{ item: InventoryItem }> = ({ item }) => {
         </div>
 
         {displayImages.length > 1 && (
-  <div
-    className="flex gap-2"
-    onMouseLeave={() => setHeroIndex(0)}   // ✅ 썸네일 영역 이탈 시 0번 복귀
-  >
-    {displayImages.slice(0, 6).map((src: string) => (
-  <ClickableThumb
-    key={src}
-    src={src}
-    className={`w-14 h-14 rounded-md border transition-all ${
-      src === heroSrc ? "border-orange-500" : "border-gray-200 hover:border-orange-300"
-    }`}
-    onMouseEnter={() => {
-      const i = displayImages.indexOf(src);
-      setHeroIndex(i >= 0 ? i : 0);
-    }}
-    onFocus={() => {
-      const i = displayImages.indexOf(src);
-      setHeroIndex(i >= 0 ? i : 0);
-    }}
-    onClick={() => {
-      const i = displayImages.indexOf(src);
-      openAt(item.title, displayImages, i >= 0 ? i : 0);
-    }}
-  />
-))}
-  </div>
-)}
+          <div className="flex gap-2" onMouseLeave={() => setHeroIndex(0)}>
+            {displayImages.slice(0, 6).map((src: string) => (
+              <ClickableThumb
+                key={src}
+                src={src}
+                className={`w-14 h-14 rounded-md border transition-all ${
+                  src === heroSrc ? "border-orange-500" : "border-gray-200 hover:border-orange-300"
+                }`}
+                onMouseEnter={() => {
+                  const i = displayImages.indexOf(src);
+                  setHeroIndex(i >= 0 ? i : 0);
+                }}
+                onFocus={() => {
+                  const i = displayImages.indexOf(src);
+                  setHeroIndex(i >= 0 ? i : 0);
+                }}
+                onClick={() => {
+                  const i = displayImages.indexOf(src);
+                  openAt(item.title, displayImages, i >= 0 ? i : 0);
+                }}
+              />
+            ))}
+          </div>
+        )}
 
         {item.specs && item.specs.length > 0 && (
           <div className="border-t pt-3">
@@ -1523,14 +1477,7 @@ const ExportShopPage: React.FC = () => {
         ...(r.remarks ? [{ label: "Remarks", value: r.remarks }] : []),
       ];
 
-      return {
-        id: r.id,
-        type: r.type,
-        title: r.title,
-        folder,
-        images,
-        specs,
-      };
+      return { id: r.id, type: r.type, title: r.title, folder, images, specs };
     });
   }, [rows]);
 
@@ -1539,11 +1486,9 @@ const ExportShopPage: React.FC = () => {
   const excavatorCount = inventory.filter((x: InventoryItem) => x.type === "excavator").length;
   const filtered = filter === "all" ? inventory : inventory.filter((x: InventoryItem) => x.type === filter);
 
-  const pillBase =
-    "px-4 py-2 rounded-full text-sm font-semibold border transition-all duration-200";
+  const pillBase = "px-4 py-2 rounded-full text-sm font-semibold border transition-all duration-200";
   const pillOn = "bg-orange-500 text-white border-orange-500 shadow-sm";
-  const pillOff =
-    "bg-white text-navy-900 border-gray-200 hover:border-orange-300 hover:text-orange-600";
+  const pillOff = "bg-white text-navy-900 border-gray-200 hover:border-orange-300 hover:text-orange-600";
 
   return (
     <LightboxProvider>
@@ -1552,21 +1497,14 @@ const ExportShopPage: React.FC = () => {
           <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10">
             <div className="max-w-3xl">
               <div className="text-sm text-gray-500">
-                <Link to="/" className="hover:text-orange-500 transition-colors">
-                  Home
-                </Link>
+                <Link to="/" className="hover:text-orange-500 transition-colors">Home</Link>
                 <span className="mx-2">/</span>
                 <span className="text-gray-700 font-semibold">수출용 쇼핑몰</span>
               </div>
-
-              <div className="mt-4 text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
-                Export Shop
-              </div>
-
+              <div className="mt-4 text-sm font-medium tracking-[0.12em] uppercase text-orange-500">Export Shop</div>
               <h1 className="mt-4 text-3xl md:text-4xl lg:text-5xl font-semibold leading-[1.15] text-navy-900 break-keep">
                 수출용 쇼핑몰
               </h1>
-
               <p className="mt-4 text-base md:text-lg leading-7 text-gray-600 max-w-3xl break-keep">
                 수출용 매물을 확인하고, 필요 시 스펙·가격·선적 조건을 요청하실 수 있습니다.
               </p>
@@ -1586,23 +1524,12 @@ const ExportShopPage: React.FC = () => {
                   title="(주)크린어스 홈페이지로 이동"
                 >
                   <div className="flex items-center">
-                    <img
-                      src="/logo/cleanearth.png"
-                      alt="(주)크린어스 로고"
-                      className="h-10 md:h-9 w-auto object-contain"
-                      loading="lazy"
-                    />
+                    <img src="/logo/cleanearth.png" alt="(주)크린어스 로고" className="h-10 md:h-9 w-auto object-contain" loading="lazy" />
                   </div>
-
                   <div className="mt-3 text-sm font-semibold text-navy-900 leading-snug break-keep">
-                    이 사업은 지구를 깨끗하게 크린어스(CleanEarth)
-                    <br />
-                    (주)크린어스와 함께합니다.
+                    이 사업은 지구를 깨끗하게 크린어스(CleanEarth)<br />(주)크린어스와 함께합니다.
                   </div>
-
-                  <div className="mt-1 text-xs font-semibold text-navy-900">
-                    www.cleanearth.kr
-                  </div>
+                  <div className="mt-1 text-xs font-semibold text-navy-900">www.cleanearth.kr</div>
                 </a>
 
                 <a
@@ -1613,67 +1540,30 @@ const ExportShopPage: React.FC = () => {
                   title="현대지게차 경기북부판매 – 웹사이트 바로가기"
                 >
                   <div className="flex items-center">
-                    <img
-                      src="/logo/brotherlift.png"
-                      alt="현대지게차 경기북부판매 로고"
-                      className="h-12 md:h-10 w-auto object-contain"
-                      loading="lazy"
-                    />
+                    <img src="/logo/brotherlift.png" alt="현대지게차 경기북부판매 로고" className="h-12 md:h-10 w-auto object-contain" loading="lazy" />
                   </div>
-
                   <div className="mt-3 text-sm font-semibold text-navy-900 leading-snug break-keep">
-                    아래 차량들은 국내 최고의 지게차 정비업체
-                    <br />
-                    현대지게차 경기북부판매(형제중기)에서 관리합니다.
+                    아래 차량들은 국내 최고의 지게차 정비업체<br />현대지게차 경기북부판매(형제중기)에서 관리합니다.
                   </div>
-
                   <div className="text-xs font-medium text-gray-600 mt-1">
                     📞{" "}
-                    <span
-                      onClick={(e) => e.stopPropagation()}
-                      onMouseDown={(e) => e.stopPropagation()}
-                    >
-                      <a
-                        href="tel:1899-1373"
-                        className="hover:text-orange-600 transition-colors"
-                      >
-                        1899-1373
-                      </a>
+                    <span onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+                      <a href="tel:1899-1373" className="hover:text-orange-600 transition-colors">1899-1373</a>
                     </span>
                   </div>
-
-                  <div className="mt-1 text-xs font-semibold text-navy-900">
-                    www.brotherlift.com
-                  </div>
+                  <div className="mt-1 text-xs font-semibold text-navy-900">www.brotherlift.com</div>
                 </a>
               </div>
 
-              {loading && (
-                <div className="text-sm text-gray-500 mt-4">상품 정보를 불러오는 중입니다...</div>
-              )}
+              {loading && <div className="text-sm text-gray-500 mt-4">상품 정보를 불러오는 중입니다...</div>}
               {!!errMsg && <div className="text-sm text-red-600 mt-4">{errMsg}</div>}
             </div>
 
             <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm">
               <div className="flex flex-wrap gap-3 items-center">
-                <button
-                  className={`${pillBase} ${filter === "all" ? pillOn : pillOff}`}
-                  onClick={() => setFilter("all")}
-                >
-                  전체 ({totalCount})
-                </button>
-                <button
-                  className={`${pillBase} ${filter === "forklift" ? pillOn : pillOff}`}
-                  onClick={() => setFilter("forklift")}
-                >
-                  지게차 ({forkliftCount})
-                </button>
-                <button
-                  className={`${pillBase} ${filter === "excavator" ? pillOn : pillOff}`}
-                  onClick={() => setFilter("excavator")}
-                >
-                  굴삭기 ({excavatorCount})
-                </button>
+                <button className={`${pillBase} ${filter === "all" ? pillOn : pillOff}`} onClick={() => setFilter("all")}>전체 ({totalCount})</button>
+                <button className={`${pillBase} ${filter === "forklift" ? pillOn : pillOff}`} onClick={() => setFilter("forklift")}>지게차 ({forkliftCount})</button>
+                <button className={`${pillBase} ${filter === "excavator" ? pillOn : pillOff}`} onClick={() => setFilter("excavator")}>굴삭기 ({excavatorCount})</button>
               </div>
             </div>
 
@@ -1692,8 +1582,6 @@ const ExportShopPage: React.FC = () => {
 const PartnerLogos: React.FC<{ logos: string[]; label?: string }> = ({ logos, label }) => (
   <div className="mt-5 pt-4 border-t border-gray-100">
     {label && <div className="text-xs font-bold text-gray-500 mb-2">{label}</div>}
-
-    {/* ✅ 모바일 줄바꿈 제어: nowrap + 가로 스크롤(필요 시) */}
     <div className="flex items-center gap-4 overflow-x-auto no-scrollbar py-1">
       {logos.map((src) => (
         <img
@@ -1715,48 +1603,42 @@ const PartnerLogos: React.FC<{ logos: string[]; label?: string }> = ({ logos, la
   </div>
 );
 
-
-type LogoSpec = {
-  src: string;
-  alt: string;
-  size?: string;
-  opacity?: string;
-  className?: string;
-};
-
-
-
-
 const Footer: React.FC = () => {
   const nav = useNavigate();
   const { user, canViewAll } = useAuth() as any;
 
-const goNarumi = () => {
-  if (user && canViewAll) nav("/narumi");
-  else nav("/narumi/login");
-};
-
-const goWork = (path: string) => {
-  if (path === "/work/narumi") {
+  const goNarumi = () => {
     if (user && canViewAll) nav("/narumi");
     else nav("/narumi/login");
-    return;
-  }
+  };
 
-  if (user && canViewAll) nav(path);
-  else nav("/narumi/login");
-};
+  const goWork = (path: string) => {
+    if (path === "/work/narumi") {
+      if (user && canViewAll) nav("/narumi");
+      else nav("/narumi/login");
+      return;
+    }
+    if (user && canViewAll) nav(path);
+    else nav("/narumi/login");
+  };
 
   return (
-    <footer id="company" className="bg-white text-navy-900 py-16 border-t border-gray-100">
+    // ✅ id="company" 유지 (앵커 링크), itemScope/itemType으로 Schema.org LocalBusiness 마크업
+    <footer
+      id="company"
+      className="bg-white text-navy-900 py-16 border-t border-gray-100"
+      itemScope
+      itemType="https://schema.org/LocalBusiness"
+    >
       <div className="container mx-auto px-4 grid grid-cols-1 md:grid-cols-4 gap-12 text-sm">
         {/* 회사 정보 */}
         <div className="col-span-1 md:col-span-2">
           <div className="mb-6">
-            <div className="font-extrabold text-lg">RNF KOREA</div>
+            <div className="font-extrabold text-lg" itemProp="name">RNF KOREA</div>
+            <meta itemProp="legalName" content="(주)알앤에프코리아" />
+            <meta itemProp="url" content={SITE_URL} />
           </div>
-
-          <p className="text-gray-500 max-w-sm leading-relaxed mb-6">
+          <p className="text-gray-500 max-w-sm leading-relaxed mb-6" itemProp="description">
             (주)알앤에프코리아는 장비의 구입부터 유지/보수/매각까지
             장비의 모든 LifeCycle을 함께하는 산업재 전문 기업입니다.
             <br />
@@ -1767,129 +1649,92 @@ const goWork = (path: string) => {
         {/* 연락처 */}
         <div>
           <h4 className="font-bold text-base mb-6">Contact Info</h4>
-
-          <ul className="space-y-4 text-gray-600">
-            <li className="flex items-start gap-3">
-              <Phone size={16} className="shrink-0 mt-0.5" />
-              <a
-                href="tel:1551-1873"
-                className="font-bold hover:text-orange-500 transition-colors"
-              >
-                1551-1873
-              </a>
-            </li>
-
-            <li className="flex items-start gap-3">
-              <User size={16} className="shrink-0 mt-0.5" />
-              <span>사이트관리자: 이동수</span>
-            </li>
-
-            <li className="flex items-start gap-3">
-              <Mail size={16} className="shrink-0 mt-0.5" />
-              <a
-                href="mailto:admin@rnfkorea.co.kr"
-                className="hover:text-orange-500 transition-colors break-all"
-              >
-                admin@rnfkorea.co.kr
-              </a>
-            </li>
-
-            <li className="flex items-start gap-3">
-              <MapPin size={16} className="shrink-0 mt-0.5" />
-              <span className="leading-relaxed">
-                경기도 안산시 단원구 산단로 325
-                <br />
-                제에프동 1167호 (신길동)
-              </span>
-            </li>
-          </ul>
+          <address
+            className="not-italic"
+            itemProp="address"
+            itemScope
+            itemType="https://schema.org/PostalAddress"
+          >
+            <ul className="space-y-4 text-gray-600">
+              <li className="flex items-start gap-3">
+                <Phone size={16} className="shrink-0 mt-0.5" aria-hidden="true" />
+                <a
+                  href="tel:1551-1873"
+                  className="font-bold hover:text-orange-500 transition-colors"
+                  itemProp="telephone"
+                >
+                  1551-1873
+                </a>
+              </li>
+              <li className="flex items-start gap-3">
+                <User size={16} className="shrink-0 mt-0.5" aria-hidden="true" />
+                <span>사이트관리자: 이동수</span>
+              </li>
+              <li className="flex items-start gap-3">
+                <Mail size={16} className="shrink-0 mt-0.5" aria-hidden="true" />
+                <a
+                  href="mailto:admin@rnfkorea.co.kr"
+                  className="hover:text-orange-500 transition-colors break-all"
+                  itemProp="email"
+                >
+                  admin@rnfkorea.co.kr
+                </a>
+              </li>
+              <li className="flex items-start gap-3">
+                <MapPin size={16} className="shrink-0 mt-0.5" aria-hidden="true" />
+                <span className="leading-relaxed" itemProp="streetAddress">
+                  경기도 안산시 단원구 산단로 325
+                  <br />
+                  제에프동 1167호 (신길동)
+                </span>
+              </li>
+            </ul>
+          </address>
         </div>
 
         {/* 메뉴 */}
-        <div className="space-y-8">
-          {/* Business */}
+        <nav aria-label="푸터 메뉴" className="space-y-8">
           <div>
             <h4 className="font-bold text-base mb-4">Business</h4>
             <ul className="space-y-2 text-sm text-gray-600">
+              <li><Link to="/tires" className="hover:text-orange-500 transition-colors">- 타이어</Link></li>
+              <li><Link to="/battery" className="hover:text-orange-500 transition-colors">- 배터리</Link></li>
+              <li><Link to="/export" className="hover:text-orange-500 transition-colors">- 노후장비 수출사업</Link></li>
+              <li><Link to="/finance" className="hover:text-orange-500 transition-colors">- 금융솔루션</Link></li>
               <li>
-                <Link to="/tires" className="hover:text-orange-500 transition-colors">
-                  - 타이어
-                </Link>
-              </li>
-              <li>
-                <Link to="/battery" className="hover:text-orange-500 transition-colors">
-                  - 배터리
-                </Link>
-              </li>
-              <li>
-                <Link to="/export" className="hover:text-orange-500 transition-colors">
-                  - 노후장비 수출사업
-                </Link>
-              </li>
-              <li>
-                <Link to="/finance" className="hover:text-orange-500 transition-colors">
-                  - 금융솔루션
-                </Link>
-              </li>
-              <li>
-                <Link
-                  to="/cargo-finance"
-                  className="font-bold text-orange-600 hover:text-orange-500 transition-colors"
-                >
+                <Link to="/cargo-finance" className="font-bold text-orange-600 hover:text-orange-500 transition-colors">
                   - 개인(개별)협회 전용 금융상품
                 </Link>
               </li>
             </ul>
           </div>
 
-          {/* Shop */}
           <div>
             <h4 className="font-bold text-base mb-4">Shop</h4>
             <ul className="space-y-2 text-sm text-gray-600">
-              <li>
-                <Link to="/tires-shop" className="hover:text-orange-500 transition-colors">
-                  - 타이어 쇼핑몰
-                </Link>
-              </li>
-              <li>
-                <Link to="/export-shop" className="hover:text-orange-500 transition-colors">
-                  - 수출용 쇼핑몰
-                </Link>
-              </li>
-
+              <li><Link to="/tires-shop" className="hover:text-orange-500 transition-colors">- 타이어 쇼핑몰</Link></li>
+              <li><Link to="/export-shop" className="hover:text-orange-500 transition-colors">- 수출용 쇼핑몰</Link></li>
               <li className="flex items-center gap-2">
                 <span className="text-gray-400 font-bold">- 배터리 쇼핑몰</span>
-                <span className="text-[10px] font-extrabold px-2 py-1 rounded-full bg-gray-100 text-gray-500">
-                  준비중
-                </span>
+                <span className="text-[10px] font-extrabold px-2 py-1 rounded-full bg-gray-100 text-gray-500">준비중</span>
               </li>
             </ul>
           </div>
 
-          {/* Etc */}
           <div>
             <h4 className="font-bold text-base mb-4">Etc</h4>
             <ul className="space-y-2 text-sm text-gray-600">
+              <li><Link to="/sitemap" className="hover:text-orange-500 transition-colors">- 사이트맵</Link></li>
               <li>
-                <Link to="/sitemap" className="hover:text-orange-500 transition-colors">
-                  - 사이트맵
-                </Link>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  onClick={goNarumi}
-                  className="hover:text-orange-500 transition-colors text-left"
-                >
+                <button type="button" onClick={goNarumi} className="hover:text-orange-500 transition-colors text-left">
                   - 나르미업무
                 </button>
               </li>
             </ul>
           </div>
-        </div>
+        </nav>
       </div>
 
-      {/* 하단 */}
       <div className="container mx-auto px-4 mt-16 pt-8 border-t border-gray-100 text-center text-gray-400 text-xs">
         &copy; {new Date().getFullYear()} (주)알앤에프코리아. All rights reserved.
       </div>
@@ -1897,9 +1742,6 @@ const goWork = (path: string) => {
   );
 };
 
-// =========================
-// Narumi (Protected Route)
-// =========================
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading, canViewAll } = useAuth() as any;
 
@@ -1922,63 +1764,74 @@ const AppRoutes = () => {
   const { isAdmin } = useAuth() as any;
 
   return (
-      <div className="min-h-screen overflow-x-hidden bg-white">
-        <ScrollToTop />
-        <ScrollToTopButton />
-        <PageHeader />
+    <div className="min-h-screen overflow-x-hidden bg-white">
+      <ScrollToTop />
+      <ScrollToTopButton />
 
-        <main className="w-full">
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/tires" element={<TiresPage />} />
-            <Route path="/battery" element={<BatteryPage />} />
-            <Route path="/export" element={<ExportPage />} />
-            <Route path="/export-shop" element={<ExportShopPage />} />
-            <Route path="/finance" element={<FinancePage />} />
-            <Route path="/cargo-finance" element={<IndividualCargoFinancePage />} />
-            <Route path="/sitemap" element={<SitemapPage />} />
+      {/* ✅ 라우트별 SEO 메타 자동 주입 */}
+      <AutoSeoHead />
 
-            {/* Shop */}
-            <Route path="/tires-shop" element={<TireShopPage />} />
-            <Route path="/tires-shop/:sku" element={<TireShopDetailPage />} />
-            <Route path="/battery-shop" element={<BatteryShopPage />} />
+      {/* ✅ 사이트 전역 구조화 데이터 (Organization/LocalBusiness) */}
+      <Helmet>
+        <script type="application/ld+json">
+          {JSON.stringify(ORGANIZATION_JSON_LD)}
+        </script>
+      </Helmet>
 
-            {/* Narumi */}
-            <Route path="/narumi/login" element={<NarumiLoginPage />} />
-            <Route
-              path="/narumi"
-              element={
-                <ProtectedRoute>
-                  <NarumiPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/narumi/admin"
-              element={
-                <ProtectedRoute>
-                  <NarumiPage />
-                </ProtectedRoute>
-              }
-            />
+      <PageHeader />
 
-            {/* BS_ON */}
-            <Route path="/bson" element={<BsonWorkPage />} />
-            <Route path="/work/bson" element={<Navigate to="/bson" replace />} />
+      {/* ✅ <main> 에 id와 role 명시 → 스크린리더 + 검색엔진 본문 인식 */}
+      <main id="main-content" role="main" className="w-full">
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/tires" element={<TiresPage />} />
+          <Route path="/battery" element={<BatteryPage />} />
+          <Route path="/export" element={<ExportPage />} />
+          <Route path="/export-shop" element={<ExportShopPage />} />
+          <Route path="/finance" element={<FinancePage />} />
+          <Route path="/cargo-finance" element={<IndividualCargoFinancePage />} />
+          <Route path="/sitemap" element={<SitemapPage />} />
 
-            <Route path="/work/call-management" element={<CallManagementPage />} />
-            <Route
-              path="/work/dashboard"
-              element={isAdmin ? <DashboardPage /> : <Navigate to="/" replace />}
-            />
+          {/* Shop */}
+          <Route path="/tires-shop" element={<TireShopPage />} />
+          <Route path="/tires-shop/:sku" element={<TireShopDetailPage />} />
+          <Route path="/battery-shop" element={<BatteryShopPage />} />
 
-            {/* legacy */}
-            <Route path="/Narumi" element={<Navigate to="/narumi" replace />} />
-          </Routes>
-        </main>
+          {/* Narumi (noindex는 AutoSeoHead에서 처리) */}
+          <Route path="/narumi/login" element={<NarumiLoginPage />} />
+          <Route
+            path="/narumi"
+            element={
+              <ProtectedRoute>
+                <NarumiPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/narumi/admin"
+            element={
+              <ProtectedRoute>
+                <NarumiPage />
+              </ProtectedRoute>
+            }
+          />
 
-        <Footer />
-      </div>
+          {/* BS_ON */}
+          <Route path="/bson" element={<BsonWorkPage />} />
+          <Route path="/work/bson" element={<Navigate to="/bson" replace />} />
+          <Route path="/work/call-management" element={<CallManagementPage />} />
+          <Route
+            path="/work/dashboard"
+            element={isAdmin ? <DashboardPage /> : <Navigate to="/" replace />}
+          />
+
+          {/* legacy */}
+          <Route path="/Narumi" element={<Navigate to="/narumi" replace />} />
+        </Routes>
+      </main>
+
+      <Footer />
+    </div>
   );
 };
 
@@ -1998,11 +1851,14 @@ const App = () => {
   const t = (key: CopyKey) => COPY[lang][key];
 
   return (
-    <LangContext.Provider value={{ lang, setLang, t }}>
-      <AuthProvider>
-        <AppRoutes />
-      </AuthProvider>
-    </LangContext.Provider>
+    // ✅ HelmetProvider로 전체 앱 감싸기 (react-helmet-async 필수)
+    <HelmetProvider>
+      <LangContext.Provider value={{ lang, setLang, t }}>
+        <AuthProvider>
+          <AppRoutes />
+        </AuthProvider>
+      </LangContext.Provider>
+    </HelmetProvider>
   );
 };
 
