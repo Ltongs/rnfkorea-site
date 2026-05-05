@@ -118,11 +118,11 @@ const ROUTE_SEO: Record<string, RouteSeoMeta> = {
     keywords: "LFP배터리,리튬인산철배터리,지게차배터리,물류기기배터리,배터리렌탈,배터리교체",
   },
   "/export": {
-    title: "노후장비 수출 | 중고 지게차·굴삭기 해외수출 | RNF KOREA",
+    title: "중고장비 수출 | 중고 지게차·굴삭기 해외수출 | RNF KOREA",
     description:
-      "국내 최대 규모의 노후 디젤 지게차·굴삭기 해외 수출 전문. 롯데렌탈·현대캐피탈 등 대형 렌탈사 직수출 파트너. 수출 재고 문의 1551-1873.",
+      "국내 중고 디젤 지게차·굴삭기 해외 수출 전문. 롯데렌탈·현대캐피탈 등 대형 렌탈사 직수출 파트너. 수출 재고 문의 1551-1873.",
     canonical: `${SITE_URL}/export`,
-    keywords: "중고지게차수출,노후지게차,굴삭기수출,중고장비수출,used forklift export,Korea",
+    keywords: "중고지게차수출,중고지게차,굴삭기수출,중고장비수출,used forklift export,Korea",
   },
   "/finance": {
     title: "금융솔루션 | 장비 렌탈·할부·리스 | RNF KOREA",
@@ -153,9 +153,9 @@ const ROUTE_SEO: Record<string, RouteSeoMeta> = {
     keywords: "중고지게차재고,수출용지게차,used forklift inventory,굴삭기재고,장비수출",
   },
   "/battery-shop": {
-    title: "배터리 쇼핑몰 (준비중) | RNF KOREA",
+    title: "배터리 쇼핑몰 | RNF KOREA",
     description:
-      "물류기기용 LFP 배터리 온라인 쇼핑몰 오픈 준비중입니다. 배터리 문의는 1551-1873으로 연락주세요.",
+      "물류기기용 LFP 배터리 온라인 쇼핑몰. 배터리 문의는 1551-1873으로 연락주세요.",
     canonical: `${SITE_URL}/battery-shop`,
     keywords: "LFP배터리쇼핑몰,지게차배터리구매,배터리온라인",
   },
@@ -245,7 +245,7 @@ const ORGANIZATION_JSON_LD = {
   logo: `${SITE_URL}/logo/rnf-logo.png`,
   image: DEFAULT_OG_IMAGE,
   description:
-    "물류기기용 LFP배터리, 산업용·화물용 타이어, 노후장비 수출, 렌탈·금융솔루션을 제공하는 산업재 전문기업",
+    "물류기기용 LFP배터리, 산업용·화물용 타이어, 중고장비 수출, 렌탈·금융솔루션을 제공하는 산업재 전문기업",
   foundingDate: "2022",
   telephone: "1551-1873",
   email: "admin@rnfkorea.co.kr",
@@ -572,13 +572,13 @@ const COPY = {
       biz: "사업영역",
       tires: "타이어",
       battery: "배터리",
-      export: "노후장비 수출사업",
+      export: "중고장비 수출사업",
       finance: "금융솔루션",
       narumi: "나르미업무",
       shop: "쇼핑몰",
       tiresShop: "타이어 쇼핑몰",
       exportShop: "수출용 쇼핑몰",
-      batteryShop: "배터리 쇼핑몰 (준비중)",
+      batteryShop: "배터리 쇼핑몰",
     },
     companyLine: "BATTERY & PARTS · FINANCIAL SERVICE",
     phoneLabel: "대표번호",
@@ -598,7 +598,7 @@ const COPY = {
       companyName: "RNFKorea Co Ltd",
       founded: "2022",
       address: "Sandanro 325, Danwongu, Ahsan, Gyreonggi, Korea",
-      oneLine: "노후 디젤지게차 수출 전문",
+      oneLine: "중고 디젤지게차 수출 전문",
       strengths: [
         "Korea-based rental operator exporting directly",
         "Largest domestic pool of used equipment",
@@ -863,7 +863,7 @@ const Header: React.FC = () => {
                   <Link to="/tires-shop" className={dropItem} role="menuitem" onClick={closeAll}>{COPY[lang].menu.tiresShop ?? "타이어 쇼핑몰"}</Link>
                   <Link to="/tire-rental" className={`${dropItem} text-orange-600 font-extrabold`} role="menuitem" onClick={closeAll}>화물차 타이어 렌탈 🆕</Link>
                   <Link to="/export-shop" className={dropItem} role="menuitem" onClick={closeAll}>{COPY[lang].menu.exportShop ?? "수출용 쇼핑몰"}</Link>
-                  <Link to="/battery-shop" className={dropItem} role="menuitem" onClick={closeAll}>{COPY[lang].menu.batteryShop ?? "배터리 쇼핑몰 (준비중)"}</Link>
+                  <Link to="/battery-shop" className={dropItem} role="menuitem" onClick={closeAll}>{COPY[lang].menu.batteryShop ?? "배터리 쇼핑몰"}</Link>
                 </div>
               )}
             </div>
@@ -1715,13 +1715,9 @@ const Footer: React.FC = () => {
             <ul className="space-y-2 text-sm text-gray-600">
               <li><Link to="/tires" className="hover:text-orange-500 transition-colors">- 타이어</Link></li>
               <li><Link to="/battery" className="hover:text-orange-500 transition-colors">- 배터리</Link></li>
-              <li><Link to="/export" className="hover:text-orange-500 transition-colors">- 노후장비 수출사업</Link></li>
+              <li><Link to="/export" className="hover:text-orange-500 transition-colors">- 중고장비 수출사업</Link></li>
               <li><Link to="/finance" className="hover:text-orange-500 transition-colors">- 금융솔루션</Link></li>
-              <li>
-                <Link to="/cargo-finance" className="font-bold text-orange-600 hover:text-orange-500 transition-colors">
-                  - 개인(개별)협회 전용 금융상품
-                </Link>
-              </li>
+              <li><Link to="/cargo-finance" className="hover:text-orange-500 transition-colors">- 개인(개별)협회 전용 금융상품</Link></li>
             </ul>
           </div>
 
@@ -1729,16 +1725,9 @@ const Footer: React.FC = () => {
             <h4 className="font-bold text-base mb-4">Shop</h4>
             <ul className="space-y-2 text-sm text-gray-600">
               <li><Link to="/tires-shop" className="hover:text-orange-500 transition-colors">- 타이어 쇼핑몰</Link></li>
-              <li>
-                <Link to="/tire-rental" className="hover:text-orange-500 transition-colors font-bold text-orange-600">
-                  - 화물차 타이어 렌탈
-                </Link>
-              </li>
+              <li><Link to="/tire-rental" className="hover:text-orange-500 transition-colors">- 화물차 타이어 렌탈</Link></li>
               <li><Link to="/export-shop" className="hover:text-orange-500 transition-colors">- 수출용 쇼핑몰</Link></li>
-              <li className="flex items-center gap-2">
-                <span className="text-gray-400 font-bold">- 배터리 쇼핑몰</span>
-                <span className="text-[10px] font-extrabold px-2 py-1 rounded-full bg-gray-100 text-gray-500">준비중</span>
-              </li>
+              <li><Link to="/battery-shop" className="hover:text-orange-500 transition-colors">- 배터리 쇼핑몰</Link></li>
             </ul>
           </div>
 

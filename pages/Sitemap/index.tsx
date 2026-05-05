@@ -27,7 +27,7 @@ const sections: SiteSection[] = [
         to: "/battery",
         desc: "LFP 배터리 라인업 및 납산배터리 교체 컨설팅",
       },
-      { label: "노후장비 수출사업", to: "/export", desc: "중고 산업장비 해외 수출" },
+      { label: "중고장비 수출사업", to: "/export", desc: "중고 산업장비 해외 수출" },
       { label: "금융솔루션", to: "/finance", desc: "렌탈·리스·할부금융 구조 설계" },
 
       // ✅ 개인(개별)화물협회 추가

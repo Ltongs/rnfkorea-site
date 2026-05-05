@@ -7,12 +7,12 @@ import { Loader2 } from "lucide-react";
 // ====================================================
 // SEO 설정
 // ====================================================
-const SEO_TITLE = "수출용 중고 지게차·굴삭기 쇼핑몰 | 노후장비 해외 수출 재고 | RNF KOREA";
+const SEO_TITLE = "수출용 중고 지게차·굴삭기 쇼핑몰 | 중고장비 해외 수출 재고 | RNF KOREA";
 const SEO_DESC =
   "수출용 중고 지게차·굴삭기 재고 목록. 연식·브랜드·용량·마스트·작동시간별 상세 스펙 확인. 정비·등급화(A/B/C) 완료. 해외 바이어 직거래 가능. 수출 문의 1551-1873.";
 const SEO_CANONICAL = "https://www.rnfkorea.co.kr/export-shop";
 const SEO_KEYWORDS =
-  "중고지게차수출,수출용지게차,used forklift export,중고굴삭기수출,지게차재고,굴삭기재고,노후지게차,중고장비수출,지게차해외수출,Korea used forklift";
+  "중고지게차수출,수출용지게차,used forklift export,중고굴삭기수출,지게차재고,굴삭기재고,중고지게차,중고장비수출,지게차해외수출,Korea used forklift";
 const SEO_OG_IMAGE = "https://www.rnfkorea.co.kr/og-image.jpg";
 
 /**
@@ -25,7 +25,7 @@ const JSON_LD_ITEM_LIST = {
   "@type": "ItemList",
   name: "RNF KOREA 수출용 중고 산업장비 쇼핑몰",
   url: "https://www.rnfkorea.co.kr/export-shop",
-  description: "한국 내 노후 디젤 지게차·굴삭기를 정비·등급화하여 신흥국에 수출하는 중고장비 재고 목록",
+  description: "한국 내 중고 디젤 지게차·굴삭기를 정비·등급화하여 신흥국에 수출하는 중고장비 재고 목록",
   itemListElement: [
     {
       "@type": "ListItem",

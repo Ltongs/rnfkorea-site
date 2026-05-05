@@ -89,16 +89,24 @@ type SectionHeaderProps = {
 function PageHero({ eyebrow, title, description, right }: PageHeroProps) {
   return (
     <section
-      className="pt-6 pb-5 md:pt-8 md:pb-6"
+      className="relative bg-[#0a192f] text-white overflow-hidden"
       aria-label="페이지 헤더"
     >
-      <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10">
+      {/* 배경 패턴 */}
+      <div className="absolute inset-0 opacity-[0.04]" aria-hidden="true">
+        <div className="absolute inset-0" style={{
+          backgroundImage: "repeating-linear-gradient(45deg, white 0, white 1px, transparent 0, transparent 50%)",
+          backgroundSize: "24px 24px",
+        }} />
+      </div>
+
+      <div className="relative max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-12 md:py-16">
         <div className="grid lg:grid-cols-12 gap-8 lg:gap-6 items-start">
           <div className="lg:col-span-7">
             {/* ✅ Breadcrumb nav — 검색엔진 사이트링크 + 접근성 */}
             <nav aria-label="breadcrumb">
               <ol
-                className="flex items-center text-sm text-gray-500"
+                className="flex items-center text-sm text-white/60"
                 itemScope
                 itemType="https://schema.org/BreadcrumbList"
               >
@@ -109,7 +117,7 @@ function PageHero({ eyebrow, title, description, right }: PageHeroProps) {
                 >
                   <Link
                     to="/"
-                    className="hover:text-orange-500 transition-colors"
+                    className="hover:text-white transition-colors"
                     itemProp="item"
                   >
                     <span itemProp="name">Home</span>
@@ -118,7 +126,7 @@ function PageHero({ eyebrow, title, description, right }: PageHeroProps) {
                 </li>
                 <li aria-hidden="true" className="mx-2">/</li>
                 <li
-                  className="text-gray-700 font-semibold"
+                  className="text-white/90 font-semibold"
                   itemProp="itemListElement"
                   itemScope
                   itemType="https://schema.org/ListItem"
@@ -131,18 +139,18 @@ function PageHero({ eyebrow, title, description, right }: PageHeroProps) {
             </nav>
 
             {eyebrow && (
-              <p className="mt-4 text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
+              <p className="mt-4 text-sm font-medium tracking-[0.12em] uppercase text-orange-400">
                 {eyebrow}
               </p>
             )}
 
             {/* ✅ h1: 페이지당 반드시 1개, 핵심 키워드 포함 */}
-            <h1 className="mt-4 text-3xl md:text-4xl lg:text-5xl font-semibold leading-[1.15] text-navy-900 break-keep">
+            <h1 className="mt-4 text-3xl md:text-4xl lg:text-5xl font-semibold leading-[1.15] text-white break-keep">
               {title}
             </h1>
 
             {description && (
-              <p className="mt-4 text-base md:text-lg leading-7 text-neutral-600 max-w-3xl break-keep">
+              <p className="mt-4 text-base md:text-lg leading-7 text-white/75 max-w-3xl break-keep">
                 {description}
               </p>
             )}
@@ -437,47 +445,47 @@ export default function BatteryPage() {
         title="모든 산업재의 배터리 전환 솔루션"
         description="지게차, 고소작업대, 골프카트까지. 장비 특성과 운영조건에 맞춰 LFP 및 납산 배터리 공급, 렌탈 구조, 전환 프로젝트를 함께 설계합니다."
         right={
-          <div className="rounded-3xl border border-gray-200 bg-gradient-to-br from-white to-slate-50 p-6 md:p-7 shadow-sm">
+          <div className="rounded-3xl bg-white/10 border border-white/20 backdrop-blur-sm p-6 md:p-7">
             <div className="space-y-4">
               <div className="flex justify-end">
                 <Link
                   to="/battery-shop"
-                  className="inline-flex items-center gap-2 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-2 text-sm font-semibold text-orange-600 transition-all hover:border-orange-300 hover:bg-orange-100"
+                  className="inline-flex items-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-white/20"
                 >
                   배터리 쇼핑몰 바로가기
                   <span aria-hidden="true">→</span>
                 </Link>
               </div>
 
-              <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
+              <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-400">
                 Rental Program
               </p>
 
-              <p className="text-xl md:text-2xl font-semibold leading-[1.2] text-navy-900 break-keep">
+              <p className="text-xl md:text-2xl font-semibold leading-[1.2] text-white break-keep">
                 RNF 배터리 렌탈 프로그램
               </p>
 
-              <p className="text-sm md:text-base leading-7 text-gray-600 break-keep">
+              <p className="text-sm md:text-base leading-7 text-white/70 break-keep">
                 초기비용을 없애고, 교체주기와 운용환경까지 고려한
                 <br />
                 배터리 교체 프로그램을 제안합니다.
               </p>
 
-              <div className="rounded-2xl border border-gray-200 bg-white/90 px-5 py-4 md:px-6 md:py-4">
+              <div className="rounded-2xl border border-white/20 bg-white/10 px-5 py-4 md:px-6 md:py-4">
                 <dl className="space-y-2.5 text-sm md:text-base">
                   <div className="flex items-start gap-3 leading-6">
-                    <dt className="shrink-0 text-[11px] md:text-xs font-semibold tracking-[0.12em] uppercase text-orange-500 pt-0.5">
+                    <dt className="shrink-0 text-[11px] md:text-xs font-semibold tracking-[0.12em] uppercase text-orange-400 pt-0.5">
                       공급범위
                     </dt>
-                    <dd className="font-semibold text-navy-900 break-keep">
+                    <dd className="font-semibold text-white break-keep">
                       LFP, 납산배터리
                     </dd>
                   </div>
                   <div className="flex items-start gap-3 leading-6">
-                    <dt className="shrink-0 text-[11px] md:text-xs font-semibold tracking-[0.12em] uppercase text-orange-500 pt-0.5">
+                    <dt className="shrink-0 text-[11px] md:text-xs font-semibold tracking-[0.12em] uppercase text-orange-400 pt-0.5">
                       적용장비
                     </dt>
-                    <dd className="font-semibold text-navy-900 break-keep">
+                    <dd className="font-semibold text-white break-keep">
                       지게차, 고소작업대, 골프카트
                     </dd>
                   </div>
@@ -486,14 +494,14 @@ export default function BatteryPage() {
                 <div className="mt-3 flex flex-col sm:flex-row gap-3">
                   <a
                     href="tel:1551-1873"
-                    className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-orange-500 text-white font-semibold text-sm hover:bg-orange-600 transition-all shadow-sm hover:shadow-md"
+                    className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-orange-500 text-white font-semibold text-sm hover:bg-orange-400 transition-all shadow-sm"
                   >
                     상담 문의 1551-1873
                     <span aria-hidden="true">→</span>
                   </a>
                   <Link
                     to="/finance"
-                    className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl border border-gray-200 bg-white text-navy-900 font-semibold text-sm hover:border-gray-300 hover:bg-gray-50 transition-all"
+                    className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl border border-white/30 bg-white/10 text-white font-semibold text-sm hover:bg-white/20 transition-all"
                   >
                     금융솔루션 보기
                   </Link>
@@ -683,10 +691,10 @@ export default function BatteryPage() {
           설치 사례 (Case Study)
           ======================================================== */}
       <section
-        className="py-6 md:py-8 border-t border-gray-100 bg-gray-50 px-6"
+        className="py-6 md:py-8 border-t border-gray-100 bg-gray-50"
         aria-labelledby="case-study-heading"
       >
-        <div className="max-w-7xl mx-auto">
+        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10">
           <SectionHeader
             eyebrow="Case Study"
             title="골프카트 LFP 배터리 설치 사례"
@@ -719,10 +727,10 @@ export default function BatteryPage() {
           CTA / 상담 섹션
           ======================================================== */}
       <section
-        className="py-16 px-6"
+        className="py-6 md:py-8 border-t border-gray-100"
         aria-labelledby="cta-heading"
       >
-        <div className="max-w-7xl mx-auto">
+        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10">
           <SectionHeader
             eyebrow="CTA"
             title="배터리 전환 프로젝트 상담"
@@ -737,8 +745,8 @@ export default function BatteryPage() {
                 className="block rounded-2xl border border-orange-200 bg-orange-50 p-5 hover:shadow-sm transition-all"
                 aria-label="전화 상담 1551-1873"
               >
-                <p className="text-[11px] font-semibold tracking-[0.12em] text-orange-500 uppercase">Call</p>
-                <p className="mt-2 text-xl font-semibold text-gray-900">1551-1873</p>
+                <p className="text-[11px] font-medium tracking-[0.12em] text-orange-500 uppercase">Call</p>
+                <p className="mt-2 text-xl font-normal text-gray-900">1551-1873</p>
                 <p className="mt-1 text-sm text-gray-600">전화로 바로 상담 연결</p>
               </a>
             </address>
@@ -750,8 +758,8 @@ export default function BatteryPage() {
               className="rounded-2xl border border-gray-200 bg-white p-5 hover:shadow-sm transition-all"
               aria-label="LFP 공급사 리텐에너지솔루션 홈페이지 (새 탭)"
             >
-              <p className="text-[11px] font-semibold tracking-[0.12em] text-gray-500 uppercase">LFP Supplier</p>
-              <p className="mt-2 text-xl font-semibold text-gray-900">리텐에너지솔루션</p>
+              <p className="text-[11px] font-medium tracking-[0.12em] text-gray-500 uppercase">LFP Supplier</p>
+              <p className="mt-2 text-xl font-normal text-gray-900">리텐에너지솔루션</p>
               <p className="mt-1 text-sm text-gray-600">LFP 공급 파트너 홈페이지 이동 ↩︎</p>
             </a>
 
@@ -762,8 +770,8 @@ export default function BatteryPage() {
               className="rounded-2xl border border-gray-200 bg-white p-5 hover:shadow-sm transition-all"
               aria-label="납산 공급사 아이티엔티전기 홈페이지 (새 탭)"
             >
-              <p className="text-[11px] font-semibold tracking-[0.12em] text-gray-500 uppercase">Lead Acid Supplier</p>
-              <p className="mt-2 text-xl font-semibold text-gray-900">(주)아이티엔티전기</p>
+              <p className="text-[11px] font-medium tracking-[0.12em] text-gray-500 uppercase">Lead Acid Supplier</p>
+              <p className="mt-2 text-xl font-normal text-gray-900">(주)아이티엔티전기</p>
               <p className="mt-1 text-sm text-gray-600">납산 공급 파트너 홈페이지 이동 ↩︎</p>
             </a>
           </div>

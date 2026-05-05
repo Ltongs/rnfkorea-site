@@ -28,11 +28,11 @@ const ExportOverviewPage: React.FC = () => {
                 Home
               </Link>
               <span className="mx-2">/</span>
-              <span className="text-gray-700 font-semibold">노후장비 수출사업</span>
+              <span className="text-gray-700 font-semibold">중고장비 수출사업</span>
             </div>
 
             <h1 className="text-4xl md:text-5xl font-extrabold text-navy-900 tracking-tight">
-              노후장비 수출사업
+              중고장비 수출사업
             </h1>
 
             <p className="text-gray-600 text-base md:text-lg max-w-3xl leading-relaxed">

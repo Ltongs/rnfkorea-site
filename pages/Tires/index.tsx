@@ -95,15 +95,26 @@ function isInCenterArea(e: React.MouseEvent, ratio = 0.4) {
 // ====================================================
 function PageHero({ eyebrow, title, description, right }: PageHeroProps) {
   return (
-    <section className="pt-6 pb-5 md:pt-8 md:pb-6" aria-label="페이지 헤더">
-      <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10">
-        <div className="grid lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+    <section
+      className="relative bg-[#0a192f] text-white overflow-hidden"
+      aria-label="페이지 헤더"
+    >
+      {/* 배경 패턴 */}
+      <div className="absolute inset-0 opacity-[0.04]" aria-hidden="true">
+        <div className="absolute inset-0" style={{
+          backgroundImage: "repeating-linear-gradient(45deg, white 0, white 1px, transparent 0, transparent 50%)",
+          backgroundSize: "24px 24px",
+        }} />
+      </div>
+
+      <div className="relative max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-12 md:py-16">
+        <div className="grid lg:grid-cols-12 gap-8 lg:gap-6 items-start">
           <div className="lg:col-span-7">
 
             {/* ✅ Breadcrumb — 검색결과 경로 표시 + 접근성 */}
             <nav aria-label="breadcrumb">
               <ol
-                className="flex items-center text-sm text-gray-500"
+                className="flex items-center text-sm text-white/60"
                 itemScope
                 itemType="https://schema.org/BreadcrumbList"
               >
@@ -112,14 +123,14 @@ function PageHero({ eyebrow, title, description, right }: PageHeroProps) {
                   itemScope
                   itemType="https://schema.org/ListItem"
                 >
-                  <Link to="/" className="hover:text-orange-500 transition-colors" itemProp="item">
+                  <Link to="/" className="hover:text-white transition-colors" itemProp="item">
                     <span itemProp="name">Home</span>
                   </Link>
                   <meta itemProp="position" content="1" />
                 </li>
                 <li aria-hidden="true" className="mx-2">/</li>
                 <li
-                  className="text-gray-700 font-semibold"
+                  className="text-white/90 font-semibold"
                   itemProp="itemListElement"
                   itemScope
                   itemType="https://schema.org/ListItem"
@@ -132,18 +143,18 @@ function PageHero({ eyebrow, title, description, right }: PageHeroProps) {
             </nav>
 
             {eyebrow && (
-              <p className="mt-4 text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
+              <p className="mt-4 text-sm font-medium tracking-[0.12em] uppercase text-orange-400">
                 {eyebrow}
               </p>
             )}
 
             {/* ✅ h1: 핵심 키워드 포함 */}
-            <h1 className="mt-4 text-3xl md:text-4xl lg:text-5xl font-semibold leading-[1.15] text-navy-900 break-keep">
+            <h1 className="mt-4 text-3xl md:text-4xl lg:text-5xl font-semibold leading-[1.15] text-white break-keep">
               {title}
             </h1>
 
             {description && (
-              <p className="mt-4 text-base md:text-lg leading-7 text-neutral-600 max-w-3xl break-keep">
+              <p className="mt-4 text-base md:text-lg leading-7 text-white/75 max-w-3xl break-keep">
                 {description}
               </p>
             )}
@@ -507,28 +518,28 @@ export default function TiresPage() {
         title="상용·산업용 타이어 솔루션"
         description="차종, 운행 조건, 교체 주기를 기준으로 제품 선정부터 구매 구조까지 함께 설계합니다. 상용차와 산업 현장의 실제 운용 조건에 맞춰 가장 안정적인 타이어 조합을 제안합니다."
         right={
-          <div className="rounded-3xl border border-gray-200 bg-gradient-to-br from-white to-slate-50 p-6 md:p-7 shadow-sm">
+          <div className="rounded-3xl bg-white/10 border border-white/20 backdrop-blur-sm p-6 md:p-7">
             <div className="space-y-4">
-              <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">Tire Shop</p>
-              <p className="text-xl md:text-2xl font-semibold leading-[1.2] text-navy-900 break-keep">
+              <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-400">Tire Shop</p>
+              <p className="text-xl md:text-2xl font-semibold leading-[1.2] text-white break-keep">
                 타이어 쇼핑몰 바로가기
               </p>
-              <p className="text-sm md:text-base leading-7 text-gray-600 break-keep">
+              <p className="text-sm md:text-base leading-7 text-white/70 break-keep">
                 등록된 제품을 규격, 용도, 축 위치 기준으로<br /> 즉시 확인할 수 있습니다.
               </p>
-              <div className="inline-flex items-center gap-2 text-sm font-semibold text-gray-700">
-                <span className="text-gray-500">등록 상품</span>
-                <span className="px-3 py-1 rounded-full bg-gray-100 border border-gray-200">
+              <div className="inline-flex items-center gap-2 text-sm font-semibold text-white/80">
+                <span className="text-white/50">등록 상품</span>
+                <span className="px-3 py-1 rounded-full bg-white/10 border border-white/20">
                   {typeof tireCount === "number" ? `${tireCount}개` : "집계중…"}
                 </span>
               </div>
               <div className="pt-2">
                 <Link
                   to="/tires-shop"
-                  className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-orange-500 text-white font-semibold text-sm hover:bg-orange-600 transition-all shadow-sm hover:shadow-md"
+                  className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-orange-500 text-white font-semibold text-sm hover:bg-orange-400 transition-all shadow-sm"
                 >
                   쇼핑몰 바로가기
-                  <span className="inline-block transform transition-transform group-hover:translate-x-1" aria-hidden="true">→</span>
+                  <span className="inline-block" aria-hidden="true">→</span>
                 </Link>
               </div>
             </div>

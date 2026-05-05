@@ -367,7 +367,7 @@ export default function PageHeader() {
                     className={dropItem}
                     onClick={handleMenuNavigate}
                   >
-                    노후장비 수출사업
+                    중고장비 수출사업
                   </Link>
 
                   <Link

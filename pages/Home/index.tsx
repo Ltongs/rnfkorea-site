@@ -48,7 +48,7 @@ const heroShowcaseItems: HeroShowcaseItem[] = [
   },
   {
     eyebrow: "수출 사업",
-    title: "노후장비 수출사업",
+    title: "중고장비 수출사업",
     subtitle: "(주)크린어스",
     description: "국내 노후 장비를 재정비·등급화해 신흥국 산업 현장으로 공급하는 수출 모델",
     image: "/home/export.jpg",

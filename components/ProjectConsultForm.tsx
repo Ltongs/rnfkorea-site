@@ -86,7 +86,7 @@ export const ProjectConsultForm: React.FC<ProjectConsultFormProps> = ({
       <div className="flex items-start gap-3">
         <div className="mt-1 h-5 w-1.5 rounded bg-orange-500" />
         <div className="min-w-0">
-          <div className="text-lg font-extrabold text-navy-900">{title}</div>
+          <div className="text-lg font-semibold text-navy-900">{title}</div>
           <div className="mt-1 text-sm text-gray-600">{subtitle}</div>
         </div>
       </div>
@@ -119,7 +119,7 @@ export const ProjectConsultForm: React.FC<ProjectConsultFormProps> = ({
           <button
             type="submit"
             disabled={!canSubmit}
-            className={`inline-flex items-center justify-center px-6 py-3 rounded-xl font-extrabold transition-all ${
+            className={`inline-flex items-center justify-center px-6 py-3 rounded-xl font-semibold transition-all ${
               canSubmit
                 ? "bg-orange-500 text-white hover:bg-orange-600"
                 : "bg-gray-100 text-gray-400 cursor-not-allowed"
@@ -130,20 +130,20 @@ export const ProjectConsultForm: React.FC<ProjectConsultFormProps> = ({
 
           <a
             href="tel:1551-1873"
-            className="inline-flex items-center justify-center px-6 py-3 rounded-xl border border-gray-200 bg-white text-navy-900 font-extrabold hover:border-gray-300 hover:shadow-sm transition-all"
+            className="inline-flex items-center justify-center px-6 py-3 rounded-xl border border-gray-200 bg-white text-navy-900 font-semibold hover:border-gray-300 hover:shadow-sm transition-all"
           >
             전화로 바로 상담 1551-1873
           </a>
         </div>
 
         {status === "ok" && (
-          <div className="md:col-span-2 text-sm font-bold text-green-600">
+          <div className="md:col-span-2 text-sm font-normal text-green-600">
             접수되었습니다. 곧 연락드리겠습니다.
           </div>
         )}
 
         {status === "error" && (
-          <div className="md:col-span-2 text-sm font-bold text-red-600">
+          <div className="md:col-span-2 text-sm font-normal text-red-600">
             {errorMessage || "전송 오류가 발생했습니다. 잠시 후 다시 시도해주세요."}
           </div>
         )}

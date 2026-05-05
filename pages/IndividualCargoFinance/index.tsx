@@ -98,27 +98,38 @@ const chip =
 // ====================================================
 function PageHero({ eyebrow, title, description }: PageHeroProps) {
   return (
-    <section className="pt-6 pb-5 md:pt-8 md:pb-6" aria-label="페이지 헤더">
-      <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10">
+    <section
+      className="relative bg-[#0a192f] text-white overflow-hidden"
+      aria-label="페이지 헤더"
+    >
+      {/* 배경 패턴 */}
+      <div className="absolute inset-0 opacity-[0.04]" aria-hidden="true">
+        <div className="absolute inset-0" style={{
+          backgroundImage: "repeating-linear-gradient(45deg, white 0, white 1px, transparent 0, transparent 50%)",
+          backgroundSize: "24px 24px",
+        }} />
+      </div>
+
+      <div className="relative max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-12 md:py-16">
         <div className="grid lg:grid-cols-12 gap-8 lg:gap-6 items-start">
           <div className="lg:col-span-7">
 
             {/* ✅ Breadcrumb — 검색결과 경로 표시 */}
             <nav aria-label="breadcrumb">
               <ol
-                className="flex items-center text-sm text-gray-500"
+                className="flex items-center text-sm text-white/60"
                 itemScope
                 itemType="https://schema.org/BreadcrumbList"
               >
                 <li itemProp="itemListElement" itemScope itemType="https://schema.org/ListItem">
-                  <Link to="/" className="hover:text-orange-500 transition-colors" itemProp="item">
+                  <Link to="/" className="hover:text-white transition-colors" itemProp="item">
                     <span itemProp="name">Home</span>
                   </Link>
                   <meta itemProp="position" content="1" />
                 </li>
                 <li aria-hidden="true" className="mx-2">/</li>
                 <li
-                  className="text-gray-700 font-semibold"
+                  className="text-white/90 font-semibold"
                   itemProp="itemListElement"
                   itemScope
                   itemType="https://schema.org/ListItem"
@@ -131,18 +142,18 @@ function PageHero({ eyebrow, title, description }: PageHeroProps) {
             </nav>
 
             {eyebrow && (
-              <p className="mt-4 text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
+              <p className="mt-4 text-sm font-medium tracking-[0.12em] uppercase text-orange-400">
                 {eyebrow}
               </p>
             )}
 
             {/* ✅ h1: 핵심 키워드 포함 */}
-            <h1 className="mt-4 text-3xl md:text-4xl lg:text-5xl font-semibold leading-[1.15] text-navy-900 break-keep">
+            <h1 className="mt-4 text-3xl md:text-4xl lg:text-5xl font-semibold leading-[1.15] text-white break-keep">
               {title}
             </h1>
 
             {description && (
-              <p className="mt-4 text-base md:text-lg leading-7 text-neutral-600 max-w-3xl break-keep">
+              <p className="mt-4 text-base md:text-lg leading-7 text-white/75 max-w-3xl break-keep">
                 {description}
               </p>
             )}
@@ -406,7 +417,7 @@ const IndividualCargoFinancePage: React.FC = () => {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="bg-white text-navy-900">
 
       {/* ========================================================
           ✅ SEO HEAD
@@ -449,7 +460,7 @@ const IndividualCargoFinancePage: React.FC = () => {
         description="협회 회원 전용 조건으로, 초기 부담을 낮추고 운행 수익성 중심의 조달 구조(할부/리스)를 제안합니다."
       />
 
-      <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-4">
+      <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-6 md:py-8 space-y-4">
 
         {/* ========================================================
             파트너 박스 (롯데오토리스)

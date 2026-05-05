@@ -208,27 +208,35 @@ export default function FinancePage() {
       {/* ========================================================
           Hero / 페이지 헤더
           ======================================================== */}
-      <section className="pt-6 pb-5 md:pt-8 md:pb-6 border-b border-gray-100" aria-label="페이지 헤더">
-        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10">
+      <section className="relative bg-[#0a192f] text-white overflow-hidden" aria-label="페이지 헤더">
+        {/* 배경 패턴 */}
+        <div className="absolute inset-0 opacity-[0.04]" aria-hidden="true">
+          <div className="absolute inset-0" style={{
+            backgroundImage: "repeating-linear-gradient(45deg, white 0, white 1px, transparent 0, transparent 50%)",
+            backgroundSize: "24px 24px",
+          }} />
+        </div>
+
+        <div className="relative max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-12 md:py-16">
           <div className="grid lg:grid-cols-12 gap-8 lg:gap-6 items-start">
             <div className="lg:col-span-7">
 
               {/* ✅ Breadcrumb */}
               <nav aria-label="breadcrumb">
                 <ol
-                  className="flex items-center text-sm text-gray-500"
+                  className="flex items-center text-sm text-white/60"
                   itemScope
                   itemType="https://schema.org/BreadcrumbList"
                 >
                   <li itemProp="itemListElement" itemScope itemType="https://schema.org/ListItem">
-                    <Link to="/" className="hover:text-orange-500 transition-colors" itemProp="item">
+                    <Link to="/" className="hover:text-white transition-colors" itemProp="item">
                       <span itemProp="name">Home</span>
                     </Link>
                     <meta itemProp="position" content="1" />
                   </li>
                   <li aria-hidden="true" className="mx-2">/</li>
                   <li
-                    className="text-gray-700 font-semibold"
+                    className="text-white/90 font-semibold"
                     itemProp="itemListElement"
                     itemScope
                     itemType="https://schema.org/ListItem"
@@ -240,53 +248,51 @@ export default function FinancePage() {
                 </ol>
               </nav>
 
-              <p className="mt-6 text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
+              <p className="mt-4 text-sm font-medium tracking-[0.12em] uppercase text-orange-400">
                 Finance Solution
               </p>
 
               {/* ✅ h1: 핵심 키워드 포함 */}
-              <h1 className="mt-2 text-3xl md:text-4xl lg:text-5xl font-semibold leading-[1.15] text-navy-900 break-keep">
+              <h1 className="mt-4 text-3xl md:text-4xl lg:text-5xl font-semibold leading-[1.15] text-white break-keep">
                 장비 도입 조건에 맞는 금융 솔루션
               </h1>
-              <p className="mt-4 text-base md:text-lg leading-7 text-gray-600 max-w-3xl break-keep">
+              <p className="mt-4 text-base md:text-lg leading-7 text-white/75 max-w-3xl break-keep">
                 장비 도입 비용을 줄이고 운영 효율을 높이기 위한 렌탈·리스·할부금융 구조를 설계합니다.
                 현장 조건과 현금흐름에 맞춰 가장 현실적인 선택지를 제안드립니다.
               </p>
 
-              {/* ✅ 협업 파트너 — 파트너사명 텍스트로 노출 (크롤링 가능) */}
+              {/* ✅ 협업 파트너 */}
               <div className="mt-8">
-                <div className="w-full">
-                  <p className="text-lg font-semibold text-navy-900">협업 파트너</p>
-                  <ul
-                    className="mt-4 flex flex-wrap gap-2 list-none p-0"
-                    aria-label="금융 협업 파트너 목록"
-                  >
-                    {partnerPills.map((p) => (
-                      <li
-                        key={p.label}
-                        className="inline-flex items-center px-4 py-3 rounded-full border border-gray-200 bg-white shadow-[0_1px_0_rgba(0,0,0,0.02)] hover:border-gray-300 transition-colors"
-                        title={`${p.label} 파트너: ${p.partnersText}`}
-                      >
-                        <span className="inline-flex items-center gap-3">
-                          <span className="text-gray-500 font-medium text-sm whitespace-nowrap">{p.label}</span>
-                          <span className="text-navy-900 font-semibold text-sm">{p.partnersText}</span>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                <p className="text-sm font-semibold text-white/80">협업 파트너</p>
+                <ul
+                  className="mt-3 flex flex-wrap gap-2 list-none p-0"
+                  aria-label="금융 협업 파트너 목록"
+                >
+                  {partnerPills.map((p) => (
+                    <li
+                      key={p.label}
+                      className="inline-flex items-center px-4 py-3 rounded-full border border-white/20 bg-white/10 hover:bg-white/20 transition-colors"
+                      title={`${p.label} 파트너: ${p.partnersText}`}
+                    >
+                      <span className="inline-flex items-center gap-3">
+                        <span className="text-white/60 font-medium text-sm whitespace-nowrap">{p.label}</span>
+                        <span className="text-white font-semibold text-sm">{p.partnersText}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             </div>
 
             <aside className="lg:col-span-5" aria-label="금융 구조 요약">
-              <div className="rounded-2xl border border-gray-200 bg-white p-6 md:p-7">
-                <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
+              <div className="rounded-2xl bg-white/10 border border-white/20 backdrop-blur-sm p-6 md:p-7">
+                <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-400">
                   Finance Structure
                 </p>
-                <p className="mt-2 text-xl md:text-2xl font-semibold leading-[1.2] text-navy-900 break-keep">
+                <p className="mt-2 text-xl md:text-2xl font-semibold leading-[1.2] text-white break-keep">
                   비용 부담을 줄이는 금융 레버리지 제공
                 </p>
-                <p className="mt-3 text-sm md:text-base leading-7 text-gray-600 break-keep">
+                <p className="mt-3 text-sm md:text-base leading-7 text-white/70 break-keep">
                   구매, 렌탈, 할부, 리스 중 어떤 방식이 유리한지<br />
                   장비 특성과 자금 계획 기준으로 비교해드립니다.
                 </p>
@@ -298,9 +304,9 @@ export default function FinancePage() {
                     { label: "적용 대상",  value: "상용차 · 건설기계 · 물류장비" },
                     { label: "협업 방식",  value: "파트너사 연계" },
                   ].map(({ label, value }) => (
-                    <div key={label} className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
-                      <dt className="text-xs font-medium tracking-[0.12em] uppercase text-gray-500">{label}</dt>
-                      <dd className="mt-2 text-sm md:text-base font-semibold leading-6 text-navy-900 break-keep">{value}</dd>
+                    <div key={label} className="rounded-2xl border border-white/20 bg-white/10 p-4">
+                      <dt className="text-xs font-medium tracking-[0.12em] uppercase text-white/50">{label}</dt>
+                      <dd className="mt-2 text-sm md:text-base font-semibold leading-6 text-white break-keep">{value}</dd>
                     </div>
                   ))}
                 </dl>
@@ -313,7 +319,7 @@ export default function FinancePage() {
       {/* ========================================================
           배터리 전환 금융 구조
           ======================================================== */}
-      <section className="py-6 md:py-8" aria-labelledby="battery-finance-heading">
+      <section className="py-6 md:py-8 border-t border-gray-100" aria-labelledby="battery-finance-heading">
         <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10">
           <SectionTitle
             eyebrow="Battery Finance"

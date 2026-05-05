@@ -269,14 +269,11 @@ function formatDimension(value: string): string {
 function CategoryHeader({ eyebrow, title, desc }: { eyebrow: string; title: string; desc: string }) {
   return (
     <div className="max-w-3xl">
-      <div className="inline-flex items-center rounded-2xl border border-orange-200 bg-orange-50 px-4 py-2">
-        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-600 md:text-sm">
-          {eyebrow}
-        </span>
-      </div>
-      {/* ✅ h2 — 섹션 계층 명확화 */}
-      <h2 className="mt-4 text-2xl font-semibold text-gray-900 md:text-3xl">{title}</h2>
-      <p className="mt-4 break-keep text-base leading-7 text-gray-600">{desc}</p>
+      <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
+        {eyebrow}
+      </p>
+      <h2 className="mt-3 text-2xl md:text-3xl font-semibold leading-[1.2] text-navy-900 break-keep">{title}</h2>
+      <p className="mt-3 break-keep text-base leading-7 text-neutral-600">{desc}</p>
     </div>
   );
 }
@@ -537,7 +534,7 @@ export default function BatteryShopPage() {
   }, [sectionIds]);
 
   return (
-    <main className="bg-white text-gray-900">
+    <div className="bg-white text-gray-900">
 
       {/* ========================================================
           ✅ SEO HEAD
@@ -586,53 +583,53 @@ export default function BatteryShopPage() {
           }} />
         </div>
 
-        <div className="relative mx-auto max-w-7xl px-6 py-12 md:px-10 md:py-16">
-          <div className="max-w-4xl">
-            <div className="inline-flex items-center rounded-2xl border border-white/20 bg-white/10 px-4 py-2">
-              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-400 md:text-sm">
-                Battery Solution Shop
-              </span>
-            </div>
+        <div className="relative max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-12 md:py-16">
+          <div className="grid lg:grid-cols-12 gap-8 lg:gap-6 items-start">
+            <div className="lg:col-span-7">
 
-            {/* Breadcrumb */}
-            <nav aria-label="breadcrumb" className="mt-4">
-              <ol
-                className="flex items-center text-sm text-white/60"
-                itemScope
-                itemType="https://schema.org/BreadcrumbList"
-              >
-                <li itemProp="itemListElement" itemScope itemType="https://schema.org/ListItem">
-                  <Link to="/" className="hover:text-white transition-colors" itemProp="item">
-                    <span itemProp="name">Home</span>
-                  </Link>
-                  <meta itemProp="position" content="1" />
-                </li>
-                <li aria-hidden="true" className="mx-2">/</li>
-                <li
-                  className="text-white/90 font-semibold"
-                  itemProp="itemListElement"
+              {/* Breadcrumb */}
+              <nav aria-label="breadcrumb">
+                <ol
+                  className="flex items-center text-sm text-white/60"
                   itemScope
-                  itemType="https://schema.org/ListItem"
-                  aria-current="page"
+                  itemType="https://schema.org/BreadcrumbList"
                 >
-                  <span itemProp="name">배터리 쇼핑몰</span>
-                  <meta itemProp="position" content="2" />
-                </li>
-              </ol>
-            </nav>
+                  <li itemProp="itemListElement" itemScope itemType="https://schema.org/ListItem">
+                    <Link to="/" className="hover:text-white transition-colors" itemProp="item">
+                      <span itemProp="name">Home</span>
+                    </Link>
+                    <meta itemProp="position" content="1" />
+                  </li>
+                  <li aria-hidden="true" className="mx-2">/</li>
+                  <li
+                    className="text-white/90 font-semibold"
+                    itemProp="itemListElement"
+                    itemScope
+                    itemType="https://schema.org/ListItem"
+                    aria-current="page"
+                  >
+                    <span itemProp="name">배터리 쇼핑몰</span>
+                    <meta itemProp="position" content="2" />
+                  </li>
+                </ol>
+              </nav>
 
-            {/* h1 */}
-            <h1 className="mt-6 text-3xl font-semibold tracking-tight text-white md:text-5xl">
-              배터리 쇼핑몰
-            </h1>
+              <p className="mt-4 text-sm font-medium tracking-[0.12em] uppercase text-orange-400">
+                Battery Solution Shop
+              </p>
 
-            <p className="mt-5 break-keep text-base leading-7 text-white/75 md:text-xl md:leading-9">
-              지게차, 고소작업대, 골프카트에 적용 가능한 산업용 배터리를 확인하실 수 있습니다.
-              <br />
-              지게차 모델별 기본 렌탈료를 바로 확인하시고, 기타 장비는 맞춤 견적을 받아보세요.
-            </p>
+              {/* h1 */}
+              <h1 className="mt-4 text-3xl md:text-4xl lg:text-5xl font-semibold leading-[1.15] text-white break-keep">
+                배터리 쇼핑몰
+              </h1>
 
-            <TopCategoryNav activeId={activeSection} />
+              <p className="mt-4 text-base md:text-lg leading-7 text-white/75 max-w-3xl break-keep">
+                지게차, 고소작업대, 골프카트에 적용 가능한 산업용 배터리를 확인하실 수 있습니다.
+                지게차 모델별 기본 렌탈료를 바로 확인하시고, 기타 장비는 맞춤 견적을 받아보세요.
+              </p>
+
+              <TopCategoryNav activeId={activeSection} />
+            </div>
           </div>
         </div>
       </section>
@@ -645,7 +642,7 @@ export default function BatteryShopPage() {
         className="scroll-mt-28 border-b border-gray-200 bg-white"
         aria-labelledby="forklift-heading"
       >
-        <div className="mx-auto max-w-7xl px-6 py-12 md:px-10 md:py-16">
+        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-6 md:py-8">
           <CategoryHero
             eyebrow="Forklift Battery"
             title="지게차용 배터리 (납산) by ITNT"
@@ -709,7 +706,7 @@ export default function BatteryShopPage() {
         className="scroll-mt-28 border-b border-gray-200 bg-gray-50"
         aria-labelledby="awp-heading"
       >
-        <div className="mx-auto max-w-7xl px-6 py-12 md:px-10 md:py-16">
+        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-6 md:py-8">
           <CategoryHero
             eyebrow="Aerial Work Platform Battery"
             title="고소작업대용 배터리"
@@ -746,7 +743,7 @@ export default function BatteryShopPage() {
         className="scroll-mt-28 border-b border-gray-200 bg-white"
         aria-labelledby="golfcart-heading"
       >
-        <div className="mx-auto max-w-7xl px-6 py-12 md:px-10 md:py-16">
+        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-6 md:py-8">
           <CategoryHeader
             eyebrow="Golf Cart Battery"
             title="골프카트용 배터리"
@@ -781,18 +778,16 @@ export default function BatteryShopPage() {
         className="scroll-mt-28 bg-gray-900"
         aria-labelledby="consultation-heading"
       >
-        <div className="mx-auto max-w-7xl px-6 py-14 md:px-10 md:py-20">
+        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-6 md:py-8">
           <div className="rounded-[2rem] bg-white px-6 py-8 md:px-10 md:py-10">
             <div className="max-w-3xl">
-              <div className="inline-flex items-center rounded-2xl border border-orange-200 bg-orange-50 px-4 py-2">
-                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-600 md:text-sm">
-                  Consultation
-                </span>
-              </div>
+              <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
+                Consultation
+              </p>
 
               <h2
                 id="consultation-heading"
-                className="mt-4 text-2xl font-semibold text-gray-900 md:text-3xl"
+                className="mt-3 text-2xl md:text-3xl font-semibold leading-[1.2] text-navy-900 break-keep"
               >
                 배터리 상담이 필요하신가요?
               </h2>
@@ -820,6 +815,6 @@ export default function BatteryShopPage() {
           </div>
         </div>
       </section>
-    </main>
+    </div>
   );
 }

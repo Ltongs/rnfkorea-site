@@ -50,7 +50,7 @@ const JSON_LD_BREADCRUMB = {
   "@type": "BreadcrumbList",
   itemListElement: [
     { "@type": "ListItem", position: 1, name: "홈",            item: "https://www.rnfkorea.co.kr/" },
-    { "@type": "ListItem", position: 2, name: "노후장비 수출", item: "https://www.rnfkorea.co.kr/export" },
+    { "@type": "ListItem", position: 2, name: "중고장비 수출", item: "https://www.rnfkorea.co.kr/export" },
   ],
 };
 
@@ -75,15 +75,26 @@ type SectionHeaderProps = {
 // ====================================================
 function PageHero({ eyebrow, title, description, right }: PageHeroProps) {
   return (
-    <section className="pt-12 pb-8 md:pt-14 md:pb-10" aria-label="페이지 헤더">
-      <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10">
-        <div className="grid lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+    <section
+      className="relative bg-[#0a192f] text-white overflow-hidden"
+      aria-label="페이지 헤더"
+    >
+      {/* 배경 패턴 */}
+      <div className="absolute inset-0 opacity-[0.04]" aria-hidden="true">
+        <div className="absolute inset-0" style={{
+          backgroundImage: "repeating-linear-gradient(45deg, white 0, white 1px, transparent 0, transparent 50%)",
+          backgroundSize: "24px 24px",
+        }} />
+      </div>
+
+      <div className="relative max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-12 md:py-16">
+        <div className="grid lg:grid-cols-12 gap-8 lg:gap-6 items-start">
           <div className="lg:col-span-7">
 
             {/* ✅ Breadcrumb — 검색결과 경로 표시 */}
             <nav aria-label="breadcrumb">
               <ol
-                className="flex items-center text-sm text-gray-500"
+                className="flex items-center text-sm text-white/60"
                 itemScope
                 itemType="https://schema.org/BreadcrumbList"
               >
@@ -92,38 +103,38 @@ function PageHero({ eyebrow, title, description, right }: PageHeroProps) {
                   itemScope
                   itemType="https://schema.org/ListItem"
                 >
-                  <Link to="/" className="hover:text-orange-500 transition-colors" itemProp="item">
+                  <Link to="/" className="hover:text-white transition-colors" itemProp="item">
                     <span itemProp="name">Home</span>
                   </Link>
                   <meta itemProp="position" content="1" />
                 </li>
                 <li aria-hidden="true" className="mx-2">/</li>
                 <li
-                  className="text-gray-700 font-semibold"
+                  className="text-white/90 font-semibold"
                   itemProp="itemListElement"
                   itemScope
                   itemType="https://schema.org/ListItem"
                   aria-current="page"
                 >
-                  <span itemProp="name">노후장비 수출사업</span>
+                  <span itemProp="name">중고장비 수출사업</span>
                   <meta itemProp="position" content="2" />
                 </li>
               </ol>
             </nav>
 
             {eyebrow && (
-              <p className="mt-4 text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
+              <p className="mt-4 text-sm font-medium tracking-[0.12em] uppercase text-orange-400">
                 {eyebrow}
               </p>
             )}
 
             {/* ✅ h1: 핵심 키워드 포함 */}
-            <h1 className="mt-4 text-3xl md:text-4xl lg:text-5xl font-semibold leading-[1.15] text-navy-900 break-keep">
+            <h1 className="mt-4 text-3xl md:text-4xl lg:text-5xl font-semibold leading-[1.15] text-white break-keep">
               {title}
             </h1>
 
             {description && (
-              <p className="mt-4 text-base md:text-lg leading-7 text-neutral-600 max-w-3xl break-keep">
+              <p className="mt-4 text-base md:text-lg leading-7 text-white/75 max-w-3xl break-keep">
                 {description}
               </p>
             )}
@@ -173,7 +184,7 @@ const card =
 // ====================================================
 const ExportOverviewPage: React.FC = () => {
   return (
-    <div className="space-y-4">
+    <div className="bg-white text-navy-900">
 
       {/* ========================================================
           ✅ SEO HEAD
@@ -210,72 +221,70 @@ const ExportOverviewPage: React.FC = () => {
       {/* ========================================================
           PAGE HEADER
           ======================================================== */}
-      <div className="border-b border-gray-200 pb-8">
-        <PageHero
-          eyebrow="Export Business"
-          title="노후장비 수출사업"
-          description={'한국에서 노후 디젤 지게차를 매입하고, 정비·등급화(A/B/C)한 뒤 신흥국 산업 현장에 안정적으로 공급합니다. "정비 완료 + 부품 패키지"로 품질 불균형 시장을 정면 공략합니다.'}
-          right={
-            <div className="grid grid-cols-2 gap-4">
-              {/* 수출 쇼핑몰 카드 */}
-              <Link
-                to="/export-shop"
-                className="rounded-3xl border border-gray-200 bg-gradient-to-br from-white to-slate-50 p-4 md:p-5 shadow-sm hover:shadow-md transition-shadow aspect-square"
-                aria-label="수출용 쇼핑몰(매물) 보기"
-              >
-                <div className="h-full flex flex-col">
-                  <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
-                    Export Shop
-                  </p>
-                  <p className="mt-3 text-lg md:text-xl font-semibold leading-[1.2] text-navy-900 break-keep">
-                    수출용 쇼핑몰 보기
-                  </p>
-                  <p className="mt-3 text-sm leading-6 text-gray-600 break-keep">
-                    정비·등급화된 매물을 바로 확인할 수 있습니다.
-                  </p>
-                  <div className="mt-auto pt-4">
-                    <div className="inline-flex items-center justify-center px-4 py-2 rounded-2xl bg-orange-500 text-white font-semibold text-sm shadow-sm whitespace-nowrap">
-                      쇼핑몰 바로가기 →
-                    </div>
-                  </div>
-                </div>
-              </Link>
-
-              {/* 파트너 카드 */}
-              <div className="rounded-3xl border border-gray-200 bg-[#f7f4ee] p-4 md:p-5 shadow-sm aspect-square">
-                <div className="h-full flex flex-col">
-                  <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
-                    Partner Network
-                  </p>
-                  <p className="mt-3 text-lg md:text-xl font-semibold leading-6 text-navy-900 break-keep">
-                    이 사업은 (주)크린어스와 함께합니다
-                  </p>
-                  <div className="mt-auto pt-4 space-y-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <img
-                        src="/logo/cleanearth.png"
-                        alt="(주)크린어스 로고"
-                        className="h-8 w-auto object-contain"
-                        loading="lazy"
-                      />
-                    </div>
-                    <a
-                      href="http://www.cleanearth.kr/"
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      className="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-orange-500 text-white font-semibold text-sm hover:bg-orange-600 transition-all w-full whitespace-nowrap"
-                      title="(주)크린어스 홈페이지로 이동"
-                      aria-label="파트너사 (주)크린어스 홈페이지 (새 탭)"
-                    >
-                      파트너사 홈페이지 →
-                    </a>
+      <PageHero
+        eyebrow="Export Business"
+        title="중고장비 수출사업"
+        description={'한국에서 중고 디젤 지게차를 매입하고, 정비·등급화(A/B/C)한 뒤 신흥국 산업 현장에 안정적으로 공급합니다. "정비 완료 + 부품 패키지"로 품질 불균형 시장을 정면 공략합니다.'}
+        right={
+          <div className="grid grid-cols-2 gap-4">
+            {/* 수출 쇼핑몰 카드 */}
+            <Link
+              to="/export-shop"
+              className="rounded-3xl bg-white/10 border border-white/20 backdrop-blur-sm p-4 md:p-5 hover:bg-white/20 transition-all aspect-square"
+              aria-label="수출용 쇼핑몰(매물) 보기"
+            >
+              <div className="h-full flex flex-col">
+                <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-400">
+                  Export Shop
+                </p>
+                <p className="mt-3 text-lg md:text-xl font-semibold leading-[1.2] text-white break-keep">
+                  수출용 쇼핑몰 보기
+                </p>
+                <p className="mt-3 text-sm leading-6 text-white/70 break-keep">
+                  정비·등급화된 매물을 바로 확인할 수 있습니다.
+                </p>
+                <div className="mt-auto pt-4">
+                  <div className="inline-flex items-center justify-center px-4 py-2 rounded-2xl bg-orange-500 text-white font-semibold text-sm whitespace-nowrap">
+                    쇼핑몰 바로가기 →
                   </div>
                 </div>
               </div>
+            </Link>
+
+            {/* 파트너 카드 */}
+            <div className="rounded-3xl bg-white/10 border border-white/20 backdrop-blur-sm p-4 md:p-5 aspect-square">
+              <div className="h-full flex flex-col">
+                <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-400">
+                  Partner Network
+                </p>
+                <p className="mt-3 text-lg md:text-xl font-semibold leading-6 text-white break-keep">
+                  이 사업은 (주)크린어스와 함께합니다
+                </p>
+                <div className="mt-auto pt-4 space-y-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <img
+                      src="/logo/cleanearth.png"
+                      alt="(주)크린어스 로고"
+                      className="h-8 w-auto object-contain brightness-0 invert"
+                      loading="lazy"
+                    />
+                  </div>
+                  <a
+                    href="http://www.cleanearth.kr/"
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-orange-500 text-white font-semibold text-sm hover:bg-orange-400 transition-all w-full whitespace-nowrap"
+                    title="(주)크린어스 홈페이지로 이동"
+                    aria-label="파트너사 (주)크린어스 홈페이지 (새 탭)"
+                  >
+                    파트너사 홈페이지 →
+                  </a>
+                </div>
+              </div>
             </div>
-          }
-        />
-      </div>
+          </div>
+        }
+      />
 
       <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-4">
 
@@ -292,10 +301,10 @@ const ExportOverviewPage: React.FC = () => {
           <ul className="grid md:grid-cols-3 gap-6 list-none p-0" role="list">
             {/* STEP 1 */}
             <li className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md transition-all">
-              <p className="text-xs font-extrabold tracking-wider text-blue-600 mb-3">
+              <p className="text-xs font-semibold tracking-wider text-blue-600 mb-3">
                 STEP 1 · 국내 공급
               </p>
-              <h3 className="text-lg font-extrabold text-navy-900 mb-3">
+              <h3 className="text-lg font-semibold text-navy-900 mb-3">
                 연간 약 1만 대 폐차 대상 발생
               </h3>
               <p className="text-gray-600 leading-relaxed text-sm">
@@ -306,10 +315,10 @@ const ExportOverviewPage: React.FC = () => {
 
             {/* STEP 2 */}
             <li className="rounded-2xl border-2 border-orange-400 bg-orange-50 p-6 shadow-md hover:shadow-lg transition-all">
-              <p className="text-xs font-extrabold tracking-wider text-orange-600 mb-3">
+              <p className="text-xs font-semibold tracking-wider text-orange-600 mb-3">
                 STEP 2 · RNF 재상품화
               </p>
-              <h3 className="text-lg font-extrabold text-navy-900 mb-3">
+              <h3 className="text-lg font-semibold text-navy-900 mb-3">
                 정비 · 등급화 · 수출 표준화
               </h3>
               <p className="text-gray-700 leading-relaxed text-sm">
@@ -320,17 +329,17 @@ const ExportOverviewPage: React.FC = () => {
 
             {/* STEP 3 */}
             <li className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md transition-all">
-              <p className="text-xs font-extrabold tracking-wider text-green-600 mb-3">
+              <p className="text-xs font-semibold tracking-wider text-green-600 mb-3">
                 STEP 3 · 해외 수요
               </p>
-              <h3 className="text-lg font-extrabold text-navy-900 mb-3">
+              <h3 className="text-lg font-semibold text-navy-900 mb-3">
                 신흥국 산업·물류 인프라 확대
               </h3>
               <p className="text-gray-600 leading-relaxed text-sm">
                 제조 및 물류 인프라가 빠르게 성장하는 신흥국 시장에 재공급함으로써
                 자원 재생·순환 경제에 기여하는 수출 모델을 구축합니다.
               </p>
-              <p className="mt-5 flex items-center gap-2 text-green-600 text-sm font-bold">
+              <p className="mt-5 flex items-center gap-2 text-green-600 text-sm font-semibold">
                 <span aria-hidden="true">♻</span>
                 자원 재생 · 순환 경제 기여
               </p>
@@ -357,14 +366,14 @@ const ExportOverviewPage: React.FC = () => {
               { label: "브랜드", value: "현대/두산 중심" },
             ].map(({ label, value }) => (
               <div key={label} className="rounded-2xl border border-gray-200 bg-white p-5">
-                <dt className="text-xs font-extrabold text-gray-500">{label}</dt>
-                <dd className="mt-2 text-lg font-extrabold text-navy-900">{value}</dd>
+                <dt className="text-xs font-semibold text-gray-500">{label}</dt>
+                <dd className="mt-2 text-lg font-semibold text-navy-900">{value}</dd>
               </div>
             ))}
           </dl>
 
           <div className="rounded-2xl border border-gray-200 bg-white p-6">
-            <h3 className="text-sm font-extrabold text-navy-900">등급 체계</h3>
+            <h3 className="text-sm font-semibold text-navy-900">등급 체계</h3>
             <p className="mt-2 text-sm text-gray-600 leading-relaxed">
               A/B/C 등급으로 상태를 표준화하고, 정비 리포트/부품 패키지로 "품질 불균형" 문제를 줄입니다.
             </p>
@@ -383,7 +392,7 @@ const ExportOverviewPage: React.FC = () => {
 
           <div className="grid md:grid-cols-2 gap-6">
             <div className={card}>
-              <h3 className="text-lg font-extrabold text-navy-900">정비 패키지(예시)</h3>
+              <h3 className="text-lg font-semibold text-navy-900">정비 패키지(예시)</h3>
               <ul className="mt-4 space-y-2 text-sm text-gray-700 list-none p-0">
                 <li>• Basic: 엔진/미션/누유 기본 점검</li>
                 <li>• Standard: 유압·브레이크·마스트·전장 (+$700)</li>
@@ -392,7 +401,7 @@ const ExportOverviewPage: React.FC = () => {
             </div>
 
             <div className={card}>
-              <h3 className="text-lg font-extrabold text-navy-900">부품 패키지(예시)</h3>
+              <h3 className="text-lg font-semibold text-navy-900">부품 패키지(예시)</h3>
               <ul className="mt-4 space-y-2 text-sm text-gray-700 list-none p-0">
                 <li>• 소모품 패키지 (+$1,000)</li>
                 <li>• 타이어 패키지 (+$600)</li>
@@ -439,11 +448,11 @@ const ExportOverviewPage: React.FC = () => {
                     <span className="text-xl">🧲</span>
                   </div>
                   <div>
-                    <p className="text-xs font-extrabold text-gray-500">STEP 1</p>
-                    <h3 className="text-lg font-extrabold text-navy-900">매입</h3>
+                    <p className="text-xs font-semibold text-gray-500">STEP 1</p>
+                    <h3 className="text-lg font-semibold text-navy-900">매입</h3>
                   </div>
                 </div>
-                <p className="mt-5 text-base font-extrabold text-navy-900">(주)크린어스</p>
+                <p className="mt-5 text-base font-semibold text-navy-900">(주)크린어스</p>
                 <ul className="mt-4 text-sm text-gray-600 space-y-2 leading-relaxed list-none p-0">
                   <li>• 수출 가능 물량 선별</li>
                   <li>• 매입 및 인수 절차 관리</li>
@@ -461,11 +470,11 @@ const ExportOverviewPage: React.FC = () => {
                     <span className="text-xl">🛠️</span>
                   </div>
                   <div>
-                    <p className="text-xs font-extrabold text-gray-500">STEP 2</p>
-                    <h3 className="text-lg font-extrabold text-navy-900">정비 / 상품화</h3>
+                    <p className="text-xs font-semibold text-gray-500">STEP 2</p>
+                    <h3 className="text-lg font-semibold text-navy-900">정비 / 상품화</h3>
                   </div>
                 </div>
-                <p className="mt-5 text-base font-extrabold text-navy-900">
+                <p className="mt-5 text-base font-semibold text-navy-900">
                   현대지게차경기북부판매 (형제중기)
                 </p>
                 <ul className="mt-4 text-sm text-gray-600 space-y-2 leading-relaxed list-none p-0">
@@ -485,11 +494,11 @@ const ExportOverviewPage: React.FC = () => {
                     <span className="text-xl">🚢</span>
                   </div>
                   <div>
-                    <p className="text-xs font-extrabold text-gray-500">STEP 3</p>
-                    <h3 className="text-lg font-extrabold text-navy-900">수출 / 계약 / 물류</h3>
+                    <p className="text-xs font-semibold text-gray-500">STEP 3</p>
+                    <h3 className="text-lg font-semibold text-navy-900">수출 / 계약 / 물류</h3>
                   </div>
                 </div>
-                <p className="mt-5 text-base font-extrabold text-navy-900">RNF KOREA</p>
+                <p className="mt-5 text-base font-semibold text-navy-900">RNF KOREA</p>
                 <ul className="mt-4 text-sm text-gray-600 space-y-2 leading-relaxed list-none p-0">
                   <li>• 해외 바이어 개발</li>
                   <li>• 계약 및 수출 서류 관리</li>
@@ -520,8 +529,8 @@ const ExportOverviewPage: React.FC = () => {
                 { k: "신뢰",     v: "부품 패키지 포함", d: "운영 가능 상태 납품" },
               ].map(({ k, v, d }) => (
                 <div key={k} className="rounded-2xl border border-gray-200 bg-gray-50 p-4 h-full">
-                  <dt className="text-xs font-extrabold text-gray-500">{k}</dt>
-                  <dd className="mt-1 text-sm font-extrabold text-navy-900">{v}</dd>
+                  <dt className="text-xs font-semibold text-gray-500">{k}</dt>
+                  <dd className="mt-1 text-sm font-semibold text-navy-900">{v}</dd>
                   <p className="mt-1 text-xs text-gray-600">{d}</p>
                 </div>
               ))}
@@ -545,8 +554,8 @@ const ExportOverviewPage: React.FC = () => {
               { year: "[3년차]", target: "800대/y", desc: "수출국 확대/거점센터, 품목 확장" },
             ].map(({ year, target, desc }) => (
               <li key={year} className={card}>
-                <p className="text-sm font-extrabold text-gray-500">{year}</p>
-                <p className="mt-2 text-2xl font-extrabold text-navy-900">{target}</p>
+                <p className="text-sm font-semibold text-gray-500">{year}</p>
+                <p className="mt-2 text-2xl font-semibold text-navy-900">{target}</p>
                 <p className="mt-3 text-sm text-gray-600 leading-relaxed">{desc}</p>
               </li>
             ))}
@@ -561,7 +570,7 @@ const ExportOverviewPage: React.FC = () => {
             <div className="flex items-start gap-3">
               <div className="mt-1 h-5 w-1.5 rounded bg-orange-500" aria-hidden="true" />
               <div className="space-y-2">
-                <h2 id="contact-heading" className="text-sm font-extrabold text-navy-900">
+                <h2 id="contact-heading" className="text-sm font-semibold text-navy-900">
                   문의 안내
                 </h2>
                 <p className="text-sm text-gray-600 leading-relaxed">
@@ -575,13 +584,13 @@ const ExportOverviewPage: React.FC = () => {
                       const el = document.getElementById("catalog-form");
                       el?.scrollIntoView({ behavior: "smooth" });
                     }}
-                    className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-orange-500 text-white font-extrabold hover:bg-orange-600 transition-all"
+                    className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-orange-500 text-white font-semibold hover:bg-orange-600 transition-all"
                   >
                     상담/견적 폼으로 이동 →
                   </button>
                   <a
                     href="tel:1551-1873"
-                    className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl border border-gray-300 bg-white text-navy-900 font-extrabold hover:bg-gray-50 transition-all gap-2"
+                    className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl border border-gray-300 bg-white text-navy-900 font-semibold hover:bg-gray-50 transition-all gap-2"
                     aria-label="전화 상담 1551-1873"
                   >
                     <Phone size={15} aria-hidden="true" />

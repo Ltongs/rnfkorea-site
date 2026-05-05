@@ -346,51 +346,53 @@ function PageHero({ eyebrow, title, description }: PageHeroProps) {
         }} />
       </div>
 
-      <div className="relative max-w-6xl mx-auto px-4 md:px-6 lg:px-8 py-12 md:py-16">
-        <div className="max-w-3xl">
+      <div className="relative max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-12 md:py-16">
+        <div className="grid lg:grid-cols-12 gap-8 lg:gap-6 items-start">
+          <div className="lg:col-span-7">
 
-          {/* Breadcrumb */}
-          <nav aria-label="breadcrumb">
-            <ol
-              className="flex items-center text-sm text-white/60"
-              itemScope
-              itemType="https://schema.org/BreadcrumbList"
-            >
-              <li itemProp="itemListElement" itemScope itemType="https://schema.org/ListItem">
-                <Link to="/" className="hover:text-white transition-colors" itemProp="item">
-                  <span itemProp="name">Home</span>
-                </Link>
-                <meta itemProp="position" content="1" />
-              </li>
-              <li aria-hidden="true" className="mx-2">/</li>
-              <li
-                className="text-white/90 font-semibold"
-                itemProp="itemListElement"
+            {/* Breadcrumb */}
+            <nav aria-label="breadcrumb">
+              <ol
+                className="flex items-center text-sm text-white/60"
                 itemScope
-                itemType="https://schema.org/ListItem"
-                aria-current="page"
+                itemType="https://schema.org/BreadcrumbList"
               >
-                <span itemProp="name">타이어 쇼핑몰</span>
-                <meta itemProp="position" content="2" />
-              </li>
-            </ol>
-          </nav>
+                <li itemProp="itemListElement" itemScope itemType="https://schema.org/ListItem">
+                  <Link to="/" className="hover:text-white transition-colors" itemProp="item">
+                    <span itemProp="name">Home</span>
+                  </Link>
+                  <meta itemProp="position" content="1" />
+                </li>
+                <li aria-hidden="true" className="mx-2">/</li>
+                <li
+                  className="text-white/90 font-semibold"
+                  itemProp="itemListElement"
+                  itemScope
+                  itemType="https://schema.org/ListItem"
+                  aria-current="page"
+                >
+                  <span itemProp="name">타이어 쇼핑몰</span>
+                  <meta itemProp="position" content="2" />
+                </li>
+              </ol>
+            </nav>
 
-          {eyebrow && (
-            <p className="mt-4 text-sm font-medium tracking-[0.12em] uppercase text-orange-400">
-              {eyebrow}
-            </p>
-          )}
+            {eyebrow && (
+              <p className="mt-4 text-sm font-medium tracking-[0.12em] uppercase text-orange-400">
+                {eyebrow}
+              </p>
+            )}
 
-          <h1 className="mt-4 text-3xl md:text-4xl lg:text-5xl font-semibold leading-[1.15] text-white break-keep">
-            {title}
-          </h1>
+            <h1 className="mt-4 text-3xl md:text-4xl lg:text-5xl font-semibold leading-[1.15] text-white break-keep">
+              {title}
+            </h1>
 
-          {description && (
-            <p className="mt-4 text-base md:text-lg leading-7 text-white/75 max-w-3xl break-keep">
-              {description}
-            </p>
-          )}
+            {description && (
+              <p className="mt-4 text-base md:text-lg leading-7 text-white/75 max-w-3xl break-keep">
+                {description}
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </section>
@@ -603,8 +605,8 @@ export default function TiresShop() {
       {/* ========================================================
           상품 목록 및 필터
           ======================================================== */}
-      <section className="py-16 md:py-20" aria-label="타이어 상품 목록">
-        <div className="max-w-6xl mx-auto px-4 md:px-6 lg:px-8 space-y-8">
+      <section className="py-6 md:py-8 border-t border-gray-100" aria-label="타이어 상품 목록">
+        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-8">
 
           {/* ✅ 인기 규격 버튼 — aria-label로 검색엔진·접근성 모두 대응 */}
           <div className="flex items-center gap-3 flex-wrap" aria-label="인기 타이어 규격 빠른 선택">
