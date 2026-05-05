@@ -275,7 +275,7 @@ export default function FinancePage() {
                       title={`${p.label} 파트너: ${p.partnersText}`}
                     >
                       <span className="inline-flex items-center gap-3">
-                        <span className="text-white/60 font-medium text-sm whitespace-nowrap">{p.label}</span>
+                        <span className="text-white/60 font-medium text-sm break-keep">{p.label}</span>
                         <span className="text-white font-semibold text-sm">{p.partnersText}</span>
                       </span>
                     </li>
@@ -298,7 +298,7 @@ export default function FinancePage() {
                 </p>
 
                 {/* ✅ dl/dt/dd — 구조 스펙을 key-value로 마크업 */}
-                <dl className="mt-5 grid grid-cols-3 gap-3">
+                <dl className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {[
                     { label: "구조 설계",  value: "렌탈·할부·리스" },
                     { label: "적용 대상",  value: "상용차 · 건설기계 · 물류장비" },
@@ -478,7 +478,7 @@ export default function FinancePage() {
             />
             <div className="mt-1 shrink-0">
               <span className="inline-flex items-center px-4 py-2 rounded-full bg-orange-50 text-orange-600 text-sm font-semibold border border-orange-200">
-                3개 시도 협약 완료
+                4개 시도 협약 완료
               </span>
             </div>
           </div>
@@ -497,7 +497,7 @@ export default function FinancePage() {
                         viewBox="0 0 240 170"
                         className="w-full h-auto"
                         role="img"
-                        aria-label="MOU 협약 개인(개별)화물협회 지역 지도 — 서울, 경북, 광주"
+                        aria-label="MOU 협약 개인(개별)화물협회 지역 지도 — 서울, 경북, 광주, 경남"
                       >
                         <path
                           d="M126 10 C112 14,103 24,102 38 C101 50,92 62,88 78 C84 95,78 112,86 126 C96 145,115 156,134 160 C153 164,170 158,182 146 C192 135,198 120,192 104 C187 90,197 82,198 66 C199 50,189 38,178 30 C168 22,154 12,126 10 Z"
@@ -523,6 +523,7 @@ export default function FinancePage() {
                           { x: 132, y: 42,  label: "서울", tx: 14, ty: 4 },
                           { x: 165, y: 84,  label: "경북", tx: 14, ty: 4 },
                           { x: 118, y: 112, label: "광주", tx: 14, ty: 4 },
+                          { x: 158, y: 128, label: "경남", tx: 14, ty: 4 },
                         ].map((pin) => (
                           <g key={pin.label}>
                             <circle cx={pin.x} cy={pin.y} r="7" fill="rgb(239,68,68)" />
@@ -562,6 +563,7 @@ export default function FinancePage() {
                     { label: "서울", sub: "협회 MOU" },
                     { label: "광주", sub: "협회 MOU" },
                     { label: "경북", sub: "협회 MOU" },
+                    { label: "경남", sub: "협회 MOU" },
                   ].map((x) => (
                     <li
                       key={x.label}

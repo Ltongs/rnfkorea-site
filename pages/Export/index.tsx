@@ -226,11 +226,11 @@ const ExportOverviewPage: React.FC = () => {
         title="중고장비 수출사업"
         description={'한국에서 중고 디젤 지게차를 매입하고, 정비·등급화(A/B/C)한 뒤 신흥국 산업 현장에 안정적으로 공급합니다. "정비 완료 + 부품 패키지"로 품질 불균형 시장을 정면 공략합니다.'}
         right={
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* 수출 쇼핑몰 카드 */}
             <Link
               to="/export-shop"
-              className="rounded-3xl bg-white/10 border border-white/20 backdrop-blur-sm p-4 md:p-5 hover:bg-white/20 transition-all aspect-square"
+              className="rounded-3xl bg-white/10 border border-white/20 backdrop-blur-sm p-4 md:p-5 hover:bg-white/20 transition-all sm:aspect-square"
               aria-label="수출용 쇼핑몰(매물) 보기"
             >
               <div className="h-full flex flex-col">
@@ -252,7 +252,7 @@ const ExportOverviewPage: React.FC = () => {
             </Link>
 
             {/* 파트너 카드 */}
-            <div className="rounded-3xl bg-white/10 border border-white/20 backdrop-blur-sm p-4 md:p-5 aspect-square">
+            <div className="rounded-3xl bg-white/10 border border-white/20 backdrop-blur-sm p-4 md:p-5 sm:aspect-square">
               <div className="h-full flex flex-col">
                 <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-400">
                   Partner Network
@@ -555,7 +555,7 @@ const ExportOverviewPage: React.FC = () => {
             ].map(({ year, target, desc }) => (
               <li key={year} className={card}>
                 <p className="text-sm font-semibold text-gray-500">{year}</p>
-                <p className="mt-2 text-2xl font-semibold text-navy-900">{target}</p>
+                <p className="mt-2 text-lg md:text-2xl font-semibold text-navy-900">{target}</p>
                 <p className="mt-3 text-sm text-gray-600 leading-relaxed">{desc}</p>
               </li>
             ))}

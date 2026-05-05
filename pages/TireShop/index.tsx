@@ -918,7 +918,7 @@ export default function TiresShop() {
                   <p className="text-sm font-extrabold text-navy-900">상세정보</p>
 
                   {/* ✅ 모달 내 스펙도 dl/dt/dd 처리 */}
-                  <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                  <dl className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                     {[
                       ["사이즈", normalize(selectedRow.size) || "-"],
                       ["PR",     normalize(selectedRow.pr)   || "-"],

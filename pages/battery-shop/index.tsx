@@ -408,8 +408,7 @@ function RentalCard({ item }: { item: RentalItem }) {
           itemType="https://schema.org/AggregateOffer"
         >
           <p className="text-xs font-medium text-gray-500">월 렌탈료</p>
-          <p className="whitespace-nowrap text-lg font-semibold text-orange-600">
-            {/* ✅ lowPrice를 itemProp으로 마크업 */}
+          <p className="text-sm font-semibold text-orange-600 break-keep">
             <span itemProp="lowPrice">{formatKRW(item.month36)}</span>~
             <meta itemProp="priceCurrency" content="KRW" />
           </p>
@@ -422,23 +421,18 @@ function RentalCard({ item }: { item: RentalItem }) {
         )}
       </div>
 
-      <div className="mt-2">
-        <div className="mb-2 grid grid-cols-3 gap-3 text-center">
-          <div /><div />
-          <div className="text-right text-xs font-semibold text-red-500">(VAT포함)</div>
-        </div>
-
-        {/* ✅ 렌탈 기간별 금액을 dl/dt/dd로 마크업 */}
+        <div className="mt-2">
+        <div className="mb-2 flex justify-end text-xs font-semibold text-red-500">(VAT포함)</div>
         <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
-          <dl className="grid grid-cols-3 gap-3 text-center">
+          <dl className="grid grid-cols-3 gap-2 text-center">
             {[
               { period: "12개월", price: item.month12 },
               { period: "24개월", price: item.month24 },
               { period: "36개월", price: item.month36 },
             ].map(({ period, price }) => (
-              <div key={period} className="rounded-2xl bg-white px-3 py-3">
+              <div key={period} className="rounded-2xl bg-white px-2 py-3">
                 <dt className="text-xs font-medium text-gray-500">{period}</dt>
-                <dd className="mt-1 whitespace-nowrap text-sm font-semibold text-gray-900 md:text-base">
+                <dd className="mt-1 text-xs font-semibold text-gray-900 break-keep">
                   {formatKRW(price)}
                 </dd>
               </div>

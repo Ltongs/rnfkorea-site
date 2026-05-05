@@ -232,7 +232,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ p }) => {
         <img
           src={p.thumb}
           alt={`${p.brand} ${p.model} 타이어`}
-          className="w-full h-44 object-cover"
+          className="w-full aspect-[16/9] object-cover"
           loading="lazy"
           width={600}
           height={176}
@@ -253,7 +253,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ p }) => {
                 key={idx}
                 src={img}
                 alt={`${p.model} 타이어 위치 ${idx + 1}`}
-                className="w-28 h-14 object-contain block"
+                className="w-20 h-12 md:w-28 md:h-14 object-contain block"
                 loading="lazy"
               />
             ))}
@@ -442,6 +442,7 @@ export default function TiresPage() {
     { key: "homecenter", name: "홈센타",                sub: "레미콘 제조업",    inlinePair: true, logo: "/logo/homecenter.jpg" },
     { key: "kbin",       name: "경북개인(개별)화물협회", sub: "MOU",             inlinePair: true, logo: "/logo/kbin.png" },
     { key: "gjin",       name: "광주개인(개별)화물협회", sub: "MOU",             inlinePair: true, logo: "/logo/gjin.jpg" },
+    { key: "gnin",       name: "경남개인(개별)화물협회", sub: "MOU",             inlinePair: true, logo: "/logo/gnam.png" },
   ] as const;
 
   // ✅ 제품 블록: section + h2 계층 유지

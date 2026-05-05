@@ -7,7 +7,7 @@ import { Helmet } from "react-helmet-async";
 // ====================================================
 const SEO_TITLE = "개인(개별)화물협회 전용 금융상품 | 할부·리스 우대 조건 | RNF KOREA";
 const SEO_DESC =
-  "개인화물·개별화물협회 회원 전용 할부금융·리스 우대 상품. 롯데오토리스 협약, 초기 부담 완화, 월 비용 절감. 서울·광주·경북 MOU 체결. 상담 1551-1873.";
+  "개인화물·개별화물협회 회원 전용 할부금융·리스 우대 상품. 롯데오토리스 협약, 초기 부담 완화, 월 비용 절감. 서울·광주·경북·경남 MOU 체결. 상담 1551-1873.";
 const SEO_CANONICAL = "https://www.rnfkorea.co.kr/cargo-finance";
 const SEO_KEYWORDS =
   "개인화물협회금융,개별화물협회금융,화물차할부,화물차리스,롯데오토리스,개인화물협회,개별화물협회,화물차금융,협회전용금융,MOU금융,화물차우대금리";
@@ -254,7 +254,7 @@ const MouSection: React.FC = () => (
       />
       <div className="mt-1 shrink-0">
         <span className="inline-flex items-center px-4 py-2 rounded-full bg-orange-50 text-orange-600 text-sm font-semibold border border-orange-200">
-          3개 시도 협약 완료
+          4개 시도 협약 완료
         </span>
       </div>
     </div>
@@ -272,7 +272,7 @@ const MouSection: React.FC = () => (
                   viewBox="0 0 240 170"
                   className="w-full h-auto"
                   role="img"
-                  aria-label="MOU 협약 개인(개별)화물협회 지역 지도 — 서울, 경북, 광주"
+                  aria-label="MOU 협약 개인(개별)화물협회 지역 지도 — 서울, 경북, 광주, 경남"
                 >
                   <path
                     d="M126 10 C112 14,103 24,102 38 C101 50,92 62,88 78 C84 95,78 112,86 126 C96 145,115 156,134 160 C153 164,170 158,182 146 C192 135,198 120,192 104 C187 90,197 82,198 66 C199 50,189 38,178 30 C168 22,154 12,126 10 Z"
@@ -298,6 +298,7 @@ const MouSection: React.FC = () => (
                     { x: 132, y: 42,  label: "서울", tx: 14, ty: 4 },
                     { x: 165, y: 84,  label: "경북", tx: 14, ty: 4 },
                     { x: 118, y: 112, label: "광주", tx: 14, ty: 4 },
+                    { x: 158, y: 128, label: "경남", tx: 14, ty: 4 },
                   ].map((pin) => (
                     <g key={pin.label}>
                       <circle cx={pin.x} cy={pin.y} r="7" fill="rgb(239,68,68)" />
@@ -338,6 +339,7 @@ const MouSection: React.FC = () => (
               { label: "서울", sub: "협회 MOU" },
               { label: "광주", sub: "협회 MOU" },
               { label: "경북", sub: "협회 MOU" },
+              { label: "경남", sub: "협회 MOU" },
             ].map((x) => (
               <li
                 key={x.label}

@@ -364,7 +364,7 @@ const LightboxModal: React.FC = () => {
       aria-label={`${state.title || "장비"} 이미지 확대보기`}
     >
       <div
-        className="w-full max-w-5xl bg-white rounded-2xl overflow-hidden shadow-2xl"
+        className="w-full max-w-5xl bg-white rounded-2xl overflow-hidden shadow-2xl max-h-[92vh] overflow-y-auto"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b">
@@ -534,7 +534,7 @@ const InventoryCard: React.FC<{ item: InventoryItem }> = ({ item }) => {
           >
             {item.specs.map((row) => (
               <div key={row.label} className="flex justify-between text-sm py-1 border-b last:border-b-0">
-                <dt className="text-gray-500 whitespace-nowrap w-28">{row.label}</dt>
+                <dt className="text-gray-500 shrink-0 w-24 break-keep">{row.label}</dt>
                 <dd className="text-navy-900 font-medium text-right">{row.value}</dd>
               </div>
             ))}

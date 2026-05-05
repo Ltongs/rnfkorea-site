@@ -145,7 +145,7 @@ const JSON_LD_FAQ = {
       name: "개인(개별)화물협회 회원은 혜택이 있나요?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "서울·광주·경북 개인(개별)화물협회 MOU 체결 기업으로, 협회 회원에게는 우대 조건과 서류 간소화 프로세스를 제공합니다.",
+        text: "서울·광주·경북·경남 개인(개별)화물협회 MOU 체결 기업으로, 협회 회원에게는 우대 조건과 서류 간소화 프로세스를 제공합니다.",
       },
     },
     {
@@ -723,7 +723,7 @@ export default function TireRentalPage() {
                 <div className="mt-4 flex items-center gap-2.5 rounded-2xl border border-white/20 bg-white/10 px-4 py-3">
                   <span className="text-xs text-white/70 break-keep shrink-0">렌탈 전문 파트너</span>
                   <div className="flex items-center gap-1.5 rounded-lg bg-white px-2 py-1">
-                    <span className="text-xs font-semibold text-gray-700 whitespace-nowrap">(주)비에스온</span>
+                    <span className="text-xs font-semibold text-gray-700 break-keep">(주)비에스온</span>
                     <img
                       src="/logo/bson.jpg"
                       alt="비에스온(BSON) 로고"
@@ -911,7 +911,7 @@ export default function TireRentalPage() {
                   <span className="text-orange-600">우대 조건</span>을 받으세요
                 </h2>
                 <p className="mt-3 text-base text-gray-600 leading-7 break-keep">
-                  서울·광주·경북 개인(개별)화물협회 MOU 체결 기업입니다.
+                  서울·광주·경북·경남 개인(개별)화물협회 MOU 체결 기업입니다.
                   협회 회원 확인 후 렌탈 우대 조건을 별도 안내드립니다.
                 </p>
                 <ul className="mt-4 space-y-2 list-none p-0">
@@ -944,6 +944,7 @@ export default function TireRentalPage() {
                     "서울 개인(개별)화물협회",
                     "광주 개인(개별)화물협회",
                     "경북 개인(개별)화물협회",
+                    "경남 개인(개별)화물협회",
                   ].map((name) => (
                     <li key={name} className="flex items-center gap-3 bg-orange-50 rounded-xl px-4 py-3">
                       <span className="w-2 h-2 rounded-full bg-orange-400 shrink-0" aria-hidden="true" />
@@ -986,7 +987,7 @@ export default function TireRentalPage() {
               },
               {
                 q: "개인(개별)화물협회 회원은 혜택이 있나요?",
-                a: "서울·광주·경북 개인(개별)화물협회 MOU 체결 기업으로, 협회 회원에게는 우대 조건과 서류 간소화 프로세스를 제공합니다.",
+                a: "서울·광주·경북·경남 개인(개별)화물협회 MOU 체결 기업으로, 협회 회원에게는 우대 조건과 서류 간소화 프로세스를 제공합니다.",
               },
               {
                 q: "렌탈료는 운영비로 처리할 수 있나요?",
@@ -1176,7 +1177,7 @@ export default function TireRentalPage() {
 
                   <div className="rounded-3xl border border-gray-200 bg-white p-4 md:p-5">
                     <p className="text-sm font-semibold text-navy-900 mb-3">상품 정보</p>
-                    <dl className="grid grid-cols-2 gap-3 text-sm">
+                    <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                       {[
                         ["사이즈", selectedRow.size || "-"],
                         ["PR",     selectedRow.pr   || "-"],
@@ -1243,7 +1244,7 @@ export default function TireRentalPage() {
                     <div className="mt-3 flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
                       <span className="text-xs text-gray-500 break-keep shrink-0">렌탈 전문 파트너</span>
                       <div className="flex items-center gap-1.5 rounded-lg bg-white border border-gray-100 px-2 py-1">
-                        <span className="text-xs font-semibold text-gray-700 whitespace-nowrap">(주)비에스온</span>
+                        <span className="text-xs font-semibold text-gray-700 break-keep">(주)비에스온</span>
                         <img
                           src="/logo/bson.jpg"
                           alt="비에스온(BSON) 로고"
