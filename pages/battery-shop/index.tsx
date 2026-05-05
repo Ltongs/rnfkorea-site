@@ -136,7 +136,10 @@ type ApplyModel = {
   dimension: string;
 };
 
+type BatteryCategory = "ACID" | "AWP" | "G-Cart";
+
 type RentalItem = {
+  category: BatteryCategory;
   model: string;
   capacity: string;
   month12: number;
@@ -146,112 +149,43 @@ type RentalItem = {
 };
 
 // ====================================================
-// 데이터
+// CSV 파싱 유틸
 // ====================================================
-const forkliftItems: RentalItem[] = [
-  {
-    model: "VSF4",
-    capacity: "48V / 290Ah",
-    month12: 271300,
-    month24: 149600,
-    month36: 109000,
-    applyModels: [
-      { label: "도요타 7FBR15",          dimension: "956*375*555" },
-      { label: "니찌유 FBRMA15/18",       dimension: "956*375*555" },
-      { label: "고마츠 FB13M-12",         dimension: "960*375*565" },
-      { label: "스미토모 61-FBR15, 8FBR18", dimension: "956*375*555" },
-      { label: "클라크 CRX15/18",         dimension: "965*375*555" },
-      { label: "현대 15BR",              dimension: "994*378*581.7" },
-    ],
-  },
-  {
-    model: "VSD8AC",
-    capacity: "48V / 435Ah",
-    month12: 380700,
-    month24: 209900,
-    month36: 152900,
-    applyModels: [
-      { label: "도요타 7FB15/7FB18",    dimension: "815*740*475" },
-      { label: "도요타 7FBH15/7FBH18", dimension: "815*740*555" },
-      { label: "니찌유 FB9PN-50",       dimension: "660*470*450" },
-      { label: "니찌유 FB15/18",        dimension: "970*600*470" },
-      { label: "고마츠 FB15EX-5~11형",  dimension: "980*665*467" },
-    ],
-  },
-  {
-    model: "VSF5A",
-    capacity: "48V / 350Ah",
-    month12: 332500,
-    month24: 183300,
-    month36: 133600,
-    applyModels: [
-      { label: "도요타 7FBR20/7FBR25", dimension: "1150*403*570" },
-      { label: "니찌유 FBR20/25",      dimension: "1125*373*555" },
-      { label: "고마츠 FB10-12형",      dimension: "970*529*575" },
-      { label: "클라크 CRX20/25",      dimension: "1125*373*555" },
-    ],
-  },
-  {
-    model: "VGD565",
-    capacity: "48V / 565Ah",
-    month12: 534100,
-    month24: 294400,
-    month36: 214600,
-    applyModels: [
-      { label: "도요타 7FB20/7FB25",      dimension: "905*815*475" },
-      { label: "도요타 7FBH20/7FBH25",   dimension: "815*905*545" },
-      { label: "니찌유 FB25/28",          dimension: "970*730*470" },
-      { label: "코마츠 FB20(25)EX-5~11형", dimension: "980*840*465" },
-      { label: "클라크 EPX16/18/20S",     dimension: "973*733*470" },
-    ],
-  },
-  {
-    model: "VGD600",
-    capacity: "48V / 600Ah",
-    month12: 544800,
-    month24: 300400,
-    month36: 218900,
-    applyModels: [
-      { label: "도요타 7FB20/7FB25",      dimension: "905*815*475" },
-      { label: "도요타 7FBH20/7FBH25",   dimension: "815*905*545" },
-      { label: "니찌유 FB25/28",          dimension: "970*730*470" },
-      { label: "코마츠 FB20(25)EX-5~11형", dimension: "980*840*465" },
-      { label: "클라크 EPX16/18/20S",     dimension: "973*733*470" },
-    ],
-  },
-  {
-    model: "VCE650",
-    capacity: "48V / 650Ah",
-    month12: 601700,
-    month24: 331700,
-    month36: 241700,
-    applyModels: [
-      { label: "두산 B20S-3",     dimension: "1025*887*525" },
-      { label: "클라크 EPX20/25", dimension: "980*785*525" },
-      { label: "현대 22B-7",      dimension: "1066*796*537" },
-      { label: "현대 22B/25B-9",  dimension: "1030*796*533" },
-    ],
-  },
-  {
-    model: "VCE715",
-    capacity: "48V / 715Ah",
-    month12: 624200,
-    month24: 344100,
-    month36: 250700,
-    applyModels: [
-      { label: "두산 B25S-3",     dimension: "1025*887*525" },
-      { label: "두산 B20S-5",     dimension: "1025*887*525" },
-      { label: "두산 B25S-5",     dimension: "1025*887*525" },
-      { label: "클라크 EPX20/25", dimension: "980*785*525" },
-      { label: "현대 25B-7",      dimension: "1066*796*537" },
-      { label: "현대 25B-9",      dimension: "1030*796*533" },
-      { label: "현대 30B/35B-9",  dimension: "1030*990*533" },
-    ],
-  },
-];
+const BATTERY_CSV_URL =
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vStUJkHotLlVECjJPyaxIWnYTl45_0Fw9IAtgIUzkRjScPYWE_lYJfk2_38Uqn9Y40kP-5pv3UXeRJf/pub?gid=1073593270&single=true&output=csv";
 
-const forkliftHeroImage = "/home/ITNT_FL.png";
-const awpHeroImage      = "/home/ITNT_AWP.png";
+function parseBatteryCSV(text: string): RentalItem[] {
+  const lines = text.trim().split("\n");
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(",").map((h) => h.trim().replace(/^\uFEFF/, ""));
+  return lines.slice(1).map((line) => {
+    const cols = line.split(",");
+    const get = (key: string) => {
+      const idx = headers.indexOf(key);
+      return idx >= 0 ? (cols[idx] ?? "").trim() : "";
+    };
+    const applyRaw = cols.slice(6).join(",").trim().replace(/^"|"$/g, "");
+    const applyModels: ApplyModel[] = applyRaw
+      ? applyRaw.split("|").map((entry) => {
+          const [label, dimension] = entry.split("::").map((s) => s.trim());
+          return { label: label ?? "", dimension: dimension ?? "" };
+        })
+      : [];
+    return {
+      category: get("구분") as BatteryCategory,
+      model:    get("model"),
+      capacity: get("capacity"),
+      month12:  Number(get("month12")) || 0,
+      month24:  Number(get("month24")) || 0,
+      month36:  Number(get("month36")) || 0,
+      applyModels: applyModels.length > 0 ? applyModels : undefined,
+    };
+  }).filter((r) => r.model && r.capacity && r.category);
+}
+
+const forkliftHeroImage  = "/home/ITNT_FL.png";
+const awpHeroImage       = "/home/ITNT_AWP.png";
+const golfcartHeroImage  = "/home/G_Cart.jpeg";
 
 // ====================================================
 // 유틸
@@ -394,21 +328,21 @@ function RentalCard({ item }: { item: RentalItem }) {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="text-xl font-semibold text-gray-900" itemProp="name">
-            {item.model}
+            {item.capacity}
           </h3>
           <p className="mt-2 text-sm font-medium text-orange-600" itemProp="description">
-            {item.capacity}
+            모델명 : {item.model}
           </p>
         </div>
 
         <div
-          className="rounded-2xl bg-orange-50 px-3 py-2 text-right"
+          className="rounded-2xl bg-orange-50 px-4 py-3 text-right"
           itemProp="offers"
           itemScope
           itemType="https://schema.org/AggregateOffer"
         >
           <p className="text-xs font-medium text-gray-500">월 렌탈료</p>
-          <p className="text-sm font-semibold text-orange-600 break-keep">
+          <p className="text-xl md:text-2xl font-semibold text-orange-600 break-keep">
             <span itemProp="lowPrice">{formatKRW(item.month36)}</span>~
             <meta itemProp="priceCurrency" content="KRW" />
           </p>
@@ -509,6 +443,24 @@ function TopCategoryNav({ activeId }: { activeId: string }) {
 export default function BatteryShopPage() {
   const sectionIds = useMemo(() => ["forklift", "awp", "golfcart"], []);
   const [activeSection, setActiveSection] = useState("forklift");
+
+  // CSV 데이터
+  const [allItems, setAllItems] = useState<RentalItem[]>([]);
+  const [csvLoading, setCsvLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    fetch(BATTERY_CSV_URL)
+      .then((r) => r.text())
+      .then((text) => { if (alive) setAllItems(parseBatteryCSV(text)); })
+      .catch(() => {})
+      .finally(() => { if (alive) setCsvLoading(false); });
+    return () => { alive = false; };
+  }, []);
+
+  const forkliftItems = useMemo(() => allItems.filter((r) => r.category === "ACID"), [allItems]);
+  const awpItems      = useMemo(() => allItems.filter((r) => r.category === "AWP"), [allItems]);
+  const golfcartItems = useMemo(() => allItems.filter((r) => r.category === "G-Cart"), [allItems]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -674,17 +626,23 @@ export default function BatteryShopPage() {
           />
 
           {/* ✅ ul/li — 렌탈 카드 목록 시맨틱 처리 */}
-          <ul
-            className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3 list-none p-0"
-            role="list"
-            aria-label="지게차용 배터리 렌탈 상품 목록"
-          >
-            {forkliftItems.map((item) => (
-              <li key={item.model}>
-                <RentalCard item={item} />
-              </li>
-            ))}
-          </ul>
+          {csvLoading ? (
+            <p className="mt-8 text-sm text-gray-400">상품 정보를 불러오는 중입니다...</p>
+          ) : forkliftItems.length === 0 ? (
+            <p className="mt-8 text-sm text-gray-400">상품 정보를 불러올 수 없습니다. 잠시 후 다시 시도해주세요.</p>
+          ) : (
+            <ul
+              className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3 list-none p-0"
+              role="list"
+              aria-label="지게차용 배터리 렌탈 상품 목록"
+            >
+              {forkliftItems.map((item) => (
+                <li key={item.model}>
+                  <RentalCard item={item} />
+                </li>
+              ))}
+            </ul>
+          )}
 
           <p className="mt-6 text-xs text-gray-400 leading-relaxed">
             ※ 렌탈료는 VAT 포함 기준이며, 실제 조건은 장비 사양·설치 환경·계약 기간에 따라 달라질 수 있습니다. 자세한 내용은 상담을 통해 확인해 주세요.
@@ -709,23 +667,33 @@ export default function BatteryShopPage() {
             imageAlt="고소작업대용 배터리 (시저리프트·붐리프트용)"
           />
 
-          {/* ✅ ul/li — 견적 카드 목록 */}
-          <ul className="mt-8 grid gap-6 lg:grid-cols-2 list-none p-0" role="list">
-            <li>
-              <QuoteOnlyCard
-                title="시저리프트 / 붐리프트"
-                desc="장비 모델, 전압, 용량, 사용시간에 따라 적합한 배터리 사양과 렌탈 조건이 달라집니다."
-                note="장비 모델명과 배터리 사양을 알려주시면 적용 가능 여부와 렌탈 조건을 안내드립니다."
-              />
-            </li>
-            <li>
-              <QuoteOnlyCard
-                title="배터리 교체 / 전환 검토"
-                desc="기존 무보수(MF) 배터리 교체는 물론, LFP 전환 검토도 가능합니다."
-                note="현장 사용환경과 장비 조건을 바탕으로 무보수(MF) 유지 또는 LFP 전환 중 적합한 구조를 제안드립니다."
-              />
-            </li>
-          </ul>
+          {csvLoading ? (
+            <p className="mt-8 text-sm text-gray-400">상품 정보를 불러오는 중입니다...</p>
+          ) : awpItems.length > 0 ? (
+            <ul
+              className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3 list-none p-0"
+              role="list"
+              aria-label="고소작업대용 배터리 렌탈 상품 목록"
+            >
+              {awpItems.map((item) => (
+                <li key={item.model}>
+                  <RentalCard item={item} />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="mt-8 rounded-2xl border border-orange-100 bg-orange-50 px-6 py-10 text-center">
+              <p className="text-sm font-semibold text-orange-500 tracking-[0.12em] uppercase mb-2">Coming Soon</p>
+              <p className="text-base font-semibold text-gray-800 break-keep">고소작업대용 배터리 상품을 준비 중입니다.</p>
+              <p className="mt-2 text-sm text-gray-500 break-keep">상담을 통해 맞춤 견적을 받아보세요.</p>
+              <a
+                href="tel:1551-1873"
+                className="mt-5 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-orange-500 text-white font-semibold text-sm hover:bg-orange-400 transition-all"
+              >
+                상담 문의 1551-1873
+              </a>
+            </div>
+          )}
         </div>
       </section>
 
@@ -738,29 +706,41 @@ export default function BatteryShopPage() {
         aria-labelledby="golfcart-heading"
       >
         <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-6 md:py-8">
-          <CategoryHeader
+          <CategoryHero
             eyebrow="Golf Cart Battery"
             title="골프카트용 배터리"
             desc="골프카트 운영 조건에 맞는 LFP 배터리 구조를 제안합니다. 차종과 운행 패턴에 따라 맞춤 견적을 제공합니다."
+            imageSrc={golfcartHeroImage}
+            imageAlt="골프카트용 LFP 배터리"
           />
 
-          {/* ✅ ul/li — 견적 카드 목록 */}
-          <ul className="mt-8 grid gap-6 lg:grid-cols-2 list-none p-0" role="list">
-            <li>
-              <QuoteOnlyCard
-                title="골프장 / 리조트 운영"
-                desc="운영 대수, 충전 환경, 사용 빈도에 따라 적합한 배터리 용량과 구조가 달라집니다."
-                note="차종과 운영 대수, 사용 패턴을 알려주시면 맞춤 렌탈 조건을 검토해드립니다."
-              />
-            </li>
-            <li>
-              <QuoteOnlyCard
-                title="LFP 전환 상담"
-                desc="기존 납산 배터리에서 LFP 배터리로의 전환도 검토 가능합니다."
-                note="현장 조건을 바탕으로 배터리 전환 효과와 적용 가능 구조를 함께 안내드립니다."
-              />
-            </li>
-          </ul>
+          {csvLoading ? (
+            <p className="mt-8 text-sm text-gray-400">상품 정보를 불러오는 중입니다...</p>
+          ) : golfcartItems.length > 0 ? (
+            <ul
+              className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3 list-none p-0"
+              role="list"
+              aria-label="골프카트용 배터리 렌탈 상품 목록"
+            >
+              {golfcartItems.map((item) => (
+                <li key={item.model}>
+                  <RentalCard item={item} />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="mt-8 rounded-2xl border border-orange-100 bg-orange-50 px-6 py-10 text-center">
+              <p className="text-sm font-semibold text-orange-500 tracking-[0.12em] uppercase mb-2">Coming Soon</p>
+              <p className="text-base font-semibold text-gray-800 break-keep">골프카트용 배터리 상품을 준비 중입니다.</p>
+              <p className="mt-2 text-sm text-gray-500 break-keep">상담을 통해 맞춤 견적을 받아보세요.</p>
+              <a
+                href="tel:1551-1873"
+                className="mt-5 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-orange-500 text-white font-semibold text-sm hover:bg-orange-400 transition-all"
+              >
+                상담 문의 1551-1873
+              </a>
+            </div>
+          )}
         </div>
       </section>
 
