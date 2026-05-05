@@ -188,7 +188,8 @@ export default function PageHeader() {
     pathname === "/export-shop" ||
     pathname.startsWith("/export-shop/") ||
     pathname === "/battery-shop" ||
-    pathname.startsWith("/battery-shop/");
+    pathname.startsWith("/battery-shop/") ||
+    pathname === "/tire-rental";
 
   const workActive =
     pathname.startsWith("/work/") ||
@@ -444,6 +445,13 @@ export default function PageHeader() {
                     onClick={handleMenuNavigate}
                   >
                     타이어 쇼핑몰
+                  </Link>
+                  <Link
+                    to="/tire-rental"
+                    className={`${dropItem} text-orange-600 font-extrabold`}
+                    onClick={handleMenuNavigate}
+                  >
+                    화물차 타이어 렌탈 🆕
                   </Link>
                   <Link
                     to="/export-shop"

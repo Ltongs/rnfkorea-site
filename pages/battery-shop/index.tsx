@@ -494,7 +494,7 @@ function TopCategoryNav({ activeId }: { activeId: string }) {
             className={`inline-flex items-center justify-center rounded-2xl px-5 py-3 text-sm font-semibold transition md:px-6 md:text-base ${
               active
                 ? "border border-orange-500 bg-orange-500 text-white"
-                : "border border-gray-300 bg-white text-gray-800 hover:border-orange-300 hover:bg-orange-50 hover:text-orange-600"
+                : "border border-white/30 bg-white/10 text-white hover:bg-white/20 hover:border-white/50"
             }`}
           >
             {link.label}
@@ -504,7 +504,7 @@ function TopCategoryNav({ activeId }: { activeId: string }) {
 
       <a
         href="#consultation"
-        className="inline-flex items-center justify-center rounded-2xl border border-gray-300 bg-white px-5 py-3 text-sm font-semibold text-gray-800 transition hover:border-gray-400 hover:bg-gray-50 md:px-6 md:text-base"
+        className="inline-flex items-center justify-center rounded-2xl border border-white/30 bg-white/10 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/20 md:px-6 md:text-base"
       >
         상담 문의
       </a>
@@ -575,33 +575,41 @@ export default function BatteryShopPage() {
           Hero / 페이지 상단
           ======================================================== */}
       <section
-        className="border-b border-gray-200 bg-gradient-to-b from-orange-50 via-white to-white"
+        className="relative bg-[#0a192f] text-white overflow-hidden"
         aria-label="배터리 쇼핑몰 소개"
       >
-        <div className="mx-auto max-w-7xl px-6 py-14 md:px-10 md:py-20">
+        {/* 배경 패턴 */}
+        <div className="absolute inset-0 opacity-[0.04]" aria-hidden="true">
+          <div className="absolute inset-0" style={{
+            backgroundImage: "repeating-linear-gradient(45deg, white 0, white 1px, transparent 0, transparent 50%)",
+            backgroundSize: "24px 24px",
+          }} />
+        </div>
+
+        <div className="relative mx-auto max-w-7xl px-6 py-12 md:px-10 md:py-16">
           <div className="max-w-4xl">
-            <div className="inline-flex items-center rounded-2xl border border-orange-200 bg-white px-4 py-2 shadow-sm">
-              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-600 md:text-sm">
+            <div className="inline-flex items-center rounded-2xl border border-white/20 bg-white/10 px-4 py-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-400 md:text-sm">
                 Battery Solution Shop
               </span>
             </div>
 
-            {/* ✅ Breadcrumb */}
+            {/* Breadcrumb */}
             <nav aria-label="breadcrumb" className="mt-4">
               <ol
-                className="flex items-center text-sm text-gray-500"
+                className="flex items-center text-sm text-white/60"
                 itemScope
                 itemType="https://schema.org/BreadcrumbList"
               >
                 <li itemProp="itemListElement" itemScope itemType="https://schema.org/ListItem">
-                  <Link to="/" className="hover:text-orange-500 transition-colors" itemProp="item">
+                  <Link to="/" className="hover:text-white transition-colors" itemProp="item">
                     <span itemProp="name">Home</span>
                   </Link>
                   <meta itemProp="position" content="1" />
                 </li>
                 <li aria-hidden="true" className="mx-2">/</li>
                 <li
-                  className="text-gray-700 font-semibold"
+                  className="text-white/90 font-semibold"
                   itemProp="itemListElement"
                   itemScope
                   itemType="https://schema.org/ListItem"
@@ -613,12 +621,12 @@ export default function BatteryShopPage() {
               </ol>
             </nav>
 
-            {/* ✅ h1 — 핵심 키워드 포함 */}
-            <h1 className="mt-6 text-3xl font-semibold tracking-tight text-gray-900 md:text-5xl">
+            {/* h1 */}
+            <h1 className="mt-6 text-3xl font-semibold tracking-tight text-white md:text-5xl">
               배터리 쇼핑몰
             </h1>
 
-            <p className="mt-5 break-keep text-base leading-7 text-gray-600 md:text-xl md:leading-9">
+            <p className="mt-5 break-keep text-base leading-7 text-white/75 md:text-xl md:leading-9">
               지게차, 고소작업대, 골프카트에 적용 가능한 산업용 배터리를 확인하실 수 있습니다.
               <br />
               지게차 모델별 기본 렌탈료를 바로 확인하시고, 기타 장비는 맞춤 견적을 받아보세요.
