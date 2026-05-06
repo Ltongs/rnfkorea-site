@@ -308,7 +308,7 @@ const ExportOverviewPage: React.FC = () => {
                 연간 약 1만 대 폐차 대상 발생
               </h3>
               <p className="text-gray-600 leading-relaxed text-sm">
-                국내에서 매년 약 1만 대 이상의 노후 지게차가 교체 또는 폐차 대상으로 분류됩니다.
+                국내에서 매년 약 1만 대 이상의 중고 장비가 교체 또는 폐차 대상으로 분류됩니다.
                 단순 폐기 시 자원 손실과 비용 부담이 발생합니다.
               </p>
             </li>
@@ -361,9 +361,9 @@ const ExportOverviewPage: React.FC = () => {
           <dl className="grid md:grid-cols-4 gap-4">
             {[
               { label: "연식",   value: "8년~15년" },
-              { label: "엔진",   value: "디젤" },
+              { label: "엔진",   value: "디젤/전동" },
               { label: "톤수",   value: "2.5~7톤" },
-              { label: "브랜드", value: "현대/두산 중심" },
+              { label: "브랜드", value: "국내 유통 전 브랜드" },
             ].map(({ label, value }) => (
               <div key={label} className="rounded-2xl border border-gray-200 bg-white p-5">
                 <dt className="text-xs font-semibold text-gray-500">{label}</dt>
