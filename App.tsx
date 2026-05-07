@@ -1448,6 +1448,9 @@ const ExportShopPage: React.FC = () => {
   const [errMsg, setErrMsg] = useState<string>("");
 
   useEffect(() => {
+    // prerender 환경(Node.js SSG)에서는 외부 fetch 생략 — 무한 대기 방지
+    if (typeof window === "undefined") return;
+
     let alive = true;
     (async () => {
       setLoading(true);
