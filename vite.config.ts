@@ -32,11 +32,23 @@ export default defineConfig(({ mode }) => {
           // '/battery-shop',
           // '/export-shop',
         ],
+
       }),
     ],
     define: {
       'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+            'vendor-supabase': ['@supabase/supabase-js'],
+            'vendor-ui': ['lucide-react', 'react-helmet-async'],
+          },
+        },
+      },
     },
     resolve: {
       alias: {
