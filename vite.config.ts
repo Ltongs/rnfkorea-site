@@ -27,9 +27,10 @@ export default defineConfig(({ mode }) => {
           '/finance',
           '/cargo-finance',
           '/tire-rental',
-          '/tires-shop',
-          '/battery-shop',
-          '/export-shop',
+          // CSV fetch로 인한 무한 대기 방지 — 쇼핑 페이지는 prerender 제외
+          // '/tires-shop',
+          // '/battery-shop',
+          // '/export-shop',
         ],
       }),
     ],
