@@ -18,6 +18,7 @@ export default defineConfig(({ mode }) => {
         prerenderScript: './src/prerender.tsx',
         renderTarget: '#root',
         // 프리렌더링할 페이지 경로 목록
+        // 업무용/인증 필요 페이지는 제외 (SEO 불필요 + Supabase 호출로 무한 대기 방지)
         additionalPrerenderRoutes: [
           '/',
           '/tires',
