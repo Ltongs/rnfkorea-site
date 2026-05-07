@@ -5,24 +5,28 @@ import { useAuth } from "../../lib/auth";
 
 // ─── 정책 ─────────────────────────────────────────────────
 const HIDE_CLOSED_AFTER_DAYS_FOR_NON_ADMIN = 30;
+const DOC_DELETE_AFTER_HOURS = 24;   // 확정 후 24시간 경과 시 첨부파일 삭제
+const PHONE_MASK_AFTER_HOURS = 24;    // 확정 후 24시간 경과 시 전화번호 마스킹
 
 // ─── 타입 ─────────────────────────────────────────────────
 type CustomerType = "개인" | "법인";
-type HCMStatus    = "접수" | "신용조회" | "서류업로드" | "승인" | "종료";
+type HCMStatus    = "접수" | "신용조회" | "승인" | "보완" | "거절" | "서류등록" | "전자계약발송" | "확정";
+
+type FinanceCompany = "NH캐피탈" | "오릭스캐피탈" | "우리금융캐피탈";
 
 type HCMTask = {
   id: string | number;
   customer_type: CustomerType;
   customer_name: string;
   customer_phone: string | null;
-  customer_id_no: string | null;
   company_name: string | null;
-  equipment_model: string | null;
-  equipment_serial: string | null;
-  purchase_amount: number | null;
-  finance_company: string | null;
+  equipment_ton: string | null;        // 톤수
+  purchase_amount: number | null;      // 차량가격
+  installment_principal: number | null; // 할부원금
+  finance_company: string | null;      // 할부금융사
+  interest_rate: number | null;        // 금리
+  incentive: number | null;            // 인센티브
   sales_rep: string | null;
-  sales_rep_phone: string | null;
   status: HCMStatus;
   special_note: string | null;
   doc_id_card: string | null;
@@ -33,6 +37,7 @@ type HCMTask = {
   doc_etc: string | null;
   created_at?: string;
   closed_at?: string | null;
+  phone_scrubbed_at?: string | null;
 };
 
 // ─── 유틸 ─────────────────────────────────────────────────
@@ -52,6 +57,35 @@ function formatCreatedAt(s?: string) {
   return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,"0")}.${String(d.getDate()).padStart(2,"0")} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
 }
 
+function shouldMaskPhone(r: HCMTask) {
+  // DB에서 영구 마스킹된 경우
+  if (r.phone_scrubbed_at) return true;
+  // 확정 후 24시간 경과
+  if (!r.closed_at) return false;
+  const t = new Date(r.closed_at).getTime();
+  if (Number.isNaN(t)) return false;
+  return (Date.now() - t) / (1000 * 60 * 60) >= PHONE_MASK_AFTER_HOURS;
+}
+
+function maskPhone(phone: string | null) {
+  if (!phone) return "-";
+  const d = onlyDigits(phone);
+  if (d.length < 8) return phone;
+  return formatPhoneKR(d.slice(0, d.length - 4) + "****");
+}
+
+function getDisplayPhone(r: HCMTask) {
+  if (!r.customer_phone) return "-";
+  return shouldMaskPhone(r) ? maskPhone(r.customer_phone) : formatPhoneKR(r.customer_phone);
+}
+
+function isDocExpired(closedAt?: string | null) {
+  if (!closedAt) return false;
+  const t = new Date(closedAt).getTime();
+  if (Number.isNaN(t)) return false;
+  return (Date.now() - t) / (1000 * 60 * 60) >= DOC_DELETE_AFTER_HOURS;
+}
+
 function formatAmount(n: number | null) {
   if (n == null) return "-";
   return n.toLocaleString("ko-KR") + "원";
@@ -63,24 +97,28 @@ function extFromName(name: string) {
 }
 
 // ─── 상태 설정 ────────────────────────────────────────────
-const STATUS_ORDER: HCMStatus[] = ["접수", "신용조회", "서류업로드", "승인", "종료"];
+const STATUS_ORDER: HCMStatus[] = ["접수", "신용조회", "서류등록", "전자계약발송", "확정"];
+const CREDIT_STATUSES: HCMStatus[] = ["승인", "보완", "거절"];
 
 function statusStyle(status: HCMStatus) {
   switch (status) {
-    case "접수":       return "bg-gray-100 text-gray-600 border-gray-200";
-    case "신용조회":   return "bg-orange-50 text-orange-600 border-orange-200";
-    case "서류업로드": return "bg-orange-50 text-orange-700 border-orange-200";
-    case "승인":       return "bg-emerald-50 text-emerald-700 border-emerald-200";
-    case "종료":       return "bg-gray-100 text-gray-400 border-gray-200";
-    default:           return "bg-gray-50 text-gray-500 border-gray-200";
+    case "접수":     return "bg-gray-100 text-gray-600 border-gray-200";
+    case "신용조회": return "bg-orange-50 text-orange-600 border-orange-200";
+    case "승인":     return "bg-emerald-50 text-emerald-700 border-emerald-200";
+    case "보완":     return "bg-yellow-50 text-yellow-700 border-yellow-200";
+    case "거절":     return "bg-red-50 text-red-600 border-red-200";
+    case "서류등록":     return "bg-orange-50 text-orange-700 border-orange-200";
+    case "전자계약발송": return "bg-blue-50 text-blue-700 border-blue-200";
+    case "확정":     return "bg-emerald-100 text-emerald-800 border-emerald-300";
+    default:         return "bg-gray-50 text-gray-500 border-gray-200";
   }
 }
 
 // ─── 서류 목록 ────────────────────────────────────────────
 const DOC_FIELDS: { key: keyof HCMTask; label: string; dbCol: string }[] = [
   { key: "doc_id_card",           label: "신분증",               dbCol: "doc_id_card" },
-  { key: "doc_employment",        label: "재직증명서/사업자등록증", dbCol: "doc_employment" },
-  { key: "doc_income",            label: "소득증빙",              dbCol: "doc_income" },
+  { key: "doc_employment",        label: "사업자등록증",            dbCol: "doc_employment" },
+  { key: "doc_income",            label: "통장사본",              dbCol: "doc_income" },
   { key: "doc_estimate",          label: "견적서/계약서",         dbCol: "doc_estimate" },
   { key: "doc_excavator_license", label: "굴삭기조종면허증",      dbCol: "doc_excavator_license" },
   { key: "doc_etc",               label: "기타서류",              dbCol: "doc_etc" },
@@ -117,18 +155,18 @@ export default function HyundaiCMPage() {
   const canDelete       = isAdmin;
 
   // ── 신규 접수 폼 ──
-  const [customerType,     setCustomerType]     = useState<CustomerType>("개인");
-  const [customerName,     setCustomerName]     = useState("");
-  const [customerPhone,    setCustomerPhone]    = useState("");
-  const [customerIdNo,     setCustomerIdNo]     = useState("");
-  const [companyName,      setCompanyName]      = useState("");
-  const [equipmentModel,   setEquipmentModel]   = useState("");
-  const [equipmentSerial,  setEquipmentSerial]  = useState("");
-  const [purchaseAmount,   setPurchaseAmount]   = useState("");
-  const [financeCompany,   setFinanceCompany]   = useState("");
-  const [salesRep,         setSalesRep]         = useState("");
-  const [salesRepPhone,    setSalesRepPhone]    = useState("");
-  const [specialNote,      setSpecialNote]      = useState("");
+  const [customerType,          setCustomerType]          = useState<CustomerType>("개인");
+  const [customerName,          setCustomerName]          = useState("");
+  const [customerPhone,         setCustomerPhone]         = useState("");
+  const [companyName,           setCompanyName]           = useState("");
+  const [equipmentTon,          setEquipmentTon]          = useState("");
+  const [purchaseAmount,        setPurchaseAmount]        = useState("");
+  const [installmentPrincipal,  setInstallmentPrincipal]  = useState("");
+  const [financeCompany,        setFinanceCompany]        = useState<string>("NH캐피탈");
+  const [interestRate,          setInterestRate]          = useState("");
+  const [incentive,             setIncentive]             = useState("");
+  const [salesRep,              setSalesRep]              = useState("");
+  const [specialNote,           setSpecialNote]           = useState("");
 
   // ── 데이터 ──
   const [rows,    setRows]    = useState<HCMTask[]>([]);
@@ -144,24 +182,27 @@ export default function HyundaiCMPage() {
   const [showClosed,      setShowClosed]      = useState(false);
 
   // ── 수정 모달 ──
-  const [editRow,            setEditRow]            = useState<HCMTask | null>(null);
-  const [editSaving,         setEditSaving]         = useState(false);
-  const [editCustomerType,   setEditCustomerType]   = useState<CustomerType>("개인");
-  const [editCustomerName,   setEditCustomerName]   = useState("");
-  const [editCustomerPhone,  setEditCustomerPhone]  = useState("");
-  const [editCustomerIdNo,   setEditCustomerIdNo]   = useState("");
-  const [editCompanyName,    setEditCompanyName]    = useState("");
-  const [editEquipmentModel, setEditEquipmentModel] = useState("");
-  const [editEquipmentSerial,setEditEquipmentSerial]= useState("");
-  const [editPurchaseAmount, setEditPurchaseAmount] = useState("");
-  const [editFinanceCompany, setEditFinanceCompany] = useState("");
-  const [editSalesRep,       setEditSalesRep]       = useState("");
-  const [editSalesRepPhone,  setEditSalesRepPhone]  = useState("");
-  const [editSpecialNote,    setEditSpecialNote]    = useState("");
+  const [editRow,                   setEditRow]                   = useState<HCMTask | null>(null);
+  const [editSaving,                setEditSaving]                = useState(false);
+  const [editCustomerType,          setEditCustomerType]          = useState<CustomerType>("개인");
+  const [editCustomerName,          setEditCustomerName]          = useState("");
+  const [editCustomerPhone,         setEditCustomerPhone]         = useState("");
+  const [editCompanyName,           setEditCompanyName]           = useState("");
+  const [editEquipmentTon,          setEditEquipmentTon]          = useState("");
+  const [editPurchaseAmount,        setEditPurchaseAmount]        = useState("");
+  const [editInstallmentPrincipal,  setEditInstallmentPrincipal]  = useState("");
+  const [editFinanceCompany,        setEditFinanceCompany]        = useState<string>("NH캐피탈");
+  const [editInterestRate,          setEditInterestRate]          = useState("");
+  const [editIncentive,             setEditIncentive]             = useState("");
+  const [editSalesRep,              setEditSalesRep]              = useState("");
+  const [editSpecialNote,           setEditSpecialNote]           = useState("");
 
   // ── 메모 ──
   const [memoDrafts,   setMemoDrafts]   = useState<Record<string, string>>({});
   const [memoSavingId, setMemoSavingId] = useState<string | number | null>(null);
+
+  // ── 신용결과 추적 (승인/보완/거절 → 서류등록/확정으로 넘어가도 마지막 값 유지) ──
+  const [creditResults, setCreditResults] = useState<Record<string, HCMStatus>>({});
 
   // ── 업로드 ──
   const [uploadingDocKey,   setUploadingDocKey]   = useState<string | null>(null);
@@ -174,6 +215,17 @@ export default function HyundaiCMPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | number | null>(null);
   const [deleting,        setDeleting]        = useState(false);
 
+  // ── 확정 카드 펼침/접힘 ──
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const toggleExpand = (id: string | number) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(String(id))) next.delete(String(id));
+      else next.add(String(id));
+      return next;
+    });
+  };
+
   // ─── FETCH ──────────────────────────────────────────────
   const fetchRows = async () => {
     setLoading(true); setErr("");
@@ -184,9 +236,9 @@ export default function HyundaiCMPage() {
 
       let q = supabase.from("hyundaicm_tasks").select("*");
       if (!isAdmin) {
-        q = q.or(`status.neq.종료,created_at.gte.${cutoffISO}`);
+        q = q.or(`status.neq.확정,created_at.gte.${cutoffISO}`);
       } else if (!showClosed) {
-        q = q.or(`status.neq.종료,created_at.gte.${cutoffISO}`);
+        q = q.or(`status.neq.확정,created_at.gte.${cutoffISO}`);
       }
 
       const { data, error } = await q.order("created_at", { ascending: false });
@@ -195,8 +247,16 @@ export default function HyundaiCMPage() {
       const nextRows = (data ?? []) as HCMTask[];
       setRows(nextRows);
       const drafts: Record<string, string> = {};
-      nextRows.forEach((r) => { drafts[String(r.id)] = r.special_note ?? ""; });
+      const credits: Record<string, HCMStatus> = {};
+      nextRows.forEach((r) => {
+        drafts[String(r.id)] = r.special_note ?? "";
+        // 신용결과 초기값: 현재 상태가 승인/보완/거절이면 그 값, 아니면 기존 저장값 유지
+        if (["승인","보완","거절"].includes(r.status)) {
+          credits[String(r.id)] = r.status as HCMStatus;
+        }
+      });
       setMemoDrafts(drafts);
+      setCreditResults((prev) => ({ ...prev, ...credits }));
     } catch (e: any) {
       setErr(e?.message || "데이터 로드 실패");
     } finally {
@@ -215,14 +275,12 @@ export default function HyundaiCMPage() {
       result = result.filter((r) =>
         (r.customer_name ?? "").toLowerCase().includes(q) ||
         (r.company_name ?? "").toLowerCase().includes(q) ||
-        (r.equipment_model ?? "").toLowerCase().includes(q) ||
-        (r.equipment_serial ?? "").toLowerCase().includes(q) ||
+        (r.equipment_ton ?? "").toLowerCase().includes(q) ||
         (r.finance_company ?? "").toLowerCase().includes(q) ||
         (r.sales_rep ?? "").toLowerCase().includes(q) ||
         (r.special_note ?? "").toLowerCase().includes(q) ||
         String(r.id).includes(q) ||
-        (qd ? onlyDigits(r.customer_phone ?? "").includes(qd) : false) ||
-        (qd ? onlyDigits(r.sales_rep_phone ?? "").includes(qd) : false)
+        (qd ? onlyDigits(r.customer_phone ?? "").includes(qd) : false)
       );
     }
     if (statusFilter !== "all") result = result.filter((r) => r.status === statusFilter);
@@ -236,38 +294,56 @@ export default function HyundaiCMPage() {
     }, {} as Record<HCMStatus, number>)
   , [rows]);
 
+  // 월내 순번 맵: 같은 연월의 건들을 created_at 오름차순으로 정렬해 순번 부여
+  const caseNoMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    const sorted = [...rows].sort((a, b) =>
+      new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime()
+    );
+    const monthCount: Record<string, number> = {};
+    sorted.forEach((r) => {
+      const d = new Date(r.created_at ?? 0);
+      const ym = d.getFullYear().toString() + String(d.getMonth() + 1).padStart(2, "0");
+      monthCount[ym] = (monthCount[ym] ?? 0) + 1;
+      map[String(r.id)] = `${ym}-${String(monthCount[ym]).padStart(3, "0")}`;
+    });
+    return map;
+  }, [rows]);
+
   // ─── 신규 접수 ───────────────────────────────────────────
   const onReset = () => {
     setCustomerType("개인"); setCustomerName(""); setCustomerPhone("");
-    setCustomerIdNo(""); setCompanyName(""); setEquipmentModel("");
-    setEquipmentSerial(""); setPurchaseAmount(""); setFinanceCompany("");
-    setSalesRep(""); setSalesRepPhone(""); setSpecialNote("");
+    setCompanyName(""); setEquipmentTon(""); setPurchaseAmount("");
+    setInstallmentPrincipal(""); setFinanceCompany("NH캐피탈");
+    setInterestRate(""); setIncentive("");
+    setSalesRep(""); setSpecialNote("");
   };
 
   const onAdd = async () => {
     if (!canCreate) { alert("신규 입력 권한이 없습니다."); return; }
     if (!customerName.trim())  { alert("고객명을 입력해주세요."); return; }
     if (!customerPhone.trim()) { alert("고객 전화번호를 입력해주세요."); return; }
-    if (!equipmentModel.trim()){ alert("건설기계 모델명을 입력해주세요."); return; }
+    
     if (!salesRep.trim())      { alert("영업사원을 입력해주세요."); return; }
     if (customerType === "법인" && !companyName.trim()) { alert("법인명을 입력해주세요."); return; }
 
     setSaving(true); setErr("");
     try {
       const payload = {
-        customer_type:    customerType,
-        customer_name:    customerName.trim(),
-        customer_phone:   onlyDigits(customerPhone) || null,
-        customer_id_no:   customerIdNo.trim() || null,
-        company_name:     customerType === "법인" ? companyName.trim() : null,
-        equipment_model:  equipmentModel.trim(),
-        equipment_serial: equipmentSerial.trim() || null,
-        purchase_amount:  purchaseAmount.trim() ? parseInt(onlyDigits(purchaseAmount), 10) || null : null,
-        finance_company:  financeCompany.trim() || null,
-        sales_rep:        salesRep.trim(),
-        sales_rep_phone:  onlyDigits(salesRepPhone) || null,
-        special_note:     specialNote.trim() || null,
-        status:           "접수" as HCMStatus,
+        customer_type:           customerType,
+        customer_name:           customerName.trim(),
+        customer_phone:          onlyDigits(customerPhone) || null,
+        company_name:            customerType === "법인" ? companyName.trim() : null,
+        equipment_ton:           equipmentTon.trim() || null,
+        purchase_amount:         purchaseAmount.trim() ? parseInt(onlyDigits(purchaseAmount), 10) || null : null,
+        installment_principal:   installmentPrincipal.trim() ? parseInt(onlyDigits(installmentPrincipal), 10) || null : null,
+        finance_company:         financeCompany || null,
+        interest_rate:           interestRate.trim() ? parseFloat(interestRate) || null : null,
+        incentive:               incentive.trim() ? parseFloat(incentive) || null : null,
+        sales_rep:               salesRep.trim(),
+        special_note:            specialNote.trim() || null,
+        status:                  "접수" as HCMStatus,
+        phone_scrubbed_at:       null,
         doc_id_card: null, doc_employment: null, doc_income: null,
         doc_estimate: null, doc_excavator_license: null, doc_etc: null,
         closed_at: null,
@@ -286,7 +362,11 @@ export default function HyundaiCMPage() {
     if (!canChangeStatus) { alert("상태 변경 권한이 없습니다."); return; }
     if (row.status === next) return;
     const patch: Partial<HCMTask> = { status: next };
-    if (next === "종료") patch.closed_at = new Date().toISOString();
+    if (next === "확정") patch.closed_at = new Date().toISOString();
+    // 신용결과(승인/보완/거절) 변경 시 추적
+    if (["승인","보완","거절"].includes(next)) {
+      setCreditResults((prev) => ({ ...prev, [String(row.id)]: next }));
+    }
     setRows((prev) => prev.map((r) => String(r.id) === String(row.id) ? { ...r, ...patch } : r));
     const { error } = await supabase.from("hyundaicm_tasks").update(patch).eq("id", row.id as any);
     if (error) {
@@ -314,14 +394,14 @@ export default function HyundaiCMPage() {
     setEditCustomerType(row.customer_type ?? "개인");
     setEditCustomerName(row.customer_name ?? "");
     setEditCustomerPhone(formatPhoneKR(row.customer_phone ?? ""));
-    setEditCustomerIdNo(row.customer_id_no ?? "");
     setEditCompanyName(row.company_name ?? "");
-    setEditEquipmentModel(row.equipment_model ?? "");
-    setEditEquipmentSerial(row.equipment_serial ?? "");
+    setEditEquipmentTon(row.equipment_ton ?? "");
     setEditPurchaseAmount(row.purchase_amount != null ? String(row.purchase_amount) : "");
-    setEditFinanceCompany(row.finance_company ?? "");
+    setEditInstallmentPrincipal(row.installment_principal != null ? String(row.installment_principal) : "");
+    setEditFinanceCompany(row.finance_company ?? "NH캐피탈");
+    setEditInterestRate(row.interest_rate != null ? String(row.interest_rate) : "");
+    setEditIncentive(row.incentive != null ? String(row.incentive) : "");
     setEditSalesRep(row.sales_rep ?? "");
-    setEditSalesRepPhone(formatPhoneKR(row.sales_rep_phone ?? ""));
     setEditSpecialNote(row.special_note ?? "");
   };
 
@@ -333,17 +413,22 @@ export default function HyundaiCMPage() {
     setEditSaving(true);
     try {
       const patch = {
-        customer_type: editCustomerType, customer_name: editCustomerName.trim(),
-        customer_phone: onlyDigits(editCustomerPhone) || null,
-        customer_id_no: editCustomerIdNo.trim() || null,
-        company_name: editCustomerType === "법인" ? editCompanyName.trim() : null,
-        equipment_model: editEquipmentModel.trim() || null,
-        equipment_serial: editEquipmentSerial.trim() || null,
-        purchase_amount: editPurchaseAmount.trim() ? parseInt(onlyDigits(editPurchaseAmount), 10) || null : null,
-        finance_company: editFinanceCompany.trim() || null,
-        sales_rep: editSalesRep.trim() || null,
-        sales_rep_phone: onlyDigits(editSalesRepPhone) || null,
-        special_note: editSpecialNote.trim() || null,
+        customer_type:          editCustomerType,
+        customer_name:          editCustomerName.trim(),
+        customer_phone:         onlyDigits(editCustomerPhone) || null,
+        company_name:           editCustomerType === "법인" ? editCompanyName.trim() : null,
+        equipment_ton:          editEquipmentTon.trim() || null,
+        purchase_amount:        editPurchaseAmount.trim() ? parseInt(onlyDigits(editPurchaseAmount), 10) || null : null,
+        installment_principal:  editInstallmentPrincipal.trim() ? parseInt(onlyDigits(editInstallmentPrincipal), 10) || null : null,
+        finance_company:        editFinanceCompany || null,
+        interest_rate:          editInterestRate.trim() ? parseFloat(editInterestRate) || null : null,
+        incentive:              editIncentive.trim() ? parseFloat(editIncentive) || null : null,
+        sales_rep:              editSalesRep.trim() || null,
+        special_note:           editSpecialNote.trim() || null,
+        // 전화번호 변경 시 마스킹 초기화
+        ...(onlyDigits(editCustomerPhone) !== onlyDigits(editRow?.customer_phone ?? "")
+          ? { phone_scrubbed_at: null }
+          : {}),
       };
       const { error } = await supabase.from("hyundaicm_tasks").update(patch).eq("id", editRow.id as any);
       if (error) throw error;
@@ -555,10 +640,6 @@ export default function HyundaiCMPage() {
                 <label className={labelClass}>전화번호 *</label>
                 <input value={customerPhone} onChange={(e) => setCustomerPhone(formatPhoneKR(e.target.value))} placeholder="010-1234-5678" inputMode="tel" className={inputClass} />
               </div>
-              <div>
-                <label className={labelClass}>{customerType === "법인" ? "사업자번호" : "주민번호 앞 6자리"}</label>
-                <input value={customerIdNo} onChange={(e) => setCustomerIdNo(e.target.value)} placeholder={customerType === "법인" ? "000-00-00000" : "YYMMDD"} className={inputClass} />
-              </div>
               {customerType === "법인" && (
                 <div>
                   <label className={labelClass}>법인명 *</label>
@@ -566,29 +647,38 @@ export default function HyundaiCMPage() {
                 </div>
               )}
               <div>
-                <label className={labelClass}>건설기계 모델명 *</label>
-                <input value={equipmentModel} onChange={(e) => setEquipmentModel(e.target.value)} placeholder="HX220AL" className={inputClass} />
+                <label className={labelClass}>톤수</label>
+                <input value={equipmentTon} onChange={(e) => setEquipmentTon(e.target.value)} placeholder="예: 20톤" className={inputClass} />
               </div>
               <div>
-                <label className={labelClass}>장비 일련번호</label>
-                <input value={equipmentSerial} onChange={(e) => setEquipmentSerial(e.target.value)} placeholder="KMHX220ALXXXXXX" className={inputClass} />
-              </div>
-              <div>
-                <label className={labelClass}>구매금액 (원)</label>
+                <label className={labelClass}>차량가격 (원)</label>
                 <input value={purchaseAmount} onChange={(e) => setPurchaseAmount(onlyDigits(e.target.value))} placeholder="150000000" inputMode="numeric" className={inputClass} />
               </div>
               <div>
+                <label className={labelClass}>할부원금 (원)</label>
+                <input value={installmentPrincipal} onChange={(e) => setInstallmentPrincipal(onlyDigits(e.target.value))} placeholder="120000000" inputMode="numeric" className={inputClass} />
+              </div>
+              <div>
                 <label className={labelClass}>할부금융사</label>
-                <input value={financeCompany} onChange={(e) => setFinanceCompany(e.target.value)} placeholder="현대캐피탈" className={inputClass} />
+                <select value={financeCompany} onChange={(e) => setFinanceCompany(e.target.value)} className={inputClass}>
+                  <option value="NH캐피탈">NH캐피탈</option>
+                  <option value="오릭스캐피탈">오릭스캐피탈</option>
+                  <option value="우리금융캐피탈">우리금융캐피탈</option>
+                </select>
+              </div>
+              <div>
+                <label className={labelClass}>금리 (%)</label>
+                <input value={interestRate} onChange={(e) => setInterestRate(e.target.value)} placeholder="예: 4.5" inputMode="decimal" className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>인센티브 (%)</label>
+                <input value={incentive} onChange={(e) => setIncentive(e.target.value)} placeholder="예: 1.2" inputMode="decimal" className={inputClass} />
               </div>
               <div>
                 <label className={labelClass}>영업사원 *</label>
                 <input value={salesRep} onChange={(e) => setSalesRep(e.target.value)} placeholder="홍길동" className={inputClass} />
               </div>
-              <div>
-                <label className={labelClass}>영업사원 연락처</label>
-                <input value={salesRepPhone} onChange={(e) => setSalesRepPhone(formatPhoneKR(e.target.value))} placeholder="010-9999-8888" inputMode="tel" className={inputClass} />
-              </div>
+
             </div>
 
             <div className="mt-4">
@@ -626,24 +716,52 @@ export default function HyundaiCMPage() {
             const memoVal     = memoDrafts[String(r.id)] ?? r.special_note ?? "";
             const memoChanged = memoVal !== (r.special_note ?? "");
 
+            const docExpired   = isDocExpired(r.closed_at);
+            const phoneMasked  = shouldMaskPhone(r);
+            const isConfirmed  = r.status === "확정" || r.status === "거절";
+            const isExpanded   = expandedIds.has(String(r.id));
+
             return (
-              <div key={r.id} className="rounded-2xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-all overflow-hidden">
+              <div key={r.id} className={`rounded-2xl border bg-white shadow-sm transition-all overflow-hidden ${
+                r.status === "거절" ? "border-red-200" :
+                r.status === "확정" ? "border-emerald-200" :
+                "border-gray-200 hover:shadow-md"
+              }`}>
 
                 {/* 카드 헤더 */}
                 <div className="flex items-start justify-between gap-3 px-6 pt-5 pb-4 border-b border-gray-100">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className={`inline-flex items-center px-3 py-1 rounded-2xl border text-xs font-semibold ${statusStyle(r.status)}`}>
-                      {r.status}
-                    </span>
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-2xl border border-gray-200 bg-gray-50 text-xs font-medium text-gray-600">
-                      {r.customer_type}
+                    <span className="text-xs font-semibold text-gray-500 font-mono">
+                      {caseNoMap[String(r.id)] ?? "-"}
                     </span>
                     <span className="text-base font-semibold text-navy-900">
                       {r.customer_name}{r.company_name ? ` (${r.company_name})` : ""}
                     </span>
-                    <span className="text-xs text-gray-400">#{String(r.id)}</span>
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-2xl border border-gray-200 bg-gray-50 text-xs font-medium text-gray-600">
+                      {r.customer_type}
+                    </span>
+                    <span className={`inline-flex items-center px-3 py-1 rounded-2xl border text-xs font-semibold ${statusStyle(r.status)}`}>
+                      {r.status}
+                    </span>
+                    {shouldMaskPhone(r) && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-2xl bg-gray-100 border border-gray-200 text-gray-400 text-[10px] font-medium">
+                        개인정보 마스킹
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
+                    {isConfirmed && (
+                      <button
+                        onClick={() => toggleExpand(r.id)}
+                        className={`inline-flex items-center justify-center px-4 py-2 rounded-2xl border text-sm font-medium transition-all ${
+                          r.status === "거절"
+                            ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
+                            : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                        }`}
+                      >
+                        {isExpanded ? "접기 ↑" : "펼치기 ↓"}
+                      </button>
+                    )}
                     <button onClick={() => openEditModal(r)} className={btnGhost}>수정</button>
                     {canDelete && (
                       <button
@@ -654,17 +772,24 @@ export default function HyundaiCMPage() {
                   </div>
                 </div>
 
-                {/* 카드 바디 */}
+                {/* 카드 바디 — 확정 상태면 펼쳤을 때만 표시 */}
+                {(!isConfirmed || isExpanded) && (
                 <div className="px-6 py-5 grid md:grid-cols-2 gap-6">
                   {/* 왼쪽: 기본 정보 */}
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-3">
                       {[
-                        { label: "전화번호",   value: r.customer_phone ? formatPhoneKR(r.customer_phone) : "-" },
+                        { label: "전화번호",   value: getDisplayPhone(r) },
                         { label: "할부금융사", value: r.finance_company ?? "-" },
-                        { label: "장비 모델",  value: r.equipment_model ?? "-" },
-                        { label: "구매금액",   value: formatAmount(r.purchase_amount) },
-                        { label: "영업사원",   value: [r.sales_rep, r.sales_rep_phone ? formatPhoneKR(r.sales_rep_phone) : ""].filter(Boolean).join(" / ") || "-" },
+                        { label: "톤수",       value: r.equipment_ton ?? "-" },
+                        { label: "차량가격",   value: formatAmount(r.purchase_amount) },
+                        { label: "할부원금",   value: formatAmount(r.installment_principal) },
+                        { label: "선수율",     value: (r.purchase_amount && r.installment_principal != null)
+                            ? `${(((r.purchase_amount - r.installment_principal) / r.purchase_amount) * 100).toFixed(1)}%`
+                            : "-" },
+                        { label: "금리",       value: r.interest_rate != null ? `${r.interest_rate}%` : "-" },
+                        { label: "인센티브",   value: r.incentive != null ? `${r.incentive}%` : "-" },
+                        { label: "영업사원",   value: r.sales_rep ?? "-" },
                         { label: "접수일시",   value: formatCreatedAt(r.created_at) },
                       ].map(({ label, value }) => (
                         <div key={label}>
@@ -678,14 +803,50 @@ export default function HyundaiCMPage() {
                     <div>
                       <p className="text-xs font-medium tracking-wide text-gray-400 uppercase mb-2">진행 단계</p>
                       <div className="flex flex-wrap gap-1.5">
-                        {STATUS_ORDER.map((s) => (
+                        {/* 접수, 신용조회 버튼 */}
+                        {["접수", "신용조회"].map((s) => (
                           <button
                             key={s}
                             disabled={!canChangeStatus || r.status === s}
-                            onClick={() => changeStatus(r, s)}
+                            onClick={() => changeStatus(r, s as HCMStatus)}
                             className={`px-3 py-1 rounded-2xl border text-xs font-semibold transition-all
                               ${r.status === s
-                                ? statusStyle(s) + " ring-2 ring-offset-1 ring-orange-200/60"
+                                ? statusStyle(s as HCMStatus) + " ring-2 ring-offset-1 ring-orange-200/60"
+                                : "bg-white border-gray-200 text-gray-500 hover:border-orange-200 hover:text-orange-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                              }`}
+                          >{s}</button>
+                        ))}
+
+                        {/* 신용결과 드롭다운 (승인/보완/거절) */}
+                        <div className="relative">
+                          <select
+                            disabled={!canChangeStatus}
+                            value={CREDIT_STATUSES.includes(r.status as any) ? r.status : (creditResults[String(r.id)] ?? "")}
+                            onChange={(e) => { if (e.target.value) changeStatus(r, e.target.value as HCMStatus); }}
+                            className={`px-3 py-1 rounded-2xl border text-xs font-semibold transition-all appearance-none pr-6 cursor-pointer
+                              ${CREDIT_STATUSES.includes(r.status as any)
+                                ? statusStyle(r.status) + " ring-2 ring-offset-1 ring-orange-200/60"
+                                : creditResults[String(r.id)]
+                                  ? statusStyle(creditResults[String(r.id)]!) + " opacity-70"
+                                  : "bg-white border-gray-200 text-gray-500 hover:border-orange-200 hover:text-orange-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                              }`}
+                          >
+                            <option value="" disabled>신용결과 ▾</option>
+                            {CREDIT_STATUSES.map((s) => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* 서류등록, 확정 버튼 */}
+                        {["서류등록", "전자계약발송", "확정"].map((s) => (
+                          <button
+                            key={s}
+                            disabled={!canChangeStatus || r.status === s}
+                            onClick={() => changeStatus(r, s as HCMStatus)}
+                            className={`px-3 py-1 rounded-2xl border text-xs font-semibold transition-all
+                              ${r.status === s
+                                ? statusStyle(s as HCMStatus) + " ring-2 ring-offset-1 ring-orange-200/60"
                                 : "bg-white border-gray-200 text-gray-500 hover:border-orange-200 hover:text-orange-600 disabled:opacity-40 disabled:cursor-not-allowed"
                               }`}
                           >{s}</button>
@@ -696,7 +857,14 @@ export default function HyundaiCMPage() {
 
                   {/* 오른쪽: 증빙서류 */}
                   <div>
-                    <p className="text-xs font-medium tracking-wide text-gray-400 uppercase mb-3">증빙서류</p>
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-xs font-medium tracking-wide text-gray-400 uppercase">증빙서류</p>
+                      {docExpired && (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-2xl bg-gray-100 border border-gray-200 text-gray-400 text-xs font-semibold">
+                          확정 후 24시간 경과 — 파일 삭제됨
+                        </span>
+                      )}
+                    </div>
                     <div className="space-y-2.5">
                       {DOC_FIELDS.map((f) => {
                         const path        = r[f.key] as string | null;
@@ -705,7 +873,9 @@ export default function HyundaiCMPage() {
                           <div key={f.key} className="flex items-center justify-between gap-3">
                             <span className="text-sm font-medium text-gray-600 w-36 shrink-0">{f.label}</span>
                             <div className="flex items-center gap-2">
-                              {path ? (
+                              {docExpired ? (
+                                <span className="text-xs text-gray-400 font-medium">삭제됨</span>
+                              ) : path ? (
                                 <>
                                   <span className="inline-flex items-center px-2.5 py-1 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
                                     ✓ 완료
@@ -731,8 +901,10 @@ export default function HyundaiCMPage() {
                     </div>
                   </div>
                 </div>
+                )}
 
-                {/* 메모 */}
+                {/* 메모 — 확정 시 펼쳤을 때만 표시 */}
+                {(!isConfirmed || isExpanded) && (
                 <div className="px-6 pb-5 border-t border-gray-100 pt-4">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium tracking-wide text-gray-400 uppercase">특이사항 / 메모</p>
@@ -749,6 +921,7 @@ export default function HyundaiCMPage() {
                     className="w-full h-[72px] text-sm text-gray-700 rounded-2xl bg-gray-50 border border-gray-200 px-4 py-2.5 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 resize-none transition-all"
                   />
                 </div>
+                )}
               </div>
             );
           })}
@@ -772,14 +945,14 @@ export default function HyundaiCMPage() {
               <div><label className={labelClass}>고객 유형</label><select value={editCustomerType} onChange={(e) => setEditCustomerType(e.target.value as CustomerType)} className={inputClass} disabled={editSaving}><option value="개인">개인</option><option value="법인">법인</option></select></div>
               <div><label className={labelClass}>고객명 *</label><input value={editCustomerName} onChange={(e) => setEditCustomerName(e.target.value)} className={inputClass} disabled={editSaving} placeholder="홍길동" /></div>
               <div><label className={labelClass}>전화번호</label><input value={editCustomerPhone} onChange={(e) => setEditCustomerPhone(formatPhoneKR(e.target.value))} className={inputClass} disabled={editSaving} inputMode="tel" /></div>
-              <div><label className={labelClass}>{editCustomerType === "법인" ? "사업자번호" : "주민번호 앞 6자리"}</label><input value={editCustomerIdNo} onChange={(e) => setEditCustomerIdNo(e.target.value)} className={inputClass} disabled={editSaving} /></div>
               {editCustomerType === "법인" && <div><label className={labelClass}>법인명</label><input value={editCompanyName} onChange={(e) => setEditCompanyName(e.target.value)} className={inputClass} disabled={editSaving} /></div>}
-              <div><label className={labelClass}>건설기계 모델명</label><input value={editEquipmentModel} onChange={(e) => setEditEquipmentModel(e.target.value)} className={inputClass} disabled={editSaving} placeholder="HX220AL" /></div>
-              <div><label className={labelClass}>장비 일련번호</label><input value={editEquipmentSerial} onChange={(e) => setEditEquipmentSerial(e.target.value)} className={inputClass} disabled={editSaving} /></div>
-              <div><label className={labelClass}>구매금액 (원)</label><input value={editPurchaseAmount} onChange={(e) => setEditPurchaseAmount(onlyDigits(e.target.value))} className={inputClass} disabled={editSaving} inputMode="numeric" /></div>
-              <div><label className={labelClass}>할부금융사</label><input value={editFinanceCompany} onChange={(e) => setEditFinanceCompany(e.target.value)} className={inputClass} disabled={editSaving} placeholder="현대캐피탈" /></div>
+              <div><label className={labelClass}>톤수</label><input value={editEquipmentTon} onChange={(e) => setEditEquipmentTon(e.target.value)} className={inputClass} disabled={editSaving} placeholder="예: 20톤" /></div>
+              <div><label className={labelClass}>차량가격 (원)</label><input value={editPurchaseAmount} onChange={(e) => setEditPurchaseAmount(onlyDigits(e.target.value))} className={inputClass} disabled={editSaving} inputMode="numeric" /></div>
+              <div><label className={labelClass}>할부원금 (원)</label><input value={editInstallmentPrincipal} onChange={(e) => setEditInstallmentPrincipal(onlyDigits(e.target.value))} className={inputClass} disabled={editSaving} inputMode="numeric" /></div>
+              <div><label className={labelClass}>할부금융사</label><select value={editFinanceCompany} onChange={(e) => setEditFinanceCompany(e.target.value)} className={inputClass} disabled={editSaving}><option value="NH캐피탈">NH캐피탈</option><option value="오릭스캐피탈">오릭스캐피탈</option><option value="우리금융캐피탈">우리금융캐피탈</option></select></div>
+              <div><label className={labelClass}>금리 (%)</label><input value={editInterestRate} onChange={(e) => setEditInterestRate(e.target.value)} className={inputClass} disabled={editSaving} placeholder="예: 4.5" inputMode="decimal" /></div>
+              <div><label className={labelClass}>인센티브 (%)</label><input value={editIncentive} onChange={(e) => setEditIncentive(e.target.value)} className={inputClass} disabled={editSaving} placeholder="예: 1.2" inputMode="decimal" /></div>
               <div><label className={labelClass}>영업사원</label><input value={editSalesRep} onChange={(e) => setEditSalesRep(e.target.value)} className={inputClass} disabled={editSaving} /></div>
-              <div><label className={labelClass}>영업사원 연락처</label><input value={editSalesRepPhone} onChange={(e) => setEditSalesRepPhone(formatPhoneKR(e.target.value))} className={inputClass} disabled={editSaving} inputMode="tel" /></div>
               <div><label className={labelClass}>ID</label><input value={String(editRow.id)} readOnly className={inputClass + " !bg-gray-50 !text-gray-400 cursor-not-allowed"} /></div>
             </div>
 

@@ -702,6 +702,11 @@ const Header: React.FC = () => {
       else nav("/narumi/login");
       return;
     }
+    // 현대건설기계: 로그인 페이지로 직접 이동
+    if (path === "/hyundaicm" || path === "/hyundaicm/login") {
+      nav("/hyundaicm/login");
+      return;
+    }
     if (user && canViewAll) nav(path);
     else nav("/narumi/login");
   };
@@ -1448,9 +1453,6 @@ const ExportShopPage: React.FC = () => {
   const [errMsg, setErrMsg] = useState<string>("");
 
   useEffect(() => {
-    // prerender 환경(Node.js SSG)에서는 외부 fetch 생략 — 무한 대기 방지
-    if (typeof window === "undefined") return;
-
     let alive = true;
     (async () => {
       setLoading(true);
