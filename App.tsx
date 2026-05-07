@@ -53,6 +53,9 @@ import { ProjectConsultForm } from "./components/ProjectConsultForm";
 import NarumiPage from "./pages/Narumi";
 import BsonWorkPage from "./pages/BsonWork/index";
 import NarumiLoginPage from "./pages/Narumi/login";
+import HyundaiCMPage from "./pages/HyundaiCM/index";
+import HyundaiCMLoginPage from "./pages/HyundaiCM/Login";
+import HyundaiCMRouteGuard from "./pages/HyundaiCM/Routeguard";
 import SitemapPage from "./pages/Sitemap";
 import IndividualCargoFinancePage from "./pages/IndividualCargoFinance/index";
 import TireShopPage from "./pages/TireShop/index";
@@ -894,6 +897,7 @@ const Header: React.FC = () => {
                   onMouseLeave={() => scheduleClose(setWorkOpen)}
                 >
                   <button type="button" className={dropItem} role="menuitem" onClick={() => { closeAll(); goWork("/narumi"); }}>나르미업무</button>
+                  <button type="button" className={dropItem} role="menuitem" onClick={() => { closeAll(); goWork("/hyundaicm/login"); }}>현대건설기계업무</button>
                   <button type="button" className={dropItem} role="menuitem" onClick={() => { closeAll(); goWork("/work/bson"); }}>BS_ON 업무</button>
                 </div>
               )}
@@ -1740,6 +1744,11 @@ const Footer: React.FC = () => {
                   - 나르미업무
                 </button>
               </li>
+              <li>
+                <Link to="/hyundaicm/login" className="hover:text-orange-500 transition-colors">
+                  - 현대건설기계업무
+                </Link>
+              </li>
             </ul>
           </div>
         </nav>
@@ -1844,6 +1853,17 @@ const AppRoutes = () => {
               <ProtectedRoute>
                 <NarumiPage />
               </ProtectedRoute>
+            }
+          />
+
+          {/* 현대건설기계 */}
+          <Route path="/hyundaicm/login" element={<HyundaiCMLoginPage />} />
+          <Route
+            path="/hyundaicm"
+            element={
+              <HyundaiCMRouteGuard>
+                <HyundaiCMPage />
+              </HyundaiCMRouteGuard>
             }
           />
 

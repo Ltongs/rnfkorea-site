@@ -15,7 +15,6 @@ import {
   TrendingUp,
   Truck,
 } from "lucide-react";
-import PageTitle from "../../components/PageTitle";
 import { supabase } from "../../lib/supabase";
 
 type ConsultationRow = {
@@ -99,15 +98,20 @@ type RateMetric = {
   ytd: number;
 };
 
+
 const cardClass =
-  "border border-gray-200 rounded-2xl bg-white p-5 shadow-[0_8px_24px_rgba(15,23,42,0.05)]";
-const subCardClass = "border border-gray-200 rounded-xl bg-gray-50 p-4";
+  "border border-gray-200 rounded-2xl bg-white shadow-sm hover:shadow-md transition-all";
+const subCardClass =
+  "border border-gray-200 rounded-2xl bg-gray-50 p-4";
 const sectionTitleClass =
-  "text-base font-semibold text-navy-900 flex items-center gap-2";
-const labelClass = "text-xs font-medium text-gray-500 uppercase tracking-wide";
-const valueClass = "mt-2 text-2xl font-semibold text-navy-900";
+  "text-xs font-medium tracking-[0.12em] uppercase text-orange-500";
+const labelClass =
+  "text-xs font-medium tracking-wide text-gray-400 uppercase";
+const valueClass =
+  "mt-2 text-2xl font-semibold text-navy-900";
 const chipClass =
-  "inline-flex items-center rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-600";
+  "inline-flex items-center rounded-2xl border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-500";
+
 
 function startOfMonth(year: number, month: number) {
   return new Date(year, month - 1, 1, 0, 0, 0, 0);
@@ -566,329 +570,344 @@ const DashboardPage: React.FC = () => {
     window.open(consultationListUrl(params), "_blank", "noopener,noreferrer");
   };
 
+
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-      <PageTitle title="운영대시보드" />
+    <div className="min-h-screen bg-gray-50">
 
-      <div className={cardClass}>
-        <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 text-navy-900 font-bold text-lg">
-              <CalendarDays className="w-5 h-5 text-orange-500" />
-              월 기준 운영 현황
+      {/* ── 히어로 헤더 ── */}
+      <section className="relative bg-[#0a192f] text-white overflow-hidden">
+        <div
+          className="absolute inset-0 opacity-[0.04]" aria-hidden="true"
+          style={{
+            backgroundImage: "repeating-linear-gradient(45deg, white 0, white 1px, transparent 0, transparent 50%)",
+            backgroundSize: "24px 24px",
+          }}
+        />
+        <div className="relative max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-12 md:py-16">
+          <div className="flex flex-wrap items-end justify-between gap-6">
+            <div>
+              <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-400">Operations</p>
+              <h1 className="mt-3 text-3xl md:text-4xl font-semibold leading-[1.15] text-white break-keep">
+                운영 대시보드
+              </h1>
+              <p className="mt-3 text-base leading-7 text-white/75 break-keep">
+                기본 표시는 월 기준이며, 모든 카드 하단에 {ytdLabel} 보조지표를 함께 노출합니다.
+              </p>
             </div>
-            <p className="mt-1 text-sm text-gray-500">
-              기본 표시는 월 기준이며, 모든 카드 하단에 {ytdLabel} 보조지표를 함께 노출합니다.
-            </p>
-          </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 min-w-[280px]">
-            <label className="text-sm font-medium text-gray-700">
-              연도
-              <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(Number(e.target.value))}
-                className="mt-1 w-full h-11 rounded-xl border border-gray-200 px-3 bg-white"
-              >
-                {[today.getFullYear() - 1, today.getFullYear(), today.getFullYear() + 1].map((year) => (
-                  <option key={year} value={year}>
-                    {year}년
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="text-sm font-medium text-gray-700">
-              월
-              <select
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                className="mt-1 w-full h-11 rounded-xl border border-gray-200 px-3 bg-white"
-              >
-                {Array.from({ length: 12 }).map((_, index) => (
-                  <option key={index + 1} value={index + 1}>
-                    {index + 1}월
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="flex items-end">
-              <div className="w-full h-11 rounded-xl bg-gray-50 border border-gray-200 px-3 flex items-center text-sm font-medium text-gray-700">
-                기준: {monthLabel}
+            {/* 연도/월 선택 */}
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="block text-xs font-medium text-white/60 mb-1.5">연도</label>
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(Number(e.target.value))}
+                  className="h-[44px] rounded-2xl border border-white/20 bg-white/10 text-white px-4 text-sm font-medium focus:outline-none focus:border-orange-400 transition-all"
+                >
+                  {[today.getFullYear() - 1, today.getFullYear(), today.getFullYear() + 1].map((year) => (
+                    <option key={year} value={year} className="text-navy-900 bg-white">{year}년</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-white/60 mb-1.5">월</label>
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                  className="h-[44px] rounded-2xl border border-white/20 bg-white/10 text-white px-4 text-sm font-medium focus:outline-none focus:border-orange-400 transition-all"
+                >
+                  {Array.from({ length: 12 }).map((_, index) => (
+                    <option key={index + 1} value={index + 1} className="text-navy-900 bg-white">{index + 1}월</option>
+                  ))}
+                </select>
+              </div>
+              <div className="h-[44px] rounded-2xl border border-orange-400/40 bg-orange-500/20 px-4 flex items-center text-sm font-semibold text-orange-300">
+                {monthLabel}
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      {loading ? (
-        <div className={`${cardClass} flex items-center justify-center gap-3 py-16 text-gray-500`}>
-          <Loader2 className="w-5 h-5 animate-spin" />
-          데이터를 불러오는 중입니다.
-        </div>
-      ) : error ? (
-        <div className={`${cardClass} text-red-600 font-semibold`}>{error}</div>
-      ) : (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
-            <div className={cardClass}>
-              <div className={labelClass}>신규 상담 유입</div>
-              <div className={valueClass}>{metricNewConsultations.month.toLocaleString("ko-KR")}</div>
-              <div className="mt-2 flex items-center gap-2 text-sm text-gray-600">
-                <PhoneCall className="w-4 h-4 text-orange-500" />
-                {monthLabel}
-              </div>
-              <div className="mt-3 text-xs text-gray-500">{ytdLabel} {formatCount(metricNewConsultations.ytd)}</div>
-            </div>
+      <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-8 space-y-6">
 
-            <div className={cardClass}>
-              <div className={labelClass}>나르미 신규 업무</div>
-              <div className={valueClass}>{metricNarumiInflows.month.toLocaleString("ko-KR")}</div>
-              <div className="mt-2 flex items-center gap-2 text-sm text-gray-600">
-                <Truck className="w-4 h-4 text-orange-500" />
-                {monthLabel}
-              </div>
-              <div className="mt-3 text-xs text-gray-500">{ytdLabel} {formatCount(metricNarumiInflows.ytd)}</div>
-            </div>
-
-            <div className={cardClass}>
-              <div className={labelClass}>보험 완료</div>
-              <div className={valueClass}>{insuranceSummary.narumiDone.month.toLocaleString("ko-KR")}</div>
-              <div className="mt-2 flex items-center gap-2 text-sm text-gray-600">
-                <Shield className="w-4 h-4 text-orange-500" />
-                나르미 기준 완료건
-              </div>
-              <div className="mt-3 text-xs text-gray-500">{ytdLabel} {formatCount(insuranceSummary.narumiDone.ytd)}</div>
-            </div>
-
-            <div className={cardClass}>
-              <div className={labelClass}>금융 확정금액</div>
-              <div className="mt-2 text-2xl font-semibold text-navy-900 break-words">
-                {formatCurrency(financeSummary.confirmedAmount.month)}
-              </div>
-              <div className="mt-2 flex items-center gap-2 text-sm text-gray-600">
-                <CircleDollarSign className="w-4 h-4 text-orange-500" />
-                확정 단계 합계
-              </div>
-              <div className="mt-3 text-xs text-gray-500">
-                {ytdLabel} {formatCurrency(financeSummary.confirmedAmount.ytd)}
-              </div>
-            </div>
-
-            <div className={cardClass}>
-              <div className={labelClass}>타이어 판매전환율</div>
-              <div className={valueClass}>{formatPercent(tireSummary.conversionRate.month)}</div>
-              <div className="mt-2 flex items-center gap-2 text-sm text-gray-600">
-                <BadgePercent className="w-4 h-4 text-orange-500" />
-                판매완료 / 신규상담
-              </div>
-              <div className="mt-3 text-xs text-gray-500">
-                {ytdLabel} {formatPercent(tireSummary.conversionRate.ytd)}
-              </div>
-            </div>
+        {/* ── 로딩 / 에러 ── */}
+        {loading ? (
+          <div className="rounded-2xl border border-gray-200 bg-white flex items-center justify-center gap-3 py-16 text-gray-400 shadow-sm">
+            <Loader2 className="w-5 h-5 animate-spin text-orange-500" />
+            <span className="text-sm font-medium">데이터를 불러오는 중입니다.</span>
           </div>
-
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-            <section className={`${cardClass} xl:col-span-2 space-y-4`}>
-              <div className={sectionTitleClass}>
-                <BarChart3 className="w-5 h-5 text-orange-500" />
-                유입채널별 문의건수
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-                {[
-                  { key: "association", label: "협회", month: inflowSummary.association.month, ytd: inflowSummary.association.ytd },
-                  { key: "gotruck", label: "고트럭", month: inflowSummary.gotruck.month, ytd: inflowSummary.gotruck.ytd },
-                  { key: "etc", label: "기타", month: inflowSummary.etc.month, ytd: inflowSummary.etc.ytd },
-                  { key: "total", label: "전체", month: inflowSummary.total.month, ytd: inflowSummary.total.ytd },
-                ].map((item) => (
-                  <div key={item.key} className={subCardClass}>
-                    <div className="text-sm font-medium text-gray-700">{item.label}</div>
-                    <div className="mt-2 text-2xl font-semibold text-navy-900">{formatCount(item.month)}</div>
-                    <div className="mt-1 text-xs text-gray-500">{ytdLabel} {formatCount(item.ytd)}</div>
+        ) : error ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 text-red-700 px-6 py-4 text-sm font-semibold">
+            {error}
+          </div>
+        ) : (
+          <>
+            {/* ── KPI 카드 5개 ── */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+              {[
+                {
+                  label: "신규 상담 유입",
+                  value: metricNewConsultations.month.toLocaleString("ko-KR"),
+                  ytd: formatCount(metricNewConsultations.ytd),
+                  icon: <PhoneCall className="w-4 h-4 text-orange-500" />,
+                  sub: monthLabel,
+                },
+                {
+                  label: "나르미 신규 업무",
+                  value: metricNarumiInflows.month.toLocaleString("ko-KR"),
+                  ytd: formatCount(metricNarumiInflows.ytd),
+                  icon: <Truck className="w-4 h-4 text-orange-500" />,
+                  sub: monthLabel,
+                },
+                {
+                  label: "보험 완료",
+                  value: insuranceSummary.narumiDone.month.toLocaleString("ko-KR"),
+                  ytd: formatCount(insuranceSummary.narumiDone.ytd),
+                  icon: <Shield className="w-4 h-4 text-orange-500" />,
+                  sub: "나르미 기준 완료건",
+                },
+                {
+                  label: "금융 확정금액",
+                  value: formatCurrency(financeSummary.confirmedAmount.month),
+                  ytd: formatCurrency(financeSummary.confirmedAmount.ytd),
+                  icon: <CircleDollarSign className="w-4 h-4 text-orange-500" />,
+                  sub: "확정 단계 합계",
+                },
+                {
+                  label: "타이어 판매전환율",
+                  value: formatPercent(tireSummary.conversionRate.month),
+                  ytd: formatPercent(tireSummary.conversionRate.ytd),
+                  icon: <BadgePercent className="w-4 h-4 text-orange-500" />,
+                  sub: "판매완료 / 신규상담",
+                },
+              ].map((kpi) => (
+                <div key={kpi.label} className={`${cardClass} p-5`}>
+                  <p className={labelClass}>{kpi.label}</p>
+                  <p className={valueClass}>{kpi.value}</p>
+                  <div className="mt-2 flex items-center gap-1.5 text-sm text-gray-600">
+                    {kpi.icon}
+                    <span>{kpi.sub}</span>
                   </div>
-                ))}
-              </div>
+                  <p className="mt-3 text-xs text-gray-400">{ytdLabel} {kpi.ytd}</p>
+                </div>
+              ))}
+            </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-3">
-                {[
-                  { key: "서울", data: inflowSummary.seoul },
-                  { key: "광주", data: inflowSummary.gwangju },
-                  { key: "경북", data: inflowSummary.gyeongbuk },
-                  { key: "경남", data: inflowSummary.gyeongnam },
-                  { key: "미지정", data: inflowSummary.unknownAssociation },
-                ].map((item) => (
-                  <div key={item.key} className={subCardClass}>
-                    <div className="text-xs font-medium text-gray-500">협회 · {item.key}</div>
-                    <div className="mt-2 text-xl font-semibold text-navy-900">{formatCount(item.data.month)}</div>
-                    <div className="mt-1 text-xs text-gray-500">{ytdLabel} {formatCount(item.data.ytd)}</div>
-                  </div>
-                ))}
-              </div>
+            {/* ── 유입채널 + 즉시처리 ── */}
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
 
-              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                <div className="flex items-center justify-between gap-3 mb-3">
-                  <div className="text-sm font-semibold text-navy-900">일별 유입현황</div>
-                  <div className="text-xs text-gray-500">세로축 최대 10건</div>
+              {/* 유입채널별 문의건수 */}
+              <section className={`${cardClass} p-6 xl:col-span-2 space-y-5`}>
+                <div>
+                  <p className={sectionTitleClass}>Inflow</p>
+                  <h2 className="mt-1 text-lg font-semibold text-navy-900 flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5 text-orange-500" />
+                    유입채널별 문의건수
+                  </h2>
                 </div>
 
-                <div className="h-64 flex items-end gap-1 overflow-x-auto pb-2">
-                  {dailyInflowData.map((item) => {
-                    const heightPercent = Math.max((item.count / 10) * 100, item.count > 0 ? 8 : 2);
-                    return (
-                      <div
-                        key={item.day}
-                        className="min-w-[22px] flex-1 flex flex-col items-center justify-end gap-2"
-                        title={`${item.day}일 · ${item.count}건`}
-                      >
-                        <div className="text-[10px] font-medium text-gray-500">{item.count}</div>
-                        <div className="w-full h-44 flex items-end">
-                          <div
-                            className="w-full rounded-t-md bg-orange-500/85"
-                            style={{ height: `${heightPercent}%`, maxHeight: "100%" }}
-                          />
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {[
+                    { key: "association", label: "협회", data: inflowSummary.association },
+                    { key: "gotruck",     label: "고트럭", data: inflowSummary.gotruck },
+                    { key: "etc",         label: "기타",   data: inflowSummary.etc },
+                    { key: "total",       label: "전체",   data: inflowSummary.total },
+                  ].map((item) => (
+                    <div key={item.key} className={subCardClass}>
+                      <p className="text-xs font-medium text-gray-500">{item.label}</p>
+                      <p className="mt-2 text-2xl font-semibold text-navy-900">{formatCount(item.data.month)}</p>
+                      <p className="mt-1 text-xs text-gray-400">{ytdLabel} {formatCount(item.data.ytd)}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
+                  {[
+                    { key: "서울",   data: inflowSummary.seoul },
+                    { key: "광주",   data: inflowSummary.gwangju },
+                    { key: "경북",   data: inflowSummary.gyeongbuk },
+                    { key: "경남",   data: inflowSummary.gyeongnam },
+                    { key: "미지정", data: inflowSummary.unknownAssociation },
+                  ].map((item) => (
+                    <div key={item.key} className={subCardClass}>
+                      <p className="text-xs font-medium text-gray-500">협회 · {item.key}</p>
+                      <p className="mt-2 text-xl font-semibold text-navy-900">{formatCount(item.data.month)}</p>
+                      <p className="mt-1 text-xs text-gray-400">{ytdLabel} {formatCount(item.data.ytd)}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* 일별 유입 바차트 */}
+                <div className="rounded-2xl border border-gray-200 bg-white p-4">
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <p className="text-sm font-semibold text-navy-900">일별 유입현황</p>
+                    <p className="text-xs text-gray-400">세로축 최대 10건</p>
+                  </div>
+                  <div className="h-64 flex items-end gap-1 overflow-x-auto pb-2">
+                    {dailyInflowData.map((item) => {
+                      const heightPercent = Math.max((item.count / 10) * 100, item.count > 0 ? 8 : 2);
+                      return (
+                        <div
+                          key={item.day}
+                          className="min-w-[22px] flex-1 flex flex-col items-center justify-end gap-1"
+                          title={`${item.day}일 · ${item.count}건`}
+                        >
+                          <span className="text-[10px] font-medium text-gray-500">{item.count > 0 ? item.count : ""}</span>
+                          <div className="w-full h-44 flex items-end">
+                            <div
+                              className="w-full rounded-t-lg bg-orange-500/80 hover:bg-orange-500 transition-colors"
+                              style={{ height: `${heightPercent}%`, maxHeight: "100%" }}
+                            />
+                          </div>
+                          <span className="text-[10px] text-gray-400">{item.day}</span>
                         </div>
-                        <div className="text-[10px] text-gray-500">{item.day}</div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            </section>
+              </section>
 
-            <section className={`${cardClass} xl:col-span-1 space-y-4`}>
-              <button
-                type="button"
-                onClick={() => openConsultationList({ work_type: "all", priority: "urgent" })}
-                className="w-full text-left space-y-4"
-              >
-                <div className={sectionTitleClass}>
-                  <Activity className="w-5 h-5 text-orange-500" />
-                  즉시 처리 필요
+              {/* 즉시 처리 필요 */}
+              <section className={`${cardClass} p-6 xl:col-span-1`}>
+                <div className="mb-5">
+                  <p className={sectionTitleClass}>Urgent</p>
+                  <h2 className="mt-1 text-lg font-semibold text-navy-900 flex items-center gap-2">
+                    <Activity className="w-5 h-5 text-orange-500" />
+                    즉시 처리 필요
+                  </h2>
                 </div>
-
-                <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={() => openConsultationList({ work_type: "all", priority: "urgent" })}
+                  className="w-full text-left space-y-3"
+                >
                   {hotList.length === 0 ? (
-                    <div className={`${subCardClass} text-sm text-gray-500`}>
+                    <div className={`${subCardClass} text-sm text-gray-400`}>
                       현재 즉시 처리 필요 목록이 없습니다.
                     </div>
                   ) : (
                     hotList.map((item, index) => (
                       <div key={`${item.type}-${index}`} className={subCardClass}>
                         <div className="flex items-center justify-between gap-3">
-                          <span className="text-xs font-bold text-orange-600">{item.type}</span>
-                          <span className={chipClass}>새 탭 열기</span>
+                          <span className="text-xs font-semibold text-orange-600">{item.type}</span>
+                          <span className={chipClass}>새 탭 열기 →</span>
                         </div>
-                        <div className="mt-2 text-sm font-semibold text-navy-900">{item.label}</div>
-                        <div className="mt-1 text-xs text-gray-500">{item.sub}</div>
+                        <p className="mt-2 text-sm font-semibold text-navy-900">{item.label}</p>
+                        <p className="mt-1 text-xs text-gray-500">{item.sub}</p>
                       </div>
                     ))
                   )}
-                </div>
-              </button>
-            </section>
-          </div>
+                </button>
+              </section>
+            </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-            <section className={`${cardClass} space-y-4`}>
-              <button
-                type="button"
-                onClick={() => openConsultationList({ work_type: "registration_insurance" })}
-                className="w-full text-left"
-              >
-                <div className={sectionTitleClass}>
-                  <Gauge className="w-5 h-5 text-orange-500" />
-                  보험 진행 요약
+            {/* ── 보험 / 금융 / 타이어 상세 ── */}
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+
+              {/* 보험 */}
+              <section className={`${cardClass} p-6 space-y-4`}>
+                <div>
+                  <p className={sectionTitleClass}>Insurance</p>
+                  <button
+                    type="button"
+                    onClick={() => openConsultationList({ work_type: "registration_insurance" })}
+                    className="mt-1 text-lg font-semibold text-navy-900 flex items-center gap-2 hover:text-orange-600 transition-colors"
+                  >
+                    <Gauge className="w-5 h-5 text-orange-500" />
+                    보험 진행 요약
+                  </button>
                 </div>
-                <div className="mt-4 space-y-3 text-sm">
+                <div className="space-y-3">
                   {insuranceMonthRows.slice(0, 6).map((row) => {
                     const consultation = consultationMap.get(row.consultation_id);
                     return (
                       <div key={row.consultation_id} className={subCardClass}>
-                        <div className="font-semibold text-navy-900">{consultation?.customer_name || "고객명없음"}</div>
-                        <div className="mt-1 text-gray-600">
+                        <p className="text-sm font-semibold text-navy-900">{consultation?.customer_name || "고객명없음"}</p>
+                        <p className="mt-1 text-xs text-gray-600">
                           {row.insurance_company || "보험사 미입력"} · {insuranceStep(row)}
-                        </div>
+                        </p>
                       </div>
                     );
                   })}
                   {insuranceMonthRows.length === 0 && (
-                    <div className={`${subCardClass} text-gray-400`}>해당 월 보험 데이터가 없습니다.</div>
+                    <div className={`${subCardClass} text-sm text-gray-400`}>해당 월 보험 데이터가 없습니다.</div>
                   )}
                 </div>
-              </button>
-            </section>
+              </section>
 
-            <section className={`${cardClass} space-y-4`}>
-              <button
-                type="button"
-                onClick={() => openConsultationList({ work_type: "finance" })}
-                className="w-full text-left"
-              >
-                <div className={sectionTitleClass}>
-                  <FileText className="w-5 h-5 text-orange-500" />
-                  금융 단계별 상세
+              {/* 금융 */}
+              <section className={`${cardClass} p-6 space-y-4`}>
+                <div>
+                  <p className={sectionTitleClass}>Finance</p>
+                  <button
+                    type="button"
+                    onClick={() => openConsultationList({ work_type: "finance" })}
+                    className="mt-1 text-lg font-semibold text-navy-900 flex items-center gap-2 hover:text-orange-600 transition-colors"
+                  >
+                    <FileText className="w-5 h-5 text-orange-500" />
+                    금융 단계별 상세
+                  </button>
                 </div>
-                <div className="mt-4 space-y-3 text-sm">
+                <div className="space-y-3">
                   {financeMonthRows.slice(0, 6).map((row) => {
                     const consultation = consultationMap.get(row.consultation_id);
-                    const incentiveAmount =
-                      (safeNumber(row.finance_amount) * safeNumber(row.finance_incentive)) / 100;
-
+                    const incentiveAmount = (safeNumber(row.finance_amount) * safeNumber(row.finance_incentive)) / 100;
                     return (
                       <div key={row.consultation_id} className={subCardClass}>
-                        <div className="font-semibold text-navy-900">{consultation?.customer_name || "고객명없음"}</div>
-                        <div className="mt-1 text-gray-600">
+                        <p className="text-sm font-semibold text-navy-900">{consultation?.customer_name || "고객명없음"}</p>
+                        <p className="mt-1 text-xs text-gray-600">
                           {financeStageLabel(row.finance_stage)} · {row.finance_company || "금융사 미입력"}
-                        </div>
-                        <div className="mt-1 text-xs text-gray-500">
+                        </p>
+                        <p className="mt-1 text-xs text-gray-400">
                           취급액 {formatCurrency(safeNumber(row.finance_amount))} / 인센티브 {formatCurrency(incentiveAmount)}
-                        </div>
+                        </p>
                       </div>
                     );
                   })}
                   {financeMonthRows.length === 0 && (
-                    <div className={`${subCardClass} text-gray-400`}>해당 월 금융 데이터가 없습니다.</div>
+                    <div className={`${subCardClass} text-sm text-gray-400`}>해당 월 금융 데이터가 없습니다.</div>
                   )}
                 </div>
-              </button>
-            </section>
+              </section>
 
-            <section className={`${cardClass} space-y-4`}>
-              <button
-                type="button"
-                onClick={() => openConsultationList({ work_type: "tire_sales" })}
-                className="w-full text-left"
-              >
-                <div className={sectionTitleClass}>
-                  <TrendingUp className="w-5 h-5 text-orange-500" />
-                  타이어 진행 상세
+              {/* 타이어 */}
+              <section className={`${cardClass} p-6 space-y-4`}>
+                <div>
+                  <p className={sectionTitleClass}>Tire</p>
+                  <button
+                    type="button"
+                    onClick={() => openConsultationList({ work_type: "tire_sales" })}
+                    className="mt-1 text-lg font-semibold text-navy-900 flex items-center gap-2 hover:text-orange-600 transition-colors"
+                  >
+                    <TrendingUp className="w-5 h-5 text-orange-500" />
+                    타이어 진행 상세
+                  </button>
                 </div>
-                <div className="mt-4 space-y-3 text-sm">
+                <div className="space-y-3">
                   {tireMonthRows.slice(0, 6).map((row, index) => {
                     const consultation = consultationMap.get(row.consultation_id);
                     return (
                       <div key={`${row.consultation_id}-${index}`} className={subCardClass}>
-                        <div className="font-semibold text-navy-900">{consultation?.customer_name || "고객명없음"}</div>
-                        <div className="mt-1 text-gray-600">
+                        <p className="text-sm font-semibold text-navy-900">{consultation?.customer_name || "고객명없음"}</p>
+                        <p className="mt-1 text-xs text-gray-600">
                           {tireStageLabel(row.process_status)} · {row.current_brand || "브랜드 미입력"}
-                        </div>
-                        <div className="mt-1 text-xs text-gray-500">
-                          {(row.tire_size || "규격 미입력")} / {inflowChannelLabel(row.inflow_channel, row.association_name)}
-                        </div>
+                        </p>
+                        <p className="mt-1 text-xs text-gray-400">
+                          {row.tire_size || "규격 미입력"} / {inflowChannelLabel(row.inflow_channel, row.association_name)}
+                        </p>
                       </div>
                     );
                   })}
                   {tireMonthRows.length === 0 && (
-                    <div className={`${subCardClass} text-gray-400`}>해당 월 타이어 데이터가 없습니다.</div>
+                    <div className={`${subCardClass} text-sm text-gray-400`}>해당 월 타이어 데이터가 없습니다.</div>
                   )}
                 </div>
-              </button>
-            </section>
-          </div>
-        </>
-      )}
+              </section>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 };

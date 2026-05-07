@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import PageTitle from "../../components/PageTitle";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
@@ -168,26 +167,27 @@ const TIRE_INFLOW_CHANNELS = ["association", "gotruck", "etc"] as const;
 const TIRE_ASSOCIATIONS = ["서울", "광주", "경북", "경남"] as const;
 
 const tabBase =
-  "px-4 py-2 rounded-xl text-sm font-medium border transition";
-const tabActive = "bg-gray-100 text-gray-900 border-gray-300";
-const tabInactive = "bg-white text-gray-400 border-gray-200";
+  "px-5 py-2.5 rounded-2xl text-sm font-semibold border transition-all";
+const tabActive = "bg-navy-900 text-white border-navy-900 shadow-sm";
+const tabInactive = "bg-white text-gray-500 border-gray-200 hover:border-gray-300";
 
 const typeBtnBase =
-  "px-4 py-2 rounded-xl text-sm font-medium border transition";
+  "px-4 py-2 rounded-2xl text-sm font-semibold border transition-all";
 const typeBtnActive =
   "bg-orange-500 text-white border-orange-500 shadow-sm";
 const typeBtnInactive =
-  "bg-white text-gray-700 border-gray-300 hover:bg-gray-50";
+  "bg-white text-gray-600 border-gray-200 hover:border-orange-300 hover:text-orange-600";
 
 const card =
-  "border border-gray-200 rounded-2xl bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.06)]";
+  "border border-gray-200 rounded-2xl bg-white p-6 shadow-sm hover:shadow-md transition-all";
 const dashboardCard =
-  "border border-gray-200 rounded-2xl bg-white p-5 shadow-[0_8px_24px_rgba(15,23,42,0.05)]";
+  "border border-gray-200 rounded-2xl bg-white p-5 shadow-sm";
 const compactCard =
-  "border border-gray-200 rounded-xl bg-gray-50 p-3";
+  "border border-gray-200 rounded-2xl bg-gray-50 p-3";
 
 const controlClass =
-  "w-full h-11 rounded-xl border border-gray-200 px-3 text-sm text-gray-900 bg-white";
+  "w-full h-[48px] rounded-2xl border border-gray-200 px-4 text-sm font-medium text-navy-900 bg-white " +
+  "focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 transition-all";
 const insuranceEqualFieldStyle = {
   width: "100%",
   minWidth: 0,
@@ -200,29 +200,31 @@ const insuranceEqualDateFieldStyle = {
   WebkitAppearance: "none" as const,
 };
 const compactControlClass =
-  "w-full h-9 rounded-lg border border-gray-200 px-3 text-xs text-gray-900 bg-white";
+  "w-full h-9 rounded-xl border border-gray-200 px-3 text-xs font-medium text-navy-900 bg-white " +
+  "focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-200/50 focus:border-orange-400 transition-all";
 const textareaClass =
-  "w-full min-h-[104px] rounded-xl border border-gray-200 px-3 py-3 text-sm text-gray-900 bg-white";
+  "w-full min-h-[104px] rounded-2xl border border-gray-200 px-4 py-3 text-sm font-medium text-navy-900 bg-white " +
+  "focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 transition-all";
 
-const labelClass = "block text-sm font-semibold text-gray-700 mb-1";
-const compactLabelClass = "block text-xs font-semibold text-gray-600 mb-1";
+const labelClass = "block text-sm font-medium text-navy-900 mb-2";
+const compactLabelClass = "block text-xs font-medium text-gray-600 mb-1";
 
 const thClass =
-  "px-4 py-3 text-left text-sm font-medium text-navy-900 border-b border-gray-200 whitespace-nowrap";
+  "px-4 py-3 text-left text-xs font-medium tracking-wide text-gray-400 uppercase border-b border-gray-100 whitespace-nowrap";
 const tdClass =
-  "px-4 py-3 text-sm text-gray-700 border-b border-gray-100 align-top whitespace-nowrap";
+  "px-4 py-3 text-sm font-medium text-gray-700 border-b border-gray-100 align-top whitespace-nowrap";
 
 const actionBtnClass =
-  "px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 whitespace-nowrap";
+  "px-3 py-1.5 rounded-2xl text-xs font-semibold border border-gray-200 text-gray-700 hover:border-gray-300 hover:shadow-sm whitespace-nowrap transition-all";
 const completeBtnClass =
-  "px-3 py-1.5 rounded-lg text-xs font-medium bg-green-600 text-white hover:bg-green-700 whitespace-nowrap";
+  "px-3 py-1.5 rounded-2xl text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 whitespace-nowrap transition-all";
 const sectionTitleClass =
-  "text-sm font-semibold text-navy-900 border-b border-gray-200 pb-1";
+  "text-xs font-medium tracking-[0.12em] uppercase text-orange-500";
 
-const detailLabelClass = "text-[10px] leading-3 font-medium text-gray-500 whitespace-nowrap";
+const detailLabelClass = "text-[10px] leading-3 font-medium text-gray-400 uppercase whitespace-nowrap";
 const detailValueClass = "text-[11px] leading-3 text-gray-800 mt-0 whitespace-nowrap";
 const inlineDetailBoxClass =
-  "bg-orange-50/40 border border-orange-200 rounded-xl p-2";
+  "bg-orange-50/40 border border-orange-200 rounded-2xl p-2";
 
 const grid5Class = "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4";
 const dashboardGridClass = "grid grid-cols-1 xl:grid-cols-3 gap-4";
@@ -2099,8 +2101,8 @@ const CallManagementPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="container mx-auto px-4 py-12">
-        <div className="text-sm text-gray-500">로그인 확인 중입니다...</div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-sm text-gray-400">로그인 확인 중입니다...</div>
       </div>
     );
   }
@@ -2111,8 +2113,8 @@ const CallManagementPage: React.FC = () => {
 
   if (!canAccessConsulting) {
     return (
-      <div className="container mx-auto px-4 py-12">
-        <div className="max-w-xl mx-auto border border-red-200 bg-red-50 rounded-2xl p-6">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="max-w-xl w-full border border-red-200 bg-red-50 rounded-2xl p-6">
           <div className="text-lg font-semibold text-red-700 mb-2">
             접근 권한이 없습니다.
           </div>
@@ -2125,34 +2127,56 @@ const CallManagementPage: React.FC = () => {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-6">
-      <PageTitle title="상담관리" />
+    <div className="min-h-screen bg-gray-50">
 
-    
+      {/* ── 히어로 헤더 ── */}
+      <section className="relative bg-[#0a192f] text-white overflow-hidden">
+        <div
+          className="absolute inset-0 opacity-[0.04]" aria-hidden="true"
+          style={{
+            backgroundImage: "repeating-linear-gradient(45deg, white 0, white 1px, transparent 0, transparent 50%)",
+            backgroundSize: "24px 24px",
+          }}
+        />
+        <div className="relative max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-12 md:py-16">
+          <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-400">Business</p>
+          <h1 className="mt-3 text-3xl md:text-4xl font-semibold leading-[1.15] text-white break-keep">
+            상담관리
+          </h1>
+          <p className="mt-3 text-base leading-7 text-white/75 break-keep">
+            상담 등록 · 내역 조회 · 사후관리
+          </p>
 
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          className={`${tabBase} ${tab === "new" ? tabActive : tabInactive}`}
-          onClick={() => setTab("new")}
-        >
-          상담등록
-        </button>
-        <button
-          type="button"
-          className={`${tabBase} ${tab === "list" ? tabActive : tabInactive}`}
-          onClick={() => setTab("list")}
-        >
-          상담내역
-        </button>
-        <button
-          type="button"
-          className={`${tabBase} ${tab === "followups" ? tabActive : tabInactive}`}
-          onClick={() => setTab("followups")}
-        >
-          사후관리
-        </button>
-      </div>
+          {/* 탭 */}
+          <div className="mt-6 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={`${tabBase} ${tab === "new" ? tabActive : tabInactive}`}
+              onClick={() => setTab("new")}
+            >
+              상담등록
+            </button>
+            <button
+              type="button"
+              className={`${tabBase} ${tab === "list" ? tabActive : tabInactive}`}
+              onClick={() => setTab("list")}
+            >
+              상담내역
+            </button>
+            <button
+              type="button"
+              className={`${tabBase} ${tab === "followups" ? tabActive : tabInactive}`}
+              onClick={() => setTab("followups")}
+            >
+              사후관리
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-8 space-y-6">
+
+
 
       <div className={card}>
         <div className="flex flex-col gap-3 mb-4 md:flex-row md:items-center md:justify-between">
@@ -4326,6 +4350,7 @@ const CallManagementPage: React.FC = () => {
             </div>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

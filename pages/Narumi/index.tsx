@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
-import PageTitle from "../../components/PageTitle";
+
 import { useNavigate } from "react-router-dom";
 
 // 정책
@@ -201,35 +201,38 @@ function formatCreatedAt(s?: string) {
   return `${y}.${m}.${day} ${hh}:${mm}`;
 }
 
+
+// ─── 디자인 시스템 (타이어 페이지 기준) ──────────────────────
 const pillBase =
-  "inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border";
+  "inline-flex items-center px-3 py-1 rounded-2xl text-xs font-semibold border";
 const pillDone = "bg-emerald-50 text-emerald-700 border-emerald-200";
 const pillProg = "bg-orange-50 text-orange-700 border-orange-200";
-const pillGray = "bg-gray-50 text-gray-700 border-gray-200";
+const pillGray = "bg-gray-100 text-gray-500 border-gray-200";
 
 const btnBase =
-  "w-[88px] h-[40px] inline-flex items-center justify-center px-2 py-1 rounded-lg text-xs font-semibold border transition-all text-center whitespace-nowrap shrink-0";
+  "w-[88px] h-[40px] inline-flex items-center justify-center px-2 py-1 rounded-2xl text-xs font-semibold border transition-all text-center whitespace-nowrap shrink-0";
 const btnOn = "bg-navy-900 text-white border-navy-900";
 const btnOff =
   "bg-white text-navy-900 border-gray-200 hover:border-orange-300 hover:text-orange-600";
-const btnDisabled = "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-50";
+const btnDisabled = "bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-50";
 
-const labelClass = "text-xs font-semibold text-gray-500 block mb-2";
+const labelClass = "block text-sm font-medium text-navy-900 mb-2";
 const compactInputClass =
-  "h-[44px] w-full px-3 rounded-lg border border-gray-200 bg-white " +
-  "text-sm font-medium text-navy-900 focus:border-orange-400 focus:ring-4 " +
-  "focus:ring-orange-200/40 outline-none";
+  "h-[48px] w-full px-4 rounded-2xl border border-gray-200 bg-white " +
+  "text-sm font-medium text-navy-900 placeholder:text-gray-400 " +
+  "focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 " +
+  "disabled:opacity-50 transition-all";
 
 const compactButtonClass =
-  "h-[44px] w-full px-3 rounded-lg border border-gray-200 bg-white " +
-  "text-sm font-medium text-navy-900 hover:border-orange-300 disabled:opacity-60";
+  "h-[48px] w-full px-4 rounded-2xl border border-gray-200 bg-white " +
+  "text-sm font-medium text-navy-900 hover:border-orange-300 disabled:opacity-60 transition-all";
 
-const cardClass = "border border-gray-200 rounded-2xl bg-white shadow-sm";
+const cardClass = "border border-gray-200 rounded-2xl bg-white shadow-sm hover:shadow-md transition-all";
 
-const infoLabel = "text-xs font-semibold text-gray-400";
+const infoLabel = "text-xs font-medium tracking-wide text-gray-400 uppercase";
 const infoValue = "mt-1 text-sm font-semibold text-navy-900 break-all";
 const summaryBadgeBase =
-  "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold whitespace-nowrap";
+  "inline-flex items-center gap-1.5 rounded-2xl border px-3 py-1 text-xs font-semibold whitespace-nowrap";
 
 type SummaryFilter = "all" | "hold" | "insurance_waiting" | "docs_waiting" | "register_waiting" | "completed";
 
@@ -1332,887 +1335,561 @@ VIN: ${nextVin}`);
     return "일반";
   }, [isAdmin, isInsuranceManager, isNarumi, isLotte]);
 
+
   return (
-    <div className="container mx-auto px-4 py-10 space-y-6">
-      <PageTitle
-        title="Narumi 업무 관리"
-        desc="차량 출고 및 등록 진행 상태를 관리하는 RNF 내부 업무 페이지입니다. 보험, 등록, 서류 준비 등 진행 단계를 한눈에 확인할 수 있습니다."
-      />
+    <div className="min-h-screen bg-gray-50">
 
-      <div className="space-y-3 border-b border-gray-200 pb-5">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div className="space-y-3">
-            <div className="text-xs text-gray-400 leading-relaxed">
-              * 고객명/전화번호는 입력 후 {UI_MASK_AFTER_HOURS}시간 경과 시 화면에서 마스킹됩니다.
-              <br />
-              * 고객명은 전체 마스킹, 고객 전화번호는 뒷 4자리가 마스킹됩니다.
-              <br />
-              * 고객 전화번호는 입력 후 {DB_SCRUB_AFTER_HOURS}시간(5일) 경과 시 DB에서 뒷 4자리가 영구 마스킹(삭제)됩니다.
-              <br />
-              * 차량등록증 업로드 완료 건은 일반 사용자는 최근 {HIDE_UPLOADED_AFTER_DAYS_FOR_NON_ADMIN}일 이내만 표시되며, 그 이후는 관리자/보험전담 계정만 볼 수 있습니다.
+      {/* ── 숨겨진 파일 인풋 ── */}
+      <input ref={fileInputRef} type="file" accept="image/*,.pdf" className="hidden" onChange={onFilePicked} />
+      <input ref={manufactureInputRef} type="file" accept="image/*" className="hidden" onChange={onManufacturePicked} />
+
+      {/* ── 히어로 헤더 ── */}
+      <section className="relative bg-[#0a192f] text-white overflow-hidden">
+        <div
+          className="absolute inset-0 opacity-[0.04]" aria-hidden="true"
+          style={{
+            backgroundImage: "repeating-linear-gradient(45deg, white 0, white 1px, transparent 0, transparent 50%)",
+            backgroundSize: "24px 24px",
+          }}
+        />
+        <div className="relative max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-12 md:py-16">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-400">Business</p>
+              <h1 className="mt-3 text-3xl md:text-4xl font-semibold leading-[1.15] text-white break-keep">
+                Narumi 업무 관리
+              </h1>
+              <p className="mt-3 text-base leading-7 text-white/75 break-keep">
+                차량 출고 · 보험 · 등록 진행 상태 관리
+              </p>
             </div>
-
-            <div className="text-xs font-semibold text-gray-500">
-              로그인:{" "}
-              <span
-                className={
-                  isAdmin
-                    ? "text-emerald-700"
-                    : isInsuranceManager
-                      ? "text-purple-700"
-                      : isNarumi
-                      ? "text-orange-700"
-                      : isLotte
-                        ? "text-blue-700"
-                        : "text-gray-700"
-                }
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={fetchRows}
+                className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl border border-white/20 bg-white/10 text-white text-sm font-medium hover:bg-white/20 transition-all"
               >
-                {loginRoleLabel}
-              </span>
-              {user?.email ? (
-                <span className="ml-2 text-gray-400 font-medium">({user.email})</span>
-              ) : null}
+                새로고침
+              </button>
+              <button
+                type="button"
+                onClick={logout}
+                className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl border border-red-400/40 bg-red-500/20 text-white text-sm font-medium hover:bg-red-500/30 transition-all"
+              >
+                로그아웃
+              </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={fetchRows}
-              className="px-5 py-3 rounded-xl border border-gray-200 text-navy-900 font-semibold hover:border-gray-300 whitespace-nowrap"
-            >
-              새로고침
-            </button>
-            <button
-              type="button"
-              onClick={logout}
-              className="px-5 py-3 rounded-xl border border-red-200 text-red-600 font-semibold hover:bg-red-50 whitespace-nowrap"
-            >
-              로그아웃
-            </button>
+          {/* 로그인 계정 정보 */}
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <span className="text-xs font-medium text-white/50">로그인:</span>
+            <span className={`text-xs font-semibold px-2.5 py-1 rounded-2xl border ${
+              isAdmin ? "bg-emerald-500/20 border-emerald-400/30 text-emerald-300" :
+              isInsuranceManager ? "bg-purple-500/20 border-purple-400/30 text-purple-300" :
+              isNarumi ? "bg-orange-500/20 border-orange-400/30 text-orange-300" :
+              isLotte ? "bg-blue-500/20 border-blue-400/30 text-blue-300" :
+              "bg-white/10 border-white/20 text-white/70"
+            }`}>
+              {loginRoleLabel}
+            </span>
+            {user?.email && (
+              <span className="text-xs text-white/40">{user.email}</span>
+            )}
           </div>
         </div>
+      </section>
 
+      <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-8 space-y-6">
+
+        {/* ── 오류 메시지 ── */}
         {!!err && (
-          <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm font-semibold">
+          <div className="rounded-2xl border border-red-200 bg-red-50 text-red-700 px-5 py-3 text-sm font-medium">
             {err}
           </div>
         )}
-      </div>
 
-      {((isAdmin || isNarumi) || canViewAll) && (
-        <section className={`${cardClass} p-5`}>
-          <div className="grid xl:grid-cols-12 gap-5 items-start">
-            {(isPrivilegedManager || isNarumi) && (
-  <div className="xl:col-span-8">
-    <div className="flex items-start justify-between gap-3 mb-4">
-      <div className="flex items-start gap-3">
-        <div className="mt-1 h-5 w-1.5 rounded bg-orange-500" />
-        <div>
-          <div className="text-lg font-semibold text-navy-900">
-            신규 입력
-          </div>
-          <div className="text-sm text-gray-500 mt-1">
-          </div>
-        </div>
-      </div>
-
-      <button
-        type="button"
-        onClick={() => setShowCreatePanel((prev) => !prev)}
-        className="h-9 w-9 shrink-0 rounded-lg border border-gray-200 bg-white text-lg font-semibold text-navy-900 hover:border-gray-300"
-        aria-label={showCreatePanel ? "신규입력 접기" : "신규입력 펼치기"}
-        title={showCreatePanel ? "신규입력 접기" : "신규입력 펼치기"}
-      >
-        {showCreatePanel ? "−" : "+"}
-      </button>
-    </div>
-
-    {showCreatePanel && (
-    <div className="space-y-3">
-      {/* 1행 */}
-      <div className="grid md:grid-cols-[1.55fr_0.95fr_1fr] gap-3">
-        <div>
-          <label className={labelClass}>차대번호(VIN) *</label>
-          <input
-            value={vin}
-            onChange={(e) => setVin(normalizeVin(e.target.value))}
-            placeholder="예: KMH..."
-            className={compactInputClass}
-            disabled={!canCreate}
-          />
+        {/* ── 안내문 ── */}
+        <div className="rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 text-xs text-orange-700/90 leading-relaxed space-y-0.5">
+          <p>* 고객명/전화번호는 입력 후 {UI_MASK_AFTER_HOURS}시간 경과 시 화면에서 마스킹됩니다.</p>
+          <p>* 고객명은 전체 마스킹, 고객 전화번호는 뒷 4자리가 마스킹됩니다.</p>
+          <p>* 고객 전화번호는 입력 후 {DB_SCRUB_AFTER_HOURS}시간(5일) 경과 시 DB에서 뒷 4자리가 영구 마스킹(삭제)됩니다.</p>
+          <p>* 차량등록증 업로드 완료 건은 일반 사용자는 최근 {HIDE_UPLOADED_AFTER_DAYS_FOR_NON_ADMIN}일 이내만 표시됩니다.</p>
         </div>
 
-        <div>
-          <label className={labelClass}>고객명 *</label>
-          <input
-            value={customerName}
-            onChange={(e) => setCustomerName(e.target.value)}
-            placeholder="예: 홍길동"
-            className={compactInputClass}
-            disabled={!canCreate}
+        {/* ── 요약 뱃지 ── */}
+        <div className="flex flex-wrap gap-2">
+          <SummaryBadge
+            label="보류" count={summaryCounts.hold}
+            className="bg-gray-100 text-gray-600 border-gray-200"
+            active={summaryFilter === "hold"}
+            onClick={() => handleSummaryBadgeClick("hold")}
           />
-        </div>
-
-        <div>
-          <label className={labelClass}>전화번호 *</label>
-          <input
-            value={customerPhone}
-            onChange={(e) => setCustomerPhone(formatPhoneKR(e.target.value))}
-            placeholder="010-1234-5678"
-            inputMode="tel"
-            className={compactInputClass}
-            disabled={!canCreate}
+          <SummaryBadge
+            label="보험대기" count={summaryCounts.insuranceWaiting}
+            className="bg-orange-50 text-orange-700 border-orange-200"
+            active={summaryFilter === "insurance_waiting"}
+            onClick={() => handleSummaryBadgeClick("insurance_waiting")}
           />
-        </div>
-      </div>
-
-      {/* 2행 */}
-      <div className="grid md:grid-cols-2 xl:grid-cols-6 gap-3 items-start">
-        <div>
-          <label className={labelClass}>제작증</label>
-          <input
-            ref={manufactureInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={onManufacturePicked}
+          <SummaryBadge
+            label="서류대기" count={summaryCounts.docsWaiting}
+            className="bg-orange-50 text-orange-700 border-orange-200"
+            active={summaryFilter === "docs_waiting"}
+            onClick={() => handleSummaryBadgeClick("docs_waiting")}
           />
-          <button
-            type="button"
-            onClick={() => manufactureInputRef.current?.click()}
-            disabled={!canCreate}
-            className={compactButtonClass}
-          >
-            {manufactureImageFile ? "첨부됨" : "제작증 첨부"}
-          </button>
-
-          {manufactureImageFile && (
+          <SummaryBadge
+            label="등록대기" count={summaryCounts.registerWaiting}
+            className="bg-orange-50 text-orange-700 border-orange-200"
+            active={summaryFilter === "register_waiting"}
+            onClick={() => handleSummaryBadgeClick("register_waiting")}
+          />
+          <SummaryBadge
+            label="완료" count={summaryCounts.completed}
+            className="bg-emerald-50 text-emerald-700 border-emerald-200"
+            active={summaryFilter === "completed"}
+            onClick={() => handleSummaryBadgeClick("completed")}
+          />
+          {summaryFilter !== "all" && (
             <button
               type="button"
-              onClick={() => {
-                setManufactureImageFile(null);
-                if (manufactureInputRef.current) manufactureInputRef.current.value = "";
-              }}
-              disabled={!canCreate}
-              className="mt-1 text-[11px] font-medium text-red-600 hover:underline disabled:opacity-60"
+              onClick={() => { setSummaryFilter("all"); setStatusFilter("all"); }}
+              className="inline-flex items-center gap-1.5 rounded-2xl border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-500 hover:shadow-sm transition-all"
             >
-              첨부 제거
+              전체 보기
             </button>
           )}
         </div>
 
-        <div>
-          <label className={labelClass}>출고일자 *</label>
-          <input
-            value={deliveryText}
-            onChange={(e) => setDeliveryText(formatYYYYMMDDToDots(e.target.value))}
-            placeholder="YYYY.MM.DD"
-            inputMode="numeric"
-            className={compactInputClass}
-            disabled={!canCreate}
-          />
-        </div>
-
-        <div>
-          <label className={labelClass}>롯데오토리스</label>
-          <div className="h-[44px] w-full rounded-lg border border-gray-200 bg-white flex items-center gap-4 px-3">
-            <label className="inline-flex items-center gap-1.5 text-sm font-medium text-navy-900 cursor-pointer">
-              <input
-                type="radio"
-                name="lotte"
-                checked={lotte === true}
-                onChange={() => setLotte(true)}
-                className="h-4 w-4 accent-orange-500"
-                disabled={!canCreate}
-              />
-              Y
-            </label>
-            <label className="inline-flex items-center gap-1.5 text-sm font-medium text-navy-900 cursor-pointer">
-              <input
-                type="radio"
-                name="lotte"
-                checked={lotte === false}
-                onChange={() => setLotte(false)}
-                className="h-4 w-4 accent-orange-500"
-                disabled={!canCreate}
-              />
-              N
-            </label>
+        {/* ── 검색/필터 패널 ── */}
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <p className="text-xs font-medium tracking-[0.12em] uppercase text-orange-500">Search</p>
+            <button
+              type="button"
+              onClick={() => setShowSearchPanel((v) => !v)}
+              className="text-xs font-medium text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              {showSearchPanel ? "접기 ↑" : "펼치기 ↓"}
+            </button>
           </div>
-        </div>
 
-        <div>
-          <label className={labelClass}>영업사원 *</label>
-          <input
-            value={salesRep}
-            onChange={(e) => setSalesRep(e.target.value)}
-            placeholder="예: 홍길동"
-            className={compactInputClass}
-            disabled={!canCreate}
-          />
-        </div>
-
-        <div>
-          <label className={labelClass}>영업사원 연락처 *</label>
-          <input
-            value={salesRepPhone}
-            onChange={(e) => setSalesRepPhone(formatPhoneKR(e.target.value))}
-            placeholder="010-1234-5678"
-            inputMode="tel"
-            className={compactInputClass}
-            disabled={!canCreate}
-          />
-        </div>
-
-        <div>
-          <label className={labelClass}>용도 구분 *</label>
-          <select
-            value={vehicleUseType}
-            onChange={(e) => setVehicleUseType(e.target.value as "영업용" | "자가용")}
-            className={compactInputClass}
-            disabled={!canCreate}
-          >
-            <option value="영업용">영업용</option>
-            <option value="자가용">자가용</option>
-          </select>
-        </div>
-      </div>
-
-      {/* 3행 */}
-<div className="grid md:grid-cols-[1fr_140px] gap-3 items-start">
-  {/* 특이사항 */}
-  <div>
-    <label className={labelClass}>특이사항</label>
-    <textarea
-      value={specialNote}
-      onChange={(e) => setSpecialNote(e.target.value)}
-      placeholder="고객 요청사항 / 특이사항 / 보험사 정보 / 등록 관련 메모 ..."
-      className="min-h-[88px] w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium text-navy-900 focus:border-orange-400 focus:ring-4 focus:ring-orange-200/40 outline-none resize-none"
-      disabled={!canCreate}
-    />
-  </div>
-
-  {/* 버튼 */}
-  <div>
-  <label className={labelClass}>&nbsp;</label>
-  <div className="h-[88px] flex flex-col justify-between gap-3">
-    <button
-      type="button"
-      onClick={onAdd}
-      disabled={saving || !canCreate}
-      className="h-[40px] w-full rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 disabled:opacity-60"
-    >
-      {saving ? "추가 중..." : "추가"}
-    </button>
-
-    <button
-      type="button"
-      onClick={onReset}
-      disabled={!canCreate}
-      className="h-[40px] w-full rounded-lg border border-gray-200 text-navy-900 text-sm font-semibold hover:border-gray-300 disabled:opacity-60"
-    >
-      초기화
-    </button>
-  </div>
-</div>
-</div>
-    </div>
-    )}
-  </div>
-)}
-
-            {canViewAll && (
-              <div className="xl:col-span-4">
-                <div className="flex items-start justify-between gap-3 mb-4">
-                  <div className="flex items-start gap-3">
-                    <div className="mt-1 h-5 w-1.5 rounded bg-orange-500" />
-                    <div>
-                      <div className="text-lg font-semibold text-navy-900">
-                        조회 / 검색
-                      </div>
-                      <div className="text-sm text-gray-500 mt-1">
-고객명, VIN, 전화번호, 영업사원, 특이사항, ID 검색
-                      </div>
-                    </div>
-                  </div>
-
+          {showSearchPanel && (
+            <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
+              <div>
+                <label className={labelClass}>통합 검색</label>
+                <input
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  placeholder="VIN, 고객명, 전화번호, 영업사원..."
+                  className={compactInputClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>상태 필터</label>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as any)}
+                  className={compactInputClass}
+                >
+                  <option value="all">전체</option>
+                  <option value="todo">접수</option>
+                  <option value="insurance">보험</option>
+                  <option value="docs">등록서류</option>
+                  <option value="registered">등록완료</option>
+                  <option value="completed">차량등록증 완료</option>
+                </select>
+              </div>
+              {isPrivilegedManager && (
+                <div className="flex items-end">
                   <button
                     type="button"
-                    onClick={() => setShowSearchPanel((prev) => !prev)}
-                    className="h-9 w-9 shrink-0 rounded-lg border border-gray-200 bg-white text-lg font-semibold text-navy-900 hover:border-gray-300"
-                    aria-label={showSearchPanel ? "조회/검색 접기" : "조회/검색 펼치기"}
-                    title={showSearchPanel ? "조회/검색 접기" : "조회/검색 펼치기"}
+                    onClick={() => setShowOldUploaded((v) => !v)}
+                    className={`w-full h-[48px] px-4 rounded-2xl border text-sm font-medium transition-all ${
+                      showOldUploaded
+                        ? "bg-orange-50 border-orange-200 text-orange-700"
+                        : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                    }`}
                   >
-                    {showSearchPanel ? "−" : "+"}
+                    {showOldUploaded ? "오래된 완료 건 숨기기" : "오래된 완료 건 포함"}
                   </button>
                 </div>
+              )}
+            </div>
+          )}
+        </div>
 
-                {showSearchPanel && (
-                  <div className="space-y-3">
-                    <div>
-                      <label className={labelClass}>검색</label>
-                      <input
-                        value={searchText}
-                        onChange={(e) => setSearchText(e.target.value)}
-                        placeholder="고객명 / VIN / 전화번호 / 영업사원 / 특이사항 / ID"
-                        className={compactInputClass}
-                      />
-                    </div>
+        {/* ── 신규 입력 패널 ── */}
+        {((isAdmin || isNarumi) || canViewAll) && (isPrivilegedManager || isNarumi) && (
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <p className="text-xs font-medium tracking-[0.12em] uppercase text-orange-500">New</p>
+                <h2 className="mt-1 text-xl font-semibold text-navy-900">신규 입력</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreatePanel((prev) => !prev)}
+                className="h-9 w-9 shrink-0 rounded-2xl border border-gray-200 bg-white text-xl font-semibold text-gray-500 hover:border-gray-300 transition-all"
+                aria-label={showCreatePanel ? "신규입력 접기" : "신규입력 펼치기"}
+              >
+                {showCreatePanel ? "−" : "+"}
+              </button>
+            </div>
 
-                    <div>
-                      <label className={labelClass}>상태 필터</label>
-                      <select
-                        value={statusFilter}
-                        onChange={(e) => {
-                          setStatusFilter(e.target.value as any);
-                          setSummaryFilter("all");
-                        }}
-                        className={compactInputClass}
-                      >
-                        <option value="all">전체</option>
-                        <option value="todo">접수</option>
-                        <option value="insurance">보험</option>
-                        <option value="docs">등록서류</option>
-                        <option value="registered">등록완료</option>
-                        <option value="completed">차량등록증 완료</option>
-                      </select>
-                    </div>
+            {showCreatePanel && (
+              <div className="space-y-4">
+                {/* 1행 */}
+                <div className="grid md:grid-cols-3 gap-3">
+                  <div>
+                    <label className={labelClass}>차대번호(VIN) *</label>
+                    <input value={vin} onChange={(e) => setVin(normalizeVin(e.target.value))} placeholder="예: KMH..." className={compactInputClass} disabled={!canCreate} />
+                  </div>
+                  <div>
+                    <label className={labelClass}>고객명 *</label>
+                    <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="예: 홍길동" className={compactInputClass} disabled={!canCreate} />
+                  </div>
+                  <div>
+                    <label className={labelClass}>전화번호 *</label>
+                    <input value={customerPhone} onChange={(e) => setCustomerPhone(formatPhoneKR(e.target.value))} placeholder="010-1234-5678" inputMode="tel" className={compactInputClass} disabled={!canCreate} />
+                  </div>
+                </div>
 
-                    <div>
-                      <label className={labelClass}>오래된 업로드 건</label>
-                      <div className="h-[88px] flex flex-col justify-between gap-3">
-                        <label className="h-[40px] w-full rounded-lg border border-gray-200 bg-white flex items-center gap-3 px-3 cursor-pointer text-sm font-medium text-navy-900">
-                          <input
-                            type="checkbox"
-                            checked={showOldUploaded}
-                            onChange={(e) => setShowOldUploaded(e.target.checked)}
-                            className="h-4 w-4 accent-orange-500"
-                            disabled={!isPrivilegedManager}
-                          />
-                          30일 초과도 포함
-                        </label>
-
-                        <button
-                          type="button"
-                          onClick={fetchRows}
-                          className="h-[40px] w-full rounded-lg border border-gray-200 text-navy-900 text-sm font-semibold hover:border-gray-300"
-                        >
-                          조회 / 새로고침
-                        </button>
-                      </div>
+                {/* 2행 */}
+                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 items-start">
+                  <div>
+                    <label className={labelClass}>제작증</label>
+                    <button type="button" onClick={() => manufactureInputRef.current?.click()} disabled={!canCreate} className={compactButtonClass}>
+                      {manufactureImageFile ? "첨부됨 ✓" : "제작증 첨부"}
+                    </button>
+                    {manufactureImageFile && (
+                      <button type="button" onClick={() => { setManufactureImageFile(null); if (manufactureInputRef.current) manufactureInputRef.current.value = ""; }} disabled={!canCreate} className="mt-1 text-[11px] font-medium text-red-500 hover:underline">
+                        첨부 제거
+                      </button>
+                    )}
+                  </div>
+                  <div>
+                    <label className={labelClass}>출고일자 *</label>
+                    <input value={deliveryText} onChange={(e) => setDeliveryText(formatYYYYMMDDToDots(e.target.value))} placeholder="YYYY.MM.DD" inputMode="numeric" className={compactInputClass} disabled={!canCreate} />
+                  </div>
+                  <div>
+                    <label className={labelClass}>롯데오토리스</label>
+                    <div className="h-[48px] w-full rounded-2xl border border-gray-200 bg-white flex items-center gap-4 px-4">
+                      <label className="inline-flex items-center gap-1.5 text-sm font-medium text-navy-900 cursor-pointer">
+                        <input type="radio" name="lotte" checked={lotte === true} onChange={() => setLotte(true)} className="h-4 w-4 accent-orange-500" disabled={!canCreate} /> Y
+                      </label>
+                      <label className="inline-flex items-center gap-1.5 text-sm font-medium text-navy-900 cursor-pointer">
+                        <input type="radio" name="lotte" checked={lotte === false} onChange={() => setLotte(false)} className="h-4 w-4 accent-orange-500" disabled={!canCreate} /> N
+                      </label>
                     </div>
                   </div>
-                )}
+                  <div>
+                    <label className={labelClass}>영업사원 *</label>
+                    <input value={salesRep} onChange={(e) => setSalesRep(e.target.value)} placeholder="홍길동" className={compactInputClass} disabled={!canCreate} />
+                  </div>
+                  <div>
+                    <label className={labelClass}>영업사원 연락처 *</label>
+                    <input value={salesRepPhone} onChange={(e) => setSalesRepPhone(formatPhoneKR(e.target.value))} placeholder="010-0000-0000" inputMode="tel" className={compactInputClass} disabled={!canCreate} />
+                  </div>
+                  <div>
+                    <label className={labelClass}>용도 구분 *</label>
+                    <select value={vehicleUseType} onChange={(e) => setVehicleUseType(e.target.value as any)} className={compactInputClass} disabled={!canCreate}>
+                      <option value="자가용">자가용</option>
+                      <option value="영업용">영업용</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* 특이사항 */}
+                <div>
+                  <label className={labelClass}>특이사항</label>
+                  <textarea value={specialNote} onChange={(e) => setSpecialNote(e.target.value)} placeholder="고객 요청사항 / 특이사항 / 보험사 정보..." className="w-full min-h-[80px] px-4 py-3 rounded-2xl border border-gray-200 bg-white text-sm text-navy-900 placeholder:text-gray-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 resize-none transition-all" disabled={!canCreate} />
+                </div>
+
+                <div className="flex justify-end gap-3">
+                  <button type="button" onClick={onReset} disabled={saving || !canCreate} className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl border border-gray-300 bg-white text-navy-900 font-semibold text-sm hover:shadow-md transition-all disabled:opacity-50">
+                    초기화
+                  </button>
+                  <button type="button" onClick={onAdd} disabled={saving || !canCreate} className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl bg-orange-500 text-white font-semibold text-sm hover:bg-orange-600 transition-all disabled:opacity-50">
+                    {saving ? "저장중..." : "접수 등록"}
+                  </button>
+                </div>
               </div>
             )}
           </div>
-        </section>
-      )}
+        )}
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="application/pdf,image/*"
-        className="hidden"
-        onChange={onFilePicked}
-      />
+        {/* ── 카드 목록 ── */}
+        {loading && (
+          <div className="py-12 text-center text-sm text-gray-400">로딩 중...</div>
+        )}
 
-      <section className={`${cardClass} p-5`}>
-        <div className="flex items-start gap-3 mb-4">
-          <div className="mt-1 h-5 w-1.5 rounded bg-orange-500" />
-          <div className="flex-1">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div className="text-lg font-semibold text-navy-900">
-                업무 목록 ({filteredRows.length})
-                {summaryFilter !== "all" && (
-                  <span className="ml-2 text-sm font-medium text-orange-600">· 배지 필터 적용중</span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 flex-wrap justify-end">
-                <SummaryBadge
-  label="전체"
-  count={filteredRows.length}
-  className={
-    summaryFilter === "all"
-      ? "bg-gray-900 text-white border-gray-900"
-      : "bg-gray-50 text-gray-700 border-gray-200"
-  }
-  active={summaryFilter === "all"}
-  onClick={() => setSummaryFilter("all")}
-/>
-                <SummaryBadge
-                  label="보류"
-                  count={summaryCounts.hold}
-                  className={
-                    summaryFilter === "hold"
-                      ? "bg-slate-700 text-white border-slate-700"
-                      : "bg-slate-50 text-slate-700 border-slate-200"
-                  }
-                  active={summaryFilter === "hold"}
-                  onClick={() => handleSummaryBadgeClick("hold")}
-                />
-                <SummaryBadge
-                  label="보험대기"
-                  count={summaryCounts.insuranceWaiting}
-                  className={
-                    summaryFilter === "insurance_waiting"
-                      ? "bg-amber-600 text-white border-amber-600"
-                      : "bg-amber-50 text-amber-700 border-amber-200"
-                  }
-                  active={summaryFilter === "insurance_waiting"}
-                  onClick={() => handleSummaryBadgeClick("insurance_waiting")}
-                />
-                <SummaryBadge
-                  label="등록서류대기"
-                  count={summaryCounts.docsWaiting}
-                  className={
-                    summaryFilter === "docs_waiting"
-                      ? "bg-orange-600 text-white border-orange-600"
-                      : "bg-orange-50 text-orange-700 border-orange-200"
-                  }
-                  active={summaryFilter === "docs_waiting"}
-                  onClick={() => handleSummaryBadgeClick("docs_waiting")}
-                />
-                <SummaryBadge
-                  label="등록대기"
-                  count={summaryCounts.registerWaiting}
-                  className={
-                    summaryFilter === "register_waiting"
-                      ? "bg-blue-600 text-white border-blue-600"
-                      : "bg-blue-50 text-blue-700 border-blue-200"
-                  }
-                  active={summaryFilter === "register_waiting"}
-                  onClick={() => handleSummaryBadgeClick("register_waiting")}
-                />
-                <SummaryBadge
-                  label="완결"
-                  count={summaryCounts.completed}
-                  className={
-                    summaryFilter === "completed"
-                      ? "bg-emerald-600 text-white border-emerald-600"
-                      : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                  }
-                  active={summaryFilter === "completed"}
-                  onClick={() => handleSummaryBadgeClick("completed")}
-                />
-                {loading && <div className="text-sm text-gray-500 ml-1">Loading…</div>}
-              </div>
-            </div>
-
-            <div className="text-sm text-gray-500 mt-1 leading-relaxed">
-              차량등록증 업로드 완료 후에는 RNF 단계 버튼이 잠금됩니다. 보류 건은 별도 배지로 분리되며 다른 단계 카운팅에서 제외됩니다.
-              {!isPrivilegedManager && (
-                <>
-                  <br />
-                  * 업로드 완료 건은 최근 {HIDE_UPLOADED_AFTER_DAYS_FOR_NON_ADMIN}일만 표시됩니다.
-                </>
-              )}
-              {isLotte && (
-                <>
-                  <br />
-                  * 롯데오토리스 계정은 롯데오토리스 대상 건만 조회할 수 있습니다.
-                </>
-              )}
-              <br />
-              * 메모 입력/수정/저장은 관리자(admin)만 가능합니다.
-              {summaryFilter !== "all" && (
-                <>
-                  <br />
-                  * 현재 상단 배지 필터가 적용되어 해당 단계 목록만 표시 중입니다. 같은 배지를 다시 누르면 전체로 돌아갑니다.
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-2">
+        <div className="space-y-4">
           {filteredRows.map((r) => {
-            const locked = !!r.vehicle_doc_path;
-            const held = !!r.on_hold;
-            const hasVehicleDoc = !!r.vehicle_doc_path;
-            const hasManufactureDoc = !!r.manufacture_doc_path;
-            const vehicleDocCanUpload = isVehicleDocKeyEnabled(r);
-            const currentStatus = deriveStatus(r);
-            const memoValue = memoDrafts[String(r.id)] ?? "";
-            const maskedPhone = shouldMaskPhoneForUI(r);
-            const displayCustomerName = getDisplayCustomerName(r);
+            const isLocked   = isLockedAfterUpload(r);
+            const isHold     = isOnHold(r);
+            const isDone     = isAllDone(r);
+            const canDocUp   = isVehicleDocKeyEnabled(r);
+            const memoValue  = memoDrafts[String(r.id)] ?? r.special_note ?? "";
+            const memoChanged = memoValue !== (r.special_note ?? "");
+            const canEditMemoNow = canEditMemo;
             const displayPhone = getDisplayPhone(r);
-            const dialablePhone = getDialablePhone(r);
-            const canDialNow = isMobileDevice() && !maskedPhone && !!dialablePhone;
-            const isPostalMode = !!r.is_registered;
-            const postalSaved = !!r.postal_mail_sent;
-            const hasPostalInfo = !!((r.postal_tracking_no ?? "").trim() || (r.postal_sent_date ?? "").trim());
-            const postalFormOpen = String(postalOpenRowId) === String(r.id);
+            const displayName  = getDisplayCustomerName(r);
+            const dialable     = getDialablePhone(r);
 
             return (
-              <div key={String(r.id)} className="overflow-x-auto">
-                <div className="min-w-[1120px] border border-gray-200 rounded-2xl bg-white overflow-hidden">
-                  <div className="grid grid-cols-1 xl:grid-cols-10">
-                    <div className="p-3 xl:col-span-4 xl:border-r border-gray-200 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-3">
-                        <span
-                          className={`${pillBase} ${
-                            held
-                              ? "bg-slate-100 text-slate-700 border-slate-300"
-                              : currentStatus === "completed"
-                                ? pillDone
-                                : currentStatus === "todo"
-                                  ? pillGray
-                                  : pillProg
-                          }`}
-                        >
-                          {held ? "보류" : statusLabel(currentStatus)}
-                        </span>
+              <div key={r.id} className={`rounded-2xl border bg-white shadow-sm hover:shadow-md transition-all overflow-hidden ${isHold ? "border-gray-300 opacity-75" : isLocked ? "border-emerald-200" : "border-gray-200"}`}>
 
-                        <span className="text-xs font-semibold text-gray-500">
-                          ID {String(r.id)}
-                        </span>
+                {/* 카드 헤더 */}
+                <div className="flex items-start justify-between gap-3 px-6 pt-5 pb-4 border-b border-gray-100">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* 상태 뱃지 */}
+                    <span className={`${pillBase} ${
+                      isLocked ? pillDone :
+                      isHold ? pillGray :
+                      deriveStatus(r) === "registered" ? pillDone :
+                      deriveStatus(r) === "docs" ? pillProg :
+                      deriveStatus(r) === "insurance" ? pillProg :
+                      pillGray
+                    }`}>
+                      {isLocked ? "차량등록증 완료" : isHold ? "보류" : statusLabel(deriveStatus(r))}
+                    </span>
+                    {r.is_lotte_autolease && (
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-2xl border border-blue-200 bg-blue-50 text-blue-700 text-xs font-semibold">롯데</span>
+                    )}
+                    <span className="text-base font-semibold text-navy-900">
+                      {r.vin_last6 ?? r.vin?.slice(-6) ?? "-"}
+                    </span>
+                    <span className="text-xs text-gray-400">#{String(r.id)}</span>
+                    {r.vehicle_use_type && (
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-2xl border border-gray-200 bg-gray-50 text-gray-600 text-xs font-medium">{r.vehicle_use_type}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {canEditExisting && (
+                      <button type="button" onClick={() => openEditModal(r)} className="inline-flex items-center justify-center px-4 py-2 rounded-2xl border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:border-gray-300 hover:shadow-sm transition-all">
+                        수정
+                      </button>
+                    )}
+                  </div>
+                </div>
 
-                        {locked && (
-                          <span className="text-xs font-medium text-gray-400">
-                            업로드 완료(잠금)
-                          </span>
-                        )}
+                {/* 카드 바디 */}
+                <div className="px-6 py-5 grid md:grid-cols-2 gap-6">
 
-                        {held && (
-                          <span className="text-xs font-medium text-slate-500">등록업무 보류중</span>
+                  {/* 왼쪽: 기본 정보 + 단계 버튼 */}
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className={infoLabel}>VIN</p>
+                        <p className={infoValue}>{r.vin || "-"}</p>
+                      </div>
+                      <div>
+                        <p className={infoLabel}>출고일</p>
+                        <p className={infoValue}>{r.delivery_date_text || "-"}</p>
+                      </div>
+                      <div>
+                        <p className={infoLabel}>고객명</p>
+                        <p className={infoValue}>{displayName}</p>
+                      </div>
+                      <div>
+                        <p className={infoLabel}>전화번호</p>
+                        {dialable && !shouldMaskPhoneForUI(r) ? (
+                          <a href={`tel:${dialable}`} className="mt-1 text-sm font-semibold text-orange-600 hover:underline break-all">
+                            {displayPhone}
+                          </a>
+                        ) : (
+                          <p className={infoValue}>{displayPhone}</p>
                         )}
                       </div>
-
-                      <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-x-5 gap-y-3">
-                        <div className="min-w-0">
-                          <div className={infoLabel}>차대번호(VIN)</div>
-                          <div className={`${infoValue} text-[15px] leading-tight`}>
-                            <div className="break-all">{(r.vin ?? "").slice(0, -6)}</div>
-                            <div className="font-semibold tracking-wider text-orange-500">{(r.vin ?? "").slice(-6)}</div>
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className={infoLabel}>고객명</div>
-                          <div className={`${infoValue} whitespace-nowrap`}>{displayCustomerName}</div>
-                          <div className="mt-1 text-xs text-gray-400">
-                            {maskedPhone
-                              ? "화면 전체 마스킹 상태"
-                              : r.customer_phone_set_at
-                                ? `${UI_MASK_AFTER_HOURS}h 후 전체 마스킹`
-                                : ""}
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className={infoLabel}>전화번호</div>
-                          <div className={`${infoValue} whitespace-nowrap`}>
-                            {canDialNow ? (
-                              <a
-                                href={`tel:${dialablePhone}`}
-                                className="text-blue-600 underline underline-offset-2"
-                              >
-                                {displayPhone}
-                              </a>
-                            ) : (
-                              <span className={maskedPhone ? "text-gray-400 cursor-not-allowed text-gray-500 bg-gray-50 select-none" : undefined}>
-                                {displayPhone}
-                              </span>
-                            )}
-                          </div>
-                          <div className="mt-1 text-xs text-gray-400">
-                            {r.customer_phone_scrubbed_at
-                              ? "DB 영구 마스킹됨 · 모바일 발신 차단"
-                              : r.vehicle_doc_path
-                                ? "차량등록증 업로드로 즉시 화면 마스킹 · 모바일 발신 차단"
-                                : maskedPhone
-                                  ? "화면 마스킹 상태 · 모바일 발신 차단"
-                                  : isMobileDevice()
-                                    ? "모바일에서 탭 시 즉시 발신"
-                                    : r.customer_phone_set_at
-                                      ? `${UI_MASK_AFTER_HOURS}h 후 화면 마스킹`
-                                      : ""}
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className={infoLabel}>출고일자</div>
-                          <div className={infoValue}>{r.delivery_date_text || "-"}</div>
-                        </div>
-
-                        <div>
-                          <div className={infoLabel}>롯데오토리스</div>
-                          <div className={infoValue}>{r.is_lotte_autolease ? "Y" : "N"}</div>
-                        </div>
-
-                        <div>
-                          <div className={infoLabel}>영업사원</div>
-                          <div className={infoValue}>{r.sales_rep || "-"}</div>
-                        </div>
-
-                        <div>
-                          <div className={infoLabel}>영업사원 연락처</div>
-                          <div className={infoValue}>{r.sales_rep_phone || "-"}</div>
-                        </div>
-
-                        <div>
-                          <div className={infoLabel}>영업용/자가용</div>
-                          <div className={infoValue}>{r.vehicle_use_type || "-"}</div>
-                        </div>
+                      <div>
+                        <p className={infoLabel}>영업사원</p>
+                        <p className={infoValue}>{r.sales_rep || "-"}{r.sales_rep_phone ? ` / ${formatPhoneKR(r.sales_rep_phone)}` : ""}</p>
+                      </div>
+                      <div>
+                        <p className={infoLabel}>접수일시</p>
+                        <p className={infoValue}>{formatCreatedAt(r.created_at)}</p>
+                      </div>
+                      <div>
+                        <p className={infoLabel}>롯데오토리스</p>
+                        <p className="mt-1">
+                          {r.is_lotte_autolease ? (
+                            <span className={`${pillBase} ${pillProg}`}>Y</span>
+                          ) : (
+                            <span className={`${pillBase} ${pillGray}`}>N</span>
+                          )}
+                        </p>
+                      </div>
+                      <div>
+                        <p className={infoLabel}>용도</p>
+                        <p className={infoValue}>{r.vehicle_use_type || "-"}</p>
                       </div>
                     </div>
 
-                    <div className="p-3 xl:col-span-6 flex flex-col gap-3 min-w-0">
-                      <div>
-                        <div className="text-sm font-semibold text-gray-500 mb-2">
-                          RNF 단계
-                        </div>
-
-                        <div className="flex items-center gap-1 whitespace-nowrap overflow-hidden">
-                          <button
-                            type="button"
-                            disabled={locked || held || !canChangeStatus}
-                            className={[
-                              btnBase,
-                              locked || held || !canChangeStatus
-                                ? btnDisabled
-                                : r.has_insurance
-                                  ? btnOn
-                                  : btnOff,
-                            ].join(" ")}
-                            onClick={() => handleInsuranceButtonClick(r)}
-                          >
-                            보험
-                          </button>
-
-                          <button
-                            type="button"
-                            disabled={locked || held || !canChangeStatus}
-                            className={[
-                              btnBase,
-                              locked || held || !canChangeStatus
-                                ? btnDisabled
-                                : r.docs_ready
-                                  ? btnOn
-                                  : btnOff,
-                            ].join(" ")}
-                            onClick={() => toggleStage(r.id, "docs_ready")}
-                          >
-                            등록서류
-                          </button>
-
-                          <button
-                            type="button"
-                            disabled={locked || held || !canChangeStatus}
-                            className={[
-                              btnBase,
-                              locked || held || !canChangeStatus
-                                ? btnDisabled
-                                : r.is_registered
-                                  ? btnOn
-                                  : btnOff,
-                            ].join(" ")}
-                            onClick={() => toggleStage(r.id, "is_registered")}
-                          >
-                            등록완료
-                          </button>
-
-                          <button
-                            type="button"
-                            disabled={false}
-                            className={[
-                              btnBase,
-                              (!vehicleDocCanUpload || uploadingId === r.id || locked || held) && !hasVehicleDoc
-                                ? "bg-gray-50 text-gray-500 border-gray-200"
-                                : hasVehicleDoc
-                                  ? btnOn
-                                  : btnOff,
-                            ].join(" ")}
-                            style={
-                              (!vehicleDocCanUpload || uploadingId === r.id || locked || held) && !hasVehicleDoc
-                                ? { color: "#6b7280", backgroundColor: "#f9fafb", borderColor: "#e5e7eb" }
-                                : undefined
-                            }
-                            onClick={() => { if (!vehicleDocCanUpload || uploadingId === r.id || locked || held) return; onClickVehicleDocUpload(r); }}
-                            title={
-                              hasVehicleDoc
-                                ? "업로드 완료"
-                                : !canUploadVehicleDoc
-                                  ? "업로드 권한 없음"
-                                  : !isAllDone(r)
-                                    ? "등록완료까지 처리된 후 업로드 가능"
-                                    : locked
-                                      ? "업로드 후 잠금"
-                                      : held
-                                        ? "보류 해제 후 업로드 가능"
-                                        : "차량등록증 업로드"
-                            }
-                          >
-                            등록증
-                          </button>
-
-                          <button
-                            type="button"
-                            disabled={!hasVehicleDoc}
-                            className={[btnBase, hasVehicleDoc ? btnOff : btnDisabled].join(" ")}
-                            onClick={() => downloadVehicleDoc(r)}
-                          >
-                            다운로드
-                          </button>
-
-
-                          <button
-                            type="button"
-                            disabled={false}
-                            className={[
-                              btnBase,
-                              hasManufactureDoc && isPrivilegedManager && !locked ? btnOff : btnDisabled,
-                            ].join(" ")}
-                            onClick={() => { if (!hasManufactureDoc || !isPrivilegedManager || locked) return; viewManufactureDoc(r); }}
-                          >
-                            제작증
-                          </button>
-
-                          <button
-                            type="button"
-                            disabled={isPostalMode ? !canChangeStatus : locked || !canChangeStatus}
-                            className={[
-                              btnBase,
-                              isPostalMode
-                                ? !canChangeStatus
-                                  ? btnDisabled
-                                  : btnOff
-                                : locked || !canChangeStatus
-                                  ? btnDisabled
-                                  : held
-                                    ? "bg-slate-700 text-white border-slate-700"
-                                    : "bg-white text-slate-700 border-slate-300 hover:border-slate-500",
-                            ].join(" ")}
-                            onClick={() => (isPostalMode ? openPostalForm(r) : toggleHold(r))}
-                            title={
-                              isPostalMode
-                                ? hasPostalInfo
-                                  ? "우편발송 정보를 조회/수정"
-                                  : "우편발송 정보 입력"
-                                : held
-                                  ? "보류 해제"
-                                  : "등록업무 보류"
-                            }
-                          >
-                            {isPostalMode ? (hasPostalInfo ? "우편조회" : "우편발송") : held ? "해제" : "보류"}
-                          </button>
-                        </div>
-                      </div>
-
-                      {postalFormOpen && (
-                        <div className="rounded-xl border border-orange-200 bg-orange-50/50 px-3 py-3">
-                          <div className="grid grid-cols-[minmax(0,0.7fr)_128px_1fr] gap-2 items-end">
-                            <div className="min-w-0">
-                              <label className="mb-1 block text-[11px] font-medium text-gray-500">등기번호</label>
-                              <input
-                                value={postalTrackingNo}
-                                onChange={(e) => setPostalTrackingNo(e.target.value)}
-                                className={compactInputClass}
-                                placeholder="등기번호 입력"
-                              />
-                            </div>
-
-                            <div className="min-w-0">
-                              <label className="mb-1 block text-[11px] font-medium text-gray-500">발송일자</label>
-                              <input
-                                type="date"
-                                value={postalSentDate}
-                                onChange={(e) => setPostalSentDate(e.target.value)}
-                                className={compactInputClass}
-                              />
-                            </div>
-
-                            <div className="flex items-end justify-end gap-2 min-w-0">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  openPostalTrackingLookup(postalTrackingNo);
-                                }}
-                                className="h-[44px] w-[72px] shrink-0 px-0 rounded-lg border border-gray-200 bg-white text-sm font-semibold text-navy-900 whitespace-nowrap hover:border-orange-300"
-                              >
-                                조회
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => savePostalInfo(r)}
-                                disabled={postalSavingId === r.id}
-                                className="h-[44px] w-[72px] shrink-0 px-0 rounded-lg bg-orange-500 text-white text-sm font-semibold whitespace-nowrap hover:bg-orange-600 disabled:opacity-60"
-                              >
-                                {postalSavingId === r.id ? "저장중..." : "저장"}
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={closePostalForm}
-                                disabled={postalSavingId === r.id}
-                                className="h-[44px] w-[72px] shrink-0 px-0 rounded-lg border border-gray-200 bg-white text-sm font-semibold text-gray-700 whitespace-nowrap hover:border-gray-300 disabled:opacity-60"
-                              >
-                                취소
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="text-xs text-gray-400 leading-relaxed break-keep">
-                        {!canEditExisting && (
-                          <span> / * 현재 계정은 기존 데이터 상태 변경 권한이 없습니다.</span>
+                    {/* 단계 버튼 */}
+                    <div>
+                      <p className={`${infoLabel} mb-2`}>진행 단계</p>
+                      <div className="flex flex-wrap gap-2">
+                        {/* 보험 */}
+                        <button
+                          type="button"
+                          disabled={isLocked || isHold || !canChangeStatus}
+                          onClick={() => handleInsuranceButtonClick(r)}
+                          className={`${btnBase} ${isLocked || isHold ? btnDisabled : r.has_insurance ? btnOn : btnOff}`}
+                        >
+                          보험
+                        </button>
+                        {/* 등록서류 */}
+                        <button
+                          type="button"
+                          disabled={isLocked || isHold || !canChangeStatus}
+                          onClick={() => !isLocked && !isHold && toggleStage(r.id, "docs_ready")}
+                          className={`${btnBase} ${isLocked || isHold ? btnDisabled : r.docs_ready ? btnOn : btnOff}`}
+                        >
+                          등록서류
+                        </button>
+                        {/* 등록완료 */}
+                        <button
+                          type="button"
+                          disabled={isLocked || isHold || !canChangeStatus}
+                          onClick={() => !isLocked && !isHold && toggleStage(r.id, "is_registered")}
+                          className={`${btnBase} ${isLocked || isHold ? btnDisabled : r.is_registered ? btnOn : btnOff}`}
+                        >
+                          등록완료
+                        </button>
+                        {/* 차량등록증 */}
+                        <button
+                          type="button"
+                          disabled={!canDocUp}
+                          onClick={() => onClickVehicleDocUpload(r)}
+                          className={`${btnBase} ${!canDocUp ? btnDisabled : isLocked ? btnOn : btnOff}`}
+                        >
+                          {uploadingId === r.id ? "업로드중" : "차량등록증"}
+                        </button>
+                        {/* 우편발송 / 보류 — isPostalMode(등록완료)일 때 우편버튼, 아닐 때 보류버튼 */}
+                        {canChangeStatus && !isLocked && (
+                          r.is_registered ? (
+                            <button
+                              type="button"
+                              onClick={() => postalOpenRowId === r.id ? closePostalForm() : openPostalForm(r)}
+                              className={`${btnBase} ${r.postal_mail_sent ? btnOn : btnOff}`}
+                              title={r.postal_mail_sent ? "우편발송 정보 조회/수정" : "우편발송 정보 입력"}
+                            >
+                              {r.postal_mail_sent ? "우편조회" : "우편발송"}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => toggleHold(r)}
+                              className={`${btnBase} ${isHold ? "bg-gray-500 text-white border-gray-500" : btnOff}`}
+                            >
+                              {isHold ? "보류해제" : "보류"}
+                            </button>
+                          )
                         )}
                       </div>
+                    </div>
 
-                      <div>
-                        <div className="flex items-center justify-between gap-3 mb-2 min-w-0">
-                          <div className="text-sm font-semibold text-gray-500">메모</div>
+                    {/* 제작증 / 차량등록증 다운로드 */}
+                    <div className="flex flex-wrap gap-2">
+                      {r.manufacture_doc_path && (
+                        <a
+                          href={`${supabase.storage.from("vehicle_docs").getPublicUrl(r.manufacture_doc_path).data.publicUrl}`}
+                          target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center px-4 py-2 rounded-2xl border border-gray-300 bg-white text-navy-900 font-semibold text-xs hover:shadow-md transition-all"
+                        >
+                          제작증 보기
+                        </a>
+                      )}
+                      {r.vehicle_doc_path && (
+                        <a
+                          href={`${supabase.storage.from("vehicle_docs").getPublicUrl(r.vehicle_doc_path).data.publicUrl}`}
+                          target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center px-4 py-2 rounded-2xl border border-emerald-200 bg-emerald-50 text-emerald-700 font-semibold text-xs hover:shadow-md transition-all"
+                        >
+                          차량등록증 보기
+                        </a>
+                      )}
+                    </div>
+                  </div>
 
-                          {canEditMemo && (
-                            <div className="flex items-center gap-2 shrink-0">
-                              <button
-                                type="button"
-                                onClick={() => resetMemoDraft(r)}
-                                className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700 hover:border-gray-300"
-                              >
-                                되돌리기
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => saveMemo(r.id)}
-                                disabled={memoSavingId === r.id}
-                                className="px-3 py-1.5 rounded-lg bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 disabled:opacity-60"
-                              >
-                                {memoSavingId === r.id ? "저장중..." : "저장"}
-                              </button>
-                            </div>
-                          )}
+                  {/* 오른쪽: 우편 발송 + 메모 */}
+                  <div className="space-y-4">
+                    {/* 우편 발송 */}
+                    {r.is_registered && (
+                      <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <p className={`${infoLabel}`}>우편 발송</p>
                         </div>
 
-                        {canEditMemo ? (
-                          <textarea
-                            value={memoValue}
-                            onChange={(e) =>
-                              setMemoDrafts((prev) => ({
-                                ...prev,
-                                [String(r.id)]: e.target.value,
-                              }))
-                            }
-                            placeholder="관리자/보험전담 계정만 메모 입력/수정 가능"
-                            className="w-full h-[88px] text-[13px] text-gray-700 whitespace-pre-wrap break-words rounded-xl bg-white border border-gray-200 px-3 py-2 focus:border-orange-400 focus:ring-4 focus:ring-orange-200/40 outline-none resize-none overflow-y-auto"
-                          />
-                        ) : (
-                          <div className="h-[88px] overflow-y-auto text-[13px] text-gray-700 whitespace-pre-wrap break-words rounded-xl bg-gray-50 border border-gray-200 px-3 py-2">
-                            {r.special_note?.trim() ? (
-                              r.special_note
-                            ) : (
-                              <span className="text-gray-400">-</span>
+                        {r.postal_mail_sent ? (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className={`${pillBase} ${pillDone}`}>발송완료</span>
+                              {r.postal_sent_date && <span className="text-xs text-gray-500">{r.postal_sent_date}</span>}
+                            </div>
+                            {r.postal_tracking_no && (
+                              <button
+                                type="button"
+                                onClick={() => openPostalTrackingLookup(r.postal_tracking_no!)}
+                                className="text-xs font-semibold text-orange-500 hover:underline"
+                              >
+                                {r.postal_tracking_no} (조회)
+                              </button>
                             )}
                           </div>
+                        ) : (
+                          <span className={`${pillBase} ${pillGray}`}>미발송</span>
+                        )}
+
+                        {postalOpenRowId === r.id && (
+                          <div className="mt-3 space-y-2">
+                            <div>
+                              <label className={labelClass}>등기번호</label>
+                              <input value={postalTrackingNo} onChange={(e) => setPostalTrackingNo(e.target.value)} placeholder="등기번호 입력" className={compactInputClass} />
+                            </div>
+                            <div>
+                              <label className={labelClass}>발송일</label>
+                              <input type="date" value={postalSentDate} onChange={(e) => setPostalSentDate(e.target.value)} className={compactInputClass} />
+                            </div>
+                            <div className="flex justify-end gap-2">
+                              <button type="button" onClick={closePostalForm} className="inline-flex items-center justify-center px-4 py-2 rounded-2xl border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:shadow-sm transition-all">취소</button>
+                              <button type="button" onClick={() => savePostalInfo(r)} disabled={postalSavingId === r.id} className="inline-flex items-center justify-center px-4 py-2 rounded-2xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-all disabled:opacity-50">
+                                {postalSavingId === r.id ? "저장중..." : "저장"}
+                              </button>
+                            </div>
+                          </div>
                         )}
                       </div>
+                    )}
+
+                    {/* 메모 */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className={infoLabel}>특이사항 / 메모</p>
+                        {memoChanged && canEditMemoNow && (
+                          <button
+                            type="button"
+                            disabled={memoSavingId === r.id}
+                            onClick={() => saveMemo(r.id)}
+                            className="inline-flex items-center justify-center px-3 py-1 rounded-2xl bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 transition-all disabled:opacity-50"
+                          >
+                            {memoSavingId === r.id ? "저장중..." : "저장"}
+                          </button>
+                        )}
+                      </div>
+
+                      {canEditMemoNow ? (
+                        <textarea
+                          value={memoValue}
+                          onChange={(e) => setMemoDrafts((prev) => ({ ...prev, [String(r.id)]: e.target.value }))}
+                          placeholder="관리자/보험전담 계정만 메모 입력/수정 가능"
+                          className="w-full h-[88px] text-sm text-gray-700 rounded-2xl bg-white border border-gray-200 px-4 py-3 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 resize-none transition-all"
+                        />
+                      ) : (
+                        <div className="h-[88px] overflow-y-auto text-sm text-gray-700 rounded-2xl bg-gray-50 border border-gray-200 px-4 py-3">
+                          {r.special_note?.trim() ? r.special_note : <span className="text-gray-400">-</span>}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -2220,190 +1897,94 @@ VIN: ${nextVin}`);
             );
           })}
 
-          {filteredRows.length === 0 && (
-            <div className="px-4 py-8 text-sm text-gray-500 border border-gray-200 rounded-2xl">
+          {!loading && filteredRows.length === 0 && (
+            <div className="rounded-2xl border border-gray-200 bg-white px-6 py-12 text-center text-sm text-gray-500">
               조회 결과가 없습니다.
             </div>
           )}
         </div>
+      </div>
+
+      {/* ── 수정 모달 ── */}
       {editRow && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-2xl rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl">
-            <div className="flex items-start justify-between gap-3">
+          <div className="w-full max-w-2xl rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-3 mb-6">
               <div>
-                <div className="text-lg font-semibold text-navy-900">기본정보 수정</div>
-                <div className="mt-1 text-sm text-gray-500">
-                  차대번호, 고객명, 전화번호, 영업사원 정보, 특이사항을 수정합니다.
-                </div>
+                <p className="text-xs font-medium tracking-[0.12em] uppercase text-orange-500">Edit</p>
+                <h2 className="mt-1 text-xl font-semibold text-navy-900">기본정보 수정</h2>
+                <p className="mt-1 text-sm text-gray-500">차대번호, 고객명, 전화번호, 영업사원 정보를 수정합니다.</p>
               </div>
-
-              <button
-                type="button"
-                onClick={closeEditModal}
-                disabled={editSaving}
-                className="h-9 w-9 rounded-lg border border-gray-200 bg-white text-lg font-semibold text-navy-900 hover:border-gray-300 disabled:opacity-60"
-              >
-                ×
-              </button>
+              <button type="button" onClick={closeEditModal} disabled={editSaving} className="h-9 w-9 rounded-2xl border border-gray-200 text-xl font-bold text-gray-500 hover:border-gray-300 disabled:opacity-50 transition-all">×</button>
             </div>
 
-            <div className="mt-5 grid md:grid-cols-2 gap-4">
+            <div className="grid sm:grid-cols-2 gap-4">
               <div>
                 <label className={labelClass}>차대번호(VIN) *</label>
-                <input
-                  value={editVin}
-                  onChange={(e) => setEditVin(normalizeVin(e.target.value))}
-                  className={compactInputClass}
-                  disabled={!isPrivilegedManager || editSaving}
-                  placeholder="예: KMH..."
-                />
-                {!isPrivilegedManager && (
-                  <div className="mt-1 text-xs text-gray-400">차대번호는 관리자/보험전담 계정만 수정 가능합니다.</div>
-                )}
+                <input value={editVin} onChange={(e) => setEditVin(normalizeVin(e.target.value))} className={compactInputClass} disabled={!isPrivilegedManager || editSaving} placeholder="예: KMH..." />
+                {!isPrivilegedManager && <p className="mt-1 text-xs text-gray-400">차대번호는 관리자/보험전담 계정만 수정 가능합니다.</p>}
               </div>
-
               <div>
                 <label className={labelClass}>고객명 *</label>
-                <input
-                  value={editCustomerName}
-                  onChange={(e) => setEditCustomerName(e.target.value)}
-                  className={compactInputClass}
-                  disabled={editSaving}
-                  placeholder="예: 홍길동"
-                />
+                <input value={editCustomerName} onChange={(e) => setEditCustomerName(e.target.value)} className={compactInputClass} disabled={editSaving} placeholder="예: 홍길동" />
               </div>
-
               <div>
                 <label className={labelClass}>전화번호 *</label>
-                <input
-                  value={editCustomerPhone}
-                  onChange={(e) => setEditCustomerPhone(formatPhoneKR(e.target.value))}
-                  className={compactInputClass}
-                  disabled={editSaving}
-                  inputMode="tel"
-                  placeholder="010-1234-5678"
-                />
-                <div className="mt-1 text-xs text-gray-400">
-                  전화번호 변경 시 마스킹 기준시간이 다시 시작됩니다.
-                </div>
+                <input value={editCustomerPhone} onChange={(e) => setEditCustomerPhone(formatPhoneKR(e.target.value))} className={compactInputClass} disabled={editSaving} inputMode="tel" placeholder="010-1234-5678" />
+                <p className="mt-1 text-xs text-gray-400">전화번호 변경 시 마스킹 기준시간이 다시 시작됩니다.</p>
               </div>
-
               <div>
                 <label className={labelClass}>영업사원 *</label>
-                <input
-                  value={editSalesRep}
-                  onChange={(e) => setEditSalesRep(e.target.value)}
-                  className={compactInputClass}
-                  disabled={editSaving}
-                  placeholder="예: 홍길동"
-                />
+                <input value={editSalesRep} onChange={(e) => setEditSalesRep(e.target.value)} className={compactInputClass} disabled={editSaving} placeholder="예: 홍길동" />
               </div>
-
               <div>
                 <label className={labelClass}>영업사원 연락처 *</label>
-                <input
-                  value={editSalesRepPhone}
-                  onChange={(e) => setEditSalesRepPhone(formatPhoneKR(e.target.value))}
-                  className={compactInputClass}
-                  disabled={editSaving}
-                  inputMode="tel"
-                  placeholder="010-1234-5678"
-                />
+                <input value={editSalesRepPhone} onChange={(e) => setEditSalesRepPhone(formatPhoneKR(e.target.value))} className={compactInputClass} disabled={editSaving} inputMode="tel" placeholder="010-1234-5678" />
               </div>
-
               <div>
                 <label className={labelClass}>용도 구분 *</label>
-                <select
-                  value={editVehicleUseType}
-                  onChange={(e) => setEditVehicleUseType(e.target.value as "영업용" | "자가용")}
-                  className={compactInputClass}
-                  disabled={editSaving}
-                >
+                <select value={editVehicleUseType} onChange={(e) => setEditVehicleUseType(e.target.value as any)} className={compactInputClass} disabled={editSaving}>
                   <option value="영업용">영업용</option>
                   <option value="자가용">자가용</option>
                 </select>
               </div>
-
               <div>
                 <label className={labelClass}>ID</label>
-                <input
-                  value={String(editRow.id)}
-                  readOnly
-                  className={`${compactInputClass} bg-gray-50 text-gray-500`}
-                />
+                <input value={String(editRow.id)} readOnly className={compactInputClass + " !bg-gray-50 !text-gray-400 cursor-not-allowed"} />
               </div>
             </div>
 
             <div className="mt-4">
               <label className={labelClass}>특이사항</label>
-              <textarea
-                value={editSpecialNote}
-                onChange={(e) => setEditSpecialNote(e.target.value)}
-                placeholder="고객 요청사항 / 특이사항 / 보험사 정보 / 등록 관련 메모 ..."
-                className="min-h-[110px] w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium text-navy-900 focus:border-orange-400 focus:ring-4 focus:ring-orange-200/40 outline-none resize-none"
-                disabled={editSaving}
-              />
+              <textarea value={editSpecialNote} onChange={(e) => setEditSpecialNote(e.target.value)} placeholder="고객 요청사항 / 특이사항 / 보험사 정보 / 등록 관련 메모..." className="min-h-[90px] w-full px-4 py-3 rounded-2xl border border-gray-200 bg-white text-sm text-navy-900 placeholder:text-gray-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 resize-none transition-all" disabled={editSaving} />
             </div>
 
-            <div className="mt-5 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={closeEditModal}
-                disabled={editSaving}
-                className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:border-gray-300 disabled:opacity-60"
-              >
-                취소
-              </button>
-              <button
-                type="button"
-                onClick={saveEditRow}
-                disabled={editSaving}
-                className="rounded-xl border border-orange-500 bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
-              >
-                {editSaving ? "저장중..." : "저장"}
-              </button>
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={closeEditModal} disabled={editSaving} className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:shadow-md transition-all disabled:opacity-50">취소</button>
+              <button type="button" onClick={saveEditRow} disabled={editSaving} className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-all disabled:opacity-50">{editSaving ? "저장중..." : "저장"}</button>
             </div>
           </div>
         </div>
       )}
 
+      {/* ── 보험 모달 ── */}
       {insuranceModalRow && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl">
-            <div className="text-lg font-semibold text-navy-900">당사에서 가입하나요?</div>
-            <div className="mt-2 text-sm leading-6 text-gray-600">
-              Y를 선택하면 상담관리 페이지의 보험 상담등록 화면으로 이동합니다.
-              <br />
+          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
+            <p className="text-xs font-medium tracking-[0.12em] uppercase text-orange-500 mb-2">Insurance</p>
+            <h2 className="text-xl font-semibold text-navy-900 mb-3">당사에서 가입하나요?</h2>
+            <p className="text-sm leading-6 text-gray-600">
+              Y를 선택하면 상담관리 페이지의 보험 상담등록 화면으로 이동합니다.<br />
               N을 선택하면 현재 업무목록에서 보험 단계가 즉시 완료됩니다.
-            </div>
-            <div className="mt-5 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:border-gray-300"
-                onClick={() => setInsuranceModalRow(null)}
-              >
-                취소
-              </button>
-              <button
-                type="button"
-                className="rounded-xl border border-emerald-600 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-                onClick={completeInsuranceAsN}
-              >
-                N
-              </button>
-              <button
-                type="button"
-                className="rounded-xl border border-orange-500 bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600"
-                onClick={moveToCallManagementForInsurance}
-              >
-                Y
-              </button>
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={() => setInsuranceModalRow(null)} className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:shadow-md transition-all">취소</button>
+              <button type="button" onClick={completeInsuranceAsN} className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl border border-emerald-600 bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition-all">N</button>
+              <button type="button" onClick={moveToCallManagementForInsurance} className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-all">Y</button>
             </div>
           </div>
         </div>
       )}
-
-      </section>
     </div>
   );
 }

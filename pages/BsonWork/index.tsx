@@ -384,29 +384,28 @@ export default function BsonWorkPage() {
     return { total, hasAny, pct };
   }, [visibleRows, photoExistMap, normalizedDealName]);
 
+  // ─── 스타일 상수 ──────────────────────────────────────────
   const badge = (ok: boolean) =>
     ok
       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-      : "bg-gray-50 text-gray-500 border-gray-200";
+      : "bg-gray-100 text-gray-500 border-gray-200";
 
-  // ✅ 다운로드 버튼: 흰 배경 + 진한 글자(테두리) → 글자 안 보이는 이슈 제거
   const dlBtnEnabled =
-    "inline-flex items-center justify-center px-4 py-2 rounded-xl " +
-    "bg-white border border-navy-900 text-navy-900 font-bold " +
-    "hover:bg-navy-900 hover:text-white transition";
+    "inline-flex items-center justify-center px-4 py-2 rounded-2xl " +
+    "border border-gray-300 bg-white text-navy-900 font-semibold text-xs " +
+    "hover:shadow-md transition-all";
 
   const dlBtnDisabled =
-    "inline-flex items-center justify-center px-4 py-2 rounded-xl " +
-    "bg-gray-100 border border-gray-200 text-gray-400 font-bold cursor-not-allowed";
-
+    "inline-flex items-center justify-center px-4 py-2 rounded-2xl " +
+    "bg-gray-100 border border-gray-200 text-gray-400 font-semibold text-xs cursor-not-allowed";
 
   const exportBtnClass =
-    "inline-flex items-center justify-center w-auto px-3 py-1.5 text-sm font-bold " +
-    "text-white bg-gray-800 rounded-md hover:bg-gray-700 whitespace-nowrap transition";
+    "inline-flex items-center justify-center px-5 py-2.5 rounded-2xl " +
+    "bg-orange-500 text-white font-semibold text-sm hover:bg-orange-600 transition-all whitespace-nowrap";
 
   const exportBtnDisabledClass =
-    "inline-flex items-center justify-center w-auto px-3 py-1.5 text-sm font-bold " +
-    "text-gray-400 bg-gray-100 border border-gray-200 rounded-md whitespace-nowrap cursor-not-allowed";
+    "inline-flex items-center justify-center px-5 py-2.5 rounded-2xl " +
+    "bg-gray-100 border border-gray-200 text-gray-400 font-semibold text-sm cursor-not-allowed whitespace-nowrap";
 
   const handleExportNoPhotoExcel = async () => {
     const targets = visibleRows
@@ -519,308 +518,256 @@ export default function BsonWorkPage() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-10 space-y-6">
-      <PageTitle
-        title="BS_ON 업무"
-        desc="RNF KOREA 내부 자산 및 딜 관리 페이지입니다. 사진 업로드 진행 상태와 자산 정보를 관리합니다."
-      />
+    <div className="min-h-screen bg-gray-50">
 
-      {/* 상단 */}
-      <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
-        <div>
-          <div className="text-sm font-bold text-gray-500">BS_ON · 렌탈 딜 자산 관리</div>
-          <h1 className="text-2xl md:text-3xl font-bold text-navy-900 mt-1">
-            딜: {dealName || "—"}
+      {/* ── 히어로 헤더 ── */}
+      <section className="relative bg-[#0a192f] text-white overflow-hidden">
+        <div
+          className="absolute inset-0 opacity-[0.04]" aria-hidden="true"
+          style={{
+            backgroundImage: "repeating-linear-gradient(45deg, white 0, white 1px, transparent 0, transparent 50%)",
+            backgroundSize: "24px 24px",
+          }}
+        />
+        <div className="relative max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-12 md:py-16">
+          <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-400">Business</p>
+          <h1 className="mt-3 text-3xl md:text-4xl font-semibold leading-[1.15] text-white break-keep">
+            BS_ON 업무
           </h1>
+          <p className="mt-3 text-base leading-7 text-white/75 break-keep">
+            렌탈 딜 자산 관리 · 사진 업로드 진행 상태 및 다운로드
+          </p>
         </div>
+      </section>
 
-        <div className="flex flex-col sm:flex-row sm:items-end gap-3">
-          {/* 딜 이름 */}
-          <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
-            <div className="text-[11px] font-bold text-gray-500">
-              딜 이름(시트명 정확히 입력)
-            </div>
+      <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-8 space-y-6">
+
+        {/* ── 컨트롤 패널 ── */}
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+          {/* 딜 이름 입력 */}
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <p className="text-xs font-medium tracking-[0.12em] uppercase text-orange-500 mb-3">Deal Name</p>
+            <p className="text-sm font-medium text-navy-900 mb-2">딜 이름 (시트명 정확히 입력)</p>
             <input
               value={dealName}
               onChange={(e) => setDealName(e.target.value)}
-              className="mt-1 w-[260px] outline-none font-bold text-navy-900"
-              placeholder="예: RNF"
+              className="h-[44px] w-full px-4 rounded-2xl border border-gray-200 bg-gray-50 text-sm font-semibold text-navy-900 placeholder:text-gray-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 transition-all"
+              placeholder="예: 삼우"
             />
-            <div className="mt-2 text-[11px] font-bold">
+            <div className="mt-3">
               {isUnlocked ? (
-                <span className="text-emerald-700">✅ 일치: 자산 표시</span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
+                  ✓ 일치 — 자산 표시
+                </span>
               ) : (
-                <span className="text-gray-500">⛔ 미일치: 자산 숨김 (허용 시트: 별도)</span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-2xl bg-gray-100 border border-gray-200 text-gray-500 text-xs font-semibold">
+                  미일치 — 자산 숨김
+                </span>
               )}
             </div>
           </div>
 
           {/* 장비번호 검색 */}
-          <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
-            <div className="text-[11px] font-bold text-gray-500">
-              장비번호 검색(끝 4자리)
-            </div>
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <p className="text-xs font-medium tracking-[0.12em] uppercase text-orange-500 mb-3">Search</p>
+            <p className="text-sm font-medium text-navy-900 mb-2">장비번호 검색 (끝 4자리)</p>
             <input
               value={equipmentSearch}
               onChange={(e) => {
                 const raw = e.target.value.replace(/\s+/g, "");
                 setEquipmentSearch(raw.slice(0, 4));
               }}
-              className="mt-1 w-[180px] outline-none font-bold text-navy-900"
+              className="h-[44px] w-full px-4 rounded-2xl border border-gray-200 bg-gray-50 text-sm font-semibold text-navy-900 placeholder:text-gray-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 transition-all"
               placeholder="예: 1234"
               inputMode="numeric"
               maxLength={4}
             />
-            <div className="mt-2 text-[11px] font-bold text-gray-500">
-              {normalizedEquipmentSearch
-                ? `입력값: ${normalizedEquipmentSearch}`
-                : "미입력 시 전체 표시"}
-            </div>
+            <p className="mt-3 text-xs text-gray-400">
+              {normalizedEquipmentSearch ? `검색 중: ${normalizedEquipmentSearch}` : "미입력 시 전체 표시"}
+            </p>
           </div>
 
-          {/* 진척율 박스 (잠금 해제 시만 의미있게 표시) */}
-          <div className="rounded-2xl border border-gray-200 bg-white px-5 py-4 min-w-[280px]">
-            <div className="text-[11px] font-bold text-gray-500">사진 진척율</div>
-
+          {/* 사진 진척율 */}
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <p className="text-xs font-medium tracking-[0.12em] uppercase text-orange-500 mb-3">Progress</p>
+            <p className="text-sm font-medium text-navy-900 mb-3">사진 진척율</p>
             {!isUnlocked ? (
-              <div className="mt-2 text-sm font-bold text-gray-500 leading-relaxed">
-                딜 이름을 입력하세요
-              </div>
+              <p className="text-sm text-gray-400">딜 이름을 먼저 입력하세요.</p>
             ) : (
               <>
-                <div className="mt-1 flex items-end justify-between gap-3">
-                  <div className="text-2xl font-bold text-navy-900">{progress.pct}%</div>
-                  <div className="text-sm font-bold text-gray-700">
-                    {progress.hasAny}/{progress.total}
-                  </div>
+                <div className="flex items-end justify-between gap-3 mb-2">
+                  <span className="text-3xl font-semibold text-navy-900">{progress.pct}%</span>
+                  <span className="text-sm font-medium text-gray-500 pb-1">{progress.hasAny} / {progress.total}</span>
                 </div>
-                <div className="mt-3 h-2 rounded-full bg-gray-100 overflow-hidden">
-                  <div className="h-full bg-orange-500" style={{ width: `${progress.pct}%` }} />
+                <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                  <div className="h-full bg-orange-500 transition-all" style={{ width: `${progress.pct}%` }} />
                 </div>
-                <div className="mt-2 text-[11px] text-gray-500">
-                  * 사진1 또는 사진2 중 <b>하나라도 있으면</b> “사진있음”으로 계산
-                </div>
+                <p className="mt-2 text-xs text-gray-400">* 사진1 또는 사진2 중 하나라도 있으면 "있음"으로 계산</p>
               </>
             )}
           </div>
         </div>
-      </div>
 
-      {/* 안내 */}
-      <div className="rounded-2xl border border-orange-200 bg-orange-50 p-5">
-        <div className="font-bold text-orange-700">다운로드 전용 안내</div>
-        <div className="text-sm text-orange-700/90 mt-1 leading-relaxed">
-          이 페이지는 <b>있음/없음 + 다운로드</b> 전용입니다.
+        {/* ── 안내 배너 ── */}
+        <div className="rounded-2xl border border-orange-200 bg-orange-50 px-6 py-4">
+          <p className="text-sm font-semibold text-orange-700">
+            다운로드 전용 페이지 — 있음/없음 확인 및 사진 파일 다운로드만 가능합니다.
+          </p>
         </div>
-      </div>
 
-      {/* 잠금 안내 (자산 숨김 상태) */}
-      {!isUnlocked && (
-        <div className="rounded-2xl border border-gray-200 bg-white p-6">
-          <div className="text-lg font-bold text-navy-900">딜 이름 입력 필요</div>
-          <div className="mt-2 text-sm text-gray-600 leading-relaxed">
-            딜 이름(=시트명)을 정확히 입력하면 자산 목록이 표시됩니다.
+        {/* ── 잠금 안내 ── */}
+        {!isUnlocked && (
+          <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+            <p className="text-xs font-medium tracking-[0.12em] uppercase text-orange-500 mb-2">Locked</p>
+            <h2 className="text-xl font-semibold text-navy-900 mb-2">딜 이름 입력 필요</h2>
+            <p className="text-sm leading-6 text-gray-600">딜 이름(=시트명)을 정확히 입력하면 자산 목록이 표시됩니다.</p>
+            <p className="mt-3 text-xs text-gray-400">* 목록은 숨기지만 CSV는 내부적으로 로드될 수 있습니다 (표시/검증 로직만 잠금).</p>
           </div>
-          <div className="mt-4 text-[12px] text-gray-500">
-            * 목록은 숨기지만, CSV는 내부적으로 로드될 수 있습니다(표시/검증 로직만 잠금).
-          </div>
-        </div>
-      )}
+        )}
 
-      {/* 테이블 (잠금 해제 시만 표시) */}
-      {isUnlocked && (
-        <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
-            <div>
-              <div className="font-bold text-navy-900">
-                자산 {visibleRows.length.toLocaleString()}개
+        {/* ── 테이블 (잠금 해제 시) ── */}
+        {isUnlocked && (
+          <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm">
+            <div className="px-6 py-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium tracking-[0.12em] uppercase text-orange-500">Assets</p>
+                <h2 className="mt-1 text-lg font-semibold text-navy-900">
+                  자산 {visibleRows.length.toLocaleString()}개
+                </h2>
+                {normalizedEquipmentSearch && (
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    장비번호 끝 4자리 <strong>{normalizedEquipmentSearch}</strong> 검색 결과
+                  </p>
+                )}
               </div>
-              {normalizedEquipmentSearch && (
-                <div className="text-[12px] text-gray-500 mt-1">
-                  장비번호 끝 4자리 <b>{normalizedEquipmentSearch}</b> 검색 결과
-                </div>
-              )}
+              <div className="flex items-center gap-3">
+                {normalizedDealName === "삼우2" && (
+                  <button
+                    type="button"
+                    onClick={handleExportNoPhotoExcel}
+                    className={loading ? exportBtnDisabledClass : exportBtnClass}
+                    disabled={loading}
+                    title="삼우2 목록에서 사진이 하나도 없는 장비만 엑셀로 다운로드"
+                  >
+                    사진없는 장비 엑셀 다운로드
+                  </button>
+                )}
+                {loading && <span className="text-sm font-medium text-gray-400">불러오는 중…</span>}
+                {err && <span className="text-sm font-medium text-red-500">에러: {err}</span>}
+              </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              {normalizedDealName === "삼우2" && (
-                <button
-                  type="button"
-                  onClick={handleExportNoPhotoExcel}
-                  className={loading ? exportBtnDisabledClass : exportBtnClass}
-                  disabled={loading}
-                  title="삼우2 목록에서 사진이 하나도 없는 장비만 엑셀로 다운로드"
-                >
-                  사진없는 장비 엑셀 다운로드
-                </button>
-              )}
+            <div className="overflow-x-auto">
+              <table className="min-w-[1550px] w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-100">
+                  <tr className="text-left">
+                    <th className="px-4 py-3 text-xs font-medium tracking-wide text-gray-400 uppercase w-[70px]">순번</th>
+                    <th className="px-4 py-3 text-xs font-medium tracking-wide text-gray-400 uppercase w-[180px]">장비번호</th>
+                    <th className="px-4 py-3 text-xs font-medium tracking-wide text-gray-400 uppercase w-[240px]">모델명</th>
+                    <th className="px-4 py-3 text-xs font-medium tracking-wide text-gray-400 uppercase w-[240px]">차대번호</th>
+                    <th className="px-4 py-3 text-xs font-medium tracking-wide text-gray-400 uppercase w-[180px]">현장명</th>
+                    <th className="px-4 py-3 text-xs font-medium tracking-wide text-gray-400 uppercase w-[320px]">현장주소</th>
+                    <th className="px-4 py-3 text-xs font-medium tracking-wide text-gray-400 uppercase w-[100px]">사진1</th>
+                    <th className="px-4 py-3 text-xs font-medium tracking-wide text-gray-400 uppercase w-[160px]">다운로드1</th>
+                    <th className="px-4 py-3 text-xs font-medium tracking-wide text-gray-400 uppercase w-[100px]">사진2</th>
+                    <th className="px-4 py-3 text-xs font-medium tracking-wide text-gray-400 uppercase w-[160px]">다운로드2</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleRows.map((r, idx) => {
+                    const last4 = getPhotoMatchKey(r, normalizedDealName);
+                    const ex    = last4 ? photoExistMap[last4] : undefined;
+                    const p1    = !!ex?.p1.exists;
+                    const p2    = !!ex?.p2.exists;
+                    const u1    = ex?.p1.url || "";
+                    const u2    = ex?.p2.url || "";
+                    const name1 = ex?.p1.filename || "";
+                    const name2 = ex?.p2.filename || "";
 
-              {loading && <div className="text-sm font-bold text-gray-500">불러오는 중…</div>}
-              {err && <div className="text-sm font-bold text-red-600">에러: {err}</div>}
-            </div>
-          </div>
+                    return (
+                      <tr key={`${r.vin ?? ""}-${idx}`} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-600">{r.no ?? idx + 1}</td>
+                        <td className="px-4 py-3">
+                          <p className="font-semibold text-navy-900">{r.equipNo || r.assetNo || "-"}</p>
+                          <p className="text-[11px] text-gray-400 mt-0.5">
+                            파일키 ({normalizedDealName === "삼우2" ? "자산번호끝4" : "VIN끝4"}):&nbsp;
+                            <span className="font-semibold">{last4 || "—"}</span>
+                          </p>
+                        </td>
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-700">{r.model || "-"}</td>
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-700">{r.vin || "-"}</td>
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-700">{r.siteName || "-"}</td>
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-700">{r.siteAddress || "-"}</td>
 
-          <div className="overflow-x-auto">
-            <table className="min-w-[1550px] w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-100">
-                <tr className="text-left text-gray-600">
-                  <th className="px-4 py-3 font-bold w-[70px]">순번</th>
-                  <th className="px-4 py-3 font-bold w-[180px]">장비번호</th>
-                  <th className="px-4 py-3 font-bold w-[240px]">모델명</th>
-                  <th className="px-4 py-3 font-bold w-[240px]">차대번호</th>
-                  <th className="px-4 py-3 font-bold w-[180px]">현장명</th>
-                  <th className="px-4 py-3 font-bold w-[320px]">현장주소</th>
-                  <th className="px-4 py-3 font-bold w-[140px]">사진1</th>
-                  <th className="px-4 py-3 font-bold w-[180px]">다운로드1</th>
-                  <th className="px-4 py-3 font-bold w-[140px]">사진2</th>
-                  <th className="px-4 py-3 font-bold w-[180px]">다운로드2</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {visibleRows.map((r, idx) => {
-                  const last4 = getPhotoMatchKey(r, normalizedDealName);
-                  const ex = last4 ? photoExistMap[last4] : undefined;
-                  const p1 = !!ex?.p1.exists;
-                  const p2 = !!ex?.p2.exists;
-                  const u1 = ex?.p1.url || "";
-                  const u2 = ex?.p2.url || "";
-                  const name1 = ex?.p1.filename || "";
-                  const name2 = ex?.p2.filename || "";
-
-                  return (
-                    <tr
-                      key={`${r.vin ?? ""}-${idx}`}
-                      className="border-b border-gray-100 hover:bg-gray-50"
-                    >
-                      <td className="px-4 py-3 font-bold text-gray-700">
-                        {r.no ?? idx + 1}
-                      </td>
-
-                      <td className="px-4 py-3">
-                        <div className="font-bold text-navy-900">
-                          {r.equipNo || r.assetNo || "-"}
-                        </div>
-                        <div className="text-[11px] text-gray-500 mt-0.5">
-                          파일키({normalizedDealName === "삼우2" ? "자산번호끝4" : "VIN끝4"}): <span className="font-bold">{last4 || "—"}</span>
-                        </div>
-                      </td>
-
-                      <td className="px-4 py-3 font-bold text-gray-700">{r.model || "-"}</td>
-                      <td className="px-4 py-3 font-bold text-gray-700">{r.vin || "-"}</td>
-                      <td className="px-4 py-3 font-bold text-gray-700">
-                        {r.siteName || "-"}
-                      </td>
-                      <td className="px-4 py-3 font-bold text-gray-700">
-                        {r.siteAddress || "-"}
-                      </td>
-
-                      {/* 사진1 */}
-                      <td className="px-4 py-3">
-                        {last4 ? (
-                          <span
-                            className={`inline-flex items-center px-3 py-1 rounded-full border text-xs font-bold ${badge(
-                              p1
-                            )}`}
-                          >
-                            {p1 ? "있음" : "없음"}
-                          </span>
-                        ) : (
-                          <span className="text-gray-400 font-bold">키 없음</span>
-                        )}
-                      </td>
-
-                      {/* 다운로드1 */}
-                      <td className="px-4 py-3">
-                        {last4 ? (
-                          p1 ? (
-                            <a
-                              href={u1}
-                              download={name1}
-                              className={dlBtnEnabled}
-                              title="다운로드"
-                            >
-                              다운로드
-                            </a>
+                        <td className="px-4 py-3">
+                          {last4 ? (
+                            <span className={`inline-flex items-center px-3 py-1 rounded-2xl border text-xs font-semibold ${badge(p1)}`}>
+                              {p1 ? "있음" : "없음"}
+                            </span>
                           ) : (
-                            <button
-                              type="button"
-                              disabled
-                              className={dlBtnDisabled}
-                              title="파일이 없습니다"
-                            >
-                              다운로드
-                            </button>
-                          )
-                        ) : (
-                          <span className="text-gray-400 font-bold">—</span>
-                        )}
-                      </td>
-
-                      {/* 사진2 */}
-                      <td className="px-4 py-3">
-                        {last4 ? (
-                          <span
-                            className={`inline-flex items-center px-3 py-1 rounded-full border text-xs font-bold ${badge(
-                              p2
-                            )}`}
-                          >
-                            {p2 ? "있음" : "없음"}
-                          </span>
-                        ) : (
-                          <span className="text-gray-400 font-bold">키 없음</span>
-                        )}
-                      </td>
-
-                      {/* 다운로드2 */}
-                      <td className="px-4 py-3">
-                        {last4 ? (
-                          p2 ? (
-                            <a
-                              href={u2}
-                              download={name2}
-                              className={dlBtnEnabled}
-                              title="다운로드"
-                            >
-                              다운로드
-                            </a>
+                            <span className="text-xs text-gray-400 font-medium">키 없음</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {last4 ? (
+                            p1 ? (
+                              <a href={u1} download={name1} className={dlBtnEnabled} title="다운로드">다운로드</a>
+                            ) : (
+                              <button type="button" disabled className={dlBtnDisabled} title="파일이 없습니다">다운로드</button>
+                            )
                           ) : (
-                            <button
-                              type="button"
-                              disabled
-                              className={dlBtnDisabled}
-                              title="파일이 없습니다"
-                            >
-                              다운로드
-                            </button>
-                          )
-                        ) : (
-                          <span className="text-gray-400 font-bold">—</span>
-                        )}
+                            <span className="text-gray-400 font-medium">—</span>
+                          )}
+                        </td>
+
+                        <td className="px-4 py-3">
+                          {last4 ? (
+                            <span className={`inline-flex items-center px-3 py-1 rounded-2xl border text-xs font-semibold ${badge(p2)}`}>
+                              {p2 ? "있음" : "없음"}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-400 font-medium">키 없음</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {last4 ? (
+                            p2 ? (
+                              <a href={u2} download={name2} className={dlBtnEnabled} title="다운로드">다운로드</a>
+                            ) : (
+                              <button type="button" disabled className={dlBtnDisabled} title="파일이 없습니다">다운로드</button>
+                            )
+                          ) : (
+                            <span className="text-gray-400 font-medium">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {!loading && !err && visibleRows.length === 0 && (
+                    <tr>
+                      <td className="px-4 py-12 text-center text-sm text-gray-400" colSpan={10}>
+                        표시할 자산이 없습니다. 장비번호 끝 4자리 검색값을 확인해주세요.
                       </td>
                     </tr>
-                  );
-                })}
+                  )}
+                </tbody>
+              </table>
+            </div>
 
-                {!loading && !err && visibleRows.length === 0 && (
-                  <tr>
-                    <td
-                      className="px-4 py-10 text-center text-gray-500 font-bold"
-                      colSpan={10}
-                    >
-                      표시할 자산이 없습니다. 장비번호 끝 4자리 검색값을 확인해주세요.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50">
+              <p className="text-xs text-gray-400 leading-relaxed">
+                사진 파일은 <strong>{PHOTO_BASE}</strong> 아래에&nbsp;
+                {normalizedDealName === "삼우2"
+                  ? <><strong>자산번호끝4자리(1).webp/jpg/jpeg</strong>, <strong>자산번호끝4자리(2).webp/jpg/jpeg</strong></>
+                  : <><strong>VIN끝4자리(1).webp/jpg/jpeg</strong>, <strong>VIN끝4자리(2).webp/jpg/jpeg</strong></>
+                } 규칙으로 두면 자동 연결됩니다.
+              </p>
+            </div>
           </div>
-
-          <div className="px-5 py-4 text-[12px] text-gray-500 bg-white border-t border-gray-100">
-            사진 파일은 <b>{PHOTO_BASE}</b> 아래에 {normalizedDealName === "삼우2" ? (<><b>자산번호끝4자리(1).webp/jpg/jpeg</b>, <b>자산번호끝4자리(2).webp/jpg/jpeg</b></>) : (<><b>VIN끝4자리(1).webp/jpg/jpeg</b>, <b>VIN끝4자리(2).webp/jpg/jpeg</b></>)} 규칙으로 두면 자동 연결됩니다.
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

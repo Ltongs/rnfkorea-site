@@ -93,7 +93,7 @@ function calcMobileMenuStyle(btnEl: HTMLButtonElement | null): MobileMenuStyle {
 export default function PageHeader() {
   const { pathname } = useLocation();
   const nav = useNavigate();
-  const { user, canViewAll, isAdmin, isNarumi, isLotte, isInsuranceManager } = useAuth() as any;
+  const { user, canViewAll, isAdmin, isNarumi, isLotte, isInsuranceManager, isHyundaiCM } = useAuth() as any;
 
   const [openBiz, setOpenBiz] = useState(false);
   const [openShop, setOpenShop] = useState(false);
@@ -538,6 +538,16 @@ export default function PageHeader() {
                       onClick={() => goWorkInternalOnly("/narumi")}
                     >
                       나르미업무
+                    </button>
+                  )}
+
+                  {(isAdmin || isHyundaiCM || !user) && (
+                    <button
+                      type="button"
+                      className={dropItem}
+                      onClick={() => goWorkInternalOnly("/hyundaicm")}
+                    >
+                      현대건설기계업무
                     </button>
                   )}
 
