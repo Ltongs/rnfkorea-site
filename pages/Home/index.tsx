@@ -289,7 +289,7 @@ const Services: React.FC = () => {
             brands={[
               { name: 'KUMHO TIRE', desc: '상용차(트럭/덤프/트레일러)', bgColor: 'bg-red-50', textColor: 'text-red-700' },
               { name: 'NEXEN', desc: '지게차용 솔리드', bgColor: 'bg-purple-50', textColor: 'text-purple-700' },
-              { name: 'MAXAM', desc: '지게차 및 특수물류기계', bgColor: 'bg-orange-50', textColor: 'text-orange-700' }
+              { name: 'Maxam', desc: '지게차 및 특수물류기계', bgColor: 'bg-orange-50', textColor: 'text-orange-700' }
             ]}
           />
           {/* Finance - ID added for navigation */}
