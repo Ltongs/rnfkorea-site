@@ -4,66 +4,55 @@ import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? "";
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
 
-// SSR(prerender) 환경에서는 더미 클라이언트 반환 — 네트워크 연결 없음
 const isSSR = typeof window === "undefined";
-
-const noop = () => Promise.resolve({ data: null, error: null });
-const noopSync = () => ({ data: null, error: null });
 
 const dummySubscription = { unsubscribe: () => {} };
 
 const dummyAuth = {
   getSession: () => Promise.resolve({ data: { session: null }, error: null }),
   onAuthStateChange: () => ({ data: { subscription: dummySubscription } }),
-  signInWithPassword: noop,
-  signOut: noop,
+  signInWithPassword: () => Promise.resolve({ data: null, error: null }),
+  signOut: () => Promise.resolve({ error: null }),
 };
-
-const dummyStorage = {
-  from: () => ({
-    upload: noop,
-    download: noop,
-    remove: noop,
-    getPublicUrl: () => ({ data: { publicUrl: "" } }),
-  }),
-};
-
-const dummyFrom = () => ({
-  select: () => dummyQuery,
-  insert: noop,
-  update: () => dummyQuery,
-  delete: () => dummyQuery,
-  eq: () => dummyQuery,
-  or: () => dummyQuery,
-  gte: () => dummyQuery,
-  lte: () => dummyQuery,
-  order: () => dummyQuery,
-  limit: () => dummyQuery,
-  neq: () => dummyQuery,
-  single: noop,
-});
 
 const dummyQuery: any = {
-  select: () => dummyQuery,
-  eq: () => dummyQuery,
-  or: () => dummyQuery,
-  gte: () => dummyQuery,
-  lte: () => dummyQuery,
-  order: () => dummyQuery,
-  limit: () => dummyQuery,
-  neq: () => dummyQuery,
-  single: noop,
-  then: (resolve: any) => resolve({ data: [], error: null }),
+  select: function() { return dummyQuery; },
+  eq: function() { return dummyQuery; },
+  or: function() { return dummyQuery; },
+  gte: function() { return dummyQuery; },
+  lte: function() { return dummyQuery; },
+  order: function() { return dummyQuery; },
+  limit: function() { return dummyQuery; },
+  neq: function() { return dummyQuery; },
+  single: () => Promise.resolve({ data: null, error: null }),
+  then: function(resolve: any) { return resolve({ data: [], error: null }); },
 };
 
 const dummyClient = {
   auth: dummyAuth,
-  storage: dummyStorage,
-  from: dummyFrom,
+  storage: {
+    from: () => ({
+      upload: () => Promise.resolve({ data: null, error: null }),
+      download: () => Promise.resolve({ data: null, error: null }),
+      remove: () => Promise.resolve({ data: null, error: null }),
+      getPublicUrl: () => ({ data: { publicUrl: "" } }),
+    }),
+  },
+  from: () => dummyQuery,
 };
 
+// SSR 환경: 더미 클라이언트 사용 (네트워크 연결 없음)
+// 브라우저 환경: realtime 비활성화로 WebSocket 연결 방지 (prerender 후 프로세스 종료 보장)
 export const supabase = isSSR
   ? (dummyClient as any)
-  : createClient(supabaseUrl, supabaseAnonKey);
+  : createClient(supabaseUrl, supabaseAnonKey, {
+      realtime: {
+        params: { eventsPerSecond: 0 },
+      },
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+      },
+    });
 
 export default supabase;
