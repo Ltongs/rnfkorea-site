@@ -4,6 +4,7 @@ import { useAuth } from "../../lib/auth";
 import { supabase } from "../../lib/supabase";
 
 const EDGE_FN_URL = "https://nfwtsptqloefsbpjvdyu.supabase.co/functions/v1/send-hyundaicm-kakao";
+const ANON_KEY    = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 export default function KakaoConnectPage() {
   const { user, isAdmin, isHyundaiCM } = useAuth() as any;
@@ -50,7 +51,10 @@ export default function KakaoConnectPage() {
     try {
       const res = await fetch(EDGE_FN_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${ANON_KEY}`,
+        },
         body: JSON.stringify({
           type: "new", caseNo: "TEST-001",
           customerName: "테스트고객", customerType: "개인", equipmentTon: "20톤",
@@ -120,11 +124,10 @@ export default function KakaoConnectPage() {
           <ol className="text-sm text-orange-800 space-y-1.5 leading-relaxed list-decimal list-inside">
             <li>아래 버튼으로 카카오 로그인 페이지 열기</li>
             <li>카카오 계정으로 로그인 후 동의</li>
-            <li>이동된 페이지(빈 화면)의 주소창에서 <code className="bg-orange-100 px-1 rounded">code=</code> 뒤 값 복사</li>
-            <li>복사한 code 값을 아래 입력란에 붙여넣고 저장</li>
+            <li>자동으로 연결 완료 처리됩니다</li>
           </ol>
           <a
-            href={`https://kauth.kakao.com/oauth/authorize?client_id=b5d04de0bc091155983d5a1240b78a15&redirect_uri=https://www.rnfkorea.co.kr/kakao-callback&response_type=code&scope=talk_message&state=${userRole}`}
+            href={`https://kauth.kakao.com/oauth/authorize?client_id=b5d04de0bc091155983d5a1240b78a15&redirect_uri=https://rnfkorea.co.kr/kakao-callback&response_type=code&scope=talk_message&state=${userRole}`}
             target="_blank" rel="noopener noreferrer"
             className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#FEE500] text-[#191919] font-semibold text-sm hover:bg-[#fada00] transition-all"
           >
