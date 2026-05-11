@@ -158,7 +158,7 @@ export default function KakaoConnectPage() {
             {saveMsg && <p className={`text-sm font-medium ${saveMsg.startsWith("✓") ? "text-emerald-600" : "text-red-600"}`}>{saveMsg}</p>}
             <button onClick={handleSave} disabled={saving}
               className="w-full inline-flex items-center justify-center px-8 py-4 rounded-2xl bg-orange-500 text-white font-semibold text-base hover:bg-orange-600 transition-all disabled:opacity-50">
-              {saving ? "저장 중..." : "저장"}
+              {saving ? "저장 중..!" : "저장"}
             </button>
           </div>
         </div>
