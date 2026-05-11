@@ -264,12 +264,27 @@ export default function PageHeader() {
   const goWorkInternalOnly = (path: string) => {
     handleMenuNavigate();
 
-    if (path === "/work/narumi" || path === "/narumi") {
+    // 나르미: canViewAll 권한 있으면 페이지로, 없으면 나르미 로그인
+    if (path === "/narumi") {
       if (user && canViewAll) nav("/narumi");
       else nav("/narumi/login");
       return;
     }
 
+    // 현대건설기계: 항상 현대건설기계 로그인으로 (RouteGuard가 권한 처리)
+    if (path === "/hyundaicm") {
+      nav("/hyundaicm/login");
+      return;
+    }
+
+    // 상담관리: 전용 로그인 페이지로
+    if (path === "/work/call-management") {
+      if (user && canViewAll) nav(path);
+      else nav("/work/call-management/login");
+      return;
+    }
+
+    // 운영대시보드 등 기타 내부 경로
     if (user && canViewAll) nav(path);
     else nav("/narumi/login");
   };

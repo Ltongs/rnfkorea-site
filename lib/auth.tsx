@@ -18,6 +18,8 @@ type AuthContextType = {
   isNarumi: boolean;
   isLotte: boolean;
   isInsuranceManager: boolean;
+  isHyundaiCM: boolean;   // 현대건설기계 (배성구 팀장)
+  isNhCapital: boolean;   // 농협캐피탈 (강신규 소장)
   isInternal: boolean;
 
   // page permissions
@@ -43,11 +45,15 @@ function normalizeEmail(email?: string | null) {
 function getRoleFlags(emailRaw?: string | null) {
   const email = normalizeEmail(emailRaw);
 
-  const isAdmin = email === "admin@rnfkorea.co.kr";
-  const isNarumi = email.endsWith("@narmimotors.com");
-  const isLotte = email.endsWith("@lotte.net");
+  const isAdmin            = email === "admin@rnfkorea.co.kr";
+  const isNarumi           = email.endsWith("@narmimotors.com");
+  const isLotte            = email.endsWith("@lotte.net");
   const isInsuranceManager = email === "inhyang1004@hanmail.net";
+  const isHyundaiCM        = email === "p2001103@hanmail.net";   // 현대건설기계 배성구 팀장
+  const isNhCapital        = email === "allbar7555@naver.com";   // 농협캐피탈 강신규 소장
 
+  // isHyundaiCM / isNhCapital 은 각자 전용 페이지만 볼 수 있으므로
+  // isInternal(나르미 공통 접근)에는 포함하지 않음
   const isInternal = isAdmin || isNarumi || isLotte || isInsuranceManager;
 
   return {
@@ -56,6 +62,8 @@ function getRoleFlags(emailRaw?: string | null) {
     isNarumi,
     isLotte,
     isInsuranceManager,
+    isHyundaiCM,
+    isNhCapital,
     isInternal,
   };
 }
@@ -66,6 +74,8 @@ function getPermissions(emailRaw?: string | null) {
     isNarumi,
     isLotte,
     isInsuranceManager,
+    isHyundaiCM,
+    isNhCapital,
     isInternal,
   } = getRoleFlags(emailRaw);
 
@@ -74,6 +84,8 @@ function getPermissions(emailRaw?: string | null) {
     isNarumi,
     isLotte,
     isInsuranceManager,
+    isHyundaiCM,
+    isNhCapital,
     isInternal,
 
     canViewAll: isInternal,
@@ -157,18 +169,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       session,
       loading,
 
-      isAdmin: permissionState.isAdmin,
-      isNarumi: permissionState.isNarumi,
-      isLotte: permissionState.isLotte,
+      isAdmin:            permissionState.isAdmin,
+      isNarumi:           permissionState.isNarumi,
+      isLotte:            permissionState.isLotte,
       isInsuranceManager: permissionState.isInsuranceManager,
-      isInternal: permissionState.isInternal,
+      isHyundaiCM:        permissionState.isHyundaiCM,
+      isNhCapital:        permissionState.isNhCapital,
+      isInternal:         permissionState.isInternal,
 
-      canViewAll: permissionState.canViewAll,
-      canCreate: permissionState.canCreate,
-      canEditExisting: permissionState.canEditExisting,
-      canDelete: permissionState.canDelete,
-      canChangeStatus: permissionState.canChangeStatus,
-      canEditMemo: permissionState.canEditMemo,
+      canViewAll:         permissionState.canViewAll,
+      canCreate:          permissionState.canCreate,
+      canEditExisting:    permissionState.canEditExisting,
+      canDelete:          permissionState.canDelete,
+      canChangeStatus:    permissionState.canChangeStatus,
+      canEditMemo:        permissionState.canEditMemo,
       canUploadVehicleDoc: permissionState.canUploadVehicleDoc,
 
       login,

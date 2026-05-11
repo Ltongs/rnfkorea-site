@@ -68,7 +68,7 @@ export default function HyundaiCMLoginPage() {
             현대건설기계 업무
           </h1>
           <p className="mt-3 text-base leading-7 text-white/75 break-keep">
-            건설기계 할부금융 신용조회 및 서류관리 전용 페이지입니다.
+            HD건설기계 부산/경남 대리점 업무 전용 페이지입니다.
           </p>
         </div>
       </section>
@@ -81,7 +81,7 @@ export default function HyundaiCMLoginPage() {
           </p>
           <h2 className="text-2xl font-semibold text-navy-900 mb-1">계정 로그인</h2>
           <p className="text-sm leading-6 text-gray-600 mb-8">
-            관리자 / 현대건설기계 담당 계정만 접근 가능합니다.
+            관리자 / 현대건설기계 담당자만 접근 가능합니다.
           </p>
 
           <form onSubmit={onSubmit} className="space-y-5">

@@ -1,5 +1,7 @@
 // pages/HyundaiCM/index.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Settings } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
@@ -26,6 +28,10 @@ type HCMTask = {
   finance_company: string | null;      // 할부금융사
   interest_rate: number | null;        // 금리
   incentive: number | null;            // 인센티브
+  nice_score: number | null;           // NICE 점수
+  credit_rate: number | null;          // 적용금리 (%)
+  credit_incentive: number | null;     // 적용인센티브 (%)
+  biz_history: string | null;          // 업력 (1년이상/1년미만)
   sales_rep: string | null;
   status: HCMStatus;
   special_note: string | null;
@@ -148,6 +154,7 @@ const btnGhost =
 // ─── 메인 컴포넌트 ────────────────────────────────────────
 export default function HyundaiCMPage() {
   const { user, logout, isAdmin, isHyundaiCM } = useAuth() as any;
+  const nav = useNavigate();
   const canCreate       = isAdmin || isHyundaiCM;
   const canEditExisting = isAdmin || isHyundaiCM;
   const canChangeStatus = isAdmin || isHyundaiCM;
@@ -204,6 +211,14 @@ export default function HyundaiCMPage() {
   // ── 신용결과 추적 (승인/보완/거절 → 서류등록/확정으로 넘어가도 마지막 값 유지) ──
   const [creditResults, setCreditResults] = useState<Record<string, HCMStatus>>({});
 
+  // ── 신용결과 상세 입력 모달 ──
+  const [creditModal, setCreditModal]           = useState<{ row: HCMTask; next: HCMStatus } | null>(null);
+  const [creditNiceScore,    setCreditNiceScore]    = useState("");
+  const [creditRate,         setCreditRate]         = useState("");
+  const [creditIncentive,    setCreditIncentive]    = useState("");
+  const [creditBizHistory,   setCreditBizHistory]   = useState<"1년이상" | "1년미만">("1년이상");
+  const [creditSaving,       setCreditSaving]       = useState(false);
+
   // ── 업로드 ──
   const [uploadingDocKey,   setUploadingDocKey]   = useState<string | null>(null);
   const docInputRef = useRef<HTMLInputElement | null>(null);
@@ -224,6 +239,23 @@ export default function HyundaiCMPage() {
       else next.add(String(id));
       return next;
     });
+  };
+
+  // ─── 카카오 알림 ─────────────────────────────────────────
+  const EDGE_FN_URL = "https://nfwtsptqloefsbpjvdyu.supabase.co/functions/v1/send-hyundaicm-kakao";
+
+  const sendKakaoNotify = async (
+    payload: Record<string, unknown>
+  ): Promise<void> => {
+    try {
+      await fetch(EDGE_FN_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (e) {
+      console.warn("[kakao notify] 전송 실패:", e);
+    }
   };
 
   // ─── FETCH ──────────────────────────────────────────────
@@ -348,8 +380,34 @@ export default function HyundaiCMPage() {
         doc_estimate: null, doc_excavator_license: null, doc_etc: null,
         closed_at: null,
       };
-      const { error } = await supabase.from("hyundaicm_tasks").insert(payload);
+      const { data: inserted, error } = await supabase
+        .from("hyundaicm_tasks")
+        .insert(payload)
+        .select()
+        .single();
       if (error) throw error;
+
+      // 월내 순번 계산 (새 건 포함 후 fetchRows 전이므로 임시 계산)
+      const now = new Date();
+      const ym = now.getFullYear().toString() + String(now.getMonth() + 1).padStart(2, "0");
+      const monthRows = rows.filter((r) => {
+        const d = new Date(r.created_at ?? 0);
+        return d.getFullYear().toString() + String(d.getMonth() + 1).padStart(2, "0") === ym;
+      });
+      const newCaseNo = `${ym}-${String(monthRows.length + 1).padStart(3, "0")}`;
+
+      // 카카오 알림 (비동기, 실패해도 업무 영향 없음)
+      sendKakaoNotify({
+        type:                 "new",
+        caseNo:               newCaseNo,
+        customerName:         payload.customer_name,
+        customerType:         payload.customer_type,
+        equipmentTon:         payload.equipment_ton,
+        financeCompany:       payload.finance_company,
+        salesRep:             payload.sales_rep,
+        installmentPrincipal: payload.installment_principal,
+      });
+
       onReset(); setShowCreatePanel(false); await fetchRows();
     } catch (e: any) {
       setErr(e?.message || "등록 실패");
@@ -372,6 +430,29 @@ export default function HyundaiCMPage() {
     if (error) {
       setRows((prev) => prev.map((r) => String(r.id) === String(row.id) ? { ...r, status: row.status } : r));
       alert(error.message);
+    } else {
+      // 카카오 알림 (비동기, 실패해도 업무 영향 없음)
+      const kakaoPayload: Record<string, unknown> = {
+        type:          "status_change",
+        caseNo:        caseNoMap[String(row.id)] ?? String(row.id),
+        customerName:  row.customer_name,
+        customerType:  row.customer_type,
+        equipmentTon:  row.equipment_ton,
+        salesRep:      row.sales_rep,
+        prevStatus:    row.status,
+        nextStatus:    next,
+      };
+
+      // 확정 시 세부 금융 정보 추가
+      if (next === "확정") {
+        kakaoPayload.financeCompany       = row.finance_company;
+        kakaoPayload.purchaseAmount       = row.purchase_amount;
+        kakaoPayload.installmentPrincipal = row.installment_principal;
+        kakaoPayload.interestRate         = row.interest_rate;
+        kakaoPayload.incentive            = row.incentive;
+      }
+
+      sendKakaoNotify(kakaoPayload);
     }
   };
 
@@ -385,6 +466,45 @@ export default function HyundaiCMPage() {
       setRows((prev) => prev.map((r) => String(r.id) === String(rowId) ? { ...r, special_note: note || null } : r));
     } catch (e: any) { alert(e?.message || "메모 저장 실패"); }
     finally { setMemoSavingId(null); }
+  };
+
+  // ─── 신용결과 모달 저장 ──────────────────────────────────
+  const saveCreditModal = async () => {
+    if (!creditModal) return;
+    const { row, next } = creditModal;
+    setCreditSaving(true);
+    try {
+      const patch: Partial<HCMTask> = {
+        status:           next,
+        nice_score:       creditNiceScore.trim() ? parseInt(creditNiceScore, 10) || null : null,
+        credit_rate:      creditRate.trim() ? parseFloat(creditRate) || null : null,
+        credit_incentive: creditIncentive.trim() ? parseFloat(creditIncentive) || null : null,
+        biz_history:      creditBizHistory,
+      };
+      const { error } = await supabase.from("hyundaicm_tasks").update(patch).eq("id", row.id as any);
+      if (error) throw error;
+      setRows((prev) => prev.map((r) => String(r.id) === String(row.id) ? { ...r, ...patch } : r));
+      setCreditResults((prev) => ({ ...prev, [String(row.id)]: next }));
+
+      // 카카오 알림
+      sendKakaoNotify({
+        type:             "status_change",
+        caseNo:           caseNoMap[String(row.id)] ?? String(row.id),
+        customerName:     row.customer_name,
+        customerType:     row.customer_type,
+        equipmentTon:     row.equipment_ton,
+        salesRep:         row.sales_rep,
+        prevStatus:       row.status,
+        nextStatus:       next,
+        niceScore:        patch.nice_score,
+        creditRate:       patch.credit_rate,
+        creditIncentive:  patch.credit_incentive,
+        bizHistory:       creditBizHistory,
+      });
+
+      setCreditModal(null);
+    } catch (e: any) { alert(e?.message || "저장 실패"); }
+    finally { setCreditSaving(false); }
   };
 
   // ─── 수정 모달 ───────────────────────────────────────────
@@ -524,12 +644,21 @@ export default function HyundaiCMPage() {
                 건설기계 할부금융 신용조회 및 서류관리
               </p>
             </div>
-            <button
-              onClick={() => { if (window.confirm("로그아웃 하시겠습니까?")) logout(); }}
-              className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl border border-white/20 bg-white/10 text-white text-sm font-medium hover:bg-white/20 transition-all"
-            >
-              로그아웃
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => nav("/hyundaicm/kakao-connect")}
+                title="카카오톡 알림 설정"
+                className="inline-flex items-center justify-center w-10 h-10 rounded-2xl border border-white/20 bg-white/10 text-white hover:bg-white/20 transition-all"
+              >
+                <Settings size={18} />
+              </button>
+              <button
+                onClick={() => { if (window.confirm("로그아웃 하시겠습니까?")) logout(); }}
+                className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl border border-white/20 bg-white/10 text-white text-sm font-medium hover:bg-white/20 transition-all"
+              >
+                로그아웃
+              </button>
+            </div>
           </div>
         </div>
       </section>
@@ -799,6 +928,37 @@ export default function HyundaiCMPage() {
                       ))}
                     </div>
 
+                    {/* 신용결과 상세 */}
+                    {(r.nice_score != null || r.credit_rate != null || r.credit_incentive != null || r.biz_history) && (
+                      <div className="rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3 grid grid-cols-2 gap-2">
+                        <p className="col-span-2 text-xs font-semibold text-orange-600 uppercase tracking-wide mb-1">신용결과 상세</p>
+                        {r.nice_score != null && (
+                          <div>
+                            <p className="text-xs text-gray-400">NICE 점수</p>
+                            <p className="text-sm font-semibold text-navy-900">{r.nice_score}점</p>
+                          </div>
+                        )}
+                        {r.credit_rate != null && (
+                          <div>
+                            <p className="text-xs text-gray-400">적용금리</p>
+                            <p className="text-sm font-semibold text-navy-900">{r.credit_rate}%</p>
+                          </div>
+                        )}
+                        {r.credit_incentive != null && (
+                          <div>
+                            <p className="text-xs text-gray-400">적용인센티브</p>
+                            <p className="text-sm font-semibold text-navy-900">{r.credit_incentive}%</p>
+                          </div>
+                        )}
+                        {r.biz_history && (
+                          <div>
+                            <p className="text-xs text-gray-400">업력</p>
+                            <p className="text-sm font-semibold text-navy-900">{r.biz_history}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* 진행 단계 */}
                     <div>
                       <p className="text-xs font-medium tracking-wide text-gray-400 uppercase mb-2">진행 단계</p>
@@ -822,7 +982,16 @@ export default function HyundaiCMPage() {
                           <select
                             disabled={!canChangeStatus}
                             value={CREDIT_STATUSES.includes(r.status as any) ? r.status : (creditResults[String(r.id)] ?? "")}
-                            onChange={(e) => { if (e.target.value) changeStatus(r, e.target.value as HCMStatus); }}
+                            onChange={(e) => {
+                              if (!e.target.value) return;
+                              const next = e.target.value as HCMStatus;
+                              // 기존 신용결과 값 미리 채우기
+                              setCreditNiceScore(r.nice_score != null ? String(r.nice_score) : "");
+                              setCreditRate(r.credit_rate != null ? String(r.credit_rate) : "");
+                              setCreditIncentive(r.credit_incentive != null ? String(r.credit_incentive) : "");
+                              setCreditBizHistory((r.biz_history as any) ?? "1년이상");
+                              setCreditModal({ row: r, next });
+                            }}
                             className={`px-3 py-1 rounded-2xl border text-xs font-semibold transition-all appearance-none pr-6 cursor-pointer
                               ${CREDIT_STATUSES.includes(r.status as any)
                                 ? statusStyle(r.status) + " ring-2 ring-offset-1 ring-orange-200/60"
@@ -985,6 +1154,99 @@ export default function HyundaiCMPage() {
                 disabled={deleting}
                 className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl bg-red-600 text-white font-semibold text-sm hover:bg-red-700 transition-all disabled:opacity-50"
               >{deleting ? "삭제중..." : "영구 삭제"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 신용결과 상세 입력 모달 ── */}
+      {creditModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
+            <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500 mb-2">신용결과</p>
+            <h2 className="text-xl font-semibold text-navy-900 mb-1">
+              {creditModal.next} 처리
+            </h2>
+            <p className="text-sm text-gray-500 mb-5">
+              {creditModal.row.customer_name} ({creditModal.row.customer_type})
+            </p>
+
+            <div className="space-y-4">
+              {/* 업력 */}
+              <div>
+                <label className={labelClass}>업력</label>
+                <div className="flex gap-2">
+                  {(["1년이상", "1년미만"] as const).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setCreditBizHistory(v)}
+                      className={`flex-1 py-2.5 rounded-2xl border text-sm font-semibold transition-all ${
+                        creditBizHistory === v
+                          ? "bg-orange-500 border-orange-500 text-white"
+                          : "bg-white border-gray-200 text-gray-600 hover:border-orange-300"
+                      }`}
+                    >{v}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* NICE 점수 */}
+              <div>
+                <label className={labelClass}>NICE 점수</label>
+                <input
+                  type="number"
+                  value={creditNiceScore}
+                  onChange={(e) => setCreditNiceScore(e.target.value)}
+                  placeholder="예: 742"
+                  inputMode="numeric"
+                  className={inputClass}
+                  disabled={creditSaving}
+                />
+              </div>
+
+              {/* 적용금리 */}
+              <div>
+                <label className={labelClass}>적용금리 (%)</label>
+                <input
+                  type="number"
+                  value={creditRate}
+                  onChange={(e) => setCreditRate(e.target.value)}
+                  placeholder="예: 4.5"
+                  inputMode="decimal"
+                  step="0.01"
+                  className={inputClass}
+                  disabled={creditSaving}
+                />
+              </div>
+
+              {/* 적용인센티브 */}
+              <div>
+                <label className={labelClass}>적용인센티브 (%)</label>
+                <input
+                  type="number"
+                  value={creditIncentive}
+                  onChange={(e) => setCreditIncentive(e.target.value)}
+                  placeholder="예: 1.2"
+                  inputMode="decimal"
+                  step="0.01"
+                  className={inputClass}
+                  disabled={creditSaving}
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setCreditModal(null)}
+                disabled={creditSaving}
+                className={btnSecondary}
+              >취소</button>
+              <button
+                onClick={saveCreditModal}
+                disabled={creditSaving}
+                className={btnPrimary}
+              >{creditSaving ? "저장중..." : `${creditModal.next} 저장`}</button>
             </div>
           </div>
         </div>

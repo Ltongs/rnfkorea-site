@@ -1765,26 +1765,26 @@ VIN: ${nextVin}`);
                         >
                           {uploadingId === r.id ? "업로드중" : "차량등록증"}
                         </button>
-                        {/* 우편발송 / 보류 — isPostalMode(등록완료)일 때 우편버튼, 아닐 때 보류버튼 */}
-                        {canChangeStatus && !isLocked && (
-                          r.is_registered ? (
-                            <button
-                              type="button"
-                              onClick={() => postalOpenRowId === r.id ? closePostalForm() : openPostalForm(r)}
-                              className={`${btnBase} ${r.postal_mail_sent ? btnOn : btnOff}`}
-                              title={r.postal_mail_sent ? "우편발송 정보 조회/수정" : "우편발송 정보 입력"}
-                            >
-                              {r.postal_mail_sent ? "우편조회" : "우편발송"}
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => toggleHold(r)}
-                              className={`${btnBase} ${isHold ? "bg-gray-500 text-white border-gray-500" : btnOff}`}
-                            >
-                              {isHold ? "보류해제" : "보류"}
-                            </button>
-                          )
+                        {/* 우편발송 — 등록완료 상태이고 canChangeStatus 권한이 있으면 isLocked 여부 관계없이 표시 */}
+                        {r.is_registered && canChangeStatus && (
+                          <button
+                            type="button"
+                            onClick={() => postalOpenRowId === r.id ? closePostalForm() : openPostalForm(r)}
+                            className={`${btnBase} ${r.postal_mail_sent ? btnOn : btnOff}`}
+                            title={r.postal_mail_sent ? "우편발송 정보 조회/수정" : "우편발송 정보 입력"}
+                          >
+                            {r.postal_mail_sent ? "우편조회" : "우편발송"}
+                          </button>
+                        )}
+                        {/* 보류 — 등록완료 전이고 잠금 전일 때만 표시 */}
+                        {!r.is_registered && canChangeStatus && !isLocked && (
+                          <button
+                            type="button"
+                            onClick={() => toggleHold(r)}
+                            className={`${btnBase} ${isHold ? "bg-gray-500 text-white border-gray-500" : btnOff}`}
+                          >
+                            {isHold ? "보류해제" : "보류"}
+                          </button>
                         )}
                       </div>
                     </div>

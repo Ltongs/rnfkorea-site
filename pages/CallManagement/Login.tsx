@@ -1,4 +1,4 @@
-// pages/Narumi/login.tsx
+// pages/CallManagement/Login.tsx
 import React, { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../lib/auth";
@@ -9,10 +9,10 @@ const inputClass =
   "focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 " +
   "disabled:opacity-50 disabled:bg-gray-50 transition-all";
 
-export default function NarumiLoginPage() {
+export default function CallManagementLoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, user, loading, isInternal } = useAuth() as any;
+  const { login, user, loading, isAdmin, isInsuranceManager } = useAuth() as any;
 
   const [email,      setEmail]      = useState("");
   const [password,   setPassword]   = useState("");
@@ -22,13 +22,13 @@ export default function NarumiLoginPage() {
   const redirectTo =
     (location.state as any)?.from && typeof (location.state as any)?.from === "string"
       ? (location.state as any).from
-      : "/narumi";
+      : "/work/call-management";
 
   useEffect(() => {
-    if (!loading && user && isInternal) {
+    if (!loading && user && (isAdmin || isInsuranceManager)) {
       navigate(redirectTo, { replace: true });
     }
-  }, [loading, user, isInternal, navigate, redirectTo]);
+  }, [loading, user, isAdmin, isInsuranceManager, navigate, redirectTo]);
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -65,10 +65,10 @@ export default function NarumiLoginPage() {
             Business
           </p>
           <h1 className="mt-3 text-3xl md:text-4xl font-semibold leading-[1.15] text-white break-keep">
-            나르미 업무
+            상담관리 업무
           </h1>
           <p className="mt-3 text-base leading-7 text-white/75 break-keep">
-            나르미모터스 차량 할부금융 신청 및 서류관리 전용 페이지입니다.
+            고객 상담 이력 및 보험 업무 관리 전용 페이지입니다.
           </p>
         </div>
       </section>
@@ -81,7 +81,7 @@ export default function NarumiLoginPage() {
           </p>
           <h2 className="text-2xl font-semibold text-navy-900 mb-1">계정 로그인</h2>
           <p className="text-sm leading-6 text-gray-600 mb-8">
-            관리자 / 나르미모터스 / 롯데오토리스 계정만 접근 가능합니다.
+            알앤에프코리아 내부 업무용 페이지입니다.
           </p>
 
           <form onSubmit={onSubmit} className="space-y-5">

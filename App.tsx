@@ -61,6 +61,9 @@ import IndividualCargoFinancePage from "./pages/IndividualCargoFinance/index";
 import TireShopPage from "./pages/TireShop/index";
 import TireShopDetailPage from "./pages/TireShop/detail";
 import CallManagementPage from "./pages/CallManagement/index";
+import CallManagementLoginPage from "./pages/CallManagement/Login";
+import KakaoCallbackPage from "./pages/KakaoCallback";
+import KakaoConnectPage from "./pages/HyundaiCM/KakaoConnect";
 import DashboardPage from "./pages/Dashboard";
 import BatteryPage from "./pages/Battery/index";
 import HomePage from "./pages/Home";
@@ -524,33 +527,6 @@ function ScrollToTopButton() {
   );
 }
 
-const RnfLogo: React.FC<{ className?: string }> = ({ className = "h-10" }) => (
-  <svg viewBox="0 0 300 85" className={className} fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="RNF KOREA Logo">
-    <g transform="translate(5, 5)">
-      <path d="M15 35 V22 C15 14 20 10 30 10 H40 V35" stroke="#FDB913" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M15 35 H40" stroke="#FDB913" strokeWidth="4" />
-      <path d="M5 35 H45 V52 H15 L5 48 Z" fill="#0A192F" />
-      <path d="M25 35 V28 H32" stroke="#0A192F" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="15" cy="52" r="7" fill="#0A192F" />
-      <circle cx="15" cy="52" r="2.5" fill="white" />
-      <circle cx="40" cy="52" r="7" fill="#0A192F" />
-      <circle cx="40" cy="52" r="2.5" fill="white" />
-      <rect x="46" y="5" width="5" height="48" rx="1" fill="#0A192F" />
-      <path d="M48 48 H62" stroke="#0A192F" strokeWidth="4" strokeLinecap="round" />
-      <g transform="translate(54, 18)">
-        <rect x="0" y="3" width="22" height="26" rx="2" fill="#DC2626" />
-        <rect x="6" y="0" width="10" height="3" fill="#DC2626" />
-        <path d="M12 6 L7 15 H13 L10 23 L17 12 H11 L15 6 Z" fill="white" />
-      </g>
-    </g>
-    <g transform="translate(90, 0)">
-      <text x="0" y="40" fontFamily="sans-serif" fontWeight="900" fontSize="40" fill="#0A192F">RNF</text>
-      <text x="2" y="62" fontFamily="sans-serif" fontWeight="700" fontSize="17" fill="#0A192F" letterSpacing="0.05em">KOREA</text>
-    </g>
-    <text x="5" y="80" fontFamily="sans-serif" fontWeight="700" fontSize="10.5" fill="#0A192F" letterSpacing="0.01em">BATTERY & PARTS • FINANCIAL SERVICE</text>
-  </svg>
-);
-
 const PrimaryButton: React.FC<{ children: React.ReactNode; onClick?: () => void; className?: string }> = ({ children, onClick, className = '' }) => (
   <button
     onClick={onClick}
@@ -666,288 +642,6 @@ function useLang() {
   if (!ctx) throw new Error("useLang must be used within LangContext.Provider");
   return ctx;
 }
-
-const Header: React.FC = () => {
-  const { lang } = useLang();
-  const nav = useNavigate();
-  const { user, canViewAll, logout } = useAuth() as any;
-  const { pathname } = useLocation();
-
-  const [isScrolled, setIsScrolled] = useState(false);
-  const [bizOpen, setBizOpen] = useState(false);
-  const [shopOpen, setShopOpen] = useState(false);
-  const [workOpen, setWorkOpen] = useState(false);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const headerRef = useRef<HTMLDivElement | null>(null);
-
-  const scheduleClose = (setter: React.Dispatch<React.SetStateAction<boolean>>) => {
-    if (closeTimer.current) clearTimeout(closeTimer.current);
-    closeTimer.current = setTimeout(() => setter(false), 180);
-  };
-
-  const cancelClose = () => {
-    if (closeTimer.current) {
-      clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-  };
-
-  const goWork = (path: string) => {
-    if (path === "/work/bson") {
-      nav(path);
-      return;
-    }
-    if (path === "/work/narumi") {
-      if (user && canViewAll) nav("/narumi");
-      else nav("/narumi/login");
-      return;
-    }
-    // 현대건설기계: 로그인 페이지로 직접 이동
-    if (path === "/hyundaicm" || path === "/hyundaicm/login") {
-      nav("/hyundaicm/login");
-      return;
-    }
-    if (user && canViewAll) nav(path);
-    else nav("/narumi/login");
-  };
-
-  const closeAll = () => {
-    setBizOpen(false);
-    setShopOpen(false);
-    setWorkOpen(false);
-    cancelClose();
-  };
-
-  const bizActive = ["/tires", "/battery", "/export", "/finance"].includes(pathname);
-  const shopActive =
-    pathname === "/tires-shop" ||
-    pathname.startsWith("/tires-shop/") ||
-    pathname === "/battery-shop" ||
-    pathname.startsWith("/battery-shop/") ||
-    pathname === "/export-shop" ||
-    pathname.startsWith("/export-shop/");
-  const workActive = pathname.startsWith("/work/") || pathname.startsWith("/narumi");
-
-  useEffect(() => {
-    const handleScroll = () => setIsScrolled(window.scrollY > 20);
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
-
-  useEffect(() => {
-    const onDown = (e: PointerEvent) => {
-      const el = headerRef.current;
-      if (!el) return;
-      if (el.contains(e.target as Node)) return;
-      closeAll();
-    };
-    window.addEventListener("pointerdown", onDown);
-    return () => window.removeEventListener("pointerdown", onDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const navItemBase =
-    "text-lg md:text-xl font-bold whitespace-nowrap px-2 py-2 transition-all duration-200";
-  const navItemActive = "text-orange-600";
-  const underlineBase =
-    "absolute left-0 -bottom-1 h-[2px] w-full bg-orange-500 transform transition-transform duration-300 origin-left";
-  const dropBox =
-    "absolute left-0 top-full mt-2 bg-white shadow-lg rounded-xl py-2 min-w-[240px] " +
-    "z-[999999] border border-gray-200 pointer-events-auto";
-  const dropItem =
-    "block w-full text-left px-4 py-2 hover:bg-gray-50 text-navy-900 font-bold";
-
-  return (
-    <header
-      className={`relative w-full z-[999999] transition-all duration-300 border-b ${
-        isScrolled
-          ? "bg-gray-50 border-gray-100 shadow-sm"
-          : "bg-gray-50/95 backdrop-blur-sm border-transparent"
-      }`}
-    >
-      <div ref={headerRef} className="container mx-auto px-4 md:px-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between">
-          <div className="flex justify-between items-center py-3 md:py-4">
-            <Link to="/" className="flex items-center gap-2 z-50 group" onClick={closeAll}>
-              <RnfLogo className="h-12 md:h-14 w-auto" />
-            </Link>
-
-            <div className="md:hidden flex items-center justify-end gap-2 flex-wrap">
-              {user && canViewAll && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    logout();
-                    nav("/narumi/login", { replace: true });
-                  }}
-                  className="h-9 px-3 rounded-full border border-gray-200 bg-white text-gray-700 font-extrabold text-sm whitespace-nowrap"
-                >
-                  로그아웃
-                </button>
-              )}
-
-              <Link
-                to="/sitemap"
-                onClick={closeAll}
-                className="h-9 px-4 rounded-full border border-navy-900 text-navy-900 bg-white font-bold text-sm flex items-center whitespace-nowrap hover:bg-navy-900 hover:text-white transition-all"
-              >
-                사이트맵
-              </Link>
-
-              <a
-                href="tel:1551-1873"
-                className="h-9 px-3 rounded-full border border-navy-900 text-navy-900 bg-white font-bold text-sm flex items-center gap-1.5 flex-1 min-w-0 max-w-[56vw] hover:bg-navy-900 hover:text-white transition-all"
-                title="대표번호 1551-1873"
-              >
-                <Phone size={14} className="shrink-0" />
-                <span className="truncate">1551-1873</span>
-              </a>
-            </div>
-          </div>
-
-          {/* ✅ aria-label로 네비게이션 역할 명시 → 검색엔진 사이트링크 추출에 도움 */}
-          <nav
-            aria-label="주요 메뉴"
-            className="flex items-center gap-4 md:gap-8 text-navy-900 font-bold text-base md:text-lg whitespace-nowrap overflow-visible pb-2"
-          >
-            {/* 사업영역 드롭다운 */}
-            <div
-              className="relative z-[999999]"
-              onMouseEnter={() => { cancelClose(); setBizOpen(true); setShopOpen(false); setWorkOpen(false); }}
-              onMouseLeave={() => scheduleClose(setBizOpen)}
-            >
-              <button
-                type="button"
-                className={`relative group ${navItemBase} ${bizActive ? navItemActive : "text-navy-900"}`}
-                onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); cancelClose(); setBizOpen((v) => !v); setShopOpen(false); }}
-                aria-haspopup="menu"
-                aria-expanded={bizOpen}
-              >
-                {COPY[lang].menu.biz}
-                <span className={`${underlineBase} ${bizActive ? "scale-x-100" : "scale-x-0 group-hover:scale-x-100"}`} />
-              </button>
-
-              {bizOpen && (
-                <div
-                  className={dropBox}
-                  role="menu"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onMouseEnter={cancelClose}
-                  onMouseLeave={() => scheduleClose(setBizOpen)}
-                >
-                  <Link to="/tires" className={dropItem} role="menuitem" onClick={closeAll}>{COPY[lang].menu.tires}</Link>
-                  <Link to="/battery" className={dropItem} role="menuitem" onClick={closeAll}>{COPY[lang].menu.battery}</Link>
-                  <Link to="/export" className={dropItem} role="menuitem" onClick={closeAll}>{COPY[lang].menu.export}</Link>
-                  <Link to="/finance" className={dropItem} role="menuitem" onClick={closeAll}>{COPY[lang].menu.finance}</Link>
-                </div>
-              )}
-            </div>
-
-            {/* 쇼핑몰 드롭다운 */}
-            <div
-              className="relative z-[999999]"
-              onMouseEnter={() => { cancelClose(); setShopOpen(true); setBizOpen(false); setWorkOpen(false); }}
-              onMouseLeave={() => scheduleClose(setShopOpen)}
-            >
-              <button
-                type="button"
-                className={`relative group ${navItemBase} ${shopActive ? navItemActive : "text-navy-900"}`}
-                onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); cancelClose(); setShopOpen((v) => !v); setBizOpen(false); }}
-                aria-haspopup="menu"
-                aria-expanded={shopOpen}
-              >
-                {COPY[lang].menu.shop ?? "쇼핑몰"}
-                <span className={`${underlineBase} ${shopActive ? "scale-x-100" : "scale-x-0 group-hover:scale-x-100"}`} />
-              </button>
-
-              {shopOpen && (
-                <div
-                  className={dropBox}
-                  role="menu"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onMouseEnter={cancelClose}
-                  onMouseLeave={() => scheduleClose(setShopOpen)}
-                >
-                  <Link to="/tires-shop" className={dropItem} role="menuitem" onClick={closeAll}>{COPY[lang].menu.tiresShop ?? "타이어 쇼핑몰"}</Link>
-                  <Link to="/tire-rental" className={`${dropItem} text-orange-600 font-extrabold`} role="menuitem" onClick={closeAll}>화물차 타이어 렌탈 🆕</Link>
-                  <Link to="/export-shop" className={dropItem} role="menuitem" onClick={closeAll}>{COPY[lang].menu.exportShop ?? "수출용 쇼핑몰"}</Link>
-                  <Link to="/battery-shop" className={dropItem} role="menuitem" onClick={closeAll}>{COPY[lang].menu.batteryShop ?? "배터리 쇼핑몰"}</Link>
-                </div>
-              )}
-            </div>
-
-            {/* 업무용 드롭다운 */}
-            <div
-              className="relative overflow-visible"
-              onMouseEnter={() => { cancelClose(); setWorkOpen(true); setBizOpen(false); setShopOpen(false); }}
-              onMouseLeave={() => scheduleClose(setWorkOpen)}
-            >
-              <button
-                type="button"
-                className={`relative group ${navItemBase} ${workActive ? navItemActive : "text-navy-900"}`}
-                onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); cancelClose(); setWorkOpen((v) => !v); setBizOpen(false); setShopOpen(false); }}
-                aria-haspopup="menu"
-                aria-expanded={workOpen}
-              >
-                업무용
-                <span className={`${underlineBase} ${workActive ? "scale-x-100" : "scale-x-0 group-hover:scale-x-100"}`} />
-              </button>
-
-              {workOpen && (
-                <div
-                  className={dropBox}
-                  role="menu"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onMouseEnter={cancelClose}
-                  onMouseLeave={() => scheduleClose(setWorkOpen)}
-                >
-                  <button type="button" className={dropItem} role="menuitem" onClick={() => { closeAll(); goWork("/narumi"); }}>나르미업무</button>
-                  <button type="button" className={dropItem} role="menuitem" onClick={() => { closeAll(); goWork("/hyundaicm/login"); }}>현대건설기계업무</button>
-                  <button type="button" className={dropItem} role="menuitem" onClick={() => { closeAll(); goWork("/work/bson"); }}>BS_ON 업무</button>
-                </div>
-              )}
-            </div>
-          </nav>
-
-          {/* Desktop Right Buttons */}
-          <div className="hidden md:flex items-center gap-3">
-            <Link
-              to="/sitemap"
-              onClick={closeAll}
-              className="px-5 py-2.5 rounded text-base font-bold transition-all border border-navy-900 text-navy-900 hover:bg-navy-900 hover:text-white flex items-center gap-2 whitespace-nowrap"
-            >
-              사이트맵
-            </Link>
-
-            {user && canViewAll && (
-              <div className="text-xs font-bold text-gray-500 px-3 py-2 rounded-lg bg-white border border-gray-200">
-                로그인: <span className="text-navy-900">{user.email}</span>
-              </div>
-            )}
-
-            {user && canViewAll && (
-              <button
-                type="button"
-                onClick={() => { logout(); nav("/narumi/login", { replace: true }); }}
-                className="px-4 py-2.5 rounded text-base font-extrabold border border-gray-200 text-gray-700 hover:bg-gray-100 transition-all whitespace-nowrap"
-              >
-                로그아웃
-              </button>
-            )}
-
-            <a
-              href="tel:1551-1873"
-              className="px-5 py-2.5 rounded text-base font-bold transition-all border border-navy-900 text-navy-900 hover:bg-navy-900 hover:text-white flex items-center gap-2 whitespace-nowrap"
-            >
-              <Phone size={18} />
-              대표번호 1551-1873
-            </a>
-          </div>
-        </div>
-      </div>
-    </header>
-  );
-};
 
 type LogoSpec = {
   src: string;
@@ -1638,9 +1332,13 @@ const Footer: React.FC = () => {
   };
 
   const goWork = (path: string) => {
-    if (path === "/work/narumi") {
+    if (path === "/narumi") {
       if (user && canViewAll) nav("/narumi");
       else nav("/narumi/login");
+      return;
+    }
+    if (path === "/hyundaicm") {
+      nav("/hyundaicm/login");
       return;
     }
     if (user && canViewAll) nav(path);
@@ -1784,7 +1482,10 @@ const Footer: React.FC = () => {
   );
 };
 
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const ProtectedRoute: React.FC<{
+  children: React.ReactNode;
+  loginPath?: string;
+}> = ({ children, loginPath = "/narumi/login" }) => {
   const { user, loading, canViewAll } = useAuth() as any;
 
   if (loading) {
@@ -1796,7 +1497,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   }
 
   if (!user || !canViewAll) {
-    return <Navigate to="/narumi/login" replace />;
+    return <Navigate to={loginPath} replace />;
   }
 
   return <>{children}</>;
@@ -1871,11 +1572,25 @@ const AppRoutes = () => {
               </HyundaiCMRouteGuard>
             }
           />
+          <Route path="/hyundaicm/kakao-connect" element={
+            <HyundaiCMRouteGuard>
+              <KakaoConnectPage />
+            </HyundaiCMRouteGuard>
+          } />
+          <Route path="/kakao-callback" element={<KakaoCallbackPage />} />
 
           {/* BS_ON */}
           <Route path="/bson" element={<BsonWorkPage />} />
           <Route path="/work/bson" element={<Navigate to="/bson" replace />} />
-          <Route path="/work/call-management" element={<CallManagementPage />} />
+          <Route path="/work/call-management/login" element={<CallManagementLoginPage />} />
+          <Route
+            path="/work/call-management"
+            element={
+              <ProtectedRoute loginPath="/work/call-management/login">
+                <CallManagementPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/work/dashboard"
             element={isAdmin ? <DashboardPage /> : <Navigate to="/" replace />}
