@@ -780,7 +780,7 @@ export default function BatteryPage() {
             project="BATTERY"
             defaultFinanceType="RENTAL"
             defaultSegment="STANDARD"
-            title="배터리 전환 프로젝트 상담"
+            title="배터리 전환 프로젝트 상담처"
             subtitle="연락처 또는 이메일만 입력하셔도 접수됩니다."
           />
         </div>
