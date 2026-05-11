@@ -7,7 +7,8 @@ import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
-const KAKAO_REST_API_KEY = "b5d04de0bc091155983d5a1240b78a15";
+const KAKAO_REST_API_KEY  = "b5d04de0bc091155983d5a1240b78a15";
+const KAKAO_CLIENT_SECRET = "ZKJZmEKVOGNqlUvayIFj7QUac5iFH8UK";
 
 export default function KakaoCallbackPage() {
   const [searchParams] = useSearchParams();
@@ -39,9 +40,10 @@ export default function KakaoCallbackPage() {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({
-            grant_type:   "authorization_code",
-            client_id:    KAKAO_REST_API_KEY,
-            redirect_uri: `${window.location.origin}/kakao-callback`,
+            grant_type:    "authorization_code",
+            client_id:     KAKAO_REST_API_KEY,
+            client_secret: KAKAO_CLIENT_SECRET,
+            redirect_uri:  `${window.location.origin}/kakao-callback`,
             code,
           }),
         });
