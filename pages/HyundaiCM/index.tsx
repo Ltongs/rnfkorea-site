@@ -398,6 +398,22 @@ export default function HyundaiCMPage() {
 
   useEffect(() => { fetchRows(); }, [showClosed, isAdmin, isHyundaiCM]); // eslint-disable-line
 
+  // ─── 모바일 파일 선택 후 세션 자동 복구 ─────────────────────
+  // 모바일에서 파일 picker 사용 시 앱이 백그라운드 전환 후 복귀하면서 세션이 끊기는 현상 방지
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === "visible") {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          // 세션이 없으면 로컬스토리지에서 복구 시도
+          await supabase.auth.refreshSession();
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
+
   // ─── 필터 ────────────────────────────────────────────────
   const filteredRows = useMemo(() => {
     let result = [...rows];
