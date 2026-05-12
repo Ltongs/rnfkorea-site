@@ -29,7 +29,7 @@ const ExportOverviewPage: React.FC = () => {
             </h1>
 
             <p className="text-gray-600 text-base md:text-lg max-w-3xl leading-relaxed break-keep">
-              국내에서 매입한 노후된 디젤 지게차를 정비·등급화한 뒤 수출용 매물로 제안합니다.
+              국내에서 매입한 노후 디젤 지게차를 정비·등급화한 뒤 수출용 매물로 제안합니다.
               RNF KOREA는 파트너사와 함께 매입, 정비, 상품화, 수출 계약까지 연결합니다.
             </p>
           </div>
