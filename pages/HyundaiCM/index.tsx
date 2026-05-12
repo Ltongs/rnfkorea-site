@@ -156,14 +156,14 @@ const btnGhost =
 
 // ─── 메인 컴포넌트 ────────────────────────────────────────
 export default function HyundaiCMPage() {
-  const { user, logout, isAdmin, isHyundaiCM } = useAuth() as any;
+  const { user, logout, isAdmin, isHyundaiCM, isNhCapital } = useAuth() as any;
   const nav = useNavigate();
-  const canCreate              = isAdmin || isHyundaiCM;  // 신규 접수 입력 및 저장
-  const canEditExisting        = isAdmin;                  // 기존 데이터 수정 (isHyundaiCM 불가)
-  const canChangeStatus        = isAdmin;                  // 진행단계 변경 (isHyundaiCM 불가)
-  const canUploadDoc           = isAdmin;                  // 증빙서류 업로드 (isHyundaiCM 불가)
-  const canUploadVehicleRegDoc = isAdmin || isHyundaiCM;  // 확정 후 차량등록증 업로드
-  const canDelete              = isAdmin;
+  const canCreate              = isAdmin || isHyundaiCM || isNhCapital;
+  const canEditExisting        = isAdmin || isNhCapital;
+  const canChangeStatus        = isAdmin || isNhCapital;
+  const canUploadDoc           = isAdmin || isNhCapital;
+  const canUploadVehicleRegDoc = isAdmin || isHyundaiCM || isNhCapital;
+  const canDelete              = isAdmin || isNhCapital;
 
   // ── 신규 접수 폼 ──
   const [customerType,          setCustomerType]          = useState<CustomerType>("개인");
@@ -1281,7 +1281,7 @@ export default function HyundaiCMPage() {
                                 </span>
                               </p>
                             </div>
-                            {isAdmin && (
+                            {(isAdmin || isNhCapital) && (
                             <button
                               onClick={() => downloadVehicleRegDoc(f.path, f.name)}
                               className="shrink-0 px-3 py-1 rounded-2xl border border-emerald-200 text-emerald-700 text-xs font-medium hover:border-emerald-400 transition-all"
