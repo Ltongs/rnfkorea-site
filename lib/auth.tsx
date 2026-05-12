@@ -30,6 +30,7 @@ type AuthContextType = {
   canChangeStatus: boolean;
   canEditMemo: boolean;
   canUploadVehicleDoc: boolean;
+  canUploadVehicleRegDoc: boolean; // 확정 후 차량등록증 업로드 (isHyundaiCM 전용, 72시간 후 자동삭제)
 
   // auth actions
   login: (email: string, password: string) => Promise<void>;
@@ -88,13 +89,14 @@ function getPermissions(emailRaw?: string | null) {
     isNhCapital,
     isInternal,
 
-    canViewAll: isInternal,
-    canCreate: isAdmin || isNarumi || isInsuranceManager,
-    canEditExisting: isAdmin || isInsuranceManager,
+    canViewAll: isInternal || isHyundaiCM,           // isHyundaiCM: 현대건설기계 전용 페이지 전체 조회 허용
+    canCreate: isAdmin || isNarumi || isInsuranceManager || isHyundaiCM,  // isHyundaiCM: 신규 입력 허용
+    canEditExisting: isAdmin || isInsuranceManager,  // isHyundaiCM: 기존 데이터 수정 불가
     canDelete: isAdmin || isInsuranceManager,
-    canChangeStatus: isAdmin || isInsuranceManager,
+    canChangeStatus: isAdmin || isInsuranceManager,  // isHyundaiCM: 진행단계 변경 불가
     canEditMemo: isAdmin || isInsuranceManager,
-    canUploadVehicleDoc: isAdmin || isInsuranceManager,
+    canUploadVehicleDoc: isAdmin || isInsuranceManager,  // isHyundaiCM: 증빙서류 업로드 불가
+    canUploadVehicleRegDoc: isHyundaiCM || isAdmin,  // 확정 후 차량등록증 업로드 (72시간 후 자동삭제)
   };
 }
 
@@ -184,6 +186,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       canChangeStatus:    permissionState.canChangeStatus,
       canEditMemo:        permissionState.canEditMemo,
       canUploadVehicleDoc: permissionState.canUploadVehicleDoc,
+      canUploadVehicleRegDoc: permissionState.canUploadVehicleRegDoc,
 
       login,
       logout,

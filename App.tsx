@@ -492,7 +492,7 @@ function ScrollToTop() {
 function ScrollToTopButton() {
   const { pathname } = useLocation();
   const [visible, setVisible] = useState(false);
-  const hideOnMobile = pathname.startsWith("/tires-shop");
+  const hideOnMobile = pathname.startsWith("/tires-shop") || pathname.startsWith("/hyundaicm");
 
   useEffect(() => {
     const onScroll = () => setVisible(window.scrollY > 200);

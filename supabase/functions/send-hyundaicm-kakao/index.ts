@@ -107,6 +107,7 @@ function buildMessage(body: Record<string, string>): string {
     type, caseNo, customerName, customerType, equipmentTon,
     financeCompany, salesRep, installmentPrincipal,
     purchaseAmount, interestRate, incentive,
+    vatDeferredAmount, loanPeriod,
     prevStatus, nextStatus,
   } = body;
   const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
@@ -143,6 +144,8 @@ function buildMessage(body: Record<string, string>): string {
       downRate    ? `선수율: ${downRate}`                              : "",
       interestRate ? `금리: ${interestRate}%`                         : "",
       incentive    ? `인센티브: ${incentive}%`                         : "",
+      vatDeferredAmount ? `부가세후불: ${Number(vatDeferredAmount).toLocaleString("ko-KR")}원` : "",
+      loanPeriod   ? `대출기간: ${loanPeriod}개월`                     : "",
       `영업: ${salesRep ?? "-"}`,
       `시간: ${now}`,
     ].filter(Boolean).join("\n");

@@ -32,6 +32,9 @@ type HCMTask = {
   credit_rate: number | null;          // 적용금리 (%)
   credit_incentive: number | null;     // 적용인센티브 (%)
   biz_history: string | null;          // 업력 (1년이상/1년미만)
+  vat_deferred: boolean | null;        // 부가세 후불 여부
+  vat_deferred_amount: number | null;  // 부가세 후불 금액
+  loan_period: number | null;          // 대출기간 (확정 시)
   sales_rep: string | null;
   status: HCMStatus;
   special_note: string | null;
@@ -155,11 +158,12 @@ const btnGhost =
 export default function HyundaiCMPage() {
   const { user, logout, isAdmin, isHyundaiCM } = useAuth() as any;
   const nav = useNavigate();
-  const canCreate       = isAdmin || isHyundaiCM;
-  const canEditExisting = isAdmin || isHyundaiCM;
-  const canChangeStatus = isAdmin || isHyundaiCM;
-  const canUploadDoc    = isAdmin || isHyundaiCM;
-  const canDelete       = isAdmin;
+  const canCreate              = isAdmin || isHyundaiCM;  // 신규 접수 입력 및 저장
+  const canEditExisting        = isAdmin;                  // 기존 데이터 수정 (isHyundaiCM 불가)
+  const canChangeStatus        = isAdmin;                  // 진행단계 변경 (isHyundaiCM 불가)
+  const canUploadDoc           = isAdmin;                  // 증빙서류 업로드 (isHyundaiCM 불가)
+  const canUploadVehicleRegDoc = isAdmin || isHyundaiCM;  // 확정 후 차량등록증 업로드
+  const canDelete              = isAdmin;
 
   // ── 신규 접수 폼 ──
   const [customerType,          setCustomerType]          = useState<CustomerType>("개인");
@@ -172,6 +176,8 @@ export default function HyundaiCMPage() {
   const [financeCompany,        setFinanceCompany]        = useState<string>("NH캐피탈");
   const [interestRate,          setInterestRate]          = useState("");
   const [incentive,             setIncentive]             = useState("");
+  const [vatDeferred,           setVatDeferred]           = useState<"Y" | "N">("N");
+  const [vatDeferredAmount,     setVatDeferredAmount]     = useState("");
   const [salesRep,              setSalesRep]              = useState("");
   const [specialNote,           setSpecialNote]           = useState("");
 
@@ -230,6 +236,11 @@ export default function HyundaiCMPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | number | null>(null);
   const [deleting,        setDeleting]        = useState(false);
 
+  // ── 차량등록증 업로드 (확정 후, 72시간 자동삭제) ──
+  const vehicleRegInputRef = useRef<HTMLInputElement | null>(null);
+  const [vehicleRegUploading, setVehicleRegUploading] = useState<string | null>(null); // rowId
+  const [vehicleRegFiles, setVehicleRegFiles] = useState<Record<string, { name: string; path: string; uploadedAt: string }[]>>({});
+
   // ── 확정 카드 펼침/접힘 ──
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const toggleExpand = (id: string | number) => {
@@ -240,6 +251,15 @@ export default function HyundaiCMPage() {
       return next;
     });
   };
+
+  // ── 확정 승인내역 입력 모달 ──
+  const [confirmModal, setConfirmModal]             = useState<HCMTask | null>(null);
+  const [confirmLoanPrincipal, setConfirmLoanPrincipal] = useState("");
+  const [confirmLoanPeriod,    setConfirmLoanPeriod]    = useState("");
+  const [confirmInterestRate,  setConfirmInterestRate]  = useState("");
+  const [confirmIncentive,     setConfirmIncentive]     = useState("");
+  const [confirmVatAmount,     setConfirmVatAmount]     = useState("");
+  const [confirmSaving,        setConfirmSaving]        = useState(false);
 
   // ─── 카카오 알림 ─────────────────────────────────────────
   const EDGE_FN_URL = "https://nfwtsptqloefsbpjvdyu.supabase.co/functions/v1/send-hyundaicm-kakao";
@@ -259,6 +279,64 @@ export default function HyundaiCMPage() {
     } catch (e) {
       console.warn("[kakao notify] 전송 실패:", e);
     }
+  };
+
+  // ─── 차량등록증 업로드 목록 조회 ────────────────────────────
+  const fetchVehicleRegFiles = async (rowIds: (string | number)[]) => {
+    if (rowIds.length === 0) return;
+    const { data } = await supabase
+      .from("vehicle_reg_doc_uploads")
+      .select("id, record_id, file_name, storage_path, uploaded_at, expires_at")
+      .in("record_id", rowIds.map(String))
+      .order("uploaded_at", { ascending: false });
+    if (!data) return;
+    const map: Record<string, { name: string; path: string; uploadedAt: string }[]> = {};
+    data.forEach((d: any) => {
+      const key = String(d.record_id);
+      if (!map[key]) map[key] = [];
+      map[key].push({ name: d.file_name, path: d.storage_path, uploadedAt: d.uploaded_at });
+    });
+    setVehicleRegFiles(map);
+  };
+
+  // ─── 차량등록증 업로드 실행 ──────────────────────────────────
+  const uploadVehicleRegDoc = async (rowId: string | number, file: File) => {
+    setVehicleRegUploading(String(rowId));
+    try {
+      const ext = extFromName(file.name);
+      const path = `${rowId}/${Date.now()}_${file.name}`;
+      const { error: upErr } = await supabase.storage
+        .from("vehicle-reg-docs")
+        .upload(path, file, { upsert: false });
+      if (upErr) throw upErr;
+
+      const { error: dbErr } = await supabase
+        .from("vehicle_reg_doc_uploads")
+        .insert({
+          record_id: String(rowId),
+          uploaded_by: user?.id,
+          storage_path: path,
+          file_name: file.name,
+          file_size: file.size,
+        });
+      if (dbErr) throw dbErr;
+
+      await fetchVehicleRegFiles([rowId]);
+    } catch (e: any) {
+      alert("업로드 실패: " + (e?.message || e));
+    } finally {
+      setVehicleRegUploading(null);
+    }
+  };
+
+  // ─── 차량등록증 다운로드 ─────────────────────────────────────
+  const downloadVehicleRegDoc = async (path: string, name: string) => {
+    const { data, error } = await supabase.storage.from("vehicle-reg-docs").download(path);
+    if (error || !data) { alert("다운로드 실패: " + error?.message); return; }
+    const url = URL.createObjectURL(data);
+    const a = document.createElement("a");
+    a.href = url; a.download = name; a.click();
+    URL.revokeObjectURL(url);
   };
 
   // ─── FETCH ──────────────────────────────────────────────
@@ -285,13 +363,16 @@ export default function HyundaiCMPage() {
       const credits: Record<string, HCMStatus> = {};
       nextRows.forEach((r) => {
         drafts[String(r.id)] = r.special_note ?? "";
-        // 신용결과 초기값: 현재 상태가 승인/보완/거절이면 그 값, 아니면 기존 저장값 유지
         if (["승인","보완","거절"].includes(r.status)) {
           credits[String(r.id)] = r.status as HCMStatus;
         }
       });
       setMemoDrafts(drafts);
       setCreditResults((prev) => ({ ...prev, ...credits }));
+
+      // 확정 건의 차량등록증 파일 목록 조회
+      const confirmedIds = nextRows.filter((r) => r.status === "확정").map((r) => r.id);
+      if (confirmedIds.length > 0) fetchVehicleRegFiles(confirmedIds);
     } catch (e: any) {
       setErr(e?.message || "데이터 로드 실패");
     } finally {
@@ -351,6 +432,7 @@ export default function HyundaiCMPage() {
     setCompanyName(""); setEquipmentTon(""); setPurchaseAmount("");
     setInstallmentPrincipal(""); setFinanceCompany("NH캐피탈");
     setInterestRate(""); setIncentive("");
+    setVatDeferred("N"); setVatDeferredAmount("");
     setSalesRep(""); setSpecialNote("");
   };
 
@@ -375,6 +457,9 @@ export default function HyundaiCMPage() {
         finance_company:         financeCompany || null,
         interest_rate:           interestRate.trim() ? parseFloat(interestRate) || null : null,
         incentive:               incentive.trim() ? parseFloat(incentive) || null : null,
+        vat_deferred:            vatDeferred === "Y",
+        vat_deferred_amount:     vatDeferred === "Y" && vatDeferredAmount.trim() ? parseInt(onlyDigits(vatDeferredAmount), 10) || null : null,
+        loan_period:             null,
         sales_rep:               salesRep.trim(),
         special_note:            specialNote.trim() || null,
         status:                  "접수" as HCMStatus,
@@ -422,8 +507,19 @@ export default function HyundaiCMPage() {
   const changeStatus = async (row: HCMTask, next: HCMStatus) => {
     if (!canChangeStatus) { alert("상태 변경 권한이 없습니다."); return; }
     if (row.status === next) return;
+
+    // 확정 버튼 클릭 시 → 승인내역 팝업 먼저
+    if (next === "확정") {
+      setConfirmLoanPrincipal(row.installment_principal != null ? String(row.installment_principal) : "");
+      setConfirmLoanPeriod(row.loan_period != null ? String(row.loan_period) : "");
+      setConfirmInterestRate(row.interest_rate != null ? String(row.interest_rate) : "");
+      setConfirmIncentive(row.incentive != null ? String(row.incentive) : "");
+      setConfirmVatAmount(row.vat_deferred_amount != null ? String(row.vat_deferred_amount) : "");
+      setConfirmModal(row);
+      return;
+    }
+
     const patch: Partial<HCMTask> = { status: next };
-    if (next === "확정") patch.closed_at = new Date().toISOString();
     // 신용결과(승인/보완/거절) 변경 시 추적
     if (["승인","보완","거절"].includes(next)) {
       setCreditResults((prev) => ({ ...prev, [String(row.id)]: next }));
@@ -445,18 +541,50 @@ export default function HyundaiCMPage() {
         prevStatus:    row.status,
         nextStatus:    next,
       };
-
-      // 확정 시 세부 금융 정보 추가
-      if (next === "확정") {
-        kakaoPayload.financeCompany       = row.finance_company;
-        kakaoPayload.purchaseAmount       = row.purchase_amount;
-        kakaoPayload.installmentPrincipal = row.installment_principal;
-        kakaoPayload.interestRate         = row.interest_rate;
-        kakaoPayload.incentive            = row.incentive;
-      }
-
       sendKakaoNotify(kakaoPayload);
     }
+  };
+
+  // ─── 확정 승인내역 저장 ──────────────────────────────────
+  const saveConfirmModal = async () => {
+    if (!confirmModal) return;
+    setConfirmSaving(true);
+    try {
+      const patch: Partial<HCMTask> & Record<string, any> = {
+        status:               "확정" as HCMStatus,
+        closed_at:            new Date().toISOString(),
+        installment_principal: confirmLoanPrincipal.trim() ? parseInt(onlyDigits(confirmLoanPrincipal), 10) || null : null,
+        loan_period:          confirmLoanPeriod.trim() ? parseInt(confirmLoanPeriod, 10) || null : null,
+        interest_rate:        confirmInterestRate.trim() ? parseFloat(confirmInterestRate) || null : null,
+        incentive:            confirmIncentive.trim() ? parseFloat(confirmIncentive) || null : null,
+        vat_deferred_amount:  confirmVatAmount.trim() ? parseInt(onlyDigits(confirmVatAmount), 10) || null : null,
+      };
+      const { error } = await supabase.from("hyundaicm_tasks").update(patch).eq("id", confirmModal.id as any);
+      if (error) throw error;
+      setRows((prev) => prev.map((r) => String(r.id) === String(confirmModal.id) ? { ...r, ...patch } : r));
+
+      // 카카오 알림
+      sendKakaoNotify({
+        type:                 "status_change",
+        caseNo:               caseNoMap[String(confirmModal.id)] ?? String(confirmModal.id),
+        customerName:         confirmModal.customer_name,
+        customerType:         confirmModal.customer_type,
+        equipmentTon:         confirmModal.equipment_ton,
+        salesRep:             confirmModal.sales_rep,
+        prevStatus:           confirmModal.status,
+        nextStatus:           "확정",
+        financeCompany:       confirmModal.finance_company,
+        purchaseAmount:       confirmModal.purchase_amount,
+        installmentPrincipal: patch.installment_principal,
+        interestRate:         patch.interest_rate,
+        incentive:            patch.incentive,
+        vatDeferredAmount:    patch.vat_deferred_amount,
+        loanPeriod:           patch.loan_period,
+      });
+
+      setConfirmModal(null);
+    } catch (e: any) { alert(e?.message || "저장 실패"); }
+    finally { setConfirmSaving(false); }
   };
 
   // ─── 메모 저장 ───────────────────────────────────────────
@@ -625,6 +753,18 @@ export default function HyundaiCMPage() {
       <input
         ref={docInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.heic"
         className="hidden" onChange={handleDocFileChange}
+      />
+      {/* 차량등록증 전용 숨겨진 파일 인풋 */}
+      <input
+        ref={vehicleRegInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.heic"
+        className="hidden"
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          const rowId = vehicleRegInputRef.current?.getAttribute("data-row-id");
+          if (!file || !rowId) return;
+          e.target.value = "";
+          await uploadVehicleRegDoc(rowId, file);
+        }}
       />
 
       {/* ── 히어로 헤더 ── */}
@@ -806,6 +946,30 @@ export default function HyundaiCMPage() {
                 <label className={labelClass}>인센티브 (%)</label>
                 <input value={incentive} onChange={(e) => setIncentive(e.target.value)} placeholder="예: 1.2" inputMode="decimal" className={inputClass} />
               </div>
+              {/* 부가세 후불 */}
+              <div>
+                <label className={labelClass}>부가세 후불</label>
+                <div className="flex gap-2 h-[48px]">
+                  {(["Y", "N"] as const).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => { setVatDeferred(v); if (v === "N") setVatDeferredAmount(""); }}
+                      className={`flex-1 rounded-2xl border text-sm font-semibold transition-all ${
+                        vatDeferred === v
+                          ? "bg-orange-500 border-orange-500 text-white"
+                          : "bg-white border-gray-200 text-gray-600 hover:border-orange-300"
+                      }`}
+                    >{v}</button>
+                  ))}
+                </div>
+              </div>
+              {vatDeferred === "Y" && (
+                <div>
+                  <label className={labelClass}>부가세 후불금액 (원)</label>
+                  <input value={vatDeferredAmount} onChange={(e) => setVatDeferredAmount(onlyDigits(e.target.value))} placeholder="예: 15000000" inputMode="numeric" className={inputClass} />
+                </div>
+              )}
               <div>
                 <label className={labelClass}>영업사원 *</label>
                 <input value={salesRep} onChange={(e) => setSalesRep(e.target.value)} placeholder="홍길동" className={inputClass} />
@@ -921,6 +1085,8 @@ export default function HyundaiCMPage() {
                             : "-" },
                         { label: "금리",       value: r.interest_rate != null ? `${r.interest_rate}%` : "-" },
                         { label: "인센티브",   value: r.incentive != null ? `${r.incentive}%` : "-" },
+                        { label: "부가세후불", value: r.vat_deferred ? `Y${r.vat_deferred_amount != null ? " / " + formatAmount(r.vat_deferred_amount) : ""}` : "N" },
+                        { label: "대출기간",   value: r.loan_period != null ? `${r.loan_period}개월` : "-" },
                         { label: "영업사원",   value: r.sales_rep ?? "-" },
                         { label: "접수일시",   value: formatCreatedAt(r.created_at) },
                       ].map(({ label, value }) => (
@@ -1023,6 +1189,20 @@ export default function HyundaiCMPage() {
                               }`}
                           >{s}</button>
                         ))}
+
+                        {/* 차량등록증 업로드 버튼 — 확정 상태일 때만 표시 */}
+                        {r.status === "확정" && canUploadVehicleRegDoc && (
+                          <button
+                            disabled={vehicleRegUploading === String(r.id)}
+                            onClick={() => {
+                              vehicleRegInputRef.current?.setAttribute("data-row-id", String(r.id));
+                              vehicleRegInputRef.current?.click();
+                            }}
+                            className="px-3 py-1 rounded-2xl border border-emerald-300 bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100 disabled:opacity-50 transition-all"
+                          >
+                            {vehicleRegUploading === String(r.id) ? "업로드중..." : "+ 차량등록증"}
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1072,6 +1252,48 @@ export default function HyundaiCMPage() {
                       })}
                     </div>
                   </div>
+                </div>
+                )}
+
+                {/* 차량등록증 파일 목록 — 확정 상태이고 펼쳐진 경우에만 표시 */}
+                {r.status === "확정" && (!isConfirmed || isExpanded) && canUploadVehicleRegDoc && (
+                <div className="px-6 pb-5 border-t border-emerald-100 pt-4">
+                  <div className="mb-3">
+                    <p className="text-xs font-medium tracking-wide text-emerald-600 uppercase">차량등록증</p>
+                    <p className="text-xs text-gray-400 mt-0.5">업로드 후 72시간 뒤 자동 삭제됩니다</p>
+                  </div>
+
+                  {/* 업로드된 파일 목록 */}
+                  {(vehicleRegFiles[String(r.id)] ?? []).length > 0 ? (
+                    <div className="space-y-2">
+                      {(vehicleRegFiles[String(r.id)] ?? []).map((f, idx) => {
+                        const uploadedDate = new Date(f.uploadedAt);
+                        const expiresDate  = new Date(uploadedDate.getTime() + 72 * 60 * 60 * 1000);
+                        const hoursLeft    = Math.max(0, Math.round((expiresDate.getTime() - Date.now()) / (1000 * 60 * 60)));
+                        return (
+                          <div key={idx} className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-2.5">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-emerald-800 truncate">{f.name}</p>
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                {formatCreatedAt(f.uploadedAt)} 업로드 &nbsp;·&nbsp;
+                                <span className={hoursLeft < 6 ? "text-red-500 font-semibold" : "text-gray-400"}>
+                                  {hoursLeft}시간 후 자동삭제
+                                </span>
+                              </p>
+                            </div>
+                            {isAdmin && (
+                            <button
+                              onClick={() => downloadVehicleRegDoc(f.path, f.name)}
+                              className="shrink-0 px-3 py-1 rounded-2xl border border-emerald-200 text-emerald-700 text-xs font-medium hover:border-emerald-400 transition-all"
+                            >다운로드</button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-400">업로드된 차량등록증이 없습니다.</p>
+                  )}
                 </div>
                 )}
 
@@ -1157,6 +1379,52 @@ export default function HyundaiCMPage() {
                 disabled={deleting}
                 className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl bg-red-600 text-white font-semibold text-sm hover:bg-red-700 transition-all disabled:opacity-50"
               >{deleting ? "삭제중..." : "영구 삭제"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 확정 승인내역 입력 모달 ── */}
+      {confirmModal && (
+        <div className="fixed inset-0 z-[125] flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
+            <p className="text-sm font-medium tracking-[0.12em] uppercase text-emerald-600 mb-2">확정 처리</p>
+            <h2 className="text-xl font-semibold text-navy-900 mb-1">최종 승인내역 입력</h2>
+            <p className="text-sm text-gray-500 mb-1">
+              {confirmModal.customer_name} ({confirmModal.customer_type})
+            </p>
+            <p className="text-xs text-orange-500 mb-5">입력 값이 기존 접수 정보를 대체합니다.</p>
+
+            <div className="space-y-4">
+              <div>
+                <label className={labelClass}>대출원금 (원)</label>
+                <input type="text" value={confirmLoanPrincipal} onChange={(e) => setConfirmLoanPrincipal(onlyDigits(e.target.value))} placeholder="예: 120000000" inputMode="numeric" className={inputClass} disabled={confirmSaving} />
+                {confirmLoanPrincipal && <p className="mt-1 text-xs text-gray-400">{parseInt(confirmLoanPrincipal).toLocaleString("ko-KR")}원</p>}
+              </div>
+              <div>
+                <label className={labelClass}>대출기간 (개월)</label>
+                <input type="number" value={confirmLoanPeriod} onChange={(e) => setConfirmLoanPeriod(e.target.value)} placeholder="예: 60" inputMode="numeric" className={inputClass} disabled={confirmSaving} />
+              </div>
+              <div>
+                <label className={labelClass}>금리 (%)</label>
+                <input type="number" value={confirmInterestRate} onChange={(e) => setConfirmInterestRate(e.target.value)} placeholder="예: 4.5" inputMode="decimal" step="0.01" className={inputClass} disabled={confirmSaving} />
+              </div>
+              <div>
+                <label className={labelClass}>인센티브 (%)</label>
+                <input type="number" value={confirmIncentive} onChange={(e) => setConfirmIncentive(e.target.value)} placeholder="예: 1.2" inputMode="decimal" step="0.01" className={inputClass} disabled={confirmSaving} />
+              </div>
+              <div>
+                <label className={labelClass}>부가세 후불금액 (원)</label>
+                <input type="text" value={confirmVatAmount} onChange={(e) => setConfirmVatAmount(onlyDigits(e.target.value))} placeholder="해당 없으면 비워두세요" inputMode="numeric" className={inputClass} disabled={confirmSaving} />
+                {confirmVatAmount && <p className="mt-1 text-xs text-gray-400">{parseInt(confirmVatAmount).toLocaleString("ko-KR")}원</p>}
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button onClick={() => setConfirmModal(null)} disabled={confirmSaving} className={btnSecondary}>취소</button>
+              <button onClick={saveConfirmModal} disabled={confirmSaving} className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl bg-emerald-600 text-white font-semibold text-sm hover:bg-emerald-700 transition-all disabled:opacity-50">
+                {confirmSaving ? "처리중..." : "확정 완료"}
+              </button>
             </div>
           </div>
         </div>
