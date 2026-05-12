@@ -387,12 +387,28 @@ export default function HyundaiCMPage() {
 
   // ─── 차량등록증 다운로드 ─────────────────────────────────────
   const downloadVehicleRegDoc = async (path: string, name: string) => {
-    const { data, error } = await supabase.storage.from("vehicle-reg-docs").download(path);
-    if (error || !data) { alert("다운로드 실패: " + error?.message); return; }
-    const url = URL.createObjectURL(data);
-    const a = document.createElement("a");
-    a.href = url; a.download = name; a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+      if (isMobile) {
+        const { data, error } = await supabase.storage
+          .from("vehicle-reg-docs")
+          .createSignedUrl(path, 60);
+        if (error || !data?.signedUrl) throw error ?? new Error("URL 생성 실패");
+        window.open(data.signedUrl, "_blank");
+      } else {
+        const { data, error } = await supabase.storage.from("vehicle-reg-docs").download(path);
+        if (error || !data) { alert("다운로드 실패: " + error?.message); return; }
+        const url = URL.createObjectURL(data);
+        const a   = document.createElement("a");
+        a.href = url;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } catch (e: any) { alert(`다운로드 실패: ${e?.message}`); }
   };
 
   // ─── FETCH ──────────────────────────────────────────────
@@ -819,12 +835,28 @@ export default function HyundaiCMPage() {
 
   const downloadDoc = async (path: string, label: string) => {
     try {
-      const { data, error } = await supabase.storage.from("hcm_docs").download(path);
-      if (error) throw error;
-      const url = URL.createObjectURL(data);
-      const a   = document.createElement("a");
-      a.href = url; a.download = `${label}_${path.split("/").pop() ?? "file"}`; a.click();
-      URL.revokeObjectURL(url);
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+      if (isMobile) {
+        // 모바일: Signed URL로 새 탭에서 열기 (a.click()은 모바일에서 동작 안 함)
+        const { data, error } = await supabase.storage
+          .from("hcm_docs")
+          .createSignedUrl(path, 60); // 60초 유효
+        if (error || !data?.signedUrl) throw error ?? new Error("URL 생성 실패");
+        window.open(data.signedUrl, "_blank");
+      } else {
+        // PC: Blob 다운로드
+        const { data, error } = await supabase.storage.from("hcm_docs").download(path);
+        if (error) throw error;
+        const url = URL.createObjectURL(data);
+        const a   = document.createElement("a");
+        a.href = url;
+        a.download = `${label}_${path.split("/").pop() ?? "file"}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
     } catch (e: any) { alert(`다운로드 실패: ${e?.message}`); }
   };
 
