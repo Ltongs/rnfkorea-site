@@ -24,6 +24,7 @@ type AuthContextType = {
 
   // page permissions
   canViewAll: boolean;
+  canViewHyundaiCM: boolean;
   canCreate: boolean;
   canEditExisting: boolean;
   canDelete: boolean;
@@ -89,7 +90,8 @@ function getPermissions(emailRaw?: string | null) {
     isNhCapital,
     isInternal,
 
-    canViewAll: isInternal || isHyundaiCM || isNhCapital,
+    canViewAll: isInternal,                              // 나르미/운영 페이지 접근 (isHyundaiCM, isNhCapital 제외)
+    canViewHyundaiCM: isInternal || isHyundaiCM || isNhCapital, // 현대건설기계 페이지 조회
     canCreate: isAdmin || isNarumi || isInsuranceManager || isHyundaiCM || isNhCapital,
     canEditExisting: isAdmin || isInsuranceManager || isNhCapital,
     canDelete: isAdmin || isInsuranceManager || isNhCapital,
@@ -180,6 +182,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isInternal:         permissionState.isInternal,
 
       canViewAll:         permissionState.canViewAll,
+      canViewHyundaiCM:   permissionState.canViewHyundaiCM,
       canCreate:          permissionState.canCreate,
       canEditExisting:    permissionState.canEditExisting,
       canDelete:          permissionState.canDelete,
