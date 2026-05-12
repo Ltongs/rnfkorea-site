@@ -716,6 +716,22 @@ export default function HyundaiCMPage() {
       const { error } = await supabase.from("hyundaicm_tasks").update(patch).eq("id", editRow.id as any);
       if (error) throw error;
       setRows((prev) => prev.map((r) => String(r.id) === String(editRow.id) ? { ...r, ...patch } : r));
+
+      // 카카오 알림 — 확정 전 수정 시만 발송
+      if (editRow.status !== "확정") {
+        sendKakaoNotify({
+          type:                 "edit",
+          caseNo:               caseNoMap[String(editRow.id)] ?? String(editRow.id),
+          customerName:         patch.customer_name,
+          customerType:         patch.customer_type,
+          equipmentTon:         patch.equipment_ton ?? "-",
+          financeCompany:       patch.finance_company ?? "-",
+          installmentPrincipal: patch.installment_principal ? String(patch.installment_principal) : "",
+          salesRep:             patch.sales_rep ?? "-",
+          prevStatus:           editRow.status,
+        });
+      }
+
       closeEditModal();
     } catch (e: any) { alert(e?.message || "수정 저장 실패"); }
     finally { setEditSaving(false); }

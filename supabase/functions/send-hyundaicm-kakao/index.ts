@@ -171,6 +171,22 @@ function buildMessage(body: Record<string, string>): string {
     ].filter(Boolean).join("\n");
   }
 
+  if (type === "edit") {
+    return [
+      "[HD현대(부산/경남) 할부 정보 수정]",
+      "",
+      `번호: ${caseNo ?? "-"}`,
+      `고객: ${customerName} (${customerType})`,
+      `장비: ${equipmentTon ?? "-"}`,
+      `금융사: ${financeCompany ?? "-"}`,
+      installmentPrincipal
+        ? `할부원금: ${Number(installmentPrincipal).toLocaleString("ko-KR")}원` : "",
+      `영업: ${salesRep ?? "-"}`,
+      `현재단계: ${prevStatus ?? "-"}`,
+      `시간: ${now}`,
+    ].filter(Boolean).join("\n");
+  }
+
   if (type === "vehicle_reg_upload") {
     return [
       "[HD현대(부산/경남) 차량등록증 업로드]",
