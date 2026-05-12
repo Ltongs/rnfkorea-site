@@ -109,6 +109,46 @@ function extFromName(name: string) {
 const STATUS_ORDER: HCMStatus[] = ["접수", "신용조회", "서류등록", "전자계약발송", "확정"];
 const CREDIT_STATUSES: HCMStatus[] = ["승인", "보완", "거절"];
 
+// 신용결과(승인/보완/거절)를 포함한 전체 순서 인덱스
+// 신용결과는 신용조회(1) 다음, 서류등록(2) 이전에 위치
+const FULL_STATUS_ORDER: HCMStatus[] = ["접수", "신용조회", "승인", "보완", "거절", "서류등록", "전자계약발송", "확정"];
+
+function getStatusIndex(status: HCMStatus): number {
+  return FULL_STATUS_ORDER.indexOf(status);
+}
+
+// 다음 단계로 이동 가능 여부 (한 단계씩만 전진)
+// 신용결과(승인/보완/거절)는 신용조회 다음에만 선택 가능
+// 서류등록은 신용결과(승인/보완/거절) 다음에만 가능
+function canGoToStatus(current: HCMStatus, next: HCMStatus, isAdmin: boolean): boolean {
+  const currentIdx = getStatusIndex(current);
+  const nextIdx    = getStatusIndex(next);
+
+  // 뒤로 가기: admin만 허용
+  if (nextIdx < currentIdx) return isAdmin;
+
+  // 같은 단계: 불가
+  if (nextIdx === currentIdx) return false;
+
+  // 신용조회 → 신용결과(승인/보완/거절): 허용
+  if (current === "신용조회" && CREDIT_STATUSES.includes(next)) return true;
+
+  // 신용결과 상태 → 서류등록: admin만 허용
+  if (CREDIT_STATUSES.includes(current) && next === "서류등록") return isAdmin;
+
+  // 신용조회 상태에서 서류등록 이후로 바로 점프: 불가 (신용결과 먼저)
+  if (current === "신용조회" && !CREDIT_STATUSES.includes(next)) return false;
+
+  // 신용결과 상태에서 서류등록 건너뛰고 점프: 불가
+  if (CREDIT_STATUSES.includes(current) && next !== "서류등록") return false;
+
+  // 일반 순서: 바로 다음 단계만 허용
+  const mainOrder: HCMStatus[] = ["접수", "신용조회", "서류등록", "전자계약발송", "확정"];
+  const currentMainIdx = mainOrder.indexOf(CREDIT_STATUSES.includes(current) ? "서류등록" : current);
+  const nextMainIdx    = mainOrder.indexOf(next);
+  return nextMainIdx === currentMainIdx + 1;
+}
+
 function statusStyle(status: HCMStatus) {
   switch (status) {
     case "접수":     return "bg-gray-100 text-gray-600 border-gray-200";
@@ -539,6 +579,18 @@ export default function HyundaiCMPage() {
   const changeStatus = async (row: HCMTask, next: HCMStatus) => {
     if (!canChangeStatus) { alert("상태 변경 권한이 없습니다."); return; }
     if (row.status === next) return;
+
+    // 단계 순서 제어
+    if (!canGoToStatus(row.status, next, isAdmin)) {
+      const nextIdx    = getStatusIndex(next);
+      const currentIdx = getStatusIndex(row.status);
+      if (nextIdx < currentIdx) {
+        alert("이전 단계로 되돌리는 권한이 없습니다.");
+      } else {
+        alert("단계를 건너뛸 수 없습니다. 순서대로 진행해 주세요.");
+      }
+      return;
+    }
 
     // 확정 버튼 클릭 시 → 승인내역 팝업 먼저
     if (next === "확정") {
@@ -1181,23 +1233,28 @@ export default function HyundaiCMPage() {
                       <p className="text-xs font-medium tracking-wide text-gray-400 uppercase mb-2">진행 단계</p>
                       <div className="flex flex-wrap gap-1.5">
                         {/* 접수, 신용조회 버튼 */}
-                        {["접수", "신용조회"].map((s) => (
+                        {["접수", "신용조회"].map((s) => {
+                          const canGo = canGoToStatus(r.status, s as HCMStatus, isAdmin);
+                          return (
                           <button
                             key={s}
-                            disabled={!canChangeStatus || r.status === s}
+                            disabled={!canChangeStatus || r.status === s || !canGo}
                             onClick={() => changeStatus(r, s as HCMStatus)}
                             className={`px-3 py-1 rounded-2xl border text-xs font-semibold transition-all
                               ${r.status === s
                                 ? statusStyle(s as HCMStatus) + " ring-2 ring-offset-1 ring-orange-200/60"
-                                : "bg-white border-gray-200 text-gray-500 hover:border-orange-200 hover:text-orange-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                                : canGo && canChangeStatus
+                                  ? "bg-white border-gray-200 text-gray-500 hover:border-orange-200 hover:text-orange-600"
+                                  : "bg-white border-gray-100 text-gray-300 cursor-not-allowed"
                               }`}
                           >{s}</button>
-                        ))}
+                          );
+                        })}
 
                         {/* 신용결과 드롭다운 (승인/보완/거절) */}
                         <div className="relative">
                           <select
-                            disabled={!canChangeStatus}
+                            disabled={!canChangeStatus || !canGoToStatus(r.status, "승인", isAdmin)}
                             value={CREDIT_STATUSES.includes(r.status as any) ? r.status : (creditResults[String(r.id)] ?? "")}
                             onChange={(e) => {
                               if (!e.target.value) return;
@@ -1225,18 +1282,23 @@ export default function HyundaiCMPage() {
                         </div>
 
                         {/* 서류등록, 확정 버튼 */}
-                        {["서류등록", "전자계약발송", "확정"].map((s) => (
+                        {["서류등록", "전자계약발송", "확정"].map((s) => {
+                          const canGo = canGoToStatus(r.status, s as HCMStatus, isAdmin);
+                          return (
                           <button
                             key={s}
-                            disabled={!canChangeStatus || r.status === s}
+                            disabled={!canChangeStatus || r.status === s || !canGo}
                             onClick={() => changeStatus(r, s as HCMStatus)}
                             className={`px-3 py-1 rounded-2xl border text-xs font-semibold transition-all
                               ${r.status === s
                                 ? statusStyle(s as HCMStatus) + " ring-2 ring-offset-1 ring-orange-200/60"
-                                : "bg-white border-gray-200 text-gray-500 hover:border-orange-200 hover:text-orange-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                                : canGo && canChangeStatus
+                                  ? "bg-white border-gray-200 text-gray-500 hover:border-orange-200 hover:text-orange-600"
+                                  : "bg-white border-gray-100 text-gray-300 cursor-not-allowed"
                               }`}
                           >{s}</button>
-                        ))}
+                          );
+                        })}
 
                         {/* 차량등록증 업로드 버튼 — 확정 상태일 때만 표시 */}
                         {r.status === "확정" && canUploadVehicleRegDoc && (
