@@ -303,8 +303,11 @@ export default function HyundaiCMPage() {
   const uploadVehicleRegDoc = async (rowId: string | number, file: File) => {
     setVehicleRegUploading(String(rowId));
     try {
-      const ext = extFromName(file.name);
-      const path = `${rowId}/${Date.now()}_${file.name}`;
+      // 한글/특수문자 제거 → 안전한 파일명 생성
+      const ext      = file.name.includes(".") ? file.name.split(".").pop() : "bin";
+      const safeName = `${Date.now()}.${ext}`;
+      const path     = `${rowId}/${safeName}`;
+
       const { error: upErr } = await supabase.storage
         .from("vehicle-reg-docs")
         .upload(path, file, { upsert: false });
@@ -313,15 +316,28 @@ export default function HyundaiCMPage() {
       const { error: dbErr } = await supabase
         .from("vehicle_reg_doc_uploads")
         .insert({
-          record_id: String(rowId),
-          uploaded_by: user?.id,
+          record_id:    String(rowId),
+          uploaded_by:  user?.id,
           storage_path: path,
-          file_name: file.name,
-          file_size: file.size,
+          file_name:    file.name,   // 원본 파일명은 DB에 보관
+          file_size:    file.size,
         });
       if (dbErr) throw dbErr;
 
       await fetchVehicleRegFiles([rowId]);
+
+      // 카카오 알림 (비동기, 실패해도 업무 영향 없음)
+      const row = rows.find((r) => String(r.id) === String(rowId));
+      if (row) {
+        sendKakaoNotify({
+          type:         "vehicle_reg_upload",
+          caseNo:       caseNoMap[String(rowId)] ?? String(rowId),
+          customerName: row.customer_name,
+          customerType: row.customer_type,
+          equipmentTon: row.equipment_ton,
+          salesRep:     row.sales_rep,
+        });
+      }
     } catch (e: any) {
       alert("업로드 실패: " + (e?.message || e));
     } finally {

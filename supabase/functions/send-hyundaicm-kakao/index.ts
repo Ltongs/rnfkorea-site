@@ -171,6 +171,20 @@ function buildMessage(body: Record<string, string>): string {
     ].filter(Boolean).join("\n");
   }
 
+  if (type === "vehicle_reg_upload") {
+    return [
+      "[HD현대(부산/경남) 차량등록증 업로드]",
+      "",
+      `번호: ${caseNo ?? "-"}`,
+      `고객: ${customerName} (${customerType})`,
+      `장비: ${equipmentTon ?? "-"}`,
+      `영업: ${salesRep ?? "-"}`,
+      "",
+      "차량(굴삭기) 등록이 완료되었습니다.",
+      `시간: ${now}`,
+    ].filter(Boolean).join("\n");
+  }
+
   throw new Error("type은 'new' 또는 'status_change' 이어야 합니다.");
 }
 
