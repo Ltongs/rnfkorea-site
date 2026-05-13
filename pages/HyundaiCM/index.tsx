@@ -32,6 +32,7 @@ type HCMTask = {
   credit_rate: number | null;          // 적용금리 (%)
   credit_incentive: number | null;     // 적용인센티브 (%)
   biz_history: string | null;          // 업력 (1년이상/1년미만)
+  loan_limit: number | null;           // 대출한도 (승인 시)
   vat_deferred: boolean | null;        // 부가세 후불 여부
   vat_deferred_amount: number | null;  // 부가세 후불 금액
   loan_period: number | null;          // 대출기간 (확정 시)
@@ -262,6 +263,7 @@ export default function HyundaiCMPage() {
   const [creditNiceScore,    setCreditNiceScore]    = useState("");
   const [creditRate,         setCreditRate]         = useState("");
   const [creditIncentive,    setCreditIncentive]    = useState("");
+  const [creditLoanLimit,    setCreditLoanLimit]    = useState(""); // 대출한도 (승인 시)
   const [creditBizHistory,   setCreditBizHistory]   = useState<"1년이상" | "1년미만">("1년이상");
   const [creditSaving,       setCreditSaving]       = useState(false);
 
@@ -711,6 +713,9 @@ export default function HyundaiCMPage() {
         credit_rate:      creditRate.trim() ? parseFloat(creditRate) || null : null,
         credit_incentive: creditIncentive.trim() ? parseFloat(creditIncentive) || null : null,
         biz_history:      creditBizHistory,
+        loan_limit:       next === "승인" && creditLoanLimit.trim()
+                            ? parseInt(creditLoanLimit.replace(/,/g, ""), 10) || null
+                            : null,
       };
       const { error } = await supabase.from("hyundaicm_tasks").update(patch).eq("id", row.id as any);
       if (error) throw error;
@@ -1295,6 +1300,7 @@ export default function HyundaiCMPage() {
                               setCreditNiceScore(r.nice_score != null ? String(r.nice_score) : "");
                               setCreditRate(r.credit_rate != null ? String(r.credit_rate) : "");
                               setCreditIncentive(r.credit_incentive != null ? String(r.credit_incentive) : "");
+                              setCreditLoanLimit(r.loan_limit != null ? Number(r.loan_limit).toLocaleString("ko-KR") : "");
                               setCreditBizHistory((r.biz_history as any) ?? "1년이상");
                               setCreditModal({ row: r, next });
                             }}
@@ -1647,6 +1653,26 @@ export default function HyundaiCMPage() {
                   disabled={creditSaving}
                 />
               </div>
+
+              {/* 대출한도 — 승인 시에만 표시 */}
+              {creditModal.next === "승인" && (
+              <div>
+                <label className={labelClass}>대출한도 (원)</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={creditLoanLimit}
+                  onChange={(e) => {
+                    // 숫자만 추출 후 천단위 콤마 자동 삽입
+                    const raw = e.target.value.replace(/[^0-9]/g, "");
+                    setCreditLoanLimit(raw ? Number(raw).toLocaleString("ko-KR") : "");
+                  }}
+                  placeholder="예: 90,000,000"
+                  className={inputClass}
+                  disabled={creditSaving}
+                />
+              </div>
+              )}
             </div>
 
             <div className="mt-6 flex justify-end gap-3">
