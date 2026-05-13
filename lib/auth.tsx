@@ -15,6 +15,7 @@ type AuthContextType = {
 
   // role flags
   isAdmin: boolean;
+  isSubAdmin: boolean;         // 부관리자 (ltongs7@gmail.com) - admin과 동일 권한
   isNarumi: boolean;
   isLotte: boolean;
   isInsuranceManager: boolean;
@@ -48,6 +49,7 @@ function getRoleFlags(emailRaw?: string | null) {
   const email = normalizeEmail(emailRaw);
 
   const isAdmin            = email === "admin@rnfkorea.co.kr";
+  const isSubAdmin         = email === "ltongs7@gmail.com";        // 부관리자 (admin과 동일 권한)
   const isNarumi           = email.endsWith("@narmimotors.com");
   const isLotte            = email.endsWith("@lotte.net");
   const isInsuranceManager = email === "inhyang1004@hanmail.net";
@@ -56,11 +58,12 @@ function getRoleFlags(emailRaw?: string | null) {
 
   // isHyundaiCM / isNhCapital 은 각자 전용 페이지만 볼 수 있으므로
   // isInternal(나르미 공통 접근)에는 포함하지 않음
-  const isInternal = isAdmin || isNarumi || isLotte || isInsuranceManager;
+  const isInternal = isAdmin || isSubAdmin || isNarumi || isLotte || isInsuranceManager;
 
   return {
     email,
     isAdmin,
+    isSubAdmin,
     isNarumi,
     isLotte,
     isInsuranceManager,
@@ -73,6 +76,7 @@ function getRoleFlags(emailRaw?: string | null) {
 function getPermissions(emailRaw?: string | null) {
   const {
     isAdmin,
+    isSubAdmin,
     isNarumi,
     isLotte,
     isInsuranceManager,
@@ -81,8 +85,11 @@ function getPermissions(emailRaw?: string | null) {
     isInternal,
   } = getRoleFlags(emailRaw);
 
+  const isAdminLevel = isAdmin || isSubAdmin; // admin과 동일 권한 그룹
+
   return {
     isAdmin,
+    isSubAdmin,
     isNarumi,
     isLotte,
     isInsuranceManager,
@@ -90,15 +97,15 @@ function getPermissions(emailRaw?: string | null) {
     isNhCapital,
     isInternal,
 
-    canViewAll: isInternal,                              // 나르미/운영 페이지 접근 (isHyundaiCM, isNhCapital 제외)
-    canViewHyundaiCM: isInternal || isHyundaiCM || isNhCapital, // 현대건설기계 페이지 조회
-    canCreate: isAdmin || isNarumi || isInsuranceManager || isHyundaiCM || isNhCapital,
-    canEditExisting: isAdmin || isInsuranceManager || isNhCapital,
-    canDelete: isAdmin || isInsuranceManager || isNhCapital,
-    canChangeStatus: isAdmin || isInsuranceManager || isNhCapital,
-    canEditMemo: isAdmin || isInsuranceManager || isNhCapital,
-    canUploadVehicleDoc: isAdmin || isInsuranceManager || isNhCapital,
-    canUploadVehicleRegDoc: isHyundaiCM || isAdmin || isNhCapital,  // 확정 후 차량등록증 업로드 (72시간 후 자동삭제)
+    canViewAll:          isInternal,
+    canViewHyundaiCM:    isInternal || isHyundaiCM || isNhCapital,
+    canCreate:           isAdminLevel || isNarumi || isInsuranceManager || isHyundaiCM || isNhCapital,
+    canEditExisting:     isAdminLevel || isInsuranceManager || isNhCapital,
+    canDelete:           isAdminLevel || isInsuranceManager || isNhCapital,
+    canChangeStatus:     isAdminLevel || isInsuranceManager || isNhCapital,
+    canEditMemo:         isAdminLevel || isInsuranceManager || isNhCapital,
+    canUploadVehicleDoc: isAdminLevel || isInsuranceManager || isNhCapital,
+    canUploadVehicleRegDoc: isHyundaiCM || isAdminLevel || isNhCapital,
   };
 }
 
@@ -174,6 +181,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loading,
 
       isAdmin:            permissionState.isAdmin,
+      isSubAdmin:         permissionState.isSubAdmin,
       isNarumi:           permissionState.isNarumi,
       isLotte:            permissionState.isLotte,
       isInsuranceManager: permissionState.isInsuranceManager,

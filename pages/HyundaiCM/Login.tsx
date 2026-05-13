@@ -12,7 +12,7 @@ const inputClass =
 export default function HyundaiCMLoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, user, loading, isHyundaiCM, isAdmin, isNhCapital } = useAuth() as any;
+  const { login, user, loading, isHyundaiCM, isAdmin, isSubAdmin, isNhCapital } = useAuth() as any;
 
   const [email,      setEmail]      = useState("");
   const [password,   setPassword]   = useState("");
@@ -25,10 +25,10 @@ export default function HyundaiCMLoginPage() {
       : "/hyundaicm";
 
   useEffect(() => {
-    if (!loading && user && (isHyundaiCM || isAdmin || isNhCapital)) {
+    if (!loading && user && (isHyundaiCM || isAdmin || isSubAdmin || isNhCapital)) {
       navigate(redirectTo, { replace: true });
     }
-  }, [loading, user, isHyundaiCM, isAdmin, isNhCapital, navigate, redirectTo]);
+  }, [loading, user, isHyundaiCM, isAdmin, isSubAdmin, isNhCapital, navigate, redirectTo]);
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();

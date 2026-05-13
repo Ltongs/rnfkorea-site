@@ -198,14 +198,15 @@ const btnGhost =
 
 // ─── 메인 컴포넌트 ────────────────────────────────────────
 export default function HyundaiCMPage() {
-  const { user, logout, isAdmin, isHyundaiCM, isNhCapital } = useAuth() as any;
+  const { user, logout, isAdmin, isSubAdmin, isHyundaiCM, isNhCapital } = useAuth() as any;
   const nav = useNavigate();
-  const canCreate              = isAdmin || isHyundaiCM || isNhCapital;
-  const canEditExisting        = isAdmin || isNhCapital;
-  const canChangeStatus        = isAdmin || isNhCapital;
-  const canUploadDoc           = isAdmin || isNhCapital;
-  const canUploadVehicleRegDoc = isAdmin || isHyundaiCM || isNhCapital;
-  const canDelete              = isAdmin || isNhCapital;
+  const isAdminLevel           = isAdmin || isSubAdmin;
+  const canCreate              = isAdminLevel || isHyundaiCM || isNhCapital;
+  const canEditExisting        = isAdminLevel || isNhCapital;
+  const canChangeStatus        = isAdminLevel || isNhCapital;
+  const canUploadDoc           = isAdminLevel || isNhCapital;
+  const canUploadVehicleRegDoc = isAdminLevel || isHyundaiCM || isNhCapital;
+  const canDelete              = isAdminLevel || isNhCapital;
 
   // ── 신규 접수 폼 ──
   const [customerType,          setCustomerType]          = useState<CustomerType>("개인");
@@ -601,7 +602,7 @@ export default function HyundaiCMPage() {
     if (row.status === next) return;
 
     // 단계 순서 제어
-    if (!canGoToStatus(row.status, next, isAdmin)) {
+    if (!canGoToStatus(row.status, next, isAdminLevel)) {
       const nextIdx    = getStatusIndex(next);
       const currentIdx = getStatusIndex(row.status);
       if (nextIdx < currentIdx) {
@@ -1283,7 +1284,7 @@ export default function HyundaiCMPage() {
                       <div className="flex flex-wrap gap-1.5">
                         {/* 접수, 신용조회 버튼 */}
                         {["접수", "신용조회"].map((s) => {
-                          const canGo = canGoToStatus(r.status, s as HCMStatus, isAdmin);
+                          const canGo = canGoToStatus(r.status, s as HCMStatus, isAdminLevel);
                           return (
                           <button
                             key={s}
@@ -1303,7 +1304,7 @@ export default function HyundaiCMPage() {
                         {/* 신용결과 드롭다운 (승인/보완/거절) */}
                         <div className="relative">
                           <select
-                            disabled={!canChangeStatus || !canGoToStatus(r.status, "승인", isAdmin)}
+                            disabled={!canChangeStatus || !canGoToStatus(r.status, "승인", isAdminLevel)}
                             value={CREDIT_STATUSES.includes(r.status as any) ? r.status : (creditResults[String(r.id)] ?? "")}
                             onChange={(e) => {
                               if (!e.target.value) return;
@@ -1334,7 +1335,7 @@ export default function HyundaiCMPage() {
 
                         {/* 서류등록, 확정 버튼 */}
                         {["서류등록", "전자계약발송", "확정"].map((s) => {
-                          const canGo = canGoToStatus(r.status, s as HCMStatus, isAdmin);
+                          const canGo = canGoToStatus(r.status, s as HCMStatus, isAdminLevel);
                           return (
                           <button
                             key={s}
@@ -1442,7 +1443,7 @@ export default function HyundaiCMPage() {
                                 </span>
                               </p>
                             </div>
-                            {(isAdmin || isNhCapital) && (
+                            {(isAdmin || isSubAdmin || isNhCapital) && (
                             <button
                               onClick={() => downloadVehicleRegDoc(f.path, f.name)}
                               className="shrink-0 px-3 py-1 rounded-2xl border border-emerald-200 text-emerald-700 text-xs font-medium hover:border-emerald-400 transition-all"
