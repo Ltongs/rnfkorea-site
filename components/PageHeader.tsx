@@ -93,7 +93,8 @@ function calcMobileMenuStyle(btnEl: HTMLButtonElement | null): MobileMenuStyle {
 export default function PageHeader() {
   const { pathname } = useLocation();
   const nav = useNavigate();
-  const { user, canViewAll, isAdmin, isNarumi, isLotte, isInsuranceManager, isHyundaiCM, isNhCapital } = useAuth() as any;
+  const { user, canViewAll, isAdmin, isSubAdmin, isNarumi, isLotte, isInsuranceManager, isHyundaiCM, isNhCapital } = useAuth() as any;
+  const isAdminLevel = isAdmin || isSubAdmin;
 
   const [openBiz, setOpenBiz] = useState(false);
   const [openShop, setOpenShop] = useState(false);
@@ -536,7 +537,7 @@ export default function PageHeader() {
                   onMouseLeave={() => hoverClose(setOpenWork)}
                   onPointerDown={(e) => e.stopPropagation()}
                 >
-                  {isAdmin && (
+                  {isAdminLevel && (
                     <button
                       type="button"
                       className={dropItem}
@@ -546,7 +547,7 @@ export default function PageHeader() {
                     </button>
                   )}
 
-                  {(isAdmin || isNarumi || isLotte || isInsuranceManager || !user) && (
+                  {(isAdminLevel || isNarumi || isLotte || isInsuranceManager || !user) && (
                     <button
                       type="button"
                       className={dropItem}
@@ -556,7 +557,7 @@ export default function PageHeader() {
                     </button>
                   )}
 
-                  {(isAdmin || isHyundaiCM || isNhCapital || !user) && (
+                  {(isAdminLevel || isHyundaiCM || isNhCapital || !user) && (
                     <button
                       type="button"
                       className={dropItem}
@@ -566,7 +567,7 @@ export default function PageHeader() {
                     </button>
                   )}
 
-                  {(isAdmin || isInsuranceManager || !user) && (
+                  {(isAdminLevel || isInsuranceManager || !user) && (
                     <button
                       type="button"
                       className={dropItem}
@@ -576,7 +577,7 @@ export default function PageHeader() {
                     </button>
                   )}
 
-                  {(isAdmin || !user) && (
+                  {(isAdminLevel || !user) && (
                     <button
                       type="button"
                       className={dropItem}

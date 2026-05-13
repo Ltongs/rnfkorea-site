@@ -1504,7 +1504,8 @@ const ProtectedRoute: React.FC<{
 };
 
 const AppRoutes = () => {
-  const { isAdmin } = useAuth() as any;
+  const { isAdmin, isSubAdmin } = useAuth() as any;
+  const isAdminLevel = isAdmin || isSubAdmin;
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-white">
@@ -1593,7 +1594,7 @@ const AppRoutes = () => {
           />
           <Route
             path="/work/dashboard"
-            element={isAdmin ? <DashboardPage /> : <Navigate to="/" replace />}
+            element={isAdminLevel ? <DashboardPage /> : <Navigate to="/" replace />}
           />
 
           {/* legacy */}
