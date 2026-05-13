@@ -7,8 +7,9 @@ const EDGE_FN_URL = "https://nfwtsptqloefsbpjvdyu.supabase.co/functions/v1/send-
 const ANON_KEY    = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 export default function KakaoConnectPage() {
-  const { user, isAdmin, isHyundaiCM } = useAuth() as any;
-  const userRole = isAdmin ? "admin" : isHyundaiCM ? "hyundaicm" : null;
+  const { user, isAdmin, isSubAdmin, isHyundaiCM } = useAuth() as any;
+  const isAdminLevel = isAdmin || isSubAdmin;
+  const userRole = isAdminLevel ? "admin" : isHyundaiCM ? "hyundaicm" : null;
 
   const [connected,    setConnected]    = useState<boolean | null>(null);
   const [checking,     setChecking]     = useState(true);
@@ -96,7 +97,7 @@ export default function KakaoConnectPage() {
           <h2 className="text-xl font-semibold text-navy-900 mb-4">연결 상태</h2>
           <div className="space-y-2 text-sm text-gray-600">
             <div><span className="font-medium text-navy-900 w-20 inline-block">계정:</span>{user?.email}</div>
-            <div><span className="font-medium text-navy-900 w-20 inline-block">역할:</span>{isAdmin ? "관리자" : "현대건설기계 담당자"}</div>
+            <div><span className="font-medium text-navy-900 w-20 inline-block">역할:</span>{isAdminLevel ? "관리자" : "현대건설기계 담당자"}</div>
             <div><span className="font-medium text-navy-900 w-20 inline-block">상태:</span>
               {checking ? "확인 중..." : connected
                 ? <span className="text-emerald-600 font-semibold">✓ 연결됨</span>
