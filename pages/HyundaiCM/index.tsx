@@ -33,6 +33,7 @@ type HCMTask = {
   credit_incentive: number | null;     // 적용인센티브 (%)
   biz_history: string | null;          // 업력 (1년이상/1년미만)
   loan_limit: number | null;           // 대출한도 (승인 시)
+  credit_note: string | null;          // 특이사항(승인)/보완사항(보완)/거절사유(거절)
   vat_deferred: boolean | null;        // 부가세 후불 여부
   vat_deferred_amount: number | null;  // 부가세 후불 금액
   loan_period: number | null;          // 대출기간 (확정 시)
@@ -264,6 +265,7 @@ export default function HyundaiCMPage() {
   const [creditRate,         setCreditRate]         = useState("");
   const [creditIncentive,    setCreditIncentive]    = useState("");
   const [creditLoanLimit,    setCreditLoanLimit]    = useState(""); // 대출한도 (승인 시)
+  const [creditNote,         setCreditNote]         = useState(""); // 특이사항(승인)/보완사항(보완)/거절사유(거절)
   const [creditBizHistory,   setCreditBizHistory]   = useState<"1년이상" | "1년미만">("1년이상");
   const [creditSaving,       setCreditSaving]       = useState(false);
 
@@ -634,14 +636,16 @@ export default function HyundaiCMPage() {
     } else {
       // 카카오 알림 (비동기, 실패해도 업무 영향 없음)
       const kakaoPayload: Record<string, unknown> = {
-        type:          "status_change",
-        caseNo:        caseNoMap[String(row.id)] ?? String(row.id),
-        customerName:  row.customer_name,
-        customerType:  row.customer_type,
-        equipmentTon:  row.equipment_ton,
-        salesRep:      row.sales_rep,
-        prevStatus:    row.status,
-        nextStatus:    next,
+        type:                 "status_change",
+        caseNo:               caseNoMap[String(row.id)] ?? String(row.id),
+        customerName:         row.customer_name,
+        customerType:         row.customer_type,
+        equipmentTon:         row.equipment_ton,
+        financeCompany:       row.finance_company,       // 금융사 (신용조회 단계에서 표시)
+        installmentPrincipal: row.installment_principal ? String(row.installment_principal) : undefined,
+        salesRep:             row.sales_rep,
+        prevStatus:           row.status,
+        nextStatus:           next,
       };
       sendKakaoNotify(kakaoPayload);
     }
@@ -709,13 +713,14 @@ export default function HyundaiCMPage() {
     try {
       const patch: Partial<HCMTask> = {
         status:           next,
-        nice_score:       creditNiceScore.trim() ? parseInt(creditNiceScore, 10) || null : null,
-        credit_rate:      creditRate.trim() ? parseFloat(creditRate) || null : null,
-        credit_incentive: creditIncentive.trim() ? parseFloat(creditIncentive) || null : null,
-        biz_history:      creditBizHistory,
+        nice_score:       next !== "거절" && creditNiceScore.trim() ? parseInt(creditNiceScore, 10) || null : null,
+        credit_rate:      next !== "거절" && creditRate.trim() ? parseFloat(creditRate) || null : null,
+        credit_incentive: next !== "거절" && creditIncentive.trim() ? parseFloat(creditIncentive) || null : null,
+        biz_history:      next !== "거절" ? creditBizHistory : null,
         loan_limit:       next === "승인" && creditLoanLimit.trim()
                             ? parseInt(creditLoanLimit.replace(/,/g, ""), 10) || null
                             : null,
+        credit_note:      creditNote.trim() || null,
       };
       const { error } = await supabase.from("hyundaicm_tasks").update(patch).eq("id", row.id as any);
       if (error) throw error;
@@ -735,7 +740,9 @@ export default function HyundaiCMPage() {
         niceScore:        patch.nice_score,
         creditRate:       patch.credit_rate,
         creditIncentive:  patch.credit_incentive,
-        bizHistory:       creditBizHistory,
+        bizHistory:       next !== "거절" ? creditBizHistory : undefined,
+        loanLimit:        patch.loan_limit ? String(patch.loan_limit) : undefined,
+        creditNote:       patch.credit_note ?? undefined,
       });
 
       setCreditModal(null);
@@ -800,6 +807,11 @@ export default function HyundaiCMPage() {
           equipmentTon:         patch.equipment_ton ?? "-",
           financeCompany:       patch.finance_company ?? "-",
           installmentPrincipal: patch.installment_principal ? String(patch.installment_principal) : "",
+          purchaseAmount:       patch.purchase_amount ? String(patch.purchase_amount) : "",
+          interestRate:         patch.interest_rate ? String(patch.interest_rate) : "",
+          incentive:            patch.incentive ? String(patch.incentive) : "",
+          vatDeferredAmount:    editRow.vat_deferred_amount ? String(editRow.vat_deferred_amount) : "",
+          loanPeriod:           editRow.loan_period ? String(editRow.loan_period) : "",
           salesRep:             patch.sales_rep ?? "-",
           prevStatus:           editRow.status,
         });
@@ -1301,6 +1313,7 @@ export default function HyundaiCMPage() {
                               setCreditRate(r.credit_rate != null ? String(r.credit_rate) : "");
                               setCreditIncentive(r.credit_incentive != null ? String(r.credit_incentive) : "");
                               setCreditLoanLimit(r.loan_limit != null ? Number(r.loan_limit).toLocaleString("ko-KR") : "");
+                              setCreditNote(r.credit_note ?? "");
                               setCreditBizHistory((r.biz_history as any) ?? "1년이상");
                               setCreditModal({ row: r, next });
                             }}
@@ -1591,7 +1604,22 @@ export default function HyundaiCMPage() {
             </p>
 
             <div className="space-y-4">
-              {/* 업력 */}
+              {/* 거절: 거절사유만 표시 */}
+              {creditModal.next === "거절" ? (
+                <div>
+                  <label className={labelClass}>거절사유</label>
+                  <textarea
+                    value={creditNote}
+                    onChange={(e) => setCreditNote(e.target.value)}
+                    placeholder="거절 사유를 입력해주세요"
+                    rows={4}
+                    className={inputClass + " resize-none"}
+                    disabled={creditSaving}
+                  />
+                </div>
+              ) : (
+              <>
+              {/* 업력 — 승인/보완 공통 */}
               <div>
                 <label className={labelClass}>업력</label>
                 <div className="flex gap-2">
@@ -1610,7 +1638,7 @@ export default function HyundaiCMPage() {
                 </div>
               </div>
 
-              {/* NICE 점수 */}
+              {/* NICE 점수 — 승인/보완 공통 */}
               <div>
                 <label className={labelClass}>NICE 점수</label>
                 <input
@@ -1624,7 +1652,7 @@ export default function HyundaiCMPage() {
                 />
               </div>
 
-              {/* 적용금리 */}
+              {/* 적용금리 — 승인/보완 공통 */}
               <div>
                 <label className={labelClass}>적용금리 (%)</label>
                 <input
@@ -1639,7 +1667,7 @@ export default function HyundaiCMPage() {
                 />
               </div>
 
-              {/* 적용인센티브 */}
+              {/* 적용인센티브 — 승인/보완 공통 */}
               <div>
                 <label className={labelClass}>적용인센티브 (%)</label>
                 <input
@@ -1663,7 +1691,6 @@ export default function HyundaiCMPage() {
                   inputMode="numeric"
                   value={creditLoanLimit}
                   onChange={(e) => {
-                    // 숫자만 추출 후 천단위 콤마 자동 삽입
                     const raw = e.target.value.replace(/[^0-9]/g, "");
                     setCreditLoanLimit(raw ? Number(raw).toLocaleString("ko-KR") : "");
                   }}
@@ -1672,6 +1699,23 @@ export default function HyundaiCMPage() {
                   disabled={creditSaving}
                 />
               </div>
+              )}
+
+              {/* 특이사항(승인) / 보완사항(보완) */}
+              <div>
+                <label className={labelClass}>
+                  {creditModal.next === "승인" ? "특이사항" : "보완사항"}
+                </label>
+                <textarea
+                  value={creditNote}
+                  onChange={(e) => setCreditNote(e.target.value)}
+                  placeholder={creditModal.next === "승인" ? "특이사항을 입력해주세요" : "보완 사항을 입력해주세요"}
+                  rows={3}
+                  className={inputClass + " resize-none"}
+                  disabled={creditSaving}
+                />
+              </div>
+              </>
               )}
             </div>
 
