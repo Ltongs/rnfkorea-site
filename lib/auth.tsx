@@ -54,7 +54,8 @@ function getRoleFlags(emailRaw?: string | null) {
   const isLotte            = email.endsWith("@lotte.net");
   const isInsuranceManager = email === "inhyang1004@hanmail.net";
   const isHyundaiCM        = email === "p2001103@hanmail.net";   // 현대건설기계 배성구 팀장
-  const isNhCapital        = email === "allbar7555@naver.com";   // 농협캐피탈 강신규 소장
+  const isNhCapital        = email === "allbar7555@naver.com"      // 농협캐피탈 강신규 소장
+                          || email === "yongbaek_jo@orix.co.kr";  // ORIX 조용백
 
   // isHyundaiCM / isNhCapital 은 각자 전용 페이지만 볼 수 있으므로
   // isInternal(나르미 공통 접근)에는 포함하지 않음

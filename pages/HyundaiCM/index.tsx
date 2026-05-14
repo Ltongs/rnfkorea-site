@@ -1006,7 +1006,7 @@ export default function HyundaiCMPage() {
         {/* ── 검색 패널 ── */}
         {showSearchPanel && (
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-            <div className="grid sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className={labelClass}>통합 검색</label>
                 <input
@@ -1046,7 +1046,7 @@ export default function HyundaiCMPage() {
               >×</button>
             </div>
 
-            <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               <div>
                 <label className={labelClass}>고객 유형 *</label>
                 <select value={customerType} onChange={(e) => setCustomerType(e.target.value as CustomerType)} className={inputClass}>
@@ -1175,7 +1175,7 @@ export default function HyundaiCMPage() {
               }`}>
 
                 {/* 카드 헤더 */}
-                <div className="flex items-start justify-between gap-3 px-6 pt-5 pb-4 border-b border-gray-100">
+                <div className="flex items-start justify-between gap-3 px-4 md:px-6 pt-5 pb-4 border-b border-gray-100">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs font-semibold text-gray-500 font-mono">
                       {caseNoMap[String(r.id)] ?? "-"}
@@ -1195,7 +1195,7 @@ export default function HyundaiCMPage() {
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
                     {isConfirmed && (
                       <button
                         onClick={() => toggleExpand(r.id)}
@@ -1220,7 +1220,7 @@ export default function HyundaiCMPage() {
 
                 {/* 카드 바디 — 확정 상태면 펼쳤을 때만 표시 */}
                 {(!isConfirmed || isExpanded) && (
-                <div className="px-6 py-5 grid md:grid-cols-2 gap-6">
+                <div className="px-4 md:px-6 py-5 grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* 왼쪽: 기본 정보 */}
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-3">
@@ -1281,7 +1281,7 @@ export default function HyundaiCMPage() {
                     {/* 진행 단계 */}
                     <div>
                       <p className="text-xs font-medium tracking-wide text-gray-400 uppercase mb-2">진행 단계</p>
-                      <div className="flex flex-wrap gap-1.5">
+                      <div className="flex flex-wrap gap-1.5 overflow-x-auto pb-1">
                         {/* 접수, 신용조회 버튼 */}
                         {["접수", "신용조회"].map((s) => {
                           const canGo = canGoToStatus(r.status, s as HCMStatus, isAdminLevel);
@@ -1419,7 +1419,7 @@ export default function HyundaiCMPage() {
 
                 {/* 차량등록증 파일 목록 — 확정 상태이고 펼쳐진 경우에만 표시 */}
                 {r.status === "확정" && (!isConfirmed || isExpanded) && canUploadVehicleRegDoc && (
-                <div className="px-6 pb-5 border-t border-emerald-100 pt-4">
+                <div className="px-4 md:px-6 pb-5 border-t border-emerald-100 pt-4">
                   <div className="mb-3">
                     <p className="text-xs font-medium tracking-wide text-emerald-600 uppercase">차량등록증</p>
                     <p className="text-xs text-gray-400 mt-0.5">업로드 후 72시간 뒤 자동 삭제됩니다</p>
@@ -1497,7 +1497,7 @@ export default function HyundaiCMPage() {
               <button onClick={closeEditModal} disabled={editSaving} className="h-9 w-9 rounded-2xl border border-gray-200 text-xl font-bold text-gray-500 hover:border-gray-300 disabled:opacity-50 transition-all">×</button>
             </div>
 
-            <div className="grid sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div><label className={labelClass}>고객 유형</label><select value={editCustomerType} onChange={(e) => setEditCustomerType(e.target.value as CustomerType)} className={inputClass} disabled={editSaving}><option value="개인">개인</option><option value="법인">법인</option></select></div>
               <div><label className={labelClass}>고객명 *</label><input value={editCustomerName} onChange={(e) => setEditCustomerName(e.target.value)} className={inputClass} disabled={editSaving} placeholder="홍길동" /></div>
               <div><label className={labelClass}>전화번호</label><input value={editCustomerPhone} onChange={(e) => setEditCustomerPhone(formatPhoneKR(e.target.value))} className={inputClass} disabled={editSaving} inputMode="tel" /></div>

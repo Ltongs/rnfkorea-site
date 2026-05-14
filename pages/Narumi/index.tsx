@@ -1474,7 +1474,7 @@ VIN: ${nextVin}`);
           </div>
 
           {showSearchPanel && (
-            <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               <div>
                 <label className={labelClass}>통합 검색</label>
                 <input
@@ -1539,7 +1539,7 @@ VIN: ${nextVin}`);
             {showCreatePanel && (
               <div className="space-y-4">
                 {/* 1행 */}
-                <div className="grid md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div>
                     <label className={labelClass}>차대번호(VIN) *</label>
                     <input value={vin} onChange={(e) => setVin(normalizeVin(e.target.value))} placeholder="예: KMH..." className={compactInputClass} disabled={!canCreate} />
@@ -1555,7 +1555,7 @@ VIN: ${nextVin}`);
                 </div>
 
                 {/* 2행 */}
-                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 items-start">
+                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 items-start">
                   <div>
                     <label className={labelClass}>제작증</label>
                     <button type="button" onClick={() => manufactureInputRef.current?.click()} disabled={!canCreate} className={compactButtonClass}>
@@ -1640,7 +1640,7 @@ VIN: ${nextVin}`);
               <div key={r.id} className={`rounded-2xl border bg-white shadow-sm hover:shadow-md transition-all overflow-hidden ${isHold ? "border-gray-300 opacity-75" : isLocked ? "border-emerald-200" : "border-gray-200"}`}>
 
                 {/* 카드 헤더 */}
-                <div className="flex items-start justify-between gap-3 px-6 pt-5 pb-4 border-b border-gray-100">
+                <div className="flex items-start justify-between gap-3 px-4 md:px-6 pt-5 pb-4 border-b border-gray-100">
                   <div className="flex flex-wrap items-center gap-2">
                     {/* 상태 뱃지 */}
                     <span className={`${pillBase} ${
@@ -1674,7 +1674,7 @@ VIN: ${nextVin}`);
                 </div>
 
                 {/* 카드 바디 */}
-                <div className="px-6 py-5 grid md:grid-cols-2 gap-6">
+                <div className="px-4 md:px-6 py-5 grid grid-cols-1 md:grid-cols-2 gap-6">
 
                   {/* 왼쪽: 기본 정보 + 단계 버튼 */}
                   <div className="space-y-4">
@@ -1918,7 +1918,7 @@ VIN: ${nextVin}`);
               <button type="button" onClick={closeEditModal} disabled={editSaving} className="h-9 w-9 rounded-2xl border border-gray-200 text-xl font-bold text-gray-500 hover:border-gray-300 disabled:opacity-50 transition-all">×</button>
             </div>
 
-            <div className="grid sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className={labelClass}>차대번호(VIN) *</label>
                 <input value={editVin} onChange={(e) => setEditVin(normalizeVin(e.target.value))} className={compactInputClass} disabled={!isPrivilegedManager || editSaving} placeholder="예: KMH..." />
