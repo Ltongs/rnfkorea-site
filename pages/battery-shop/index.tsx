@@ -5,9 +5,9 @@ import { Helmet } from "react-helmet-async";
 // ====================================================
 // SEO 설정
 // ====================================================
-const SEO_TITLE = "배터리 쇼핑몰 | 지게차·고소작업대·골프카트 배터리 렌탈 | RNF KOREA";
+const SEO_TITLE = "산업용 배터리 렌탈몰 | 지게차·고소작업대·골프카트 배터리 렌탈 | RNF KOREA";
 const SEO_DESC =
-  "전동지게차·고소작업대·골프카트용 납산·LFP 배터리 렌탈 쇼핑몰. 12/24/36개월 렌탈 월정액 즉시 확인. ITNT 공급 배터리. 맞춤 견적 상담 1551-1873.";
+  "전동지게차·고소작업대·골프카트용 납산·LFP 배터리 렌탈몰. 12/24/36개월 렌탈 월정액 즉시 확인. ITNT 공급 배터리. 맞춤 견적 상담 1551-1873.";
 const SEO_CANONICAL = "https://www.rnfkorea.co.kr/battery-shop";
 const SEO_KEYWORDS =
   "지게차배터리렌탈,전동지게차배터리,납산배터리렌탈,LFP배터리렌탈,고소작업대배터리,골프카트배터리,배터리쇼핑몰,ITNT배터리,배터리월렌탈,배터리교체";
@@ -21,7 +21,7 @@ const SEO_OG_IMAGE = "https://www.rnfkorea.co.kr/og-image.jpg";
 const JSON_LD_ITEM_LIST = {
   "@context": "https://schema.org",
   "@type": "ItemList",
-  name: "RNF KOREA 배터리 쇼핑몰 주요 렌탈 상품",
+  name: "RNF KOREA 산업용 배터리 렌탈몰 주요 렌탈 상품",
   url: "https://www.rnfkorea.co.kr/battery-shop",
   itemListElement: [
     {
@@ -124,7 +124,7 @@ const JSON_LD_BREADCRUMB = {
   "@type": "BreadcrumbList",
   itemListElement: [
     { "@type": "ListItem", position: 1, name: "홈",         item: "https://www.rnfkorea.co.kr/" },
-    { "@type": "ListItem", position: 2, name: "배터리 쇼핑몰", item: "https://www.rnfkorea.co.kr/battery-shop" },
+    { "@type": "ListItem", position: 2, name: "산업용 배터리 렌탈몰", item: "https://www.rnfkorea.co.kr/battery-shop" },
   ],
 };
 
@@ -195,6 +195,103 @@ const formatKRW = (value: number) => `${value.toLocaleString("ko-KR")}원`;
 function formatDimension(value: string): string {
   const [l = "-", w = "-", h = "-"] = value.split("*").map((v) => v.trim());
   return `(L)${l}*(W)${w}*(H)${h}`;
+}
+
+// ====================================================
+// PL 생산물배상책임보험 카드 컴포넌트 (shimmer 효과)
+// ====================================================
+function PLInsuranceBadge() {
+  useEffect(() => {
+    const id = "pl-shimmer-style";
+    if (document.getElementById(id)) return;
+    const el = document.createElement("style");
+    el.id = id;
+    el.textContent = `
+      @keyframes pl-shimmer {
+        0%        { left: -80%; }
+        60%, 100% { left: 130%; }
+      }
+    `;
+    document.head.appendChild(el);
+    return () => { document.getElementById(id)?.remove(); };
+  }, []);
+
+  return (
+    <div className="rounded-3xl bg-white/10 border border-white/20 backdrop-blur-sm p-6 md:p-7">
+      <div className="space-y-5">
+
+        {/* 헤더 */}
+        <div>
+          <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-400">
+            Product Liability Insurance
+          </p>
+          <p className="mt-2 text-xl md:text-2xl font-semibold leading-[1.2] text-white break-keep">
+            PL 생산물배상책임보험 가입
+          </p>
+          <p className="mt-2 text-sm md:text-base leading-7 text-white/70 break-keep">
+            알앤에프코리아가 공급하는 LFP 배터리에<br />
+            제조물책임 사고 발생 시 보상해 드립니다.
+          </p>
+        </div>
+
+        {/* 정보 그리드 */}
+        <dl className="grid grid-cols-2 gap-2.5">
+          {[
+            { label: "보상한도",  value: "사고당 2억 원" },
+            { label: "보험기간",  value: "~2027.05.17" },
+            { label: "담보유형",  value: "대인·대물 배상" },
+            { label: "담보제품",  value: "LFP 배터리" },
+          ].map(({ label, value }) => (
+            <div
+              key={label}
+              className="rounded-2xl border border-white/15 bg-white/8 px-4 py-3"
+            >
+              <dt className="text-[10px] font-semibold tracking-[0.1em] uppercase text-orange-400">
+                {label}
+              </dt>
+              <dd className="mt-1 text-sm font-semibold text-white break-keep">
+                {value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+
+        {/* shimmer 배지 */}
+        <div
+          className="relative overflow-hidden flex items-center gap-3 rounded-2xl bg-orange-500 px-5 py-3"
+          aria-label="PL보험 적용 대상 장비"
+        >
+          <span
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              top: 0,
+              left: "-80%",
+              width: "55%",
+              height: "100%",
+              background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent)",
+              animation: "pl-shimmer 2.4s ease-in-out infinite",
+              pointerEvents: "none",
+            }}
+          />
+          <span className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/20" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M7 1L2 3.5V7c0 2.8 2.1 5.1 5 5.9 2.9-.8 5-3.1 5-5.9V3.5L7 1z" stroke="#fff" strokeWidth="1.4" strokeLinejoin="round" />
+              <path d="M5 7l1.5 1.5L9.5 5.5" stroke="#fff" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+          <span className="relative text-sm font-semibold text-white break-keep">
+            지게차 · 고소작업대 · 골프카트용 LFP 배터리 적용
+          </span>
+        </div>
+
+        {/* 면책 고지 */}
+        <p className="text-[11px] text-white/35 leading-relaxed">
+          ※ ESS 관련 사고 및 리튬이온(NCM) 배터리는 담보 제외
+        </p>
+      </div>
+    </div>
+  );
 }
 
 // ====================================================
@@ -401,9 +498,9 @@ function QuoteOnlyCard({ title, desc, note }: { title: string; desc: string; not
 // ====================================================
 function TopCategoryNav({ activeId }: { activeId: string }) {
   const links = [
+    { id: "golfcart", label: "골프카트용 배터리" },
     { id: "forklift", label: "지게차용 배터리" },
     { id: "awp",      label: "고소작업대용 배터리" },
-    { id: "golfcart", label: "골프카트용 배터리" },
   ];
 
   return (
@@ -441,8 +538,8 @@ function TopCategoryNav({ activeId }: { activeId: string }) {
 // 메인 페이지 컴포넌트
 // ====================================================
 export default function BatteryShopPage() {
-  const sectionIds = useMemo(() => ["forklift", "awp", "golfcart"], []);
-  const [activeSection, setActiveSection] = useState("forklift");
+  const sectionIds = useMemo(() => ["golfcart", "forklift", "awp"], []);
+  const [activeSection, setActiveSection] = useState("golfcart");
 
   // CSV 데이터
   const [allItems, setAllItems] = useState<RentalItem[]>([]);
@@ -519,7 +616,7 @@ export default function BatteryShopPage() {
           ======================================================== */}
       <section
         className="relative bg-[#0a192f] text-white overflow-hidden"
-        aria-label="배터리 쇼핑몰 소개"
+        aria-label="산업용 배터리 렌탈몰 소개"
       >
         {/* 배경 패턴 */}
         <div className="absolute inset-0 opacity-[0.04]" aria-hidden="true">
@@ -554,19 +651,19 @@ export default function BatteryShopPage() {
                     itemType="https://schema.org/ListItem"
                     aria-current="page"
                   >
-                    <span itemProp="name">배터리 쇼핑몰</span>
+                    <span itemProp="name">산업용 배터리 렌탈몰</span>
                     <meta itemProp="position" content="2" />
                   </li>
                 </ol>
               </nav>
 
               <p className="mt-4 text-sm font-medium tracking-[0.12em] uppercase text-orange-400">
-                Battery Solution Shop
+                Battery Rental Mall
               </p>
 
               {/* h1 */}
               <h1 className="mt-4 text-3xl md:text-4xl lg:text-5xl font-semibold leading-[1.15] text-white break-keep">
-                배터리 쇼핑몰
+                산업용 배터리 렌탈몰
               </h1>
 
               <p className="mt-4 text-base md:text-lg leading-7 text-white/75 max-w-3xl break-keep">
@@ -576,7 +673,59 @@ export default function BatteryShopPage() {
 
               <TopCategoryNav activeId={activeSection} />
             </div>
+
+            {/* ── PL 생산물배상책임보험 카드 ── */}
+            <aside className="lg:col-span-5" aria-label="PL 생산물배상책임보험 가입 안내">
+              <PLInsuranceBadge />
+            </aside>
           </div>
+        </div>
+      </section>
+
+      {/* ========================================================
+          골프카트용 배터리
+          ======================================================== */}
+      <section
+        id="golfcart"
+        className="scroll-mt-28 border-b border-gray-200 bg-white"
+        aria-labelledby="golfcart-heading"
+      >
+        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-6 md:py-8">
+          <CategoryHero
+            eyebrow="Golf Cart Battery"
+            title="골프카트용 배터리"
+            desc="골프카트 운영 조건에 맞는 LFP 배터리 구조를 제안합니다. 차종과 운행 패턴에 따라 맞춤 견적을 제공합니다."
+            imageSrc={golfcartHeroImage}
+            imageAlt="골프카트용 LFP 배터리"
+          />
+
+          {csvLoading ? (
+            <p className="mt-8 text-sm text-gray-400">상품 정보를 불러오는 중입니다...</p>
+          ) : golfcartItems.length > 0 ? (
+            <ul
+              className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3 list-none p-0"
+              role="list"
+              aria-label="골프카트용 배터리 렌탈 상품 목록"
+            >
+              {golfcartItems.map((item) => (
+                <li key={item.model}>
+                  <RentalCard item={item} />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="mt-8 rounded-2xl border border-orange-100 bg-orange-50 px-6 py-10 text-center">
+              <p className="text-sm font-semibold text-orange-500 tracking-[0.12em] uppercase mb-2">Coming Soon</p>
+              <p className="text-base font-semibold text-gray-800 break-keep">골프카트용 배터리 상품을 준비 중입니다.</p>
+              <p className="mt-2 text-sm text-gray-500 break-keep">상담을 통해 맞춤 견적을 받아보세요.</p>
+              <a
+                href="tel:1551-1873"
+                className="mt-5 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-orange-500 text-white font-semibold text-sm hover:bg-orange-400 transition-all"
+              >
+                상담 문의 1551-1873
+              </a>
+            </div>
+          )}
         </div>
       </section>
 
@@ -585,7 +734,7 @@ export default function BatteryShopPage() {
           ======================================================== */}
       <section
         id="forklift"
-        className="scroll-mt-28 border-b border-gray-200 bg-white"
+        className="scroll-mt-28 border-b border-gray-200 bg-gray-50"
         aria-labelledby="forklift-heading"
       >
         <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-6 md:py-8">
@@ -655,7 +804,7 @@ export default function BatteryShopPage() {
           ======================================================== */}
       <section
         id="awp"
-        className="scroll-mt-28 border-b border-gray-200 bg-gray-50"
+        className="scroll-mt-28 border-b border-gray-200 bg-white"
         aria-labelledby="awp-heading"
       >
         <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-6 md:py-8">
@@ -685,53 +834,6 @@ export default function BatteryShopPage() {
             <div className="mt-8 rounded-2xl border border-orange-100 bg-orange-50 px-6 py-10 text-center">
               <p className="text-sm font-semibold text-orange-500 tracking-[0.12em] uppercase mb-2">Coming Soon</p>
               <p className="text-base font-semibold text-gray-800 break-keep">고소작업대용 배터리 상품을 준비 중입니다.</p>
-              <p className="mt-2 text-sm text-gray-500 break-keep">상담을 통해 맞춤 견적을 받아보세요.</p>
-              <a
-                href="tel:1551-1873"
-                className="mt-5 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-orange-500 text-white font-semibold text-sm hover:bg-orange-400 transition-all"
-              >
-                상담 문의 1551-1873
-              </a>
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* ========================================================
-          골프카트용 배터리
-          ======================================================== */}
-      <section
-        id="golfcart"
-        className="scroll-mt-28 border-b border-gray-200 bg-white"
-        aria-labelledby="golfcart-heading"
-      >
-        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-6 md:py-8">
-          <CategoryHero
-            eyebrow="Golf Cart Battery"
-            title="골프카트용 배터리"
-            desc="골프카트 운영 조건에 맞는 LFP 배터리 구조를 제안합니다. 차종과 운행 패턴에 따라 맞춤 견적을 제공합니다."
-            imageSrc={golfcartHeroImage}
-            imageAlt="골프카트용 LFP 배터리"
-          />
-
-          {csvLoading ? (
-            <p className="mt-8 text-sm text-gray-400">상품 정보를 불러오는 중입니다...</p>
-          ) : golfcartItems.length > 0 ? (
-            <ul
-              className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3 list-none p-0"
-              role="list"
-              aria-label="골프카트용 배터리 렌탈 상품 목록"
-            >
-              {golfcartItems.map((item) => (
-                <li key={item.model}>
-                  <RentalCard item={item} />
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="mt-8 rounded-2xl border border-orange-100 bg-orange-50 px-6 py-10 text-center">
-              <p className="text-sm font-semibold text-orange-500 tracking-[0.12em] uppercase mb-2">Coming Soon</p>
-              <p className="text-base font-semibold text-gray-800 break-keep">골프카트용 배터리 상품을 준비 중입니다.</p>
               <p className="mt-2 text-sm text-gray-500 break-keep">상담을 통해 맞춤 견적을 받아보세요.</p>
               <a
                 href="tel:1551-1873"

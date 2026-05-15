@@ -29,10 +29,8 @@ const sections: SiteSection[] = [
       },
       { label: "중고장비 수출사업", to: "/export", desc: "중고 산업장비 해외 수출" },
       { label: "금융솔루션", to: "/finance", desc: "렌탈·리스·할부금융 구조 설계" },
-
-      // ✅ 개인(개별)화물협회 추가
       {
-        label: "개인(개별)화물협회",
+        label: "개인(개별)화물협회 전용 금융상품",
         to: "/cargo-finance",
         desc: "협회 전용 리스/금융상품 안내",
         badge: "협회 전용",
@@ -45,30 +43,27 @@ const sections: SiteSection[] = [
     subtitle: "상품/매물 쇼핑몰",
     links: [
       { label: "타이어 쇼핑몰", to: "/tires-shop", desc: "상품번호 기준, 제품 검색/상세" },
+      { label: "화물차 타이어 렌탈", to: "/tire-rental", desc: "화물차 전용 타이어 렌탈 서비스" },
       { label: "수출용 쇼핑몰", to: "/export-shop", desc: "정비·등급화된 매물 확인" },
       {
-        label: "배터리 쇼핑몰",
-        desc: "배터리 상품 등록/검색 (준비중)",
-        badge: "준비중",
-        comingSoon: true,
+        label: "산업용 배터리 렌탈몰",
+        to: "/battery-shop",
+        desc: "배터리 상품 검색 및 렌탈 견적",
       },
     ],
   },
 
   {
-    title: "Company",
-    subtitle: "기본 정보 및 홈",
+    title: "Etc",
+    subtitle: "기타 메뉴",
     links: [
-      { label: "홈", to: "/", desc: "RNF KOREA 메인" },
       { label: "사이트맵", to: "/sitemap", desc: "전체 구성 안내" },
-    ],
-  },
-
-  {
-    title: "Internal",
-    subtitle: "내부 업무용(권한 필요)",
-    links: [
-      { label: "나르미업무 로그인", to: "/narumi/login", desc: "내부 업무 시스템 로그인" },
+      { label: "나르미업무", to: "/narumi/login", desc: "내부 업무 시스템 로그인" },
+      {
+        label: "현대건설기계업무",
+        to: "/hyundaicm",
+        desc: "현대건설기계 전용 업무 메뉴",
+      },
     ],
   },
 ];

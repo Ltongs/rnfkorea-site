@@ -481,7 +481,7 @@ export default function PageHeader() {
                     className={dropItem}
                     onClick={handleMenuNavigate}
                   >
-                    배터리 쇼핑몰
+                    산업용 배터리 렌탈몰
                   </Link>
                 </div>
               </>

@@ -74,6 +74,7 @@ type PageHeroProps = {
   eyebrow?: string;
   title: string;
   description?: string;
+  badge?: React.ReactNode;
   right?: React.ReactNode;
 };
 
@@ -84,9 +85,100 @@ type SectionHeaderProps = {
 };
 
 // ====================================================
+// PL 보험 배지 컴포넌트 (shimmer 효과)
+// ====================================================
+function PLInsuranceBadge() {
+  React.useEffect(() => {
+    const id = "pl-shimmer-style";
+    if (document.getElementById(id)) return;
+    const el = document.createElement("style");
+    el.id = id;
+    el.textContent = `
+      @keyframes pl-shimmer {
+        0%      { left: -80%; }
+        60%, 100% { left: 130%; }
+      }
+    `;
+    document.head.appendChild(el);
+    return () => { document.getElementById(id)?.remove(); };
+  }, []);
+
+  return (
+    <div
+      className="relative overflow-hidden inline-flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl bg-orange-500 px-5 py-3.5"
+      role="note"
+      aria-label="PL 생산물배상책임보험 가입 안내"
+    >
+      {/* shimmer 광택 레이어 */}
+      <span
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          top: 0,
+          left: "-80%",
+          width: "55%",
+          height: "100%",
+          background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent)",
+          animation: "pl-shimmer 2.4s ease-in-out infinite",
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* 보험 아이콘 + 타이틀 */}
+      <div className="relative flex items-center gap-2.5">
+        <span
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/20"
+          aria-hidden="true"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            <path
+              d="M7 1L2 3.5V7c0 2.8 2.1 5.1 5 5.9 2.9-.8 5-3.1 5-5.9V3.5L7 1z"
+              stroke="#fff"
+              strokeWidth="1.4"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M5 7l1.5 1.5L9.5 5.5"
+              stroke="#fff"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
+        <span className="text-sm font-semibold text-white leading-tight break-keep">
+          PL 생산물배상책임보험 가입완료
+        </span>
+      </div>
+
+      {/* 구분선 */}
+      <span className="relative hidden sm:block w-px h-4 bg-white/25 shrink-0" aria-hidden="true" />
+
+      {/* 세부 정보 */}
+      <dl className="relative flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div className="flex items-center gap-1.5">
+          <dt className="text-[10px] font-semibold tracking-[0.1em] uppercase text-white/70">보상한도</dt>
+          <dd className="text-xs font-semibold text-white">사고당 2억 원 (연간2억원)</dd>
+        </div>
+        <span className="text-white/30 text-xs" aria-hidden="true">·</span>
+        <div className="flex items-center gap-1.5">
+          <dt className="text-[10px] font-semibold tracking-[0.1em] uppercase text-white/70">기간</dt>
+          <dd className="text-xs font-semibold text-white">2026.05.18 부터 </dd>
+        </div>
+        <span className="text-white/30 text-xs" aria-hidden="true">·</span>
+        <div className="flex items-center gap-1.5">
+          <dt className="text-[10px] font-semibold tracking-[0.1em] uppercase text-white/70">대상</dt>
+          <dd className="text-xs font-semibold text-white">LFP 배터리 (지게차·고소작업대·골프카트용)</dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
+// ====================================================
 // 공통 컴포넌트
 // ====================================================
-function PageHero({ eyebrow, title, description, right }: PageHeroProps) {
+function PageHero({ eyebrow, title, description, badge, right }: PageHeroProps) {
   return (
     <section
       className="relative bg-[#0a192f] text-white overflow-hidden"
@@ -102,7 +194,7 @@ function PageHero({ eyebrow, title, description, right }: PageHeroProps) {
 
       <div className="relative max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-12 md:py-16">
         <div className="grid lg:grid-cols-12 gap-8 lg:gap-6 items-start">
-          <div className="lg:col-span-7">
+          <div className="lg:col-span-7 lg:flex lg:flex-col lg:h-full">
             {/* ✅ Breadcrumb nav — 검색엔진 사이트링크 + 접근성 */}
             <nav aria-label="breadcrumb">
               <ol
@@ -153,6 +245,12 @@ function PageHero({ eyebrow, title, description, right }: PageHeroProps) {
               <p className="mt-4 text-base md:text-lg leading-7 text-white/75 max-w-3xl break-keep">
                 {description}
               </p>
+            )}
+
+            {badge && (
+              <div className="mt-auto pt-6">
+                {badge}
+              </div>
             )}
           </div>
 
@@ -444,6 +542,7 @@ export default function BatteryPage() {
         eyebrow="Battery Solution"
         title="모든 산업재의 배터리 전환 솔루션"
         description="지게차, 고소작업대, 골프카트까지. 장비 특성과 운영조건에 맞춰 LFP 및 납산 배터리 공급, 렌탈 구조, 전환 프로젝트를 함께 설계합니다."
+        badge={<PLInsuranceBadge />}
         right={
           <div className="rounded-3xl bg-white/10 border border-white/20 backdrop-blur-sm p-6 md:p-7">
             <div className="space-y-4">
@@ -452,7 +551,7 @@ export default function BatteryPage() {
                   to="/battery-shop"
                   className="inline-flex items-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-white/20"
                 >
-                  배터리 쇼핑몰 바로가기
+                  배터리 렌탈몰 바로가기
                   <span aria-hidden="true">→</span>
                 </Link>
               </div>

@@ -159,7 +159,7 @@ const ROUTE_SEO: Record<string, RouteSeoMeta> = {
     keywords: "중고지게차재고,수출용지게차,used forklift inventory,굴삭기재고,장비수출",
   },
   "/battery-shop": {
-    title: "배터리 쇼핑몰 | RNF KOREA",
+    title: "산업용 배터리 렌탈몰 | RNF KOREA",
     description:
       "물류기기용 LFP 배터리 온라인 쇼핑몰. 배터리 문의는 1551-1873으로 연락주세요.",
     canonical: `${SITE_URL}/battery-shop`,
@@ -557,7 +557,7 @@ const COPY = {
       shop: "쇼핑몰",
       tiresShop: "타이어 쇼핑몰",
       exportShop: "수출용 쇼핑몰",
-      batteryShop: "배터리 쇼핑몰",
+      batteryShop: "산업용 배터리 렌탈몰",
     },
     companyLine: "BATTERY & PARTS · FINANCIAL SERVICE",
     phoneLabel: "대표번호",
@@ -598,7 +598,7 @@ const COPY = {
       shop: "Shop",
       tiresShop: "Tires Shop",
       exportShop: "Export Shop",
-      batteryShop: "Battery Shop",
+      batteryShop: "Battery Rental Mall",
     },
     companyLine: "BATTERY & PARTS · FINANCIAL SERVICE",
     phoneLabel: "Main",
@@ -1434,7 +1434,7 @@ const Footer: React.FC = () => {
               <li><Link to="/tires-shop" className="hover:text-orange-500 transition-colors">- 타이어 쇼핑몰</Link></li>
               <li><Link to="/tire-rental" className="hover:text-orange-500 transition-colors">- 화물차 타이어 렌탈</Link></li>
               <li><Link to="/export-shop" className="hover:text-orange-500 transition-colors">- 수출용 쇼핑몰</Link></li>
-              <li><Link to="/battery-shop" className="hover:text-orange-500 transition-colors">- 배터리 쇼핑몰</Link></li>
+              <li><Link to="/battery-shop" className="hover:text-orange-500 transition-colors">- 산업용 배터리 렌탈몰</Link></li>
             </ul>
           </div>
 
