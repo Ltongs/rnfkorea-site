@@ -33,6 +33,7 @@ type AuthContextType = {
   canEditMemo: boolean;
   canUploadVehicleDoc: boolean;
   canUploadVehicleRegDoc: boolean; // 확정 후 차량등록증 업로드 (isHyundaiCM 전용, 72시간 후 자동삭제)
+  canUploadTaxInvoice: boolean;   // 세금계산서 업로드 (isHyundaiCM 전용, 72시간 후 자동삭제)
 
   // auth actions
   login: (email: string, password: string) => Promise<void>;
@@ -107,6 +108,7 @@ function getPermissions(emailRaw?: string | null) {
     canEditMemo:         isAdminLevel || isInsuranceManager || isNhCapital,
     canUploadVehicleDoc: isAdminLevel || isInsuranceManager || isNhCapital,
     canUploadVehicleRegDoc: isHyundaiCM || isAdminLevel || isNhCapital,
+    canUploadTaxInvoice: isHyundaiCM || isAdminLevel,  // 세금계산서 업로드: isHyundaiCM + admin + ltongs7
   };
 }
 
@@ -199,6 +201,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       canEditMemo:        permissionState.canEditMemo,
       canUploadVehicleDoc: permissionState.canUploadVehicleDoc,
       canUploadVehicleRegDoc: permissionState.canUploadVehicleRegDoc,
+      canUploadTaxInvoice: permissionState.canUploadTaxInvoice,
 
       login,
       logout,

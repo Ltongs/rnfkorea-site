@@ -34,6 +34,7 @@ type HCMTask = {
   biz_history: string | null;          // 업력 (1년이상/1년미만)
   loan_limit: number | null;           // 대출한도 (승인 시)
   credit_note: string | null;          // 특이사항(승인)/보완사항(보완)/거절사유(거절)
+  has_tax_invoice: boolean | null;     // 세금계산서 업로드 여부
   vat_deferred: boolean | null;        // 부가세 후불 여부
   vat_deferred_amount: number | null;  // 부가세 후불 금액
   loan_period: number | null;          // 대출기간 (확정 시)
@@ -206,6 +207,7 @@ export default function HyundaiCMPage() {
   const canChangeStatus        = isAdminLevel || isNhCapital;
   const canUploadDoc           = isAdminLevel || isNhCapital;
   const canUploadVehicleRegDoc = isAdminLevel || isHyundaiCM || isNhCapital;
+  const canUploadTaxInvoice    = isHyundaiCM || isAdminLevel;  // 세금계산서 업로드: p2001103 + admin + ltongs7
   const canDelete              = isAdminLevel || isNhCapital;
 
   // ── 신규 접수 폼 ──
@@ -285,6 +287,11 @@ export default function HyundaiCMPage() {
   const vehicleRegInputRef = useRef<HTMLInputElement | null>(null);
   const [vehicleRegUploading, setVehicleRegUploading] = useState<string | null>(null); // rowId
   const [vehicleRegFiles, setVehicleRegFiles] = useState<Record<string, { name: string; path: string; uploadedAt: string }[]>>({});
+
+  // ── 세금계산서 업로드 (isHyundaiCM 전용, 72시간 자동삭제) ──
+  const taxInvoiceInputRef = useRef<HTMLInputElement | null>(null);
+  const [taxInvoiceUploading, setTaxInvoiceUploading] = useState<string | null>(null);
+  const [taxInvoiceFiles, setTaxInvoiceFiles] = useState<Record<string, { name: string; path: string; uploadedAt: string }[]>>({});
 
   // ── 확정 카드 펼침/접힘 ──
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -394,11 +401,8 @@ export default function HyundaiCMPage() {
   const downloadVehicleRegDoc = async (path: string, name: string) => {
     try {
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-
       if (isMobile) {
-        const { data, error } = await supabase.storage
-          .from("vehicle-reg-docs")
-          .createSignedUrl(path, 60);
+        const { data, error } = await supabase.storage.from("vehicle-reg-docs").createSignedUrl(path, 60);
         if (error || !data?.signedUrl) throw error ?? new Error("URL 생성 실패");
         window.open(data.signedUrl, "_blank");
       } else {
@@ -406,12 +410,79 @@ export default function HyundaiCMPage() {
         if (error || !data) { alert("다운로드 실패: " + error?.message); return; }
         const url = URL.createObjectURL(data);
         const a   = document.createElement("a");
-        a.href = url;
-        a.download = name;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        a.href = url; a.download = name;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a); URL.revokeObjectURL(url);
+      }
+    } catch (e: any) { alert(`다운로드 실패: ${e?.message}`); }
+  };
+
+  // ─── 세금계산서 목록 조회 ────────────────────────────────────
+  const fetchTaxInvoiceFiles = async (rowIds: (string | number)[]) => {
+    if (rowIds.length === 0) return;
+    const { data } = await supabase
+      .from("tax_invoice_uploads")
+      .select("id, record_id, file_name, storage_path, uploaded_at")
+      .in("record_id", rowIds.map(String))
+      .order("uploaded_at", { ascending: false });
+    if (!data) return;
+    const map: Record<string, { name: string; path: string; uploadedAt: string }[]> = {};
+    data.forEach((d: any) => {
+      const key = String(d.record_id);
+      if (!map[key]) map[key] = [];
+      map[key].push({ name: d.file_name, path: d.storage_path, uploadedAt: d.uploaded_at });
+    });
+    setTaxInvoiceFiles(map);
+  };
+
+  // ─── 세금계산서 업로드 ───────────────────────────────────────
+  const uploadTaxInvoice = async (rowId: string | number, file: File) => {
+    setTaxInvoiceUploading(String(rowId));
+    try {
+      const ext      = file.name.includes(".") ? file.name.split(".").pop() : "bin";
+      const safeName = `${Date.now()}.${ext}`;
+      const path     = `${rowId}/${safeName}`;
+
+      const { error: upErr } = await supabase.storage
+        .from("tax-invoices")
+        .upload(path, file, { upsert: false });
+      if (upErr) throw upErr;
+
+      const { error: dbErr } = await supabase
+        .from("tax_invoice_uploads")
+        .insert({
+          record_id:    String(rowId),
+          uploaded_by:  user?.id,
+          storage_path: path,
+          file_name:    file.name,
+          file_size:    file.size,
+        });
+      if (dbErr) throw dbErr;
+
+      await fetchTaxInvoiceFiles([rowId]);
+    } catch (e: any) {
+      alert("업로드 실패: " + (e?.message || e));
+    } finally {
+      setTaxInvoiceUploading(null);
+    }
+  };
+
+  // ─── 세금계산서 다운로드 ─────────────────────────────────────
+  const downloadTaxInvoice = async (path: string, name: string) => {
+    try {
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      if (isMobile) {
+        const { data, error } = await supabase.storage.from("tax-invoices").createSignedUrl(path, 60);
+        if (error || !data?.signedUrl) throw error ?? new Error("URL 생성 실패");
+        window.open(data.signedUrl, "_blank");
+      } else {
+        const { data, error } = await supabase.storage.from("tax-invoices").download(path);
+        if (error || !data) { alert("다운로드 실패: " + error?.message); return; }
+        const url = URL.createObjectURL(data);
+        const a   = document.createElement("a");
+        a.href = url; a.download = name;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a); URL.revokeObjectURL(url);
       }
     } catch (e: any) { alert(`다운로드 실패: ${e?.message}`); }
   };
@@ -450,6 +521,9 @@ export default function HyundaiCMPage() {
       // 확정 건의 차량등록증 파일 목록 조회
       const confirmedIds = nextRows.filter((r) => r.status === "확정").map((r) => r.id);
       if (confirmedIds.length > 0) fetchVehicleRegFiles(confirmedIds);
+
+      // 세금계산서 파일 목록 조회 (전체)
+      fetchTaxInvoiceFiles(nextRows.map((r) => r.id));
     } catch (e: any) {
       setErr(e?.message || "데이터 로드 실패");
     } finally {
@@ -916,6 +990,18 @@ export default function HyundaiCMPage() {
           await uploadVehicleRegDoc(rowId, file);
         }}
       />
+      {/* 세금계산서 전용 숨겨진 파일 인풋 */}
+      <input
+        ref={taxInvoiceInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.heic"
+        className="hidden"
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          const rowId = taxInvoiceInputRef.current?.getAttribute("data-row-id");
+          if (!file || !rowId) return;
+          e.target.value = "";
+          await uploadTaxInvoice(rowId, file);
+        }}
+      />
 
       {/* ── 히어로 헤더 ── */}
       <section className="relative bg-[#0a192f] text-white overflow-hidden">
@@ -1279,8 +1365,9 @@ export default function HyundaiCMPage() {
                     )}
 
                     {/* 진행 단계 */}
-                    <div>
-                      <p className="text-xs font-medium tracking-wide text-gray-400 uppercase mb-2">진행 단계</p>
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium tracking-wide text-gray-400 uppercase">진행 단계</p>
+                      {/* 1행: 진행단계 버튼 */}
                       <div className="flex flex-wrap gap-1.5 overflow-x-auto pb-1">
                         {/* 접수, 신용조회 버튼 */}
                         {["접수", "신용조회"].map((s) => {
@@ -1351,21 +1438,37 @@ export default function HyundaiCMPage() {
                           >{s}</button>
                           );
                         })}
-
-                        {/* 차량등록증 업로드 버튼 — 확정 상태일 때만 표시 */}
-                        {r.status === "확정" && canUploadVehicleRegDoc && (
-                          <button
-                            disabled={vehicleRegUploading === String(r.id)}
-                            onClick={() => {
-                              vehicleRegInputRef.current?.setAttribute("data-row-id", String(r.id));
-                              vehicleRegInputRef.current?.click();
-                            }}
-                            className="px-3 py-1 rounded-2xl border border-emerald-300 bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100 disabled:opacity-50 transition-all"
-                          >
-                            {vehicleRegUploading === String(r.id) ? "업로드중..." : "+ 차량등록증"}
-                          </button>
-                        )}
                       </div>
+
+                      {/* 2행: 업로드 버튼 — 확정 상태일 때만 표시 */}
+                      {r.status === "확정" && (canUploadVehicleRegDoc || canUploadTaxInvoice) && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {canUploadVehicleRegDoc && (
+                            <button
+                              disabled={vehicleRegUploading === String(r.id)}
+                              onClick={() => {
+                                vehicleRegInputRef.current?.setAttribute("data-row-id", String(r.id));
+                                vehicleRegInputRef.current?.click();
+                              }}
+                              className="px-3 py-1 rounded-2xl border border-emerald-300 bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100 disabled:opacity-50 transition-all"
+                            >
+                              {vehicleRegUploading === String(r.id) ? "업로드중..." : "+ 차량등록증"}
+                            </button>
+                          )}
+                          {canUploadTaxInvoice && (
+                            <button
+                              disabled={taxInvoiceUploading === String(r.id)}
+                              onClick={() => {
+                                taxInvoiceInputRef.current?.setAttribute("data-row-id", String(r.id));
+                                taxInvoiceInputRef.current?.click();
+                              }}
+                              className="px-3 py-1 rounded-2xl border border-blue-300 bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100 disabled:opacity-50 transition-all"
+                            >
+                              {taxInvoiceUploading === String(r.id) ? "업로드중..." : "+ 세금계산서"}
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1455,6 +1558,45 @@ export default function HyundaiCMPage() {
                     </div>
                   ) : (
                     <p className="text-sm text-gray-400">업로드된 차량등록증이 없습니다.</p>
+                  )}
+                </div>
+                )}
+
+                {/* 세금계산서 — 확정 상태이고 펼쳐진 경우에만 표시 */}
+                {r.status === "확정" && (!isConfirmed || isExpanded) && (
+                <div className="px-4 md:px-6 pb-5 border-t border-blue-100 pt-4">
+                  <div className="mb-3">
+                    <p className="text-xs font-medium tracking-wide text-blue-600 uppercase">세금계산서</p>
+                    <p className="text-xs text-gray-400 mt-0.5">업로드 후 72시간 뒤 자동 삭제됩니다</p>
+                  </div>
+
+                  {(taxInvoiceFiles[String(r.id)] ?? []).length > 0 ? (
+                    <div className="space-y-2">
+                      {(taxInvoiceFiles[String(r.id)] ?? []).map((f, idx) => {
+                        const uploadedDate = new Date(f.uploadedAt);
+                        const expiresDate  = new Date(uploadedDate.getTime() + 72 * 60 * 60 * 1000);
+                        const hoursLeft    = Math.max(0, Math.round((expiresDate.getTime() - Date.now()) / (1000 * 60 * 60)));
+                        return (
+                          <div key={idx} className="flex items-center justify-between gap-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-2.5">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-blue-800 truncate">{f.name}</p>
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                {formatCreatedAt(f.uploadedAt)} 업로드 &nbsp;·&nbsp;
+                                <span className={hoursLeft < 6 ? "text-red-500 font-semibold" : "text-gray-400"}>
+                                  {hoursLeft}시간 후 자동삭제
+                                </span>
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => downloadTaxInvoice(f.path, f.name)}
+                              className="shrink-0 px-3 py-1 rounded-2xl border border-blue-200 text-blue-700 text-xs font-medium hover:border-blue-400 transition-all"
+                            >다운로드</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-400">업로드된 세금계산서가 없습니다.</p>
                   )}
                 </div>
                 )}
