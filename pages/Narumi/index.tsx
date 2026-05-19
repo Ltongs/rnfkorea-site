@@ -580,6 +580,7 @@ export default function NarumiPage() {
   };
 
   // ─── 신규 등록 ───────────────────────────────────────────
+  const onAdd = async () => {
     if (!canCreate) {
       alert("신규 입력 권한이 없습니다.");
       return;
@@ -854,6 +855,7 @@ export default function NarumiPage() {
           phone: insuranceModalRow.customer_phone ?? "",
           customerName: insuranceModalRow.customer_name ?? "",
           vehicleNo: normalizeVin(insuranceModalRow.vin ?? ""),
+          autoSave: true,  // Y 선택 시 상담관리에서 자동 저장
         },
       },
     });
@@ -1785,9 +1787,9 @@ VIN: ${nextVin}`);
                         {/* 보험 */}
                         <button
                           type="button"
-                          disabled={isLocked || isHold || !canChangeStatus}
+                          disabled={isLocked || isHold || !canChangeStatus || r.has_insurance}
                           onClick={() => handleInsuranceButtonClick(r)}
-                          className={`${btnBase} ${isLocked || isHold ? btnDisabled : r.has_insurance ? btnOn : btnOff}`}
+                          className={`${btnBase} ${r.has_insurance ? btnOn + " cursor-not-allowed" : isLocked || isHold ? btnDisabled : btnOff}`}
                         >
                           보험
                         </button>

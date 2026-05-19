@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, useLocation } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
@@ -392,6 +392,7 @@ function deriveNarumiInsuranceStatus(row: {
 const CallManagementPage: React.FC = () => {
   const { user, loading, isAdmin, isInsuranceManager } = useAuth() as any;
   const location = useLocation();
+  const navigate = useNavigate();
   const canAccessConsulting = isAdmin || isInsuranceManager;
   const insuranceOnlyScope = isInsuranceManager && !isAdmin;
 
@@ -1702,12 +1703,73 @@ const CallManagementPage: React.FC = () => {
     setApplicationIssued(false);
     setPaymentCompleted(false);
     setPolicyIssued(false);
+    // 나르미 기본값
+    setInsuranceVehicleModel("2.5톤 이하");
+    setInsuranceVehicleUse("개인용");
+    setInsuranceRequest("신규");
 
-    setTimeout(() => {
-      newFormTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      customerNameInputRef.current?.focus();
-      customerNameInputRef.current?.select();
-    }, 80);
+    // 나르미에서 Y 선택 시 자동 저장
+    if (payload.autoSave && prefillCustomerName && (payload.phone || "")) {
+      setTimeout(async () => {
+        try {
+          const autoSummary = `[나르미 보험] ${prefillCustomerName} / ${payload.vehicleNo || payload.vin || "-"}`;
+          const { data: inserted, error: insertErr } = await supabase
+            .from("consultations")
+            .insert({
+              call_datetime:  payload.callDatetime || new Date().toISOString().slice(0, 10),
+              customer_name:  prefillCustomerName,
+              phone:          (payload.phone || "").replace(/\D/g, "").replace(/(\d{3})(\d{3,4})(\d{4})/, "$1-$2-$3"),
+              work_type:      "registration_insurance",
+              auto_summary:   autoSummary,
+              detail_memo:    null,
+              status:         "pending",
+            })
+            .select("id")
+            .single();
+
+          if (insertErr) throw insertErr;
+
+          // 보험 상세 저장
+          if (inserted?.id) {
+            await supabase.from("consultation_insurance_details").insert({
+              consultation_id:    inserted.id,
+              vehicle_no:         payload.vehicleNo || payload.vin || null,
+              vehicle_model:      "2.5톤 이하",
+              vehicle_use:        "개인용",
+              insurance_request:  "신규",
+              design_requested:   false,
+              application_issued: false,
+              payment_completed:  false,
+              policy_issued:      false,
+            });
+
+            // 나르미 보험 단계 업데이트
+            if (payload.narumiTaskId) {
+              await supabase.from("narumi_tasks")
+                .update({ has_insurance: true, status: "insurance" })
+                .eq("id", payload.narumiTaskId);
+            }
+          }
+
+          await fetchConsultations();
+          alert(`✓ 상담이 자동 등록되었습니다.\n고객: ${prefillCustomerName}`);
+          setTab("list");
+        } catch (e: any) {
+          console.warn("[narumi auto save] 자동 저장 실패:", e?.message);
+          // 실패해도 폼은 채워진 상태로 유지
+          setTimeout(() => {
+            newFormTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+            customerNameInputRef.current?.focus();
+          }, 80);
+        }
+      }, 300);
+    } else {
+      setTimeout(() => {
+        newFormTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        customerNameInputRef.current?.focus();
+        customerNameInputRef.current?.select();
+      }, 80);
+    }
   }, [location.state]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -1898,6 +1960,13 @@ const CallManagementPage: React.FC = () => {
         }
       } catch (syncError: any) {
         alert("상담건은 저장되었지만 나르미 보험단계 동기화 실패: " + (syncError?.message || "알 수 없는 오류"));
+      }
+
+      // 나르미에서 넘어온 경우 저장 후 나르미로 복귀
+      if (narumiPrefill) {
+        alert("보험 상담이 등록되었습니다.");
+        navigate("/narumi", { replace: true });
+        return;
       }
     }
 
