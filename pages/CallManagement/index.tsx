@@ -739,6 +739,7 @@ const CallManagementPage: React.FC = () => {
 
   const formatFinanceStage = (value: string | null) => {
     if (value === "consulting") return "상담";
+    if (value === "quote_submitted") return "견적제출";
     if (value === "approved") return "승인";
     if (value === "rejected") return "부결";
     if (value === "documents_requested") return "서류징구";
@@ -2594,6 +2595,7 @@ const CallManagementPage: React.FC = () => {
                       <option value="롯데오토리스">롯데오토리스</option>
                       <option value="농협">농협</option>
                       <option value="우리금융">우리금융</option>
+                      <option value="BSON">BSON</option>
                     </select>
                   </div>
 
@@ -2667,6 +2669,7 @@ const CallManagementPage: React.FC = () => {
                       onChange={(e) => setFinanceStage(e.target.value)}
                     >
                       <option value="consulting">상담</option>
+                      <option value="quote_submitted">견적제출</option>
                       <option value="approved">승인</option>
                       <option value="rejected">부결</option>
                       <option value="documents_requested">서류징구</option>
@@ -3020,6 +3023,7 @@ const CallManagementPage: React.FC = () => {
                       <option value="기아">기아</option>
                       <option value="대우">대우</option>
                       <option value="수입">수입</option>
+                      <option value="지게차">지게차</option>
                     </select>
                   </div>
 

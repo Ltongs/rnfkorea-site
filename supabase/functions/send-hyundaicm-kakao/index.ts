@@ -221,9 +221,40 @@ function buildMessage(body: Record<string, string>): string {
       `번호: ${caseNo ?? "-"}`,
       `고객: ${customerName} (${customerType})`,
       `장비: ${equipmentTon ?? "-"}`,
+      financeCompany ? `금융사: ${financeCompany}` : "",
       `영업: ${salesRep ?? "-"}`,
       "",
       "차량(굴삭기) 등록이 완료되었습니다.",
+      `시간: ${now}`,
+    ].filter(Boolean).join("\n");
+  }
+
+  if (type === "tax_invoice_upload") {
+    return [
+      "[HD현대(부산/경남) 세금계산서 업로드]",
+      "",
+      `번호: ${caseNo ?? "-"}`,
+      `고객: ${customerName} (${customerType})`,
+      `장비: ${equipmentTon ?? "-"}`,
+      financeCompany ? `금융사: ${financeCompany}` : "",
+      `영업: ${salesRep ?? "-"}`,
+      "",
+      "세금계산서가 업로드되었습니다.",
+      `시간: ${now}`,
+    ].filter(Boolean).join("\n");
+  }
+
+  if (type === "incentive_paid") {
+    return [
+      "[HD현대(부산/경남) 인센티브 지급]",
+      "",
+      `번호: ${caseNo ?? "-"}`,
+      `고객: ${customerName} (${customerType})`,
+      `장비: ${equipmentTon ?? "-"}`,
+      financeCompany ? `금융사: ${financeCompany}` : "",
+      `영업: ${salesRep ?? "-"}`,
+      "",
+      "✅ 인센티브 지급 완료",
       `시간: ${now}`,
     ].filter(Boolean).join("\n");
   }

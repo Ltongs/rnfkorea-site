@@ -378,16 +378,17 @@ export default function HyundaiCMPage() {
 
       await fetchVehicleRegFiles([rowId]);
 
-      // 카카오 알림 (비동기, 실패해도 업무 영향 없음)
+      // 카카오 알림
       const row = rows.find((r) => String(r.id) === String(rowId));
       if (row) {
         sendKakaoNotify({
-          type:         "vehicle_reg_upload",
-          caseNo:       caseNoMap[String(rowId)] ?? String(rowId),
-          customerName: row.customer_name,
-          customerType: row.customer_type,
-          equipmentTon: row.equipment_ton,
-          salesRep:     row.sales_rep,
+          type:           "vehicle_reg_upload",
+          caseNo:         caseNoMap[String(rowId)] ?? String(rowId),
+          customerName:   row.customer_name,
+          customerType:   row.customer_type,
+          equipmentTon:   row.equipment_ton,
+          financeCompany: row.finance_company,
+          salesRep:       row.sales_rep,
         });
       }
     } catch (e: any) {
@@ -460,6 +461,20 @@ export default function HyundaiCMPage() {
       if (dbErr) throw dbErr;
 
       await fetchTaxInvoiceFiles([rowId]);
+
+      // 카카오 알림
+      const row = rows.find((r) => String(r.id) === String(rowId));
+      if (row) {
+        sendKakaoNotify({
+          type:           "tax_invoice_upload",
+          caseNo:         caseNoMap[String(rowId)] ?? String(rowId),
+          customerName:   row.customer_name,
+          customerType:   row.customer_type,
+          equipmentTon:   row.equipment_ton,
+          financeCompany: row.finance_company,
+          salesRep:       row.sales_rep,
+        });
+      }
     } catch (e: any) {
       alert("업로드 실패: " + (e?.message || e));
     } finally {
@@ -1440,8 +1455,8 @@ export default function HyundaiCMPage() {
                         })}
                       </div>
 
-                      {/* 2행: 업로드 버튼 — 확정 상태일 때만 표시 */}
-                      {r.status === "확정" && (canUploadVehicleRegDoc || canUploadTaxInvoice) && (
+                      {/* 2행: 업로드 버튼 + 인센티브 지급 버튼 — 확정 상태일 때만 표시 */}
+                      {r.status === "확정" && (canUploadVehicleRegDoc || canUploadTaxInvoice || isAdminLevel) && (
                         <div className="flex flex-wrap gap-1.5">
                           {canUploadVehicleRegDoc && (
                             <button
@@ -1465,6 +1480,25 @@ export default function HyundaiCMPage() {
                               className="px-3 py-1 rounded-2xl border border-blue-300 bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100 disabled:opacity-50 transition-all"
                             >
                               {taxInvoiceUploading === String(r.id) ? "업로드중..." : "+ 세금계산서"}
+                            </button>
+                          )}
+                          {isAdminLevel && (
+                            <button
+                              onClick={() => {
+                                if (!window.confirm("인센티브 지급 완료 알림을 발송하시겠습니까?")) return;
+                                sendKakaoNotify({
+                                  type:         "incentive_paid",
+                                  caseNo:       caseNoMap[String(r.id)] ?? String(r.id),
+                                  customerName: r.customer_name,
+                                  customerType: r.customer_type,
+                                  equipmentTon: r.equipment_ton,
+                                  financeCompany: r.finance_company,
+                                  salesRep:     r.sales_rep,
+                                });
+                              }}
+                              className="px-3 py-1 rounded-2xl border border-purple-300 bg-purple-50 text-purple-700 text-xs font-semibold hover:bg-purple-100 transition-all"
+                            >
+                              💰 인센티브 지급
                             </button>
                           )}
                         </div>
