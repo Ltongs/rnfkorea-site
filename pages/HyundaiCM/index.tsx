@@ -293,6 +293,9 @@ export default function HyundaiCMPage() {
   const [taxInvoiceUploading, setTaxInvoiceUploading] = useState<string | null>(null);
   const [taxInvoiceFiles, setTaxInvoiceFiles] = useState<Record<string, { name: string; path: string; uploadedAt: string }[]>>({});
 
+  // ── 인센티브 지급 완료 상태 (한 번 누르면 비활성화) ──
+  const [incentivePaidIds, setIncentivePaidIds] = useState<Set<string>>(new Set());
+
   // ── 확정 카드 펼침/접힘 ──
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const toggleExpand = (id: string | number) => {
@@ -1460,45 +1463,61 @@ export default function HyundaiCMPage() {
                         <div className="flex flex-wrap gap-1.5">
                           {canUploadVehicleRegDoc && (
                             <button
-                              disabled={vehicleRegUploading === String(r.id)}
+                              disabled={
+                                vehicleRegUploading === String(r.id) ||
+                                (vehicleRegFiles[String(r.id)] ?? []).length > 0
+                              }
                               onClick={() => {
                                 vehicleRegInputRef.current?.setAttribute("data-row-id", String(r.id));
                                 vehicleRegInputRef.current?.click();
                               }}
-                              className="px-3 py-1 rounded-2xl border border-emerald-300 bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100 disabled:opacity-50 transition-all"
+                              className="px-3 py-1 rounded-2xl border border-emerald-300 bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                             >
-                              {vehicleRegUploading === String(r.id) ? "업로드중..." : "+ 차량등록증"}
+                              {vehicleRegUploading === String(r.id)
+                                ? "업로드중..."
+                                : (vehicleRegFiles[String(r.id)] ?? []).length > 0
+                                  ? "✓ 차량등록증"
+                                  : "+ 차량등록증"}
                             </button>
                           )}
                           {canUploadTaxInvoice && (
                             <button
-                              disabled={taxInvoiceUploading === String(r.id)}
+                              disabled={
+                                taxInvoiceUploading === String(r.id) ||
+                                (taxInvoiceFiles[String(r.id)] ?? []).length > 0
+                              }
                               onClick={() => {
                                 taxInvoiceInputRef.current?.setAttribute("data-row-id", String(r.id));
                                 taxInvoiceInputRef.current?.click();
                               }}
-                              className="px-3 py-1 rounded-2xl border border-blue-300 bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100 disabled:opacity-50 transition-all"
+                              className="px-3 py-1 rounded-2xl border border-blue-300 bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                             >
-                              {taxInvoiceUploading === String(r.id) ? "업로드중..." : "+ 세금계산서"}
+                              {taxInvoiceUploading === String(r.id)
+                                ? "업로드중..."
+                                : (taxInvoiceFiles[String(r.id)] ?? []).length > 0
+                                  ? "✓ 세금계산서"
+                                  : "+ 세금계산서"}
                             </button>
                           )}
                           {isAdminLevel && (
                             <button
+                              disabled={incentivePaidIds.has(String(r.id))}
                               onClick={() => {
                                 if (!window.confirm("인센티브 지급 완료 알림을 발송하시겠습니까?")) return;
                                 sendKakaoNotify({
-                                  type:         "incentive_paid",
-                                  caseNo:       caseNoMap[String(r.id)] ?? String(r.id),
-                                  customerName: r.customer_name,
-                                  customerType: r.customer_type,
-                                  equipmentTon: r.equipment_ton,
+                                  type:           "incentive_paid",
+                                  caseNo:         caseNoMap[String(r.id)] ?? String(r.id),
+                                  customerName:   r.customer_name,
+                                  customerType:   r.customer_type,
+                                  equipmentTon:   r.equipment_ton,
                                   financeCompany: r.finance_company,
-                                  salesRep:     r.sales_rep,
+                                  salesRep:       r.sales_rep,
                                 });
+                                setIncentivePaidIds((prev) => new Set([...prev, String(r.id)]));
                               }}
-                              className="px-3 py-1 rounded-2xl border border-purple-300 bg-purple-50 text-purple-700 text-xs font-semibold hover:bg-purple-100 transition-all"
+                              className="px-3 py-1 rounded-2xl border border-purple-300 bg-purple-50 text-purple-700 text-xs font-semibold hover:bg-purple-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                             >
-                              💰 인센티브 지급
+                              {incentivePaidIds.has(String(r.id)) ? "✓ 인센티브 지급" : "💰 인센티브 지급"}
                             </button>
                           )}
                         </div>
