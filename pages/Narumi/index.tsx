@@ -844,8 +844,15 @@ export default function NarumiPage() {
     }
   };
 
-  const moveToCallManagementForInsurance = () => {
+  const moveToCallManagementForInsurance = async () => {
     if (!insuranceModalRow) return;
+
+    // Y 클릭 즉시 나르미 보험 단계 업데이트
+    try {
+      await updateInsuranceStage(insuranceModalRow, true);
+    } catch (e: any) {
+      console.warn("[narumi] 보험 단계 업데이트 실패:", e?.message);
+    }
 
     navigate("/work/call-management", {
       state: {
@@ -855,7 +862,7 @@ export default function NarumiPage() {
           phone: insuranceModalRow.customer_phone ?? "",
           customerName: insuranceModalRow.customer_name ?? "",
           vehicleNo: normalizeVin(insuranceModalRow.vin ?? ""),
-          autoSave: true,  // Y 선택 시 상담관리에서 자동 저장
+          autoSave: true,
         },
       },
     });
