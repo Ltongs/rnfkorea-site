@@ -564,7 +564,22 @@ export default function NarumiPage() {
     if (dbErr) throw dbErr;
   };
 
-  const onAdd = async () => {
+  // ─── 카카오 알림 ─────────────────────────────────────────
+  const NARUMI_KAKAO_URL = "https://nfwtsptqloefsbpjvdyu.supabase.co/functions/v1/send-narumi-kakao";
+
+  const sendNarumiKakao = async (payload: Record<string, unknown>) => {
+    try {
+      await fetch(NARUMI_KAKAO_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (e) {
+      console.warn("[narumi kakao] 전송 실패:", e);
+    }
+  };
+
+  // ─── 신규 등록 ───────────────────────────────────────────
     if (!canCreate) {
       alert("신규 입력 권한이 없습니다.");
       return;
@@ -654,6 +669,16 @@ export default function NarumiPage() {
         await uploadManufactureDocForRow(inserted.id, manufactureImageFile);
       }
 
+      // 카카오 알림
+      sendNarumiKakao({
+        type:         "new",
+        vin:          vinTrim,
+        customerName: nameTrim,
+        salesRep:     salesRepTrim,
+        deliveryDate: dtTrim,
+        specialNote:  specialNote.trim() || undefined,
+      });
+
       onReset();
       await fetchRows();
     } catch (e: any) {
@@ -713,6 +738,16 @@ export default function NarumiPage() {
         )
       );
       alert(error.message);
+    } else {
+      // 카카오 알림
+      sendNarumiKakao({
+        type:        "status_change",
+        vin:         target.vin,
+        customerName: target.customer_name,
+        salesRep:    target.sales_rep,
+        prevStatus:  target.status ?? deriveStatus(target),
+        nextStatus,
+      });
     }
   };
 
@@ -743,6 +778,16 @@ export default function NarumiPage() {
       );
       throw error;
     }
+
+    // 카카오 알림
+    sendNarumiKakao({
+      type:        "status_change",
+      vin:         row.vin,
+      customerName: row.customer_name,
+      salesRep:    row.sales_rep,
+      prevStatus:  row.status ?? deriveStatus(row),
+      nextStatus,
+    });
   };
 
   const hasIssuedInsuranceCase = async (vin: string) => {
@@ -1072,6 +1117,14 @@ export default function NarumiPage() {
         .eq("id", row.id as any);
 
       if (dbErr) throw dbErr;
+
+      // 카카오 알림
+      sendNarumiKakao({
+        type:         "vehicle_doc_upload",
+        vin:          row.vin,
+        customerName: row.customer_name,
+        salesRep:     row.sales_rep,
+      });
 
       await fetchRows();
     } catch (e: any) {
