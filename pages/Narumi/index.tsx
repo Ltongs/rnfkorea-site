@@ -857,6 +857,14 @@ export default function NarumiPage() {
       console.warn("[narumi] 보험 단계 업데이트 실패:", e?.message);
     }
 
+    // 카카오 알림 - 보험확인완료
+    sendNarumiKakao({
+      type:         "narumi_insurance_confirmed",
+      vin:          insuranceModalRow.vin,
+      customerName: insuranceModalRow.customer_name,
+      salesRep:     insuranceModalRow.sales_rep,
+    });
+
     navigate("/work/call-management", {
       state: {
         narumiInsurancePrefill: {

@@ -265,6 +265,17 @@ function buildMessage(body: Record<string, string>): string {
     registered: "등록완료", completed: "차량등록증 완료",
   };
 
+  if (type === "narumi_insurance_confirmed") {
+    return [
+      "[나르미 보험확인완료]", "",
+      body.vin     ? `VIN: ${body.vin}`      : "",
+      customerName ? `고객: ${customerName}` : "",
+      salesRep     ? `영업: ${salesRep}`     : "",
+      "", "✅ 보험확인완료",
+      `시간: ${now}`,
+    ].filter(Boolean).join("\n");
+  }
+
   if (type === "narumi_new") {
     return [
       "[나르미 신규 등록]", "",
