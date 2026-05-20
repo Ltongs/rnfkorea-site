@@ -4,6 +4,10 @@ import { Link } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import { Loader2 } from "lucide-react";
 
+// ── Supabase Storage CDN 베이스 URL ──────────────────────────
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const IMG_BASE = `${SUPABASE_URL}/storage/v1/object/public/export-images`;
+
 // ====================================================
 // SEO 설정
 // ====================================================
@@ -588,7 +592,9 @@ const ExportShopPage: React.FC = () => {
       const count = r.imgCount ?? 5;
       const prefix = r.type === "forklift" ? "F" : "X";
       const folder = `(${prefix})${r.id}`;
-      const images = Array.from({ length: count }, (_, i) => `/image/${folder}/${prefix}_${r.id}_${i + 1}.webp`);
+      const images = Array.from({ length: count }, (_, i) =>
+        `${IMG_BASE}/(${prefix})${r.id}/${prefix}_${r.id}_${i + 1}.jpg`
+      );
 
       const specs: SpecRow[] = [
         ...(r.brand    ? [{ label: "Brand",     value: r.brand    }] : []),
@@ -790,6 +796,38 @@ const ExportShopPage: React.FC = () => {
 
           </div>
         </section>
+
+        {/* ── 상담/견적 CTA ── */}
+        <section className="mt-16 rounded-3xl bg-[#0a192f] text-white overflow-hidden relative">
+          <div className="absolute inset-0 opacity-[0.04]" aria-hidden="true"
+            style={{ backgroundImage: "repeating-linear-gradient(45deg, white 0, white 1px, transparent 0, transparent 50%)", backgroundSize: "24px 24px" }} />
+          <div className="relative px-6 md:px-10 py-10 md:py-14 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="space-y-2">
+              <p className="text-sm font-semibold tracking-[0.12em] uppercase text-orange-400">견적 문의</p>
+              <h2 className="text-2xl md:text-3xl font-semibold break-keep">
+                원하시는 장비를 찾지 못하셨나요?
+              </h2>
+              <p className="text-white/70 text-sm leading-relaxed break-keep">
+                수량·기종·예산을 알려주시면 맞춤 견적을 빠르게 안내해 드립니다.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3 shrink-0">
+              <Link
+                to="/export-shop/inquiry"
+                className="inline-flex items-center justify-center px-6 py-3 rounded-2xl bg-orange-500 text-white font-semibold hover:bg-orange-600 transition-all"
+              >
+                상담 / 견적 요청
+              </Link>
+              <a
+                href="tel:15511873"
+                className="inline-flex items-center justify-center px-6 py-3 rounded-2xl border border-white/30 text-white font-semibold hover:bg-white/10 transition-all"
+              >
+                ☎ 1551-1873
+              </a>
+            </div>
+          </div>
+        </section>
+
       </div>
     </LightboxProvider>
   );

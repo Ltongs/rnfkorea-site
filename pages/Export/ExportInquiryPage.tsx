@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Building2, CheckCircle2, Globe, Loader2, Mail, Package, Phone, User } from "lucide-react";
+import { supabase } from "../../lib/supabase";
 
 type InquiryForm = {
   company: string;
@@ -95,22 +96,34 @@ export default function ExportInquiryPage() {
     setSubmitting(true);
     try {
       const now = new Date();
-      setSubmitted({ at: now.toISOString(), ref: refCode });
+      const ref = refCode;
 
-      setForm({
-        company: "",
-        name: "",
-        phone: "",
-        email: "",
-        country: "",
-        incoterms: "",
-        items: "",
-        quantity: "",
-        target_port: "",
-        timeline: "",
-        notes: "",
-        agree: false,
+      // Supabase에 저장
+      const { error } = await supabase.from("export_inquiries").insert({
+        ref_code:    ref,
+        company:     form.company.trim(),
+        name:        form.name.trim(),
+        phone:       form.phone.trim(),
+        email:       form.email.trim(),
+        country:     form.country.trim(),
+        incoterms:   form.incoterms || null,
+        items:       form.items.trim(),
+        quantity:    form.quantity.trim(),
+        target_port: form.target_port.trim() || null,
+        timeline:    form.timeline.trim() || null,
+        notes:       form.notes.trim() || null,
       });
+
+      if (error) throw error;
+
+      setSubmitted({ at: now.toISOString(), ref });
+      setForm({
+        company: "", name: "", phone: "", email: "",
+        country: "", incoterms: "", items: "", quantity: "",
+        target_port: "", timeline: "", notes: "", agree: false,
+      });
+    } catch (err: any) {
+      setErrors({ _global: `접수 중 오류가 발생했습니다: ${err?.message ?? "잠시 후 다시 시도해주세요."}` });
     } finally {
       setSubmitting(false);
     }
@@ -150,6 +163,12 @@ export default function ExportInquiryPage() {
                 <div className="text-emerald-900/70 text-sm mt-1">필요 시 위 접수번호로 문의해주세요.</div>
               </div>
             </div>
+          </div>
+        )}
+
+        {errors._global && (
+          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+            {errors._global}
           </div>
         )}
 

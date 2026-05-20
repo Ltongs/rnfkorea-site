@@ -70,6 +70,8 @@ import HomePage from "./pages/Home";
 import FinancePage from "./pages/Finance/index";
 import TiresPage from "./pages/Tires/index";
 import ExportPage from "./pages/Export/index";
+import ExportShopPage from "./pages/Export/ExportShopPage";
+import ExportInquiryPage from "./pages/Export/ExportInquiryPage";
 import BatteryShopPage from "./pages/battery-shop";
 import TireRentalPage from "./pages/TireRental/index";
 
@@ -158,8 +160,14 @@ const ROUTE_SEO: Record<string, RouteSeoMeta> = {
     canonical: `${SITE_URL}/export-shop`,
     keywords: "중고지게차재고,수출용지게차,used forklift inventory,굴삭기재고,장비수출",
   },
+  "/export-shop/inquiry": {
+    title: "수출 상담/견적 요청 | RNF KOREA",
+    description: "수출용 중고 지게차·굴삭기 상담 및 견적 요청. 수량·기종·예산을 알려주시면 빠르게 안내해 드립니다.",
+    canonical: `${SITE_URL}/export-shop/inquiry`,
+    keywords: "수출견적요청,지게차수출상담,중고장비수출문의",
+  },
   "/battery-shop": {
-    title: "산업용 배터리 렌탈몰 | RNF KOREA",
+    title: "배터리 쇼핑몰 | RNF KOREA",
     description:
       "물류기기용 LFP 배터리 온라인 쇼핑몰. 배터리 문의는 1551-1873으로 연락주세요.",
     canonical: `${SITE_URL}/battery-shop`,
@@ -557,7 +565,7 @@ const COPY = {
       shop: "쇼핑몰",
       tiresShop: "타이어 쇼핑몰",
       exportShop: "수출용 쇼핑몰",
-      batteryShop: "산업용 배터리 렌탈몰",
+      batteryShop: "배터리 쇼핑몰",
     },
     companyLine: "BATTERY & PARTS · FINANCIAL SERVICE",
     phoneLabel: "대표번호",
@@ -598,7 +606,7 @@ const COPY = {
       shop: "Shop",
       tiresShop: "Tires Shop",
       exportShop: "Export Shop",
-      batteryShop: "Battery Rental Mall",
+      batteryShop: "Battery Shop",
     },
     companyLine: "BATTERY & PARTS · FINANCIAL SERVICE",
     phoneLabel: "Main",
@@ -1137,166 +1145,6 @@ const InventoryCard: React.FC<{ item: InventoryItem }> = ({ item }) => {
   );
 };
 
-const CSV_URL =
-  "https://docs.google.com/spreadsheets/d/e/2PACX-1vStUJkHotLlVECjJPyaxIWnYTl45_0Fw9IAtgIUzkRjScPYWE_lYJfk2_38Uqn9Y40kP-5pv3UXeRJf/pub?gid=0&single=true&output=csv";
-
-const ExportShopPage: React.FC = () => {
-  const [filter, setFilter] = useState<ExportFilter>("all");
-  const [rows, setRows] = useState<InventoryCsvRow[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [errMsg, setErrMsg] = useState<string>("");
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      setLoading(true);
-      setErrMsg("");
-      try {
-        const data = await fetchInventoryRows(CSV_URL);
-        if (!alive) return;
-        setRows(data);
-      } catch (e: any) {
-        if (!alive) return;
-        setErrMsg(e?.message || "CSV load failed");
-      } finally {
-        if (!alive) return;
-        setLoading(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  const inventory: InventoryItem[] = useMemo(() => {
-    return rows.map((r: InventoryCsvRow) => {
-      const count = r.imgCount ?? 5;
-      const prefix = r.type === "forklift" ? "F" : "X";
-      const folder = `(${prefix})${r.id}`;
-
-      const images = Array.from(
-        { length: count },
-        (_, i) => `/image/${folder}/${prefix}_${r.id}_${i + 1}.jpg`
-      );
-
-      const specs: SpecRow[] = [
-        ...(r.brand ? [{ label: "Brand", value: r.brand }] : []),
-        ...(r.year ? [{ label: "Year", value: r.year }] : []),
-        ...(r.capacity ? [{ label: "Capacity", value: r.capacity }] : []),
-        ...(r.mast ? [{ label: "Mast", value: r.mast }] : []),
-        ...(r.hours ? [{ label: "Hours", value: r.hours }] : []),
-        ...(r.condition ? [{ label: "Condition", value: r.condition }] : []),
-        ...(r.remarks ? [{ label: "Remarks", value: r.remarks }] : []),
-      ];
-
-      return { id: r.id, type: r.type, title: r.title, folder, images, specs };
-    });
-  }, [rows]);
-
-  const totalCount = inventory.length;
-  const forkliftCount = inventory.filter((x: InventoryItem) => x.type === "forklift").length;
-  const excavatorCount = inventory.filter((x: InventoryItem) => x.type === "excavator").length;
-  const filtered = filter === "all" ? inventory : inventory.filter((x: InventoryItem) => x.type === filter);
-
-  const pillBase = "px-4 py-2 rounded-full text-sm font-semibold border transition-all duration-200";
-  const pillOn = "bg-orange-500 text-white border-orange-500 shadow-sm";
-  const pillOff = "bg-white text-navy-900 border-gray-200 hover:border-orange-300 hover:text-orange-600";
-
-  return (
-    <LightboxProvider>
-      <div className="bg-white text-navy-900">
-        <section className="relative bg-[#0a192f] text-white overflow-hidden">
-          {/* 배경 패턴 */}
-          <div className="absolute inset-0 opacity-[0.04]" aria-hidden="true">
-            <div className="absolute inset-0" style={{
-              backgroundImage: "repeating-linear-gradient(45deg, white 0, white 1px, transparent 0, transparent 50%)",
-              backgroundSize: "24px 24px",
-            }} />
-          </div>
-          <div className="relative max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-12 md:py-16">
-            <div className="max-w-3xl">
-              <div className="text-sm text-white/60">
-                <Link to="/" className="hover:text-white transition-colors">Home</Link>
-                <span className="mx-2">/</span>
-                <span className="text-white/90 font-semibold">수출용 쇼핑몰</span>
-              </div>
-              <div className="mt-4 text-sm font-medium tracking-[0.12em] uppercase text-orange-400">Export Shop</div>
-              <h1 className="mt-4 text-3xl md:text-4xl lg:text-5xl font-semibold leading-[1.15] text-white break-keep">
-                수출용 쇼핑몰
-              </h1>
-              <p className="mt-4 text-base md:text-lg leading-7 text-white/75 max-w-3xl break-keep">
-                수출용 매물을 확인하고, 필요 시 스펙·가격·선적 조건을 요청하실 수 있습니다.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <section className="py-16 md:py-20">
-          <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-8">
-            <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <a
-                  href="http://www.cleanearth.kr/"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="group rounded-2xl border border-gray-200 bg-white px-5 py-4 hover:border-orange-300 hover:shadow-sm transition-all min-h-[110px] flex flex-col justify-center"
-                  title="(주)크린어스 홈페이지로 이동"
-                >
-                  <div className="flex items-center">
-                    <img src="/logo/cleanearth.png" alt="(주)크린어스 로고" className="h-10 md:h-9 w-auto object-contain" loading="lazy" />
-                  </div>
-                  <div className="mt-3 text-sm font-semibold text-navy-900 leading-snug break-keep">
-                    이 사업은 지구를 깨끗하게 크린어스(CleanEarth)<br />(주)크린어스와 함께합니다.
-                  </div>
-                  <div className="mt-1 text-xs font-semibold text-navy-900">www.cleanearth.kr</div>
-                </a>
-
-                <a
-                  href="http://www.brotherlift.com"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="group rounded-2xl border border-gray-200 bg-white px-5 py-4 hover:border-orange-300 hover:shadow-sm transition-all min-h-[110px] flex flex-col justify-center"
-                  title="현대지게차 경기북부판매 – 웹사이트 바로가기"
-                >
-                  <div className="flex items-center">
-                    <img src="/logo/brotherlift.png" alt="현대지게차 경기북부판매 로고" className="h-12 md:h-10 w-auto object-contain" loading="lazy" />
-                  </div>
-                  <div className="mt-3 text-sm font-semibold text-navy-900 leading-snug break-keep">
-                    아래 차량들은 국내 최고의 지게차 정비업체<br />현대지게차 경기북부판매(형제중기)에서 관리합니다.
-                  </div>
-                  <div className="text-xs font-medium text-gray-600 mt-1">
-                    📞{" "}
-                    <span onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
-                      <a href="tel:1899-1373" className="hover:text-orange-600 transition-colors">1899-1373</a>
-                    </span>
-                  </div>
-                  <div className="mt-1 text-xs font-semibold text-navy-900">www.brotherlift.com</div>
-                </a>
-              </div>
-
-              {loading && <div className="text-sm text-gray-500 mt-4">상품 정보를 불러오는 중입니다...</div>}
-              {!!errMsg && <div className="text-sm text-red-600 mt-4">{errMsg}</div>}
-            </div>
-
-            <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm">
-              <div className="flex flex-wrap gap-3 items-center">
-                <button className={`${pillBase} ${filter === "all" ? pillOn : pillOff}`} onClick={() => setFilter("all")}>전체 ({totalCount})</button>
-                <button className={`${pillBase} ${filter === "forklift" ? pillOn : pillOff}`} onClick={() => setFilter("forklift")}>지게차 ({forkliftCount})</button>
-                <button className={`${pillBase} ${filter === "excavator" ? pillOn : pillOff}`} onClick={() => setFilter("excavator")}>굴삭기 ({excavatorCount})</button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {filtered.map((item) => (
-                <InventoryCard key={`${item.type}-${item.id}`} item={item} />
-              ))}
-            </div>
-          </div>
-        </section>
-      </div>
-    </LightboxProvider>
-  );
-};
 
 const PartnerLogos: React.FC<{ logos: string[]; label?: string }> = ({ logos, label }) => (
   <div className="mt-5 pt-4 border-t border-gray-100">
@@ -1434,7 +1282,7 @@ const Footer: React.FC = () => {
               <li><Link to="/tires-shop" className="hover:text-orange-500 transition-colors">- 타이어 쇼핑몰</Link></li>
               <li><Link to="/tire-rental" className="hover:text-orange-500 transition-colors">- 화물차 타이어 렌탈</Link></li>
               <li><Link to="/export-shop" className="hover:text-orange-500 transition-colors">- 수출용 쇼핑몰</Link></li>
-              <li><Link to="/battery-shop" className="hover:text-orange-500 transition-colors">- 산업용 배터리 렌탈몰</Link></li>
+              <li><Link to="/battery-shop" className="hover:text-orange-500 transition-colors">- 배터리 쇼핑몰</Link></li>
             </ul>
           </div>
 
@@ -1532,6 +1380,7 @@ const AppRoutes = () => {
           <Route path="/battery" element={<BatteryPage />} />
           <Route path="/export" element={<ExportPage />} />
           <Route path="/export-shop" element={<ExportShopPage />} />
+          <Route path="/export-shop/inquiry" element={<ExportInquiryPage />} />
           <Route path="/finance" element={<FinancePage />} />
           <Route path="/cargo-finance" element={<IndividualCargoFinancePage />} />
           <Route path="/sitemap" element={<SitemapPage />} />
