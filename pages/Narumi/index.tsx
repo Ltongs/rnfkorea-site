@@ -565,7 +565,7 @@ export default function NarumiPage() {
   };
 
   // ─── 카카오 알림 ─────────────────────────────────────────
-  const NARUMI_KAKAO_URL = "https://nfwtsptqloefsbpjvdyu.supabase.co/functions/v1/send-narumi-kakao";
+  const NARUMI_KAKAO_URL = "https://nfwtsptqloefsbpjvdyu.supabase.co/functions/v1/send-hyundaicm-kakao";
 
   const sendNarumiKakao = async (payload: Record<string, unknown>) => {
     try {
@@ -675,7 +675,7 @@ export default function NarumiPage() {
 
       // 카카오 알림
       sendNarumiKakao({
-        type:         "new",
+        type:         "narumi_new",
         vin:          vinTrim,
         customerName: nameTrim,
         salesRep:     salesRepTrim,
@@ -745,7 +745,7 @@ export default function NarumiPage() {
     } else {
       // 카카오 알림
       sendNarumiKakao({
-        type:        "status_change",
+        type:        "narumi_status",
         vin:         target.vin,
         customerName: target.customer_name,
         salesRep:    target.sales_rep,
@@ -785,7 +785,7 @@ export default function NarumiPage() {
 
     // 카카오 알림
     sendNarumiKakao({
-      type:        "status_change",
+      type:        "narumi_status",
       vin:         row.vin,
       customerName: row.customer_name,
       salesRep:    row.sales_rep,
@@ -1132,7 +1132,7 @@ export default function NarumiPage() {
 
       // 카카오 알림
       sendNarumiKakao({
-        type:         "vehicle_doc_upload",
+        type:         "narumi_vehicle_doc",
         vin:          row.vin,
         customerName: row.customer_name,
         salesRep:     row.sales_rep,

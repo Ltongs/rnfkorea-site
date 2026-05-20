@@ -259,6 +259,46 @@ function buildMessage(body: Record<string, string>): string {
     ].filter(Boolean).join("\n");
   }
 
+  // ─── 나르미 메시지 타입 ───────────────────────────
+  const statusKo: Record<string, string> = {
+    todo: "보류", insurance: "보험", docs: "등록서류",
+    registered: "등록완료", completed: "차량등록증 완료",
+  };
+
+  if (type === "narumi_new") {
+    return [
+      "[나르미 신규 등록]", "",
+      body.vin          ? `VIN: ${body.vin}`                    : "",
+      customerName      ? `고객: ${customerName}`               : "",
+      salesRep          ? `영업: ${salesRep}`                   : "",
+      body.deliveryDate ? `출고일: ${body.deliveryDate}`        : "",
+      body.specialNote  ? `특이사항: ${body.specialNote}`       : "",
+      `시간: ${now}`,
+    ].filter(Boolean).join("\n");
+  }
+
+  if (type === "narumi_status") {
+    return [
+      "[나르미 단계 변경]", "",
+      body.vin     ? `VIN: ${body.vin}`                                                          : "",
+      customerName ? `고객: ${customerName}`                                                     : "",
+      salesRep     ? `영업: ${salesRep}`                                                         : "",
+      `상태: ${statusKo[body.prevStatus] ?? body.prevStatus ?? "-"} → ${statusKo[body.nextStatus] ?? body.nextStatus ?? "-"}`,
+      `시간: ${now}`,
+    ].filter(Boolean).join("\n");
+  }
+
+  if (type === "narumi_vehicle_doc") {
+    return [
+      "[나르미 차량등록증 업로드]", "",
+      body.vin     ? `VIN: ${body.vin}`   : "",
+      customerName ? `고객: ${customerName}` : "",
+      salesRep     ? `영업: ${salesRep}`     : "",
+      "", "차량등록증이 업로드되었습니다.",
+      `시간: ${now}`,
+    ].filter(Boolean).join("\n");
+  }
+
   throw new Error("type은 'new' 또는 'status_change' 이어야 합니다.");
 }
 
