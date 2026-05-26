@@ -108,6 +108,20 @@ function extFromName(name: string) {
   return i < 0 ? "" : name.slice(i + 1).toLowerCase();
 }
 
+// ─── NH캐피탈 조견표 (최대 인센티브 기준) ────────────────────
+const NH_RATE_TABLE = [
+  { min: 922, max: 1000, rate: 6.3, incentive: 1.7 },
+  { min: 868, max: 921,  rate: 6.4, incentive: 1.7 },
+  { min: 824, max: 867,  rate: 6.5, incentive: 1.7 },
+  { min: 778, max: 823,  rate: 6.6, incentive: 1.7 },
+  { min: 729, max: 777,  rate: 6.8, incentive: 1.7 },
+];
+
+function getNhRateByScore(score: number): { rate: number; incentive: number } | null {
+  const entry = NH_RATE_TABLE.find((e) => score >= e.min && score <= e.max);
+  return entry ? { rate: entry.rate, incentive: entry.incentive } : null;
+}
+
 // ─── 상태 설정 ────────────────────────────────────────────
 const STATUS_ORDER: HCMStatus[] = ["접수", "신용조회", "서류등록", "전자계약발송", "확정"];
 const CREDIT_STATUSES: HCMStatus[] = ["승인", "보완", "거절"];
@@ -1352,9 +1366,23 @@ export default function HyundaiCMPage() {
                     </div>
 
                     {/* 신용결과 상세 */}
-                    {(r.nice_score != null || r.credit_rate != null || r.credit_incentive != null || r.biz_history) && (
+                    {(r.nice_score != null || r.credit_rate != null || r.credit_incentive != null || r.biz_history || CREDIT_STATUSES.includes(r.status as any) || creditResults[String(r.id)]) && (
                       <div className="rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3 grid grid-cols-2 gap-2">
-                        <p className="col-span-2 text-xs font-semibold text-orange-600 uppercase tracking-wide mb-1">신용결과 상세</p>
+                        <div className="col-span-2 flex items-center justify-between mb-1">
+                          <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide">신용결과 상세</p>
+                          {/* 판정결과 배지 */}
+                          {(() => {
+                            const creditStatus = CREDIT_STATUSES.includes(r.status as any)
+                              ? r.status
+                              : creditResults[String(r.id)];
+                            if (!creditStatus) return null;
+                            return (
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-2xl border text-xs font-bold ${statusStyle(creditStatus as HCMStatus)}`}>
+                                판정: {creditStatus}
+                              </span>
+                            );
+                          })()}
+                        </div>
                         {r.nice_score != null && (
                           <div>
                             <p className="text-xs text-gray-400">NICE 점수</p>
@@ -1383,10 +1411,10 @@ export default function HyundaiCMPage() {
                     )}
 
                     {/* 진행 단계 */}
-                    <div className="space-y-2">
+                    <div className="space-y-2 mt-1">
                       <p className="text-xs font-medium tracking-wide text-gray-400 uppercase">진행 단계</p>
                       {/* 1행: 진행단계 버튼 */}
-                      <div className="flex flex-wrap gap-1.5 overflow-x-auto pb-1">
+                      <div className="flex flex-wrap gap-1.5 pb-1">
                         {/* 접수, 신용조회 버튼 */}
                         {["접수", "신용조회"].map((s) => {
                           const canGo = canGoToStatus(r.status, s as HCMStatus, isAdminLevel);
@@ -1840,12 +1868,44 @@ export default function HyundaiCMPage() {
                 <input
                   type="number"
                   value={creditNiceScore}
-                  onChange={(e) => setCreditNiceScore(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCreditNiceScore(val);
+                    // NH캐피탈인 경우 조견표 자동 세팅
+                    const score = parseInt(val);
+                    if (!isNaN(score) && creditModal?.row.finance_company === "NH캐피탈") {
+                      const suggest = getNhRateByScore(score);
+                      if (suggest) {
+                        setCreditRate(String(suggest.rate));
+                        setCreditIncentive(String(suggest.incentive));
+                      }
+                    }
+                  }}
                   placeholder="예: 742"
                   inputMode="numeric"
                   className={inputClass}
                   disabled={creditSaving}
                 />
+                {/* 조견표 안내 메시지 */}
+                {creditModal?.row.finance_company === "NH캐피탈" && creditNiceScore && (() => {
+                  const score = parseInt(creditNiceScore);
+                  const suggest = !isNaN(score) ? getNhRateByScore(score) : null;
+                  if (suggest) {
+                    return (
+                      <p className="mt-1.5 text-xs text-emerald-600 font-medium">
+                        ✓ NH조견표 적용: 금리 {suggest.rate}% / 수수료 {suggest.incentive}% (최대 인센티브 기준)
+                      </p>
+                    );
+                  }
+                  if (!isNaN(score)) {
+                    return (
+                      <p className="mt-1.5 text-xs text-red-500 font-medium">
+                        ⚠ 조견표 범위 외 점수 (729~1000 범위 확인)
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
 
               {/* 적용금리 — 승인/보완 공통 */}
