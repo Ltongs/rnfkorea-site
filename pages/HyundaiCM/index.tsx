@@ -1800,7 +1800,7 @@ export default function HyundaiCMPage() {
 
       {/* ── 삭제 확인 모달 ── */}
       {deleteConfirmId != null && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
             <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500 mb-2">Delete</p>
             <h2 className="text-xl font-semibold text-navy-900 mb-3">건 삭제 확인</h2>
@@ -1933,8 +1933,9 @@ export default function HyundaiCMPage() {
 
       {/* ── 신용결과 상세 입력 모달 ── */}
       {creditModal && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 px-4 py-6">
+          <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white shadow-2xl flex flex-col max-h-full overflow-hidden">
+            <div className="overflow-y-auto flex-1 p-6">
             <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500 mb-2">신용결과</p>
             <h2 className="text-xl font-semibold text-navy-900 mb-1">
               {creditModal.next} 처리
@@ -2109,8 +2110,9 @@ export default function HyundaiCMPage() {
               </>
               )}
             </div>
-
-            <div className="mt-6 flex justify-end gap-3">
+            </div>
+            {/* 하단 버튼 — sticky */}
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 shrink-0">
               <button
                 onClick={() => setCreditModal(null)}
                 disabled={creditSaving}
