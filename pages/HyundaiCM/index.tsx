@@ -108,6 +108,19 @@ function extFromName(name: string) {
   return i < 0 ? "" : name.slice(i + 1).toLowerCase();
 }
 
+// ─── NH캐피탈 조견표 (최대 인센티브 기준) ────────────────────
+const NH_RATE_TABLE = [
+  { min: 922, max: 1000, rate: 6.3, incentive: 1.7 },
+  { min: 868, max: 921,  rate: 6.4, incentive: 1.7 },
+  { min: 824, max: 867,  rate: 6.5, incentive: 1.7 },
+  { min: 778, max: 823,  rate: 6.6, incentive: 1.7 },
+  { min: 729, max: 777,  rate: 6.8, incentive: 1.7 },
+];
+function getNhRateByScore(score: number): { rate: number; incentive: number } | null {
+  const entry = NH_RATE_TABLE.find((e) => score >= e.min && score <= e.max);
+  return entry ? { rate: entry.rate, incentive: entry.incentive } : null;
+}
+
 // ─── 상태 설정 ────────────────────────────────────────────
 const STATUS_ORDER: HCMStatus[] = ["접수", "신용조회", "서류등록", "전자계약발송", "확정"];
 const CREDIT_STATUSES: HCMStatus[] = ["승인", "보완", "거절"];
@@ -594,23 +607,6 @@ export default function HyundaiCMPage() {
       return acc;
     }, {} as Record<HCMStatus, number>)
   , [rows]);
-
-  // ─── 당월 실적 ───────────────────────────────────────────
-  const monthlyStats = useMemo(() => {
-    const now = new Date();
-    const ym = now.getFullYear().toString() + String(now.getMonth() + 1).padStart(2, "0");
-    const thisMonth = rows.filter((r) => {
-      const d = new Date(r.created_at ?? 0);
-      return d.getFullYear().toString() + String(d.getMonth() + 1).padStart(2, "0") === ym;
-    });
-    const confirmed = thisMonth.filter((r) => r.status === "확정");
-    const totalAmount = confirmed.reduce((sum, r) => sum + (r.installment_principal ?? 0), 0);
-    return {
-      total: thisMonth.length,
-      confirmed: confirmed.length,
-      amount: totalAmount,
-    };
-  }, [rows]);
 
   // 월내 순번 맵: 같은 연월의 건들을 created_at 오름차순으로 정렬해 순번 부여
   const caseNoMap = useMemo(() => {
@@ -1119,25 +1115,9 @@ export default function HyundaiCMPage() {
               {showClosed ? "종료 건 숨기기" : "종료 건 포함"}
             </button>
           )}
-          {/* 당월 실적 */}
-          <div className="ml-auto flex items-center gap-3">
-            <div className="flex items-center gap-2 px-4 py-2 rounded-2xl border border-gray-200 bg-white text-xs font-medium text-gray-600">
-              <span className="text-gray-400">당월 접수</span>
-              <span className="font-bold text-navy-900">{monthlyStats.total}건</span>
-              <span className="text-gray-300">|</span>
-              <span className="text-gray-400">확정</span>
-              <span className="font-bold text-emerald-600">{monthlyStats.confirmed}건</span>
-              {monthlyStats.amount > 0 && (
-                <>
-                  <span className="text-gray-300">|</span>
-                  <span className="font-bold text-orange-500">{(monthlyStats.amount / 100000000).toFixed(1)}억</span>
-                </>
-              )}
-            </div>
-            <button onClick={fetchRows} disabled={loading} className={btnGhost}>
-              {loading ? "로딩중..." : "새로고침"}
-            </button>
-          </div>
+          <button onClick={fetchRows} disabled={loading} className={`${btnGhost} ml-auto`}>
+            {loading ? "로딩중..." : "새로고침"}
+          </button>
         </div>
 
         {/* ── 검색 패널 ── */}
@@ -1225,27 +1205,21 @@ export default function HyundaiCMPage() {
                   <option value="우리금융캐피탈">우리금융캐피탈</option>
                 </select>
               </div>
-              <div>
-                <label className={labelClass}>금리 (%)</label>
-                <input value={interestRate} onChange={(e) => setInterestRate(e.target.value)} placeholder="예: 4.5" inputMode="decimal" className={inputClass} />
-              </div>
-              <div>
-                <label className={labelClass}>인센티브 (%)</label>
-                <input value={incentive} onChange={(e) => setIncentive(e.target.value)} placeholder="예: 1.2" inputMode="decimal" className={inputClass} />
-              </div>
-              {/* 부가세 후불 */}
+              {/* 부가세 후불 — 작은 선택형 토글 */}
               <div>
                 <label className={labelClass}>부가세 후불</label>
-                <div className="flex gap-2 h-[48px]">
+                <div className="flex gap-1.5 mt-1">
                   {(["Y", "N"] as const).map((v) => (
                     <button
                       key={v}
                       type="button"
                       onClick={() => { setVatDeferred(v); if (v === "N") setVatDeferredAmount(""); }}
-                      className={`flex-1 rounded-2xl border text-sm font-semibold transition-all ${
+                      className={`px-4 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
                         vatDeferred === v
-                          ? "bg-orange-500 border-orange-500 text-white"
-                          : "bg-white border-gray-200 text-gray-600 hover:border-orange-300"
+                          ? v === "Y"
+                            ? "bg-orange-500 border-orange-500 text-white"
+                            : "bg-gray-200 border-gray-300 text-gray-700"
+                          : "bg-white border-gray-200 text-gray-400 hover:border-gray-300"
                       }`}
                     >{v}</button>
                   ))}
@@ -1312,45 +1286,51 @@ export default function HyundaiCMPage() {
               }`}>
 
                 {/* 카드 헤더 */}
-                <div className="flex items-start justify-between gap-3 px-4 md:px-6 pt-5 pb-4 border-b border-gray-100">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-semibold text-gray-500 font-mono">
-                      {caseNoMap[String(r.id)] ?? "-"}
-                    </span>
-                    <span className="text-base font-semibold text-navy-900">
-                      {r.customer_name}{r.company_name ? ` (${r.company_name})` : ""}
-                    </span>
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-2xl border border-gray-200 bg-gray-50 text-xs font-medium text-gray-600">
+                <div className="px-4 md:px-6 pt-4 pb-3 border-b border-gray-100">
+                  {/* 1행: 케이스번호 + 이름 + 액션버튼 */}
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
+                      <span className="text-xs font-semibold text-gray-400 font-mono shrink-0">
+                        {caseNoMap[String(r.id)] ?? "-"}
+                      </span>
+                      <span className="text-base font-semibold text-navy-900 break-all">
+                        {r.customer_name}{r.company_name ? ` (${r.company_name})` : ""}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {isConfirmed && (
+                        <button
+                          onClick={() => toggleExpand(r.id)}
+                          className={`inline-flex items-center justify-center px-3 py-1.5 rounded-xl border text-xs font-medium transition-all ${
+                            r.status === "거절"
+                              ? "border-red-200 bg-red-50 text-red-600"
+                              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          }`}
+                        >
+                          {isExpanded ? "접기 ↑" : "펼치기 ↓"}
+                        </button>
+                      )}
+                      <button onClick={() => openEditModal(r)} className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-gray-200 bg-white text-xs font-medium text-gray-600 hover:shadow-sm transition-all">수정</button>
+                      {canDelete && (
+                        <button
+                          onClick={() => setDeleteConfirmId(r.id)}
+                          className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-red-100 bg-white text-xs font-medium text-red-500 hover:bg-red-50 transition-all"
+                        >삭제</button>
+                      )}
+                    </div>
+                  </div>
+                  {/* 2행: 배지들 */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-xl border border-gray-200 bg-gray-50 text-xs font-medium text-gray-600">
                       {r.customer_type}
                     </span>
-                    <span className={`inline-flex items-center px-3 py-1 rounded-2xl border text-xs font-semibold ${statusStyle(r.status)}`}>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-xl border text-xs font-semibold ${statusStyle(r.status)}`}>
                       {r.status}
                     </span>
                     {shouldMaskPhone(r) && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-2xl bg-gray-100 border border-gray-200 text-gray-400 text-[10px] font-medium">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-xl bg-gray-100 border border-gray-200 text-gray-400 text-[10px] font-medium">
                         개인정보 마스킹
                       </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-                    {isConfirmed && (
-                      <button
-                        onClick={() => toggleExpand(r.id)}
-                        className={`inline-flex items-center justify-center px-4 py-2 rounded-2xl border text-sm font-medium transition-all ${
-                          r.status === "거절"
-                            ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
-                            : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                        }`}
-                      >
-                        {isExpanded ? "접기 ↑" : "펼치기 ↓"}
-                      </button>
-                    )}
-                    <button onClick={() => openEditModal(r)} className={btnGhost}>수정</button>
-                    {canDelete && (
-                      <button
-                        onClick={() => setDeleteConfirmId(r.id)}
-                        className="inline-flex items-center justify-center px-4 py-2 rounded-2xl border border-red-100 bg-white text-sm font-medium text-red-500 hover:bg-red-50 transition-all"
-                      >삭제</button>
                     )}
                   </div>
                 </div>
@@ -1361,21 +1341,8 @@ export default function HyundaiCMPage() {
                   {/* 왼쪽: 기본 정보 */}
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-3">
-                      {/* 전화번호: 모바일에서 tel: 링크 */}
-                      <div>
-                        <p className="text-xs font-medium tracking-wide text-gray-400 uppercase">전화번호</p>
-                        {!shouldMaskPhone(r) && r.customer_phone ? (
-                          <a
-                            href={`tel:${onlyDigits(r.customer_phone)}`}
-                            className="mt-1 text-sm font-semibold text-orange-500 underline underline-offset-2 break-all"
-                          >
-                            {getDisplayPhone(r)}
-                          </a>
-                        ) : (
-                          <p className="mt-1 text-sm font-semibold text-navy-900 break-all">{getDisplayPhone(r)}</p>
-                        )}
-                      </div>
                       {[
+                        { label: "전화번호",   value: getDisplayPhone(r) },
                         { label: "할부금융사", value: r.finance_company ?? "-" },
                         { label: "톤수",       value: r.equipment_ton ?? "-" },
                         { label: "차량가격",   value: formatAmount(r.purchase_amount) },
@@ -1830,23 +1797,9 @@ export default function HyundaiCMPage() {
                 <label className={labelClass}>인센티브 (%)</label>
                 <input type="number" value={confirmIncentive} onChange={(e) => setConfirmIncentive(e.target.value)} placeholder="예: 1.2" inputMode="decimal" step="0.01" className={inputClass} disabled={confirmSaving} />
               </div>
-              {/* 부가세 후불금액: 신규 접수 시 Y인 경우 필수 강조 */}
               <div>
-                <label className={labelClass}>
-                  부가세 후불금액 (원)
-                  {confirmModal.vat_deferred && (
-                    <span className="ml-2 text-xs font-semibold text-orange-500">※ 부가세 후불 Y — 입력 필요</span>
-                  )}
-                </label>
-                <input
-                  type="text"
-                  value={confirmVatAmount}
-                  onChange={(e) => setConfirmVatAmount(onlyDigits(e.target.value))}
-                  placeholder={confirmModal.vat_deferred ? "부가세 후불금액을 입력해주세요" : "해당 없으면 비워두세요"}
-                  inputMode="numeric"
-                  className={inputClass + (confirmModal.vat_deferred && !confirmVatAmount ? " border-orange-400 ring-2 ring-orange-200/50" : "")}
-                  disabled={confirmSaving}
-                />
+                <label className={labelClass}>부가세 후불금액 (원)</label>
+                <input type="text" value={confirmVatAmount} onChange={(e) => setConfirmVatAmount(onlyDigits(e.target.value))} placeholder="해당 없으면 비워두세요" inputMode="numeric" className={inputClass} disabled={confirmSaving} />
                 {confirmVatAmount && <p className="mt-1 text-xs text-gray-400">{parseInt(confirmVatAmount).toLocaleString("ko-KR")}원</p>}
               </div>
             </div>
@@ -1914,12 +1867,38 @@ export default function HyundaiCMPage() {
                 <input
                   type="number"
                   value={creditNiceScore}
-                  onChange={(e) => setCreditNiceScore(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCreditNiceScore(val);
+                    const score = parseInt(val);
+                    if (!isNaN(score) && creditModal?.row.finance_company === "NH캐피탈") {
+                      const suggest = getNhRateByScore(score);
+                      if (suggest) {
+                        setCreditRate(String(suggest.rate));
+                        setCreditIncentive(String(suggest.incentive));
+                      }
+                    }
+                  }}
                   placeholder="예: 742"
                   inputMode="numeric"
                   className={inputClass}
                   disabled={creditSaving}
                 />
+                {creditModal?.row.finance_company === "NH캐피탈" && creditNiceScore && (() => {
+                  const score = parseInt(creditNiceScore);
+                  const suggest = !isNaN(score) ? getNhRateByScore(score) : null;
+                  if (suggest) return (
+                    <p className="mt-1.5 text-xs text-emerald-600 font-medium">
+                      ✓ NH조견표 적용: 금리 {suggest.rate}% / 수수료 {suggest.incentive}%
+                    </p>
+                  );
+                  if (!isNaN(score)) return (
+                    <p className="mt-1.5 text-xs text-red-500 font-medium">
+                      ⚠ 조견표 범위 외 (729~1000 확인)
+                    </p>
+                  );
+                  return null;
+                })()}
               </div>
 
               {/* 적용금리 — 승인/보완 공통 */}
