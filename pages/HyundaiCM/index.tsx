@@ -108,6 +108,19 @@ function extFromName(name: string) {
   return i < 0 ? "" : name.slice(i + 1).toLowerCase();
 }
 
+// ─── NH캐피탈 조견표 (최대 인센티브 기준) ────────────────────
+const NH_RATE_TABLE = [
+  { min: 922, max: 1000, rate: 6.3, incentive: 1.7 },
+  { min: 868, max: 921,  rate: 6.4, incentive: 1.7 },
+  { min: 824, max: 867,  rate: 6.5, incentive: 1.7 },
+  { min: 778, max: 823,  rate: 6.6, incentive: 1.7 },
+  { min: 729, max: 777,  rate: 6.8, incentive: 1.7 },
+];
+function getNhRateByScore(score: number): { rate: number; incentive: number } | null {
+  const entry = NH_RATE_TABLE.find((e) => score >= e.min && score <= e.max);
+  return entry ? { rate: entry.rate, incentive: entry.incentive } : null;
+}
+
 // ─── 상태 설정 ────────────────────────────────────────────
 const STATUS_ORDER: HCMStatus[] = ["접수", "신용조회", "서류등록", "전자계약발송", "확정"];
 const CREDIT_STATUSES: HCMStatus[] = ["승인", "보완", "거절"];
@@ -268,6 +281,8 @@ export default function HyundaiCMPage() {
   const [creditRate,         setCreditRate]         = useState("");
   const [creditIncentive,    setCreditIncentive]    = useState("");
   const [creditLoanLimit,    setCreditLoanLimit]    = useState(""); // 대출한도 (승인 시)
+  const [creditLoanPeriod,   setCreditLoanPeriod]   = useState(""); // 대출기간 (승인 시)
+  const [creditVatAmount,    setCreditVatAmount]    = useState(""); // 부가세 후불금액 (승인 시)
   const [creditNote,         setCreditNote]         = useState(""); // 특이사항(승인)/보완사항(보완)/거절사유(거절)
   const [creditBizHistory,   setCreditBizHistory]   = useState<"1년이상" | "1년미만">("1년이상");
   const [creditSaving,       setCreditSaving]       = useState(false);
@@ -595,6 +610,19 @@ export default function HyundaiCMPage() {
     }, {} as Record<HCMStatus, number>)
   , [rows]);
 
+  // ─── 당월 실적 ───────────────────────────────────────────
+  const monthlyStats = useMemo(() => {
+    const now = new Date();
+    const ym = now.getFullYear().toString() + String(now.getMonth() + 1).padStart(2, "0");
+    const thisMonth = rows.filter((r) => {
+      const d = new Date(r.created_at ?? 0);
+      return d.getFullYear().toString() + String(d.getMonth() + 1).padStart(2, "0") === ym;
+    });
+    const confirmed = thisMonth.filter((r) => r.status === "확정");
+    const totalAmount = confirmed.reduce((sum, r) => sum + (r.installment_principal ?? 0), 0);
+    return { total: thisMonth.length, confirmed: confirmed.length, amount: totalAmount };
+  }, [rows]);
+
   // 월내 순번 맵: 같은 연월의 건들을 created_at 오름차순으로 정렬해 순번 부여
   const caseNoMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -805,15 +833,19 @@ export default function HyundaiCMPage() {
     setCreditSaving(true);
     try {
       const patch: Partial<HCMTask> = {
-        status:           next,
-        nice_score:       next !== "거절" && creditNiceScore.trim() ? parseInt(creditNiceScore, 10) || null : null,
-        credit_rate:      next !== "거절" && creditRate.trim() ? parseFloat(creditRate) || null : null,
-        credit_incentive: next !== "거절" && creditIncentive.trim() ? parseFloat(creditIncentive) || null : null,
-        biz_history:      next !== "거절" ? creditBizHistory : null,
-        loan_limit:       next === "승인" && creditLoanLimit.trim()
-                            ? parseInt(creditLoanLimit.replace(/,/g, ""), 10) || null
-                            : null,
-        credit_note:      creditNote.trim() || null,
+        status:              next,
+        nice_score:          next !== "거절" && creditNiceScore.trim() ? parseInt(creditNiceScore, 10) || null : null,
+        credit_rate:         next !== "거절" && creditRate.trim() ? parseFloat(creditRate) || null : null,
+        credit_incentive:    next !== "거절" && creditIncentive.trim() ? parseFloat(creditIncentive) || null : null,
+        interest_rate:       next !== "거절" && creditRate.trim() ? parseFloat(creditRate) || null : null,
+        incentive:           next !== "거절" && creditIncentive.trim() ? parseFloat(creditIncentive) || null : null,
+        biz_history:         next !== "거절" ? creditBizHistory : null,
+        loan_limit:          next === "승인" && creditLoanLimit.trim()
+                               ? parseInt(creditLoanLimit.replace(/,/g, ""), 10) || null : null,
+        loan_period:         next === "승인" && creditLoanPeriod.trim() ? parseInt(creditLoanPeriod, 10) || null : null,
+        vat_deferred_amount: next === "승인" && creditModal.row.vat_deferred && creditVatAmount.trim()
+                               ? parseInt(creditVatAmount.replace(/,/g, ""), 10) || null : null,
+        credit_note:         creditNote.trim() || null,
       };
       const { error } = await supabase.from("hyundaicm_tasks").update(patch).eq("id", row.id as any);
       if (error) throw error;
@@ -1102,9 +1134,24 @@ export default function HyundaiCMPage() {
               {showClosed ? "종료 건 숨기기" : "종료 건 포함"}
             </button>
           )}
-          <button onClick={fetchRows} disabled={loading} className={`${btnGhost} ml-auto`}>
-            {loading ? "로딩중..." : "새로고침"}
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-2xl border border-gray-200 bg-white text-xs font-medium text-gray-600">
+              <span className="text-gray-400">당월 접수</span>
+              <span className="font-bold text-navy-900">{monthlyStats.total}건</span>
+              <span className="text-gray-300">|</span>
+              <span className="text-gray-400">확정</span>
+              <span className="font-bold text-emerald-600">{monthlyStats.confirmed}건</span>
+              {monthlyStats.amount > 0 && (
+                <>
+                  <span className="text-gray-300">|</span>
+                  <span className="font-bold text-orange-500">{(monthlyStats.amount / 100000000).toFixed(1)}억</span>
+                </>
+              )}
+            </div>
+            <button onClick={fetchRows} disabled={loading} className={btnGhost}>
+              {loading ? "로딩중..." : "새로고침"}
+            </button>
+          </div>
         </div>
 
         {/* ── 검색 패널 ── */}
@@ -1178,11 +1225,21 @@ export default function HyundaiCMPage() {
               </div>
               <div>
                 <label className={labelClass}>차량가격 (원)</label>
-                <input value={purchaseAmount} onChange={(e) => setPurchaseAmount(onlyDigits(e.target.value))} placeholder="150000000" inputMode="numeric" className={inputClass} />
+                <input
+                  value={purchaseAmount ? Number(purchaseAmount).toLocaleString("ko-KR") : ""}
+                  onChange={(e) => setPurchaseAmount(onlyDigits(e.target.value))}
+                  placeholder="150,000,000" inputMode="numeric" className={inputClass}
+                />
+                {purchaseAmount && <p className="mt-1 text-xs text-gray-400">{Number(purchaseAmount).toLocaleString("ko-KR")}원</p>}
               </div>
               <div>
                 <label className={labelClass}>할부원금 (원)</label>
-                <input value={installmentPrincipal} onChange={(e) => setInstallmentPrincipal(onlyDigits(e.target.value))} placeholder="120000000" inputMode="numeric" className={inputClass} />
+                <input
+                  value={installmentPrincipal ? Number(installmentPrincipal).toLocaleString("ko-KR") : ""}
+                  onChange={(e) => setInstallmentPrincipal(onlyDigits(e.target.value))}
+                  placeholder="120,000,000" inputMode="numeric" className={inputClass}
+                />
+                {installmentPrincipal && <p className="mt-1 text-xs text-gray-400">{Number(installmentPrincipal).toLocaleString("ko-KR")}원</p>}
               </div>
               <div>
                 <label className={labelClass}>할부금융사</label>
@@ -1285,45 +1342,36 @@ export default function HyundaiCMPage() {
               }`}>
 
                 {/* 카드 헤더 */}
-                <div className="flex items-start justify-between gap-3 px-4 md:px-6 pt-5 pb-4 border-b border-gray-100">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-semibold text-gray-500 font-mono">
-                      {caseNoMap[String(r.id)] ?? "-"}
-                    </span>
-                    <span className="text-base font-semibold text-navy-900">
-                      {r.customer_name}{r.company_name ? ` (${r.company_name})` : ""}
-                    </span>
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-2xl border border-gray-200 bg-gray-50 text-xs font-medium text-gray-600">
-                      {r.customer_type}
-                    </span>
-                    <span className={`inline-flex items-center px-3 py-1 rounded-2xl border text-xs font-semibold ${statusStyle(r.status)}`}>
-                      {r.status}
-                    </span>
-                    {shouldMaskPhone(r) && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-2xl bg-gray-100 border border-gray-200 text-gray-400 text-[10px] font-medium">
-                        개인정보 마스킹
+                <div className="px-4 md:px-6 pt-4 pb-3 border-b border-gray-100">
+                  {/* 1행: 케이스번호+이름 / 버튼 */}
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 min-w-0">
+                      <span className="text-xs font-semibold text-gray-400 font-mono shrink-0">{caseNoMap[String(r.id)] ?? "-"}</span>
+                      <span className="text-base font-semibold text-navy-900 break-all">
+                        {r.customer_name}{r.company_name ? ` (${r.company_name})` : ""}
                       </span>
-                    )}
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {isConfirmed && (
+                        <button
+                          onClick={() => toggleExpand(r.id)}
+                          className={`inline-flex items-center justify-center px-3 py-1.5 rounded-xl border text-xs font-medium transition-all ${
+                            r.status === "거절" ? "border-red-200 bg-red-50 text-red-600" : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          }`}
+                        >{isExpanded ? "접기 ↑" : "펼치기 ↓"}</button>
+                      )}
+                      <button onClick={() => openEditModal(r)} className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-gray-200 bg-white text-xs font-medium text-gray-600 hover:shadow-sm transition-all">수정</button>
+                      {canDelete && (
+                        <button onClick={() => setDeleteConfirmId(r.id)} className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-red-100 bg-white text-xs font-medium text-red-500 hover:bg-red-50 transition-all">삭제</button>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-                    {isConfirmed && (
-                      <button
-                        onClick={() => toggleExpand(r.id)}
-                        className={`inline-flex items-center justify-center px-4 py-2 rounded-2xl border text-sm font-medium transition-all ${
-                          r.status === "거절"
-                            ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
-                            : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                        }`}
-                      >
-                        {isExpanded ? "접기 ↑" : "펼치기 ↓"}
-                      </button>
-                    )}
-                    <button onClick={() => openEditModal(r)} className={btnGhost}>수정</button>
-                    {canDelete && (
-                      <button
-                        onClick={() => setDeleteConfirmId(r.id)}
-                        className="inline-flex items-center justify-center px-4 py-2 rounded-2xl border border-red-100 bg-white text-sm font-medium text-red-500 hover:bg-red-50 transition-all"
-                      >삭제</button>
+                  {/* 2행: 배지들 */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-xl border border-gray-200 bg-gray-50 text-xs font-medium text-gray-600">{r.customer_type}</span>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-xl border text-xs font-semibold ${statusStyle(r.status)}`}>{r.status}</span>
+                    {shouldMaskPhone(r) && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-xl bg-gray-100 border border-gray-200 text-gray-400 text-[10px] font-medium">개인정보 마스킹</span>
                     )}
                   </div>
                 </div>
@@ -1334,8 +1382,16 @@ export default function HyundaiCMPage() {
                   {/* 왼쪽: 기본 정보 */}
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-3">
+                      {/* 전화번호: 모바일 tel: 링크 */}
+                      <div>
+                        <p className="text-xs font-medium tracking-wide text-gray-400 uppercase">전화번호</p>
+                        {!shouldMaskPhone(r) && r.customer_phone ? (
+                          <a href={`tel:${onlyDigits(r.customer_phone)}`} className="mt-1 text-sm font-semibold text-orange-500 underline underline-offset-2 break-all">{getDisplayPhone(r)}</a>
+                        ) : (
+                          <p className="mt-1 text-sm font-semibold text-navy-900 break-all">{getDisplayPhone(r)}</p>
+                        )}
+                      </div>
                       {[
-                        { label: "전화번호",   value: getDisplayPhone(r) },
                         { label: "할부금융사", value: r.finance_company ?? "-" },
                         { label: "톤수",       value: r.equipment_ton ?? "-" },
                         { label: "차량가격",   value: formatAmount(r.purchase_amount) },
@@ -1439,6 +1495,8 @@ export default function HyundaiCMPage() {
                               setCreditRate(r.credit_rate != null ? String(r.credit_rate) : "");
                               setCreditIncentive(r.credit_incentive != null ? String(r.credit_incentive) : "");
                               setCreditLoanLimit(r.loan_limit != null ? Number(r.loan_limit).toLocaleString("ko-KR") : "");
+                              setCreditLoanPeriod(r.loan_period != null ? String(r.loan_period) : "");
+                              setCreditVatAmount(r.vat_deferred_amount != null ? Number(r.vat_deferred_amount).toLocaleString("ko-KR") : "");
                               setCreditNote(r.credit_note ?? "");
                               setCreditBizHistory((r.biz_history as any) ?? "1년이상");
                               setCreditModal({ row: r, next });
@@ -1926,12 +1984,30 @@ export default function HyundaiCMPage() {
                 <input
                   type="number"
                   value={creditNiceScore}
-                  onChange={(e) => setCreditNiceScore(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCreditNiceScore(val);
+                    const score = parseInt(val);
+                    if (!isNaN(score) && creditModal?.row.finance_company === "NH캐피탈") {
+                      const suggest = getNhRateByScore(score);
+                      if (suggest) {
+                        setCreditRate(String(suggest.rate));
+                        setCreditIncentive(String(suggest.incentive));
+                      }
+                    }
+                  }}
                   placeholder="예: 742"
                   inputMode="numeric"
                   className={inputClass}
                   disabled={creditSaving}
                 />
+                {creditModal?.row.finance_company === "NH캐피탈" && creditNiceScore && (() => {
+                  const score = parseInt(creditNiceScore);
+                  const suggest = !isNaN(score) ? getNhRateByScore(score) : null;
+                  if (suggest) return <p className="mt-1.5 text-xs text-emerald-600 font-medium">✓ NH조견표: 금리 {suggest.rate}% / 수수료 {suggest.incentive}%</p>;
+                  if (!isNaN(score)) return <p className="mt-1.5 text-xs text-red-500 font-medium">⚠ 조견표 범위 외 (729~1000)</p>;
+                  return null;
+                })()}
               </div>
 
               {/* 적용금리 — 승인/보완 공통 */}
@@ -1964,8 +2040,8 @@ export default function HyundaiCMPage() {
                 />
               </div>
 
-              {/* 대출한도 — 승인 시에만 표시 */}
-              {creditModal.next === "승인" && (
+              {/* 승인 시 추가 필드 */}
+              {creditModal.next === "승인" && (<>
               <div>
                 <label className={labelClass}>대출한도 (원)</label>
                 <input
@@ -1981,7 +2057,40 @@ export default function HyundaiCMPage() {
                   disabled={creditSaving}
                 />
               </div>
+              <div>
+                <label className={labelClass}>대출기간 (개월)</label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={creditLoanPeriod}
+                  onChange={(e) => setCreditLoanPeriod(e.target.value)}
+                  placeholder="예: 60"
+                  className={inputClass}
+                  disabled={creditSaving}
+                />
+              </div>
+              {creditModal.row.vat_deferred && (
+              <div>
+                <label className={labelClass}>
+                  부가세 후불금액 (원)
+                  <span className="ml-2 text-xs font-semibold text-orange-500">※ 부가세 후불 Y</span>
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={creditVatAmount}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^0-9]/g, "");
+                    setCreditVatAmount(raw ? Number(raw).toLocaleString("ko-KR") : "");
+                  }}
+                  placeholder="예: 17,000,000"
+                  className={inputClass + (!creditVatAmount ? " border-orange-400 ring-2 ring-orange-200/50" : "")}
+                  disabled={creditSaving}
+                />
+                {creditVatAmount && <p className="mt-1 text-xs text-gray-400">{creditVatAmount}원</p>}
+              </div>
               )}
+              </>)}
 
               {/* 특이사항(승인) / 보완사항(보완) */}
               <div>
