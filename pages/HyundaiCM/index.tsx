@@ -265,6 +265,8 @@ export default function HyundaiCMPage() {
   const [editFinanceCompany,        setEditFinanceCompany]        = useState<string>("NH캐피탈");
   const [editInterestRate,          setEditInterestRate]          = useState("");
   const [editIncentive,             setEditIncentive]             = useState("");
+  const [editVatDeferred,           setEditVatDeferred]           = useState<"Y"|"N">("N");
+  const [editVatDeferredAmount,     setEditVatDeferredAmount]     = useState("");
   const [editSalesRep,              setEditSalesRep]              = useState("");
   const [editSpecialNote,           setEditSpecialNote]           = useState("");
 
@@ -889,6 +891,8 @@ export default function HyundaiCMPage() {
     setEditFinanceCompany(row.finance_company ?? "NH캐피탈");
     setEditInterestRate(row.interest_rate != null ? String(row.interest_rate) : "");
     setEditIncentive(row.incentive != null ? String(row.incentive) : "");
+    setEditVatDeferred(row.vat_deferred ? "Y" : "N");
+    setEditVatDeferredAmount(row.vat_deferred_amount != null ? Number(row.vat_deferred_amount).toLocaleString("ko-KR") : "");
     setEditSalesRep(row.sales_rep ?? "");
     setEditSpecialNote(row.special_note ?? "");
   };
@@ -909,8 +913,9 @@ export default function HyundaiCMPage() {
         purchase_amount:        editPurchaseAmount.trim() ? parseInt(onlyDigits(editPurchaseAmount), 10) || null : null,
         installment_principal:  editInstallmentPrincipal.trim() ? parseInt(onlyDigits(editInstallmentPrincipal), 10) || null : null,
         finance_company:        editFinanceCompany || null,
-        interest_rate:          editInterestRate.trim() ? parseFloat(editInterestRate) || null : null,
-        incentive:              editIncentive.trim() ? parseFloat(editIncentive) || null : null,
+        vat_deferred:           editVatDeferred === "Y",
+        vat_deferred_amount:    editVatDeferred === "Y" && editVatDeferredAmount.trim()
+                                  ? parseInt(editVatDeferredAmount.replace(/,/g, ""), 10) || null : null,
         sales_rep:              editSalesRep.trim() || null,
         special_note:           editSpecialNote.trim() || null,
         // 전화번호 변경 시 마스킹 초기화
@@ -933,9 +938,9 @@ export default function HyundaiCMPage() {
           financeCompany:       patch.finance_company ?? "-",
           installmentPrincipal: patch.installment_principal ? String(patch.installment_principal) : "",
           purchaseAmount:       patch.purchase_amount ? String(patch.purchase_amount) : "",
-          interestRate:         patch.interest_rate ? String(patch.interest_rate) : "",
-          incentive:            patch.incentive ? String(patch.incentive) : "",
-          vatDeferredAmount:    editRow.vat_deferred_amount ? String(editRow.vat_deferred_amount) : "",
+          interestRate:         editRow.interest_rate ? String(editRow.interest_rate) : "",
+          incentive:            editRow.incentive ? String(editRow.incentive) : "",
+          vatDeferredAmount:    patch.vat_deferred_amount ? String(patch.vat_deferred_amount) : "",
           loanPeriod:           editRow.loan_period ? String(editRow.loan_period) : "",
           salesRep:             patch.sales_rep ?? "-",
           prevStatus:           editRow.status,
@@ -1779,9 +1784,49 @@ export default function HyundaiCMPage() {
               <div><label className={labelClass}>차량가격 (원)</label><input value={editPurchaseAmount} onChange={(e) => setEditPurchaseAmount(onlyDigits(e.target.value))} className={inputClass} disabled={editSaving} inputMode="numeric" /></div>
               <div><label className={labelClass}>할부원금 (원)</label><input value={editInstallmentPrincipal} onChange={(e) => setEditInstallmentPrincipal(onlyDigits(e.target.value))} className={inputClass} disabled={editSaving} inputMode="numeric" /></div>
               <div><label className={labelClass}>할부금융사</label><select value={editFinanceCompany} onChange={(e) => setEditFinanceCompany(e.target.value)} className={inputClass} disabled={editSaving}><option value="NH캐피탈">NH캐피탈</option><option value="오릭스캐피탈">오릭스캐피탈</option><option value="우리금융캐피탈">우리금융캐피탈</option></select></div>
-              <div><label className={labelClass}>금리 (%)</label><input value={editInterestRate} onChange={(e) => setEditInterestRate(e.target.value)} className={inputClass} disabled={editSaving} placeholder="예: 4.5" inputMode="decimal" /></div>
-              <div><label className={labelClass}>인센티브 (%)</label><input value={editIncentive} onChange={(e) => setEditIncentive(e.target.value)} className={inputClass} disabled={editSaving} placeholder="예: 1.2" inputMode="decimal" /></div>
-              <div><label className={labelClass}>영업사원</label><input value={editSalesRep} onChange={(e) => setEditSalesRep(e.target.value)} className={inputClass} disabled={editSaving} /></div>
+              {/* 부가세 후불 + 금액 + 영업사원 */}
+              <div className="col-span-1 sm:col-span-2 md:col-span-3">
+                <div className="grid grid-cols-3 gap-3 items-end">
+                  <div>
+                    <label className={labelClass}>부가세 후불</label>
+                    <div className="flex gap-1.5">
+                      {(["Y", "N"] as const).map((v) => (
+                        <button key={v} type="button"
+                          onClick={() => { setEditVatDeferred(v); if (v === "N") setEditVatDeferredAmount(""); }}
+                          disabled={editSaving}
+                          className={`flex-1 h-[38px] rounded-xl border text-xs font-semibold transition-all ${
+                            editVatDeferred === v
+                              ? v === "Y" ? "bg-orange-500 border-orange-500 text-white" : "bg-gray-200 border-gray-300 text-gray-700"
+                              : "bg-white border-gray-200 text-gray-400 hover:border-gray-300"
+                          }`}
+                        >{v}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelClass}>후불금액 (원)</label>
+                    <input
+                      value={editVatDeferredAmount}
+                      onChange={(e) => {
+                        const raw = onlyDigits(e.target.value);
+                        setEditVatDeferredAmount(raw ? Number(raw).toLocaleString("ko-KR") : "");
+                      }}
+                      placeholder={editVatDeferred === "Y" ? "15,000,000" : "-"}
+                      inputMode="numeric"
+                      disabled={editSaving || editVatDeferred === "N"}
+                      className={`h-[38px] w-full px-3 rounded-xl border text-xs font-medium transition-all focus:outline-none focus:border-orange-400 ${
+                        editVatDeferred === "N" ? "bg-gray-50 border-gray-200 text-gray-300" : "bg-white border-gray-200 text-navy-900"
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>영업사원</label>
+                    <input value={editSalesRep} onChange={(e) => setEditSalesRep(e.target.value)}
+                      className="h-[38px] w-full px-3 rounded-xl border border-gray-200 bg-white text-xs font-medium text-navy-900 placeholder:text-gray-400 focus:outline-none focus:border-orange-400 transition-all"
+                      disabled={editSaving} />
+                  </div>
+                </div>
+              </div>
               <div><label className={labelClass}>ID</label><input value={String(editRow.id)} readOnly className={inputClass + " !bg-gray-50 !text-gray-400 cursor-not-allowed"} /></div>
             </div>
 
