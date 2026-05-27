@@ -930,8 +930,40 @@ export default function HyundaiCMPage() {
       if (error) throw error;
       setRows((prev) => prev.map((r) => String(r.id) === String(editRow.id) ? { ...r, ...patch } : r));
 
-      // 카카오 알림 — 확정 전 수정 시만 발송
+      // SMS 알림 — 확정 전 수정 시만, 변경된 필드 목록 포함
       if (editRow.status !== "확정") {
+        // 변경된 필드 감지
+        const changedFields: string[] = [];
+        const fmtAmt = (v: number | null | undefined) =>
+          v != null ? Number(v).toLocaleString("ko-KR") + "원" : "-";
+
+        const changes: { label: string; before: string; after: string }[] = [];
+
+        if (patch.customer_name !== editRow.customer_name)
+          changes.push({ label: "고객명", before: editRow.customer_name ?? "-", after: patch.customer_name });
+        if (patch.customer_phone !== (editRow.customer_phone ?? null))
+          changes.push({ label: "전화번호", before: editRow.customer_phone ?? "-", after: patch.customer_phone ?? "-" });
+        if (patch.equipment_ton !== (editRow.equipment_ton ?? null))
+          changes.push({ label: "톤수", before: editRow.equipment_ton ?? "-", after: patch.equipment_ton ?? "-" });
+        if (patch.finance_company !== (editRow.finance_company ?? null))
+          changes.push({ label: "금융사", before: editRow.finance_company ?? "-", after: patch.finance_company ?? "-" });
+        if (patch.purchase_amount !== (editRow.purchase_amount ?? null))
+          changes.push({ label: "차량가격", before: fmtAmt(editRow.purchase_amount), after: fmtAmt(patch.purchase_amount) });
+        if (patch.installment_principal !== (editRow.installment_principal ?? null))
+          changes.push({ label: "할부원금", before: fmtAmt(editRow.installment_principal), after: fmtAmt(patch.installment_principal) });
+        if (patch.vat_deferred !== (editRow.vat_deferred ?? false))
+          changes.push({ label: "부가세후불", before: editRow.vat_deferred ? "Y" : "N", after: patch.vat_deferred ? "Y" : "N" });
+        if (patch.vat_deferred_amount !== (editRow.vat_deferred_amount ?? null))
+          changes.push({ label: "부가세금액", before: fmtAmt(editRow.vat_deferred_amount), after: fmtAmt(patch.vat_deferred_amount) });
+        if (patch.loan_period !== (editRow.loan_period ?? null))
+          changes.push({ label: "대출기간", before: editRow.loan_period ? `${editRow.loan_period}개월` : "-", after: patch.loan_period ? `${patch.loan_period}개월` : "-" });
+        if (patch.sales_rep !== (editRow.sales_rep ?? null))
+          changes.push({ label: "영업사원", before: editRow.sales_rep ?? "-", after: patch.sales_rep ?? "-" });
+
+        const changedSummary = changes.length > 0
+          ? changes.map((c) => `${c.label}: ${c.before}→${c.after}`).join("\n")
+          : "변경사항 없음";
+
         sendKakaoNotify({
           type:                 "edit",
           caseNo:               caseNoMap[String(editRow.id)] ?? String(editRow.id),
@@ -944,9 +976,10 @@ export default function HyundaiCMPage() {
           interestRate:         editRow.interest_rate ? String(editRow.interest_rate) : "",
           incentive:            editRow.incentive ? String(editRow.incentive) : "",
           vatDeferredAmount:    patch.vat_deferred_amount ? String(patch.vat_deferred_amount) : "",
-          loanPeriod:           editRow.loan_period ? String(editRow.loan_period) : "",
+          loanPeriod:           patch.loan_period ? String(patch.loan_period) : (editRow.loan_period ? String(editRow.loan_period) : ""),
           salesRep:             patch.sales_rep ?? "-",
           prevStatus:           editRow.status,
+          changedSummary,
         });
       }
 

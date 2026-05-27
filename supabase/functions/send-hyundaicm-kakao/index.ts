@@ -1,13 +1,11 @@
 // supabase/functions/send-hyundaicm-kakao/index.ts
-// 발송 방식: 솔라피 SMS (카카오 나에게 보내기 → SMS로 전환)
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// ─── 환경변수 ────────────────────────────────────────────────
-const SOLAPI_API_KEY    = Deno.env.get("SOLAPI_API_KEY")    ?? "";
-const SOLAPI_API_SECRET = Deno.env.get("SOLAPI_API_SECRET") ?? "";
-const SENDER_PHONE      = Deno.env.get("SOLAPI_SENDER")     ?? "01050549006";
-const RECIPIENTS_RAW    = Deno.env.get("SMS_RECIPIENTS")    ?? "01050549006,01095250707,01079310339";
-const RECIPIENTS        = RECIPIENTS_RAW.split(",").map((n) => n.replace(/\D/g, ""));
+const KAKAO_REST_API_KEY  = Deno.env.get("KAKAO_REST_API_KEY")  ?? "";
+const KAKAO_CLIENT_SECRET = Deno.env.get("KAKAO_CLIENT_SECRET") ?? "";
+const SUPABASE_URL        = Deno.env.get("SUPABASE_URL")        ?? "";
+const SUPABASE_SERVICE_KEY = Deno.env.get("SERVICE_ROLE_KEY") ?? "";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin":  "*",
@@ -15,45 +13,95 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// ─── 솔라피 HMAC-SHA256 인증 헤더 ───────────────────────────
-async function getSolapiAuthHeader(): Promise<string> {
-  const date = new Date().toISOString();
-  const salt = crypto.randomUUID().replace(/-/g, "").slice(0, 32);
-
-  const encoder  = new TextEncoder();
-  const keyData  = encoder.encode(SOLAPI_API_SECRET);
-  const msgData  = encoder.encode(date + salt);
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
-  );
-  const sigBuffer  = await crypto.subtle.sign("HMAC", cryptoKey, msgData);
-  const signature  = Array.from(new Uint8Array(sigBuffer))
-    .map((b) => b.toString(16).padStart(2, "0")).join("");
-
-  return `HMAC-SHA256 apiKey=${SOLAPI_API_KEY}, date=${date}, salt=${salt}, signature=${signature}`;
-}
-
-// ─── SMS 발송 ────────────────────────────────────────────────
-async function sendSms(text: string): Promise<void> {
-  const messages = RECIPIENTS.map((to) => ({ to, from: SENDER_PHONE, text }));
-  const authHeader = await getSolapiAuthHeader();
-
-  const res = await fetch("https://api.solapi.com/messages/v4/send-many", {
+// ─────────────────────────────────────────────
+// 1. access_token 갱신
+// ─────────────────────────────────────────────
+async function refreshAccessToken(refreshToken: string): Promise<{
+  access_token: string;
+  refresh_token: string;
+}> {
+  const res = await fetch("https://kauth.kakao.com/oauth/token", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: authHeader },
-    body: JSON.stringify({ messages }),
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type:    "refresh_token",
+      client_id:     KAKAO_REST_API_KEY,
+      client_secret: KAKAO_CLIENT_SECRET,
+      refresh_token: refreshToken,
+    }),
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    console.error("솔라피 발송 오류:", err);
-    throw new Error(`SMS 발송 실패: ${err}`);
+    const err = await res.json();
+    throw new Error(`토큰 갱신 실패: ${err.error_description ?? JSON.stringify(err)}`);
   }
-  const result = await res.json();
-  console.log("솔라피 발송 결과:", JSON.stringify(result));
+
+  const data = await res.json();
+  return {
+    access_token:  data.access_token,
+    // refresh_token은 갱신되지 않을 수도 있으므로 기존 값 유지
+    refresh_token: data.refresh_token ?? refreshToken,
+  };
 }
 
-// ─── 메시지 포맷 빌더 (기존 카카오 포맷 완전 유지) ──────────
+// ─────────────────────────────────────────────
+// 2. 카카오 나에게 보내기 (만료 시 자동 갱신)
+// ─────────────────────────────────────────────
+async function sendKakaoMe(
+  userRole: string,
+  accessToken: string,
+  refreshToken: string,
+  text: string,
+  supabase: ReturnType<typeof createClient>
+): Promise<{ ok: boolean; status: number; body: string }> {
+
+  const doSend = async (token: string) =>
+    fetch("https://kapi.kakao.com/v2/api/talk/memo/default/send", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type":  "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        template_object: JSON.stringify({
+          object_type:  "text",
+          text,
+          link:         { web_url: "https://www.rnfkorea.co.kr/hyundaicm" },
+          button_title: "업무 페이지 열기",
+        }),
+      }),
+    });
+
+  let res = await doSend(accessToken);
+
+  // access_token 만료(401) → refresh_token으로 갱신 후 재시도
+  if (res.status === 401 && refreshToken) {
+    console.log(`[${userRole}] access_token 만료 → 자동 갱신 시도`);
+
+    const newTokens = await refreshAccessToken(refreshToken);
+
+    // DB에 새 토큰 저장
+    await supabase.from("kakao_tokens").upsert(
+      {
+        user_role:     userRole,
+        access_token:  newTokens.access_token,
+        refresh_token: newTokens.refresh_token,
+        updated_at:    new Date().toISOString(),
+      },
+      { onConflict: "user_role" }
+    );
+
+    console.log(`[${userRole}] 토큰 갱신 완료 → 재발송`);
+    res = await doSend(newTokens.access_token);
+  }
+
+  const body = await res.text();
+  return { ok: res.ok, status: res.status, body };
+}
+
+// ─────────────────────────────────────────────
+// 3. 메시지 포맷 빌더
+// ─────────────────────────────────────────────
 function buildMessage(body: Record<string, string>): string {
   const {
     type, caseNo, customerName, customerType, equipmentTon,
@@ -64,28 +112,29 @@ function buildMessage(body: Record<string, string>): string {
   } = body;
   const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
 
-  // ── HD현대 신규접수 ──────────────────────────────────────
   if (type === "new") {
     return [
-      "[HD현대(부산/경남) 할부 신규 접수]", "",
+      "[HD현대(부산/경남) 할부 신규 접수]",
+      "",
       `번호: ${caseNo ?? "-"}`,
       `고객: ${customerName} (${customerType})`,
       `장비: ${equipmentTon ?? "-"}`,
       `금융사: ${financeCompany ?? "-"}`,
-      installmentPrincipal ? `할부원금: ${Number(installmentPrincipal).toLocaleString("ko-KR")}원` : "",
+      installmentPrincipal
+        ? `할부원금: ${Number(installmentPrincipal).toLocaleString("ko-KR")}원` : "",
       `영업: ${salesRep ?? "-"}`,
       `시간: ${now}`,
     ].filter(Boolean).join("\n");
   }
 
-  // ── 확정 ────────────────────────────────────────────────
   if (type === "status_change" && nextStatus === "확정") {
     const purchase  = purchaseAmount       ? Number(purchaseAmount)       : null;
     const principal = installmentPrincipal ? Number(installmentPrincipal) : null;
     const downRate  = (purchase && principal)
       ? `${(((purchase - principal) / purchase) * 100).toFixed(1)}%` : null;
     return [
-      "[HD현대(부산/경남) 할부 확정]", "",
+      "[HD현대(부산/경남) 할부 확정]",
+      "",
       `번호: ${caseNo ?? "-"}`,
       `고객: ${customerName} (${customerType})`,
       `장비: ${equipmentTon ?? "-"}`,
@@ -94,19 +143,19 @@ function buildMessage(body: Record<string, string>): string {
       principal   ? `할부원금: ${principal.toLocaleString("ko-KR")}원` : "",
       downRate    ? `선수율: ${downRate}`                              : "",
       interestRate ? `금리: ${interestRate}%`                         : "",
-      incentive    ? `인센티브: ${incentive}%`                        : "",
+      incentive    ? `인센티브: ${incentive}%`                         : "",
       vatDeferredAmount ? `부가세후불: ${Number(vatDeferredAmount).toLocaleString("ko-KR")}원` : "",
-      loanPeriod   ? `대출기간: ${loanPeriod}개월`                    : "",
+      loanPeriod   ? `대출기간: ${loanPeriod}개월`                     : "",
       `영업: ${salesRep ?? "-"}`,
       `시간: ${now}`,
     ].filter(Boolean).join("\n");
   }
 
-  // ── 단계 변경 (승인/보완/거절 포함) ─────────────────────
   if (type === "status_change") {
     const isCreditStatus = ["승인", "보완", "거절"].includes(nextStatus);
     return [
-      "[HD현대(부산/경남) 할부 진행 알림]", "",
+      "[HD현대(부산/경남) 할부 진행 알림]",
+      "",
       `번호: ${caseNo ?? "-"}`,
       `고객: ${customerName} (${customerType})`,
       `장비: ${equipmentTon ?? "-"}`,
@@ -114,19 +163,23 @@ function buildMessage(body: Record<string, string>): string {
       installmentPrincipal ? `할부원금: ${Number(installmentPrincipal).toLocaleString("ko-KR")}원` : "",
       `상태: ${prevStatus} → ${nextStatus}`,
       ...(isCreditStatus ? [
+        // 승인/보완 공통
         ...(nextStatus !== "거절" ? [
           body.bizHistory      ? `업력: ${body.bizHistory}`               : "",
           body.niceScore       ? `NICE 점수: ${body.niceScore}점`         : "",
           body.creditRate      ? `적용금리: ${body.creditRate}%`          : "",
           body.creditIncentive ? `적용인센티브: ${body.creditIncentive}%` : "",
         ] : []),
+        // 승인 전용
         ...(nextStatus === "승인" ? [
-          body.loanLimit  ? `대출한도: ${Number(body.loanLimit).toLocaleString("ko-KR")}원` : "",
+          body.loanLimit ? `대출한도: ${Number(body.loanLimit).toLocaleString("ko-KR")}원` : "",
           body.creditNote ? `특이사항: ${body.creditNote}` : "",
         ] : []),
+        // 보완 전용
         ...(nextStatus === "보완" ? [
           body.creditNote ? `보완사항: ${body.creditNote}` : "",
         ] : []),
+        // 거절 전용
         ...(nextStatus === "거절" ? [
           body.creditNote ? `거절사유: ${body.creditNote}` : "",
         ] : []),
@@ -136,74 +189,68 @@ function buildMessage(body: Record<string, string>): string {
     ].filter(Boolean).join("\n");
   }
 
-  // ── 정보 수정 ────────────────────────────────────────────
   if (type === "edit") {
-    const purchase  = body.purchaseAmount       ? Number(body.purchaseAmount)       : null;
-    const principal = body.installmentPrincipal ? Number(body.installmentPrincipal) : null;
-    const downRate  = (purchase && principal)
-      ? `${(((purchase - principal) / purchase) * 100).toFixed(1)}%` : null;
     return [
-      "[HD현대(부산/경남) 할부 정보 수정]", "",
+      "[HD현대(부산/경남) 할부 정보 수정]",
+      "",
       `번호: ${caseNo ?? "-"}`,
       `고객: ${customerName} (${customerType})`,
-      `장비: ${equipmentTon ?? "-"}`,
-      `금융사: ${financeCompany ?? "-"}`,
-      purchase    ? `차량가격: ${purchase.toLocaleString("ko-KR")}원`  : "",
-      principal   ? `할부원금: ${principal.toLocaleString("ko-KR")}원` : "",
-      downRate    ? `선수율: ${downRate}`                              : "",
-      body.interestRate     ? `금리: ${body.interestRate}%`           : "",
-      body.incentive        ? `인센티브: ${body.incentive}%`          : "",
-      body.vatDeferredAmount ? `부가세후불: ${Number(body.vatDeferredAmount).toLocaleString("ko-KR")}원` : "",
-      body.loanPeriod       ? `대출기간: ${body.loanPeriod}개월`      : "",
-      `영업: ${salesRep ?? "-"}`,
       `현재단계: ${prevStatus ?? "-"}`,
+      `영업: ${salesRep ?? "-"}`,
+      "",
+      "── 변경사항 ──",
+      body.changedSummary ?? "변경사항 없음",
+      "",
       `시간: ${now}`,
     ].filter(Boolean).join("\n");
   }
 
-  // ── 차량등록증 업로드 ─────────────────────────────────────
   if (type === "vehicle_reg_upload") {
     return [
-      "[HD현대(부산/경남) 차량등록증 업로드]", "",
+      "[HD현대(부산/경남) 차량등록증 업로드]",
+      "",
       `번호: ${caseNo ?? "-"}`,
       `고객: ${customerName} (${customerType})`,
       `장비: ${equipmentTon ?? "-"}`,
       financeCompany ? `금융사: ${financeCompany}` : "",
-      `영업: ${salesRep ?? "-"}`, "",
+      `영업: ${salesRep ?? "-"}`,
+      "",
       "차량(굴삭기) 등록이 완료되었습니다.",
       `시간: ${now}`,
     ].filter(Boolean).join("\n");
   }
 
-  // ── 세금계산서 업로드 ─────────────────────────────────────
   if (type === "tax_invoice_upload") {
     return [
-      "[HD현대(부산/경남) 세금계산서 업로드]", "",
+      "[HD현대(부산/경남) 세금계산서 업로드]",
+      "",
       `번호: ${caseNo ?? "-"}`,
       `고객: ${customerName} (${customerType})`,
       `장비: ${equipmentTon ?? "-"}`,
       financeCompany ? `금융사: ${financeCompany}` : "",
-      `영업: ${salesRep ?? "-"}`, "",
+      `영업: ${salesRep ?? "-"}`,
+      "",
       "세금계산서가 업로드되었습니다.",
       `시간: ${now}`,
     ].filter(Boolean).join("\n");
   }
 
-  // ── 인센티브 지급 ─────────────────────────────────────────
   if (type === "incentive_paid") {
     return [
-      "[HD현대(부산/경남) 인센티브 지급]", "",
+      "[HD현대(부산/경남) 인센티브 지급]",
+      "",
       `번호: ${caseNo ?? "-"}`,
       `고객: ${customerName} (${customerType})`,
       `장비: ${equipmentTon ?? "-"}`,
       financeCompany ? `금융사: ${financeCompany}` : "",
-      `영업: ${salesRep ?? "-"}`, "",
+      `영업: ${salesRep ?? "-"}`,
+      "",
       "✅ 인센티브 지급 완료",
       `시간: ${now}`,
     ].filter(Boolean).join("\n");
   }
 
-  // ─── 나르미 메시지 타입 ───────────────────────────────────
+  // ─── 나르미 메시지 타입 ───────────────────────────
   const statusKo: Record<string, string> = {
     todo: "보류", insurance: "보험", docs: "등록서류",
     registered: "등록완료", completed: "차량등록증 완료",
@@ -223,11 +270,11 @@ function buildMessage(body: Record<string, string>): string {
   if (type === "narumi_new") {
     return [
       "[나르미 신규 등록]", "",
-      body.vin          ? `VIN: ${body.vin}`             : "",
-      customerName      ? `고객: ${customerName}`         : "",
-      salesRep          ? `영업: ${salesRep}`             : "",
-      body.deliveryDate ? `출고일: ${body.deliveryDate}`  : "",
-      body.specialNote  ? `특이사항: ${body.specialNote}` : "",
+      body.vin          ? `VIN: ${body.vin}`                    : "",
+      customerName      ? `고객: ${customerName}`               : "",
+      salesRep          ? `영업: ${salesRep}`                   : "",
+      body.deliveryDate ? `출고일: ${body.deliveryDate}`        : "",
+      body.specialNote  ? `특이사항: ${body.specialNote}`       : "",
       `시간: ${now}`,
     ].filter(Boolean).join("\n");
   }
@@ -235,9 +282,9 @@ function buildMessage(body: Record<string, string>): string {
   if (type === "narumi_status") {
     return [
       "[나르미 단계 변경]", "",
-      body.vin     ? `VIN: ${body.vin}`      : "",
-      customerName ? `고객: ${customerName}` : "",
-      salesRep     ? `영업: ${salesRep}`     : "",
+      body.vin     ? `VIN: ${body.vin}`                                                          : "",
+      customerName ? `고객: ${customerName}`                                                     : "",
+      salesRep     ? `영업: ${salesRep}`                                                         : "",
       `상태: ${statusKo[body.prevStatus] ?? body.prevStatus ?? "-"} → ${statusKo[body.nextStatus] ?? body.nextStatus ?? "-"}`,
       `시간: ${now}`,
     ].filter(Boolean).join("\n");
@@ -246,7 +293,7 @@ function buildMessage(body: Record<string, string>): string {
   if (type === "narumi_vehicle_doc") {
     return [
       "[나르미 차량등록증 업로드]", "",
-      body.vin     ? `VIN: ${body.vin}`      : "",
+      body.vin     ? `VIN: ${body.vin}`   : "",
       customerName ? `고객: ${customerName}` : "",
       salesRep     ? `영업: ${salesRep}`     : "",
       "", "차량등록증이 업로드되었습니다.",
@@ -254,29 +301,58 @@ function buildMessage(body: Record<string, string>): string {
     ].filter(Boolean).join("\n");
   }
 
-  throw new Error(`알 수 없는 type: ${type}`);
+  throw new Error("type은 'new' 또는 'status_change' 이어야 합니다.");
 }
 
-// ─── 메인 핸들러 ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// 4. 메인 서버
+// ─────────────────────────────────────────────
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
 
   try {
-    const body    = await req.json() as Record<string, string>;
-    const message = buildMessage(body);
-    console.log("[SMS 발송] 메시지 앞부분:", message.slice(0, 80));
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    const body     = await req.json();
+    const message  = buildMessage(body);
+    console.log("[send-hyundaicm-kakao] sending:", message.slice(0, 50));
 
-    await sendSms(message);
+    // DB에서 토큰 조회
+    const { data: tokens, error: dbErr } = await supabase
+      .from("kakao_tokens")
+      .select("user_role, access_token, refresh_token");
 
+    if (dbErr) throw new Error(`DB 조회 실패: ${dbErr.message}`);
+    if (!tokens || tokens.length === 0) {
+      return new Response(
+        JSON.stringify({ warning: "등록된 카카오 토큰이 없습니다. /hyundaicm/kakao-connect 에서 토큰을 등록해주세요." }),
+        { headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+      );
+    }
+
+    const results = [];
+    for (const t of tokens) {
+      const result = await sendKakaoMe(
+        t.user_role,
+        t.access_token,
+        t.refresh_token ?? "",
+        message,
+        supabase
+      );
+      console.log(`[${t.user_role}] status=${result.status} body=${result.body}`);
+      results.push({ role: t.user_role, ...result });
+    }
+
+    const allOk = results.every(r => r.ok);
     return new Response(
-      JSON.stringify({ success: true, recipients: RECIPIENTS }),
+      JSON.stringify({ success: allOk, results }),
       { headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
     );
+
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "알 수 없는 오류";
-    console.error("[SMS 발송 오류]:", msg);
+    console.error("[send-hyundaicm-kakao] error:", msg);
     return new Response(
       JSON.stringify({ error: msg }),
       { status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
