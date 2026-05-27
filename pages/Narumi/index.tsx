@@ -743,15 +743,17 @@ export default function NarumiPage() {
       );
       alert(error.message);
     } else {
-      // 카카오 알림
-      sendNarumiKakao({
-        type:        "narumi_status",
-        vin:         target.vin,
-        customerName: target.customer_name,
-        salesRep:    target.sales_rep,
-        prevStatus:  target.status ?? deriveStatus(target),
-        nextStatus,
-      });
+      // 등록완료 시만 SMS 발송
+      if (key === "is_registered" && nextVal === true) {
+        sendNarumiKakao({
+          type:        "narumi_status",
+          vin:         target.vin,
+          customerName: target.customer_name,
+          salesRep:    target.sales_rep,
+          prevStatus:  target.status ?? deriveStatus(target),
+          nextStatus:  "registered",
+        });
+      }
     }
   };
 
@@ -783,15 +785,7 @@ export default function NarumiPage() {
       throw error;
     }
 
-    // 카카오 알림
-    sendNarumiKakao({
-      type:        "narumi_status",
-      vin:         row.vin,
-      customerName: row.customer_name,
-      salesRep:    row.sales_rep,
-      prevStatus:  row.status ?? deriveStatus(row),
-      nextStatus,
-    });
+    // 보험확인 단계는 SMS 미발송
   };
 
   const hasIssuedInsuranceCase = async (vin: string) => {
@@ -951,6 +945,17 @@ export default function NarumiPage() {
       );
 
       closePostalForm();
+
+      // SMS 발송 (우편발송 — 등기번호 포함)
+      sendNarumiKakao({
+        type:         "narumi_postal",
+        vin:          row.vin,
+        customerName: row.customer_name,
+        salesRep:     row.sales_rep ?? "-",
+        trackingNo:   tracking,
+        sentDate,
+      });
+
     } catch (e: any) {
       alert(e?.message || "우편발송 저장 실패");
     } finally {

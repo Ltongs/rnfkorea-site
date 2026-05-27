@@ -1,11 +1,19 @@
 // supabase/functions/send-hyundaicm-kakao/index.ts
+// 발송 방식: 솔라피 SMS
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const KAKAO_REST_API_KEY  = Deno.env.get("KAKAO_REST_API_KEY")  ?? "";
-const KAKAO_CLIENT_SECRET = Deno.env.get("KAKAO_CLIENT_SECRET") ?? "";
-const SUPABASE_URL        = Deno.env.get("SUPABASE_URL")        ?? "";
-const SUPABASE_SERVICE_KEY = Deno.env.get("SERVICE_ROLE_KEY") ?? "";
+// ─── 솔라피 환경변수 ─────────────────────────────────────────
+const SOLAPI_API_KEY    = Deno.env.get("SOLAPI_API_KEY")    ?? "";
+const SOLAPI_API_SECRET = Deno.env.get("SOLAPI_API_SECRET") ?? "";
+const SENDER_PHONE      = Deno.env.get("SOLAPI_SENDER")     ?? "01050549006";
+
+// 현대건설기계 수신자
+const RECIPIENTS_RAW = Deno.env.get("SMS_RECIPIENTS") ?? "01050549006,01095250707,01079310339";
+const RECIPIENTS     = RECIPIENTS_RAW.split(",").map((n) => n.replace(/\D/g, ""));
+
+// 나르미 전용 수신자
+const NARUMI_RECIPIENTS_RAW = Deno.env.get("NARUMI_SMS_RECIPIENTS") ?? "01050549006,01020793025";
+const NARUMI_RECIPIENTS     = NARUMI_RECIPIENTS_RAW.split(",").map((n) => n.replace(/\D/g, ""));
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin":  "*",
@@ -13,94 +21,40 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// ─────────────────────────────────────────────
-// 1. access_token 갱신
-// ─────────────────────────────────────────────
-async function refreshAccessToken(refreshToken: string): Promise<{
-  access_token: string;
-  refresh_token: string;
-}> {
-  const res = await fetch("https://kauth.kakao.com/oauth/token", {
+// ─── 솔라피 HMAC-SHA256 인증 ─────────────────────────────────
+async function getSolapiAuthHeader(): Promise<string> {
+  const date = new Date().toISOString();
+  const salt = crypto.randomUUID().replace(/-/g, "").slice(0, 32);
+  const encoder   = new TextEncoder();
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw", encoder.encode(SOLAPI_API_SECRET),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
+  const sigBuffer = await crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(date + salt));
+  const signature = Array.from(new Uint8Array(sigBuffer))
+    .map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `HMAC-SHA256 apiKey=${SOLAPI_API_KEY}, date=${date}, salt=${salt}, signature=${signature}`;
+}
+
+// ─── SMS 발송 ────────────────────────────────────────────────
+async function sendSms(text: string, recipients: string[] = RECIPIENTS): Promise<void> {
+  const messages   = recipients.map((to) => ({ to, from: SENDER_PHONE, text }));
+  const authHeader = await getSolapiAuthHeader();
+  const res = await fetch("https://api.solapi.com/messages/v4/send-many", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type:    "refresh_token",
-      client_id:     KAKAO_REST_API_KEY,
-      client_secret: KAKAO_CLIENT_SECRET,
-      refresh_token: refreshToken,
-    }),
+    headers: { "Content-Type": "application/json", Authorization: authHeader },
+    body: JSON.stringify({ messages }),
   });
-
   if (!res.ok) {
-    const err = await res.json();
-    throw new Error(`토큰 갱신 실패: ${err.error_description ?? JSON.stringify(err)}`);
+    const err = await res.text();
+    console.error("솔라피 오류:", err);
+    throw new Error(`SMS 발송 실패: ${err}`);
   }
-
-  const data = await res.json();
-  return {
-    access_token:  data.access_token,
-    // refresh_token은 갱신되지 않을 수도 있으므로 기존 값 유지
-    refresh_token: data.refresh_token ?? refreshToken,
-  };
+  console.log("솔라피 결과:", JSON.stringify(await res.json()));
 }
 
 // ─────────────────────────────────────────────
-// 2. 카카오 나에게 보내기 (만료 시 자동 갱신)
-// ─────────────────────────────────────────────
-async function sendKakaoMe(
-  userRole: string,
-  accessToken: string,
-  refreshToken: string,
-  text: string,
-  supabase: ReturnType<typeof createClient>
-): Promise<{ ok: boolean; status: number; body: string }> {
-
-  const doSend = async (token: string) =>
-    fetch("https://kapi.kakao.com/v2/api/talk/memo/default/send", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Content-Type":  "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        template_object: JSON.stringify({
-          object_type:  "text",
-          text,
-          link:         { web_url: "https://www.rnfkorea.co.kr/hyundaicm" },
-          button_title: "업무 페이지 열기",
-        }),
-      }),
-    });
-
-  let res = await doSend(accessToken);
-
-  // access_token 만료(401) → refresh_token으로 갱신 후 재시도
-  if (res.status === 401 && refreshToken) {
-    console.log(`[${userRole}] access_token 만료 → 자동 갱신 시도`);
-
-    const newTokens = await refreshAccessToken(refreshToken);
-
-    // DB에 새 토큰 저장
-    await supabase.from("kakao_tokens").upsert(
-      {
-        user_role:     userRole,
-        access_token:  newTokens.access_token,
-        refresh_token: newTokens.refresh_token,
-        updated_at:    new Date().toISOString(),
-      },
-      { onConflict: "user_role" }
-    );
-
-    console.log(`[${userRole}] 토큰 갱신 완료 → 재발송`);
-    res = await doSend(newTokens.access_token);
-  }
-
-  const body = await res.text();
-  return { ok: res.ok, status: res.status, body };
-}
-
-// ─────────────────────────────────────────────
-// 3. 메시지 포맷 빌더
+// 메시지 포맷 빌더
 // ─────────────────────────────────────────────
 function buildMessage(body: Record<string, string>): string {
   const {
@@ -301,11 +255,54 @@ function buildMessage(body: Record<string, string>): string {
     ].filter(Boolean).join("\n");
   }
 
+
+  // ── 나르미 등록완료 ─────────────────────────────────────
+  if (type === "narumi_status" && (body.nextStatus === "registered" || body.nextStatus === "등록완료")) {
+    return [
+      "[나르미 등록완료]", "",
+      body.vin     ? `VIN: ${body.vin}`      : "",
+      customerName ? `고객: ${customerName}` : "",
+      salesRep     ? `영업: ${salesRep}`     : "",
+      "", "✅ 차량 등록이 완료되었습니다.",
+      `시간: ${now}`,
+    ].filter(Boolean).join("\n");
+  }
+
+  // ── 나르미 우편발송 ─────────────────────────────────────
+  if (type === "narumi_postal") {
+    return [
+      "[나르미 우편발송]", "",
+      body.vin        ? `VIN: ${body.vin}`            : "",
+      customerName    ? `고객: ${customerName}`        : "",
+      salesRep        ? `영업: ${salesRep}`            : "",
+      body.trackingNo ? `등기번호: ${body.trackingNo}` : "",
+      body.sentDate   ? `발송일: ${body.sentDate}`     : "",
+      "", "📮 등기우편이 발송되었습니다.",
+      `시간: ${now}`,
+    ].filter(Boolean).join("\n");
+  }
+
+  // edit 타입 (변경사항 상세 포함)
+  if (type === "edit") {
+    return [
+      "[HD현대(부산/경남) 할부 정보 수정]", "",
+      `번호: ${caseNo ?? "-"}`,
+      `고객: ${customerName} (${customerType})`,
+      `현재단계: ${prevStatus ?? "-"}`,
+      `영업: ${salesRep ?? "-"}`,
+      "",
+      "── 변경사항 ──",
+      body.changedSummary ?? "변경사항 없음",
+      "",
+      `시간: ${now}`,
+    ].filter(Boolean).join("\n");
+  }
+
   throw new Error("type은 'new' 또는 'status_change' 이어야 합니다.");
 }
 
 // ─────────────────────────────────────────────
-// 4. 메인 서버
+// 메인 서버
 // ─────────────────────────────────────────────
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -313,46 +310,22 @@ serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-    const body     = await req.json();
-    const message  = buildMessage(body);
-    console.log("[send-hyundaicm-kakao] sending:", message.slice(0, 50));
+    const body    = await req.json() as Record<string, string>;
+    const message = buildMessage(body);
+    console.log("[SMS 발송]:", message.slice(0, 80));
 
-    // DB에서 토큰 조회
-    const { data: tokens, error: dbErr } = await supabase
-      .from("kakao_tokens")
-      .select("user_role, access_token, refresh_token");
+    // 나르미 타입은 나르미 전용 수신자로 발송
+    const isNarumi = typeof body.type === "string" && body.type.startsWith("narumi");
+    await sendSms(message, isNarumi ? NARUMI_RECIPIENTS : RECIPIENTS);
 
-    if (dbErr) throw new Error(`DB 조회 실패: ${dbErr.message}`);
-    if (!tokens || tokens.length === 0) {
-      return new Response(
-        JSON.stringify({ warning: "등록된 카카오 토큰이 없습니다. /hyundaicm/kakao-connect 에서 토큰을 등록해주세요." }),
-        { headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
-      );
-    }
-
-    const results = [];
-    for (const t of tokens) {
-      const result = await sendKakaoMe(
-        t.user_role,
-        t.access_token,
-        t.refresh_token ?? "",
-        message,
-        supabase
-      );
-      console.log(`[${t.user_role}] status=${result.status} body=${result.body}`);
-      results.push({ role: t.user_role, ...result });
-    }
-
-    const allOk = results.every(r => r.ok);
     return new Response(
-      JSON.stringify({ success: allOk, results }),
+      JSON.stringify({ success: true, recipients: isNarumi ? NARUMI_RECIPIENTS : RECIPIENTS }),
       { headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
     );
 
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "알 수 없는 오류";
-    console.error("[send-hyundaicm-kakao] error:", msg);
+    console.error("[SMS 오류]:", msg);
     return new Response(
       JSON.stringify({ error: msg }),
       { status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
