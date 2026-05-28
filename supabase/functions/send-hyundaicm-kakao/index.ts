@@ -210,17 +210,6 @@ function buildMessage(body: Record<string, string>): string {
     registered: "등록완료", completed: "차량등록증 완료",
   };
 
-  if (type === "narumi_insurance_confirmed") {
-    return [
-      "[나르미 보험확인완료]", "",
-      body.vin     ? `VIN: ${body.vin}`      : "",
-      customerName ? `고객: ${customerName}` : "",
-      salesRep     ? `영업: ${salesRep}`     : "",
-      "", "✅ 보험확인완료",
-      `시간: ${now}`,
-    ].filter(Boolean).join("\n");
-  }
-
   if (type === "narumi_new") {
     return [
       "[나르미 신규 등록]", "",
@@ -247,7 +236,7 @@ function buildMessage(body: Record<string, string>): string {
   if (type === "narumi_vehicle_doc") {
     return [
       "[나르미 차량등록증 업로드]", "",
-      body.vin     ? `VIN: ${body.vin}`   : "",
+      body.vin     ? `VIN: ${body.vin}`      : "",
       customerName ? `고객: ${customerName}` : "",
       salesRep     ? `영업: ${salesRep}`     : "",
       "", "차량등록증이 업로드되었습니다.",
@@ -255,15 +244,14 @@ function buildMessage(body: Record<string, string>): string {
     ].filter(Boolean).join("\n");
   }
 
-
-  // ── 나르미 등록완료 ─────────────────────────────────────
-  if (type === "narumi_status" && (body.nextStatus === "registered" || body.nextStatus === "등록완료")) {
+  // ── 나르미 등록서류 수령 ────────────────────────────────
+  if (type === "narumi_docs_ready") {
     return [
-      "[나르미 등록완료]", "",
+      "[나르미 등록서류 수령]", "",
       body.vin     ? `VIN: ${body.vin}`      : "",
       customerName ? `고객: ${customerName}` : "",
       salesRep     ? `영업: ${salesRep}`     : "",
-      "", "✅ 차량 등록이 완료되었습니다.",
+      "", "📄 등록서류를 수령하였습니다.",
       `시간: ${now}`,
     ].filter(Boolean).join("\n");
   }
@@ -282,23 +270,7 @@ function buildMessage(body: Record<string, string>): string {
     ].filter(Boolean).join("\n");
   }
 
-  // edit 타입 (변경사항 상세 포함)
-  if (type === "edit") {
-    return [
-      "[HD현대(부산/경남) 할부 정보 수정]", "",
-      `번호: ${caseNo ?? "-"}`,
-      `고객: ${customerName} (${customerType})`,
-      `현재단계: ${prevStatus ?? "-"}`,
-      `영업: ${salesRep ?? "-"}`,
-      "",
-      "── 변경사항 ──",
-      body.changedSummary ?? "변경사항 없음",
-      "",
-      `시간: ${now}`,
-    ].filter(Boolean).join("\n");
-  }
-
-  throw new Error("type은 'new' 또는 'status_change' 이어야 합니다.");
+  throw new Error(`알 수 없는 type: ${type}`);
 }
 
 // ─────────────────────────────────────────────
