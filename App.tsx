@@ -74,6 +74,7 @@ import ExportShopPage from "./pages/Export/ExportShopPage";
 import ExportInquiryPage from "./pages/Export/ExportInquiryPage";
 import BatteryShopPage from "./pages/battery-shop";
 import TireRentalPage from "./pages/TireRental/index";
+import SecretaryPage from "./pages/secretary/index";
 
 /* utils / config */
 import { fetchTireRows } from "./lib/tiresCsv";
@@ -1290,6 +1291,7 @@ const Footer: React.FC = () => {
             <h4 className="font-bold text-base mb-4">Etc</h4>
             <ul className="space-y-2 text-sm text-gray-600">
               <li><Link to="/sitemap" className="hover:text-orange-500 transition-colors">- 사이트맵</Link></li>
+              <li><Link to="/work/secretary" className="hover:text-orange-500 transition-colors">- AI 비서</Link></li>
               <li>
                 <button type="button" onClick={goNarumi} className="hover:text-orange-500 transition-colors text-left">
                   - 나르미업무
@@ -1444,6 +1446,12 @@ const AppRoutes = () => {
           <Route
             path="/work/dashboard"
             element={isAdminLevel ? <DashboardPage /> : <Navigate to="/" replace />}
+          />
+
+          {/* AI 비서 */}
+          <Route
+            path="/work/secretary"
+            element={isAdminLevel ? <SecretaryPage /> : <Navigate to="/" replace />}
           />
 
           {/* legacy */}

@@ -314,6 +314,88 @@ export default function HyundaiCMPage() {
   // ── 인센티브 지급 완료 상태 (한 번 누르면 비활성화) ──
   const [incentivePaidIds, setIncentivePaidIds] = useState<Set<string>>(new Set());
 
+  // ── 보류(재통화 예약) ──
+  const KAKAO_RECIPIENTS = [
+    { id: "tongs",    label: "이동수 (관리자)" },
+    { id: "p2001103", label: "현대CM 담당자" },
+    { id: "nhcap",    label: "NH캐피탈 담당자" },
+  ] as const;
+  type RecipientId = typeof KAKAO_RECIPIENTS[number]["id"];
+
+  const [holdModal,        setHoldModal]        = useState<HCMTask | null>(null);
+  const [holdDate,         setHoldDate]         = useState("");        // YYYY-MM-DD
+  const [holdTime,         setHoldTime]         = useState("10:00");   // HH:MM
+  const [holdNote,         setHoldNote]         = useState("");
+  const [holdRecipients,   setHoldRecipients]   = useState<RecipientId[]>([]);
+  const [holdSaving,       setHoldSaving]       = useState(false);
+  // rowId → 보류 정보 캐시
+  const [holdMap, setHoldMap] = useState<Record<string, { scheduled_at: string; note: string | null; recipients: string[] }>>({});
+
+  const openHoldModal = (row: HCMTask) => {
+    setHoldModal(row);
+    // 기본값: 내일 10:00
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const ymd = tomorrow.toISOString().slice(0, 10);
+    setHoldDate(ymd);
+    setHoldTime("10:00");
+    setHoldNote("");
+    setHoldRecipients([]);
+  };
+
+  const saveHold = async () => {
+    if (!holdModal) return;
+    if (holdRecipients.length === 0) { alert("알림 받을 담당자를 1명 이상 선택해주세요."); return; }
+    if (!holdDate) { alert("날짜를 선택해주세요."); return; }
+
+    setHoldSaving(true);
+    try {
+      const scheduledAt = new Date(`${holdDate}T${holdTime}:00+09:00`).toISOString();
+      const payload = {
+        record_id:    String(holdModal.id),
+        scheduled_at: scheduledAt,
+        note:         holdNote.trim() || null,
+        recipients:   holdRecipients,
+        is_sent:      false,
+      };
+      // upsert: 같은 record_id의 미발송 보류를 덮어씀
+      const { error } = await supabase
+        .from("hcm_holds")
+        .upsert(payload, { onConflict: "record_id" });
+      if (error) throw error;
+
+      setHoldMap((prev) => ({
+        ...prev,
+        [String(holdModal.id)]: { scheduled_at: scheduledAt, note: holdNote.trim() || null, recipients: holdRecipients },
+      }));
+
+      // 카카오 알림 — 보류 등록 즉시: 전체 수신자에게 "보류 등록됨" 알림
+      // (send-hyundaicm-kakao는 hold_registered 타입을 전체 RECIPIENTS로 발송)
+      const row = holdModal;
+      sendKakaoNotify({
+        type:         "hold_registered",
+        caseNo:       caseNoMap[String(row.id)] ?? String(row.id),
+        customerName: row.customer_name,
+        customerType: row.customer_type,
+        equipmentTon: row.equipment_ton  ?? "",
+        salesRep:     row.sales_rep      ?? "",
+        scheduledAt,  // ISO 문자열 → Edge Function에서 KST 포맷팅
+        holdNote:     holdNote.trim() || "",
+        // 선택 수신자 이름 목록 (메시지 내 참고용)
+        recipientNames: holdRecipients
+          .map((id) => KAKAO_RECIPIENTS.find((r) => r.id === id)?.label ?? id)
+          .join(", "),
+      } as any);
+
+      setHoldModal(null);
+      alert(`보류 예약 완료 — ${holdDate} ${holdTime} 알림 발송 예정`);
+    } catch (e: any) {
+      alert(e?.message || "보류 저장 실패");
+    } finally {
+      setHoldSaving(false);
+    }
+  };
+
   // ── 확정 카드 펼침/접힘 ──
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const toggleExpand = (id: string | number) => {
@@ -560,6 +642,23 @@ export default function HyundaiCMPage() {
 
       // 세금계산서 파일 목록 조회 (전체)
       fetchTaxInvoiceFiles(nextRows.map((r) => r.id));
+
+      // 보류(재통화 예약) 목록 조회 — 미발송 건만
+      {
+        const ids = nextRows.map((r) => String(r.id));
+        if (ids.length > 0) {
+          const { data: holds } = await supabase
+            .from("hcm_holds")
+            .select("record_id, scheduled_at, note, recipients")
+            .in("record_id", ids)
+            .eq("is_sent", false);
+          if (holds) {
+            const hm: Record<string, { scheduled_at: string; note: string | null; recipients: string[] }> = {};
+            (holds as any[]).forEach((h) => { hm[String(h.record_id)] = { scheduled_at: h.scheduled_at, note: h.note, recipients: h.recipients ?? [] }; });
+            setHoldMap(hm);
+          }
+        }
+      }
     } catch (e: any) {
       setErr(e?.message || "데이터 로드 실패");
     } finally {
@@ -1411,6 +1510,16 @@ export default function HyundaiCMPage() {
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-xl border border-gray-200 bg-gray-50 text-xs font-medium text-gray-600">{r.customer_type}</span>
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-xl border text-xs font-semibold ${statusStyle(r.status)}`}>{r.status}</span>
+                    {holdMap[String(r.id)] && r.status !== "확정" && r.status !== "거절" && (() => {
+                      const h = holdMap[String(r.id)];
+                      const d = new Date(h.scheduled_at);
+                      const fmt = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+                      return (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 text-xs font-semibold">
+                          ⏰ 보류 {fmt}
+                        </span>
+                      );
+                    })()}
                     {shouldMaskPhone(r) && (
                       <span className="inline-flex items-center px-2 py-0.5 rounded-xl bg-gray-100 border border-gray-200 text-gray-400 text-[10px] font-medium">개인정보 마스킹</span>
                     )}
@@ -1575,6 +1684,20 @@ export default function HyundaiCMPage() {
                           >{s}</button>
                           );
                         })}
+
+                        {/* 보류(재통화 예약) 버튼 */}
+                        {canChangeStatus && r.status !== "확정" && r.status !== "거절" && (
+                          <button
+                            onClick={() => openHoldModal(r)}
+                            className={`px-3 py-1 rounded-2xl border text-xs font-semibold transition-all
+                              ${holdMap[String(r.id)]
+                                ? "bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100"
+                                : "bg-white border-gray-200 text-gray-500 hover:border-amber-300 hover:text-amber-700"
+                              }`}
+                          >
+                            {holdMap[String(r.id)] ? "⏰ 보류중" : "⏰ 보류"}
+                          </button>
+                        )}
                       </div>
 
                       {/* 2행: 업로드 버튼 + 인센티브 지급 버튼 — 확정 상태일 때만 표시 */}
@@ -2215,6 +2338,132 @@ export default function HyundaiCMPage() {
                 disabled={creditSaving}
                 className={btnPrimary}
               >{creditSaving ? "저장중..." : `${creditModal.next} 저장`}</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── 보류(재통화 예약) 모달 ── */}
+      {holdModal && (
+        <div className="fixed inset-0 z-[135] flex items-center justify-center bg-black/40 px-4 py-6">
+          <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white shadow-2xl flex flex-col max-h-full overflow-hidden">
+            <div className="overflow-y-auto flex-1 p-6">
+              <p className="text-sm font-medium tracking-[0.12em] uppercase text-amber-600 mb-2">보류 / 재통화 예약</p>
+              <h2 className="text-xl font-semibold text-navy-900 mb-1">알림 예약</h2>
+              <p className="text-sm text-gray-500 mb-5">
+                {holdModal.customer_name} ({holdModal.customer_type})
+              </p>
+
+              <div className="space-y-4">
+                {/* 날짜 */}
+                <div>
+                  <label className={labelClass}>알림 날짜 *</label>
+                  <input
+                    type="date"
+                    value={holdDate}
+                    onChange={(e) => setHoldDate(e.target.value)}
+                    min={new Date().toISOString().slice(0, 10)}
+                    className={inputClass}
+                    disabled={holdSaving}
+                  />
+                </div>
+
+                {/* 시간 */}
+                <div>
+                  <label className={labelClass}>알림 시간 *</label>
+                  <div className="flex flex-wrap gap-2">
+                    {["09:00", "10:00", "11:00", "14:00", "15:00", "16:00"].map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setHoldTime(t)}
+                        disabled={holdSaving}
+                        className={`px-3 py-1.5 rounded-2xl border text-xs font-semibold transition-all ${
+                          holdTime === t
+                            ? "bg-amber-500 border-amber-500 text-white"
+                            : "bg-white border-gray-200 text-gray-600 hover:border-amber-300"
+                        }`}
+                      >{t}</button>
+                    ))}
+                    <input
+                      type="time"
+                      value={holdTime}
+                      onChange={(e) => setHoldTime(e.target.value)}
+                      disabled={holdSaving}
+                      className="h-[34px] px-3 rounded-2xl border border-gray-200 text-xs font-medium text-navy-900 focus:outline-none focus:border-amber-400 transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* 알림 받을 담당자 */}
+                <div>
+                  <label className={labelClass}>알림 받을 담당자 * (복수 선택 가능)</label>
+                  <div className="space-y-2">
+                    {KAKAO_RECIPIENTS.map((rec) => {
+                      const checked = holdRecipients.includes(rec.id as RecipientId);
+                      return (
+                        <button
+                          key={rec.id}
+                          type="button"
+                          onClick={() => {
+                            setHoldRecipients((prev) =>
+                              checked
+                                ? prev.filter((id) => id !== rec.id)
+                                : [...prev, rec.id as RecipientId]
+                            );
+                          }}
+                          disabled={holdSaving}
+                          className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl border text-sm font-medium transition-all ${
+                            checked
+                              ? "bg-amber-50 border-amber-400 text-amber-800"
+                              : "bg-white border-gray-200 text-gray-600 hover:border-amber-200"
+                          }`}
+                        >
+                          <span className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 text-xs ${
+                            checked ? "bg-amber-500 border-amber-500 text-white" : "border-gray-300"
+                          }`}>{checked ? "✓" : ""}</span>
+                          {rec.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 메모 */}
+                <div>
+                  <label className={labelClass}>메모 (선택)</label>
+                  <textarea
+                    value={holdNote}
+                    onChange={(e) => setHoldNote(e.target.value)}
+                    placeholder="예: 익일 오전 재통화 요청, 고객이 서류 준비 중..."
+                    rows={3}
+                    className={inputClass + " resize-none"}
+                    disabled={holdSaving}
+                  />
+                </div>
+
+                {/* 예약 요약 */}
+                {holdDate && holdRecipients.length > 0 && (
+                  <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+                    <p className="font-semibold mb-1">📋 예약 요약</p>
+                    <p>일시: {holdDate} {holdTime}</p>
+                    <p>수신: {holdRecipients.map((id) => KAKAO_RECIPIENTS.find((r) => r.id === id)?.label ?? id).join(", ")}</p>
+                    {holdNote && <p className="mt-1 text-amber-600">메모: {holdNote}</p>}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 shrink-0">
+              <button
+                onClick={() => setHoldModal(null)}
+                disabled={holdSaving}
+                className={btnSecondary}
+              >취소</button>
+              <button
+                onClick={saveHold}
+                disabled={holdSaving}
+                className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl bg-amber-500 text-white font-semibold text-sm hover:bg-amber-600 transition-all disabled:opacity-50"
+              >{holdSaving ? "저장중..." : "⏰ 보류 예약"}</button>
             </div>
           </div>
         </div>

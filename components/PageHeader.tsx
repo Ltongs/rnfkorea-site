@@ -547,6 +547,16 @@ export default function PageHeader() {
                     </button>
                   )}
 
+                  {isAdminLevel && (
+                    <button
+                      type="button"
+                      className={`${dropItem} text-orange-600 font-semibold`}
+                      onClick={() => goWorkInternalOnly("/work/secretary")}
+                    >
+                      🤖 AI 비서
+                    </button>
+                  )}
+
                   {(isAdminLevel || isNarumi || isLotte || isInsuranceManager || !user) && (
                     <button
                       type="button"
