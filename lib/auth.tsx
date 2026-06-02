@@ -3,6 +3,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type { User, Session } from "@supabase/supabase-js";
@@ -141,10 +142,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession ?? null);
       setUser(nextSession?.user ?? null);
       setLoading(false);
+
+      // admin/subAdmin 로그인 시 AI비서 페이지로 자동 이동
+      if (event === "SIGNED_IN" && nextSession?.user) {
+        const { isAdmin, isSubAdmin } = getRoleFlags(nextSession.user.email);
+        if (isAdmin || isSubAdmin) {
+          // BrowserRouter 환경이므로 window.location 사용 (navigate 불필요)
+          const current = window.location.pathname;
+          if (current === "/" || current.includes("/login")) {
+            window.location.replace("/work/secretary");
+          }
+        }
+      }
     });
 
     return () => {

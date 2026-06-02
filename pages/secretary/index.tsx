@@ -166,115 +166,177 @@ function PendingCard({pu,onConfirm,onReject}:{pu:PendingUpdate[];onConfirm:(id:n
 }
 
 // ─── 미니 캘린더 ──────────────────────────────────────────────────────────────
-function MiniCalendar({onDateSelect,selectedDate}:{onDateSelect:(d:string)=>void;selectedDate:string}) {
+type CalSch = {id:number;title:string;schedule_date:string;start_time:string|null;category:string;is_done:boolean};
+type CalTdo = {id:number;title:string;due_date:string;priority:string};
+
+type PopupData = {
+  x:number; y:number;
+  schedules:CalSch[];
+  todos:CalTdo[];
+  gcalEvents?:{id:string;title:string;color:string}[];
+  dateLabel:string;
+};
+
+// 전역 팝업 상태 (body에 Portal로 렌더)
+let _setPopup: ((p:PopupData|null)=>void)|null = null;
+
+function CalPopupPortal() {
+  const [popup, setPopup] = useState<PopupData|null>(null);
+  useEffect(()=>{ _setPopup=setPopup; return ()=>{ _setPopup=null; }; },[]);
+  const CAT_COLOR:Record<string,string> = {meeting:"#60a5fa",call:"#fb923c",followup:"#c084fc",task:"#34d399"};
+  if(!popup) return null;
+  // 화면 오른쪽 넘치면 왼쪽에 표시
+  const left = popup.x + 230 > window.innerWidth ? popup.x - 240 : popup.x + 10;
+  const top  = Math.min(popup.y, window.innerHeight - 280);
+  return ReactDOM.createPortal(
+    <div style={{position:"fixed",top,left,zIndex:99999,background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:14,boxShadow:"0 8px 32px rgba(15,23,42,.2)",padding:14,width:226,pointerEvents:"none"}}>
+      <p style={{fontSize:10,fontWeight:600,color:"#94a3b8",marginBottom:10}}>{popup.dateLabel}</p>
+      {popup.schedules.length>0&&(
+        <div style={{marginBottom:popup.todos.length>0?10:0}}>
+          <p style={{fontSize:10,color:"#94a3b8",marginBottom:4}}>📅 일정</p>
+          {popup.schedules.map(s=>(
+            <div key={s.id} style={{display:"flex",gap:6,padding:"3px 0",opacity:s.is_done?.35:1}}>
+              <span style={{width:6,height:6,borderRadius:"50%",background:CAT_COLOR[s.category]??"#94a3b8",flexShrink:0,marginTop:4}}/>
+              <div>
+                <p style={{fontSize:12,color:"#1e293b",textDecoration:s.is_done?"line-through":"none",lineHeight:1.4}}>{s.title}</p>
+                {s.start_time&&<p style={{fontSize:10,color:"#94a3b8"}}>{s.start_time.slice(0,5)}</p>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {popup.todos.length>0&&(
+        <div style={popup.schedules.length>0?{paddingTop:8,borderTop:"1px solid #f1f5f9"}:{}}>
+          <p style={{fontSize:10,color:"#94a3b8",marginBottom:4}}>✅ 할일 마감</p>
+          {popup.todos.map(t=>(
+            <div key={t.id} style={{display:"flex",gap:6,padding:"3px 0"}}>
+              <span style={{fontSize:11,fontWeight:700,color:t.priority==="urgent"?"#ef4444":"#3b82f6",flexShrink:0}}>{t.priority==="urgent"?"!":"·"}</span>
+              <p style={{fontSize:12,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      {(popup.gcalEvents?.length??0)>0&&(
+        <div style={{paddingTop:8,borderTop:"1px solid #f1f5f9"}}>
+          <p style={{fontSize:10,color:"#94a3b8",marginBottom:4}}>📅 구글 캘린더</p>
+          {popup.gcalEvents!.map(e=>(
+            <div key={e.id} style={{display:"flex",gap:6,padding:"3px 0"}}>
+              <span style={{width:6,height:6,borderRadius:"50%",background:e.color,flexShrink:0,marginTop:4}}/>
+              <p style={{fontSize:12,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.title}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>,
+    document.body
+  );
+}
+
+function MiniCalendar({
+  onDateSelect, selectedDate, calSchedules, calTodos, gcalEvents, onMonthChange,
+}:{
+  onDateSelect:(d:string)=>void;
+  selectedDate:string;
+  calSchedules:CalSch[];
+  calTodos:CalTdo[];
+  gcalEvents?:{id:string;title:string;start:string;color?:string}[];
+  onMonthChange:(yr:number,mo:number)=>void;
+}) {
   const [yr,setYr] = useState(()=>new Date().getFullYear());
   const [mo,setMo] = useState(()=>new Date().getMonth());
-  const [schMap,setSchMap] = useState<Map<string,{title:string;start_time:string|null;category:string;is_done:boolean}[]>>(new Map());
-  const [tdoMap,setTdoMap] = useState<Map<string,{title:string;priority:string}[]>>(new Map());
-  const [hover,setHover] = useState<string|null>(null);
-  const [pos,setPos] = useState<{top:number;left:number}>({top:0,left:0});
-  const leaveTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
-  const keepHover = (dt:string) => { if(leaveTimer.current){clearTimeout(leaveTimer.current);leaveTimer.current=null;} setHover(dt); };
-  const startLeave = () => { leaveTimer.current = setTimeout(()=>setHover(null), 120); };
+  const hideTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
+
+  // 월 변경 시 부모에 알림 (useEffect 제거 → 버튼 클릭 시 직접 호출)
 
   const T = todayStr();
   const first = new Date(yr,mo,1).getDay();
   const days_in = new Date(yr,mo+1,0).getDate();
   const ds = (d:number) => `${yr}-${pad2(mo+1)}-${pad2(d)}`;
 
-  useEffect(()=>{
-    const from=`${yr}-${pad2(mo+1)}-01`, to=`${yr}-${pad2(mo+1)}-31`;
-    Promise.all([
-      supabase.from("secretary_schedules").select("id,title,schedule_date,start_time,category,is_done").gte("schedule_date",from).lte("schedule_date",to),
-      supabase.from("secretary_todos").select("id,title,due_date,priority,is_done").gte("due_date",from).lte("due_date",to).eq("is_done",false),
-    ]).then(([sr,tr])=>{
-      const sm=new Map<string,any[]>();
-      for(const s of (sr.data??[])){
-        const k=s.schedule_date;
-        if(!sm.has(k))sm.set(k,[]);
-        sm.get(k)!.push(s);
-      }
-      setSchMap(sm);
-      const tm=new Map<string,any[]>();
-      for(const t of (tr.data??[])){
-        if(!t.due_date)continue;
-        if(!tm.has(t.due_date))tm.set(t.due_date,[]);
-        tm.get(t.due_date)!.push(t);
-      }
-      setTdoMap(tm);
-    });
-  },[yr,mo]);
+  const schMap = new Map<string,CalSch[]>();
+  for(const s of calSchedules){
+    if(!schMap.has(s.schedule_date))schMap.set(s.schedule_date,[]);
+    schMap.get(s.schedule_date)!.push(s);
+  }
+  // 구글 캘린더 이벤트도 맵에 추가
+  const gcalMap = new Map<string,{id:string;title:string;color:string}[]>();
+  for(const e of (gcalEvents??[])){
+    if(!e.start) continue;
+    if(!gcalMap.has(e.start))gcalMap.set(e.start,[]);
+    gcalMap.get(e.start)!.push({id:e.id,title:e.title,color:e.color??"#4285f4"});
+  }
+  const tdoMap = new Map<string,CalTdo[]>();
+  for(const t of calTodos){
+    if(!tdoMap.has(t.due_date))tdoMap.set(t.due_date,[]);
+    tdoMap.get(t.due_date)!.push(t);
+  }
 
-  const days:((number|null)[]) = [];
+  const days:(number|null)[] = [];
   for(let i=0;i<first;i++)days.push(null);
   for(let d=1;d<=days_in;d++)days.push(d);
 
   const todaySch = (schMap.get(T)??[]).filter(s=>!s.is_done);
+  const CAT_COLOR:Record<string,string> = {meeting:"#60a5fa",call:"#fb923c",followup:"#c084fc",task:"#34d399"};
 
-  function onEnter(d:number, e:React.MouseEvent){
-    const dt=ds(d);
-    // 데이터 없으면 팝업 표시 안함
-    const hasSch = (schMap.get(dt)?.length??0) > 0;
-    const hasTdo = (tdoMap.get(dt)?.length??0) > 0;
-    if(!hasSch && !hasTdo) { startLeave(); return; }
-    const r=(e.currentTarget as HTMLElement).getBoundingClientRect();
-    const popW=224, popH=240;
-    // 오른쪽 공간 먼저, 없으면 왼쪽
-    const spRight=window.innerWidth - r.right - 12;
-    const left = spRight >= popW ? r.right+8 : r.left - popW - 8;
-    // 아래 공간 먼저, 없으면 위로
-    const spBelow = window.innerHeight - r.top - 12;
-    const top = spBelow >= popH ? r.top : Math.max(8, r.bottom - popH);
-    setPos({top,left});
-    keepHover(dt);
+  function showPopup(d:number, e:React.MouseEvent){
+    const dt = ds(d);
+    const sc = schMap.get(dt)??[];
+    const tc = tdoMap.get(dt)??[];
+    const gc2 = gcalMap.get(dt)??[];
+    if(sc.length===0 && tc.length===0 && gc2.length===0) return;
+    if(hideTimer.current){clearTimeout(hideTimer.current);hideTimer.current=null;}
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    _setPopup?.({
+      x: r.right,
+      y: r.top,
+      schedules: sc,
+      todos: tc,
+      dateLabel: `${parseInt(dt.slice(5,7))}월 ${parseInt(dt.slice(8))}일`,
+    });
   }
-
-  const hSch = hover?(schMap.get(hover)??[]):[];
-  const hTdo = hover?(tdoMap.get(hover)??[]):[];
+  function hidePopup(){
+    hideTimer.current = setTimeout(()=>{ _setPopup?.(null); }, 150);
+  }
 
   return (
     <div className={`${CARD} p-4`}>
-      {/* 월 네비 */}
       <div className="flex items-center justify-between mb-3">
-        <button onClick={()=>mo===0?(setYr(y=>y-1),setMo(11)):setMo(m=>m-1)}
+        <button onClick={()=>{const ny=mo===0?yr-1:yr,nm=mo===0?11:mo-1;setYr(ny);setMo(nm);onMonthChange(ny,nm);}}
           className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 text-base font-bold">‹</button>
         <span className="text-xs font-bold text-[#0f172a]">{yr}. {mo+1}월</span>
-        <button onClick={()=>mo===11?(setYr(y=>y+1),setMo(0)):setMo(m=>m+1)}
+        <button onClick={()=>{const ny=mo===11?yr+1:yr,nm=mo===11?0:mo+1;setYr(ny);setMo(nm);onMonthChange(ny,nm);}}
           className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 text-base font-bold">›</button>
       </div>
 
-      {/* 요일 */}
       <div className="grid grid-cols-7 mb-1">
         {["일","월","화","수","목","금","토"].map((d,i)=>(
           <div key={d} className={`text-center text-[10px] font-medium pb-1 ${i===0?"text-red-400":i===6?"text-blue-400":"text-gray-400"}`}>{d}</div>
         ))}
       </div>
 
-      {/* 날짜 */}
-      <div className="grid grid-cols-7 gap-y-0.5">
+      <div className="grid grid-cols-7 gap-y-1">
         {days.map((d,i)=>{
           if(!d)return <div key={`e${i}`}/>;
           const dt=ds(d);
           const isT=dt===T, isSel=dt===selectedDate;
-          const sc=schMap.get(dt)?.length??0, tc=tdoMap.get(dt)?.length??0;
+          const sc=schMap.get(dt)??[], tc=tdoMap.get(dt)??[];
+          const gc=gcalMap.get(dt)??[];
+          const hasData=sc.length>0||tc.length>0||gc.length>0;
           const dow=(first+d-1)%7;
-          // 텍스트 색상: 선택 > 오늘 > 요일
-          const txtCls = isSel?"text-white":isT?"text-orange-500 font-bold":dow===0?"text-red-400":dow===6?"text-blue-400":"text-gray-700";
-          const bgCls  = isSel?"bg-[#0f172a]":isT?"bg-orange-50":"hover:bg-gray-100";
+          const txtCls=isSel?"text-white":isT?"text-orange-500 font-bold":dow===0?"text-red-400":dow===6?"text-blue-400":"text-gray-700";
+          const bgCls=isSel?"bg-[#0f172a]":isT?"bg-orange-50":"hover:bg-gray-100";
           return (
-            <button key={d} onClick={()=>onDateSelect(dt)}
-              onMouseEnter={(e)=>onEnter(d,e)}
-              onMouseLeave={(e)=>{
-                const rel = e.relatedTarget as HTMLElement|null;
-                if(rel?.closest?.('[data-cal-popup]'))return;
-                startLeave();
-              }}
-              className={`relative flex flex-col items-center justify-center h-7 w-full rounded-lg text-[11px] font-medium transition-all ${bgCls} ${txtCls}`}>
+            <button key={d}
+              onClick={()=>onDateSelect(dt)}
+              onMouseEnter={(e)=>showPopup(d,e)}
+              onMouseLeave={hidePopup}
+              className={`relative flex flex-col items-center justify-center h-9 w-full rounded-lg text-[12px] font-medium transition-all ${bgCls} ${txtCls}`}>
               {d}
-              {(sc>0||tc>0)&&(
+              {hasData&&(
                 <span className="absolute bottom-0.5 flex gap-[2px]">
-                  {sc>0&&<span className={`w-1 h-1 rounded-full ${isSel?"bg-orange-300":"bg-orange-400"}`}/>}
-                  {tc>0&&<span className={`w-1 h-1 rounded-full ${isSel?"bg-blue-300":"bg-blue-400"}`}/>}
+                  {sc.length>0&&<span className={`w-1 h-1 rounded-full ${isSel?"bg-orange-300":"bg-orange-400"}`}/>}
+                  {tc.length>0&&<span className={`w-1 h-1 rounded-full ${isSel?"bg-blue-300":"bg-blue-400"}`}/>}
+                  {gc.length>0&&<span className="w-1 h-1 rounded-full" style={{background:isSel?"#93c5fd":"#4285f4"}}/>}
                 </span>
               )}
             </button>
@@ -282,59 +344,17 @@ function MiniCalendar({onDateSelect,selectedDate}:{onDateSelect:(d:string)=>void
         })}
       </div>
 
-      {/* 오늘 일정 미리보기 */}
       {todaySch.length>0&&(
         <div className="mt-3 pt-3 border-t border-gray-100">
           <p className="text-[10px] font-medium text-gray-400 uppercase tracking-widest mb-1.5">오늘 일정</p>
-          {todaySch.slice(0,3).map((s:any)=>(
+          {todaySch.slice(0,3).map(s=>(
             <div key={s.id} className="flex items-center gap-1.5 py-0.5">
-              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{background:CAT_CLR[s.category]??"#94a3b8"}}/>
+              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{background:CAT_COLOR[s.category]??"#94a3b8"}}/>
               <span className="text-[11px] text-gray-600 truncate">{s.title}</span>
             </div>
           ))}
           {todaySch.length>3&&<p className="text-[10px] text-gray-400 mt-0.5">+{todaySch.length-3}건 더</p>}
         </div>
-      )}
-
-      {/* 팝업 (Portal) */}
-      {hover&&(hSch.length>0||hTdo.length>0)&&ReactDOM.createPortal(
-        <div data-cal-popup="true" style={{position:"fixed",top:pos.top,left:pos.left,zIndex:99999,background:"#fff",border:"1px solid #e5e7eb",borderRadius:16,boxShadow:"0 8px 32px rgba(15,23,42,.16)",padding:12,width:224,maxHeight:280,overflowY:"auto",pointerEvents:"auto"}}
-          onMouseEnter={()=>keepHover(hover!)}
-          onMouseLeave={(e)=>{
-            const rel = e.relatedTarget as HTMLElement|null;
-            if(rel?.closest?.('[data-cal-popup]'))return;
-            startLeave();
-          }}>
-          <p style={{fontSize:10,fontWeight:600,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>
-            {parseInt(hover.slice(5,7))}월 {parseInt(hover.slice(8))}일
-          </p>
-          {hSch.length>0&&(
-            <div style={{marginBottom:hTdo.length>0?8:0}}>
-              <p style={{fontSize:10,color:"#9ca3af",marginBottom:4}}>📅 일정</p>
-              {hSch.map((s:any)=>(
-                <div key={s.id} style={{display:"flex",alignItems:"flex-start",gap:6,padding:"3px 0",opacity:s.is_done?.4:1}}>
-                  <span style={{width:6,height:6,borderRadius:"50%",background:CAT_CLR[s.category]??"#94a3b8",flexShrink:0,marginTop:4}}/>
-                  <div>
-                    <p style={{fontSize:11,color:"#374151",textDecoration:s.is_done?"line-through":"none"}}>{s.title}</p>
-                    {s.start_time&&<p style={{fontSize:10,color:"#9ca3af"}}>{s.start_time.slice(0,5)}</p>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          {hTdo.length>0&&(
-            <div style={hSch.length>0?{paddingTop:8,borderTop:"1px solid #f3f4f6"}:{}}>
-              <p style={{fontSize:10,color:"#9ca3af",marginBottom:4}}>✅ 할일 마감</p>
-              {hTdo.map((t:any)=>(
-                <div key={t.id} style={{display:"flex",alignItems:"center",gap:6,padding:"2px 0"}}>
-                  <span style={{fontSize:10,fontWeight:700,color:t.priority==="urgent"?"#ef4444":t.priority==="normal"?"#3b82f6":"#9ca3af"}}>{t.priority==="urgent"?"!":"·"}</span>
-                  <p style={{fontSize:11,color:"#374151",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>,
-        document.body
       )}
     </div>
   );
@@ -385,6 +405,13 @@ const SecretaryPage:React.FC = () => {
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
+  // 달력 데이터
+  const [calSch,setCalSch] = useState<CalSch[]>([]);
+  const [calTdo,setCalTdo] = useState<CalTdo[]>([]);
+  // 구글 캘린더
+  const [gcalConnected,setGcalConnected] = useState(false);
+  const [gcalEvents,setGcalEvents] = useState<{id:string;title:string;start:string;color?:string}[]>([]);
+
   // 통계
   const [stats,setStats] = useState({todaySch:0,activeTodo:0,urgentTodo:0,newOrders:0,todayFollowup:0,newConsult:0});
 
@@ -393,6 +420,107 @@ const SecretaryPage:React.FC = () => {
   const showToast = (msg:string,type:"ok"|"err"="ok") => { setToast({msg,type}); setTimeout(()=>setToast(null),3500); };
 
   // ─── 데이터 로드 ────────────────────────────────────────────────────────────
+  const loadCalData = useCallback(async(yr:number,mo:number)=>{
+    const from=`${yr}-${String(mo+1).padStart(2,"0")}-01`;
+    const lastDay = new Date(yr, mo + 1, 0).getDate();
+    const to=`${yr}-${String(mo+1).padStart(2,"0")}-${String(lastDay).padStart(2,"0")}`;
+    // localStorage에서 직접 토큰 읽기 (세션 초기화 타이밍 문제 우회)
+    let token = "";
+    try {
+      const raw = localStorage.getItem("sb-nfwtsptqloefsbpjvdyu-auth-token");
+      if(raw) token = JSON.parse(raw).access_token ?? "";
+    } catch{}
+    if(!token) {
+      const {data:{session}} = await supabase.auth.getSession();
+      token = session?.access_token ?? "";
+    }
+    if(!token) return;
+    const [sr,tr] = await Promise.all([
+      supabase.from("secretary_schedules").select("id,title,schedule_date,start_time,category,is_done").gte("schedule_date",from).lte("schedule_date",to),
+      supabase.from("secretary_todos").select("id,title,due_date,priority,is_done").gte("due_date",from).lte("due_date",to).eq("is_done",false),
+    ]);
+    if(sr.data) setCalSch(sr.data as CalSch[]);
+    if(tr.data) setCalTdo(tr.data as CalTdo[]);
+  },[]);
+
+  // ─── 구글 캘린더 ─────────────────────────────────────────────────────────────
+  const checkGcalConnection = useCallback(async()=>{
+    if(!user) return;
+    const {data} = await supabase.from("google_calendar_tokens").select("user_id").eq("user_id",user.id).maybeSingle();
+    setGcalConnected(!!data);
+    if(data) void loadGcalEvents(new Date().getFullYear(),new Date().getMonth());
+  },[user]);
+
+  const loadGcalEvents = useCallback(async(yr:number,mo:number)=>{
+    if(!user) return;
+    try{
+      const {data:{session}} = await supabase.auth.getSession();
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-sync`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token??""}`},
+        body:JSON.stringify({action:"list",user_id:user.id,year:yr,month:mo}),
+      });
+      const d = await res.json();
+      if(d.events){
+        setGcalEvents(d.events.map((e:any)=>({
+          id:e.id,
+          title:e.summary??"(제목없음)",
+          start:e.start?.date||e.start?.dateTime?.slice(0,10)||"",
+          color:"#4285f4",
+        })));
+      }
+    }catch(e){console.error("gcal load error",e);}
+  },[user]);
+
+  async function connectGcal(){
+    if(!user) return;
+    const {data:{session}} = await supabase.auth.getSession();
+    const res = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-auth?action=url&user_id=${user.id}`,
+      {headers:{"Authorization":`Bearer ${session?.access_token??""}`}}
+    );
+    const d = await res.json();
+    if(d.url){
+      const w = window.open(d.url,"_blank","width=600,height=700");
+      // 연동 완료 메시지 수신
+      const handler = (e:MessageEvent)=>{
+        if(e.data==="google-calendar-connected"){
+          window.removeEventListener("message",handler);
+          setGcalConnected(true);
+          void loadGcalEvents(new Date().getFullYear(),new Date().getMonth());
+          showToast("구글 캘린더 연동 완료! 🎉");
+        }
+      };
+      window.addEventListener("message",handler);
+    }
+  }
+
+  async function disconnectGcal(){
+    if(!user) return;
+    const {data:{session}} = await supabase.auth.getSession();
+    await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-auth`,{
+      method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token??""}`},
+      body:JSON.stringify({action:"disconnect",user_id:user.id}),
+    });
+    setGcalConnected(false);
+    setGcalEvents([]);
+    showToast("구글 캘린더 연동 해제");
+  }
+
+  // 일정 저장 후 구글 캘린더에도 동기화
+  async function syncToGcal(schedule:{id:number;title:string;description:string|null;schedule_date:string;start_time:string|null;end_time:string|null;location:string|null}){
+    if(!user||!gcalConnected) return;
+    try{
+      const {data:{session}} = await supabase.auth.getSession();
+      await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-sync`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token??""}`},
+        body:JSON.stringify({action:"create",user_id:user.id,event:{...schedule,schedule_id:schedule.id}}),
+      });
+    }catch(e){console.error("gcal sync error",e);}
+  }
+
   const loadStats = useCallback(async()=>{
     const [a,b,c,d,e,f] = await Promise.all([
       supabase.from("secretary_schedules").select("id",{count:"exact"}).eq("schedule_date",todayStr()).eq("is_done",false),
@@ -407,8 +535,12 @@ const SecretaryPage:React.FC = () => {
 
   const loadChatHist = useCallback(async()=>{
     setHistLoading(true);
-    const {data} = await supabase.from("secretary_chat_logs").select("role,content").order("created_at",{ascending:true}).limit(40);
-    setMsgs((data??[]).map(r=>({role:r.role as "user"|"assistant",content:r.content})));
+    const {data} = await supabase.from("secretary_chat_logs").select("role,content,created_at").order("created_at",{ascending:true}).limit(40);
+    setMsgs((data??[]).map(r=>({
+      role:r.role as "user"|"assistant",
+      content:r.content,
+      ts:new Date(r.created_at).toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}).replace(". ","월 ").replace(". ","일 "),
+    })));
     setHistLoading(false);
   },[]);
 
@@ -450,10 +582,27 @@ const SecretaryPage:React.FC = () => {
     setCLoading(false);
   },[]);
 
-  useEffect(()=>{void loadStats();},[loadStats]);
-  useEffect(()=>{void loadChatHist();},[loadChatHist]);
   useEffect(()=>{
-    if(msgs.length>0) chatBottomRef.current?.scrollIntoView({behavior:"smooth"});
+    // 세션 준비 완료 후 모든 데이터 로드
+    const {data:{subscription}} = supabase.auth.onAuthStateChange((event, session)=>{
+      if((event==="SIGNED_IN"||event==="TOKEN_REFRESHED"||event==="INITIAL_SESSION") && session){
+        void loadStats();
+        void loadChatHist();
+        void loadCalData(new Date().getFullYear(), new Date().getMonth());
+        void checkGcalConnection();
+      }
+    });
+    return ()=>subscription.unsubscribe();
+  },[loadStats, loadChatHist, loadCalData]);
+  const prevMsgLen = useRef(0);
+  useEffect(()=>{
+    if(msgs.length > 0 && msgs.length !== prevMsgLen.current){
+      // 초기 히스토리 로드(prevMsgLen===0)엔 스크롤 안함
+      if(prevMsgLen.current > 0){
+        chatBottomRef.current?.scrollIntoView({behavior:"smooth",block:"end"});
+      }
+      prevMsgLen.current = msgs.length;
+    }
   },[msgs]);
   useEffect(()=>{if(tab==="schedule")void loadSchedules();},[tab,loadSchedules]);
   useEffect(()=>{if(tab==="todo")void loadTodos();},[tab,loadTodos]);
@@ -465,17 +614,24 @@ const SecretaryPage:React.FC = () => {
     if(newSched.category==="followup"&&newSched.consultation_id){
       await supabase.from("consultation_cases").update({next_followup_date:newSched.schedule_date,followup_needed:true}).eq("id",Number(newSched.consultation_id));
     }
-    const {error}=await supabase.from("secretary_schedules").insert({
+    const {data:schedData,error}=await supabase.from("secretary_schedules").insert({
       title:newSched.title,description:newSched.description||null,schedule_date:newSched.schedule_date,
       start_time:newSched.start_time||null,end_time:newSched.end_time||null,category:newSched.category,
       location:newSched.location||null,related_type:newSched.related_type||null,
       consultation_id:newSched.consultation_id?Number(newSched.consultation_id):null,
-    });
+    }).select("id").single();
     if(!error){
       showToast("일정 저장 완료");
       setShowSchedForm(false);
       setNewSched({title:"",description:"",schedule_date:todayStr(),start_time:"",end_time:"",category:"meeting",location:"",related_type:"",consultation_id:""});
       void loadSchedules(); void loadStats();
+      void loadCalData(new Date().getFullYear(), new Date().getMonth());
+      // 구글 캘린더 동기화
+      if(gcalConnected && schedData) void syncToGcal({
+        id:schedData.id, title:newSched.title, description:newSched.description||null,
+        schedule_date:newSched.schedule_date, start_time:newSched.start_time||null,
+        end_time:newSched.end_time||null, location:newSched.location||null,
+      });
     }
   }
   async function toggleSched(id:number,done:boolean){
@@ -495,7 +651,7 @@ const SecretaryPage:React.FC = () => {
       category:newTodo.category||null,due_date:newTodo.due_date||null,
       consultation_id:newTodo.consultation_id?Number(newTodo.consultation_id):null,
     });
-    if(!error){showToast("할일 저장 완료");setShowTodoForm(false);setNewTodo({title:"",description:"",priority:"normal",category:"",due_date:"",consultation_id:""});void loadTodos();void loadStats();}
+    if(!error){showToast("할일 저장 완료");setShowTodoForm(false);setNewTodo({title:"",description:"",priority:"normal",category:"",due_date:"",consultation_id:""});void loadTodos();void loadStats();void loadCalData(new Date().getFullYear(),new Date().getMonth());}
   }
   async function toggleTodo(id:number,done:boolean){
     await supabase.from("secretary_todos").update({is_done:!done,done_at:!done?new Date().toISOString():null}).eq("id",id);
@@ -608,9 +764,17 @@ const SecretaryPage:React.FC = () => {
     setMsgs(p=>p.map((m,i)=>i!==msgIdx?m:{...m,pendingUpdates:(m.pendingUpdates??[]).filter((_,j)=>j!==uidx)}));
   }
 
+  // 푸터 숨기기
+  useEffect(()=>{
+    const footer = document.querySelector('footer') as HTMLElement|null;
+    if(footer) footer.style.display='none';
+    return ()=>{ if(footer) footer.style.display=''; };
+  },[]);
+
   // ─── 렌더 ─────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col bg-gray-50" style={{minHeight:"calc(100vh - 140px)"}}>
+    <div className="flex flex-col bg-gray-50">
+      <CalPopupPortal/>
 
       {/* 토스트 */}
       {toast&&ReactDOM.createPortal(
@@ -633,10 +797,7 @@ const SecretaryPage:React.FC = () => {
           {/* 통계 배지 */}
           <div className="flex items-center gap-1.5 flex-wrap text-xs">
             <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 font-medium">📅 {stats.todaySch}</span>
-            {stats.urgentTodo>0
-              ? <span className="px-2.5 py-1 rounded-full bg-red-50 text-red-600 font-medium">🔴 긴급 {stats.urgentTodo}</span>
-              : <span className="px-2.5 py-1 rounded-full bg-orange-50 text-orange-600 font-medium">✅ 할일 {stats.activeTodo}</span>
-            }
+            <span className="px-2.5 py-1 rounded-full bg-orange-50 text-orange-600 font-medium">✅ {stats.activeTodo}</span>
             <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-600 font-medium">📦 {stats.newOrders}</span>
             {stats.todayFollowup>0&&<span className="px-2.5 py-1 rounded-full bg-purple-50 text-purple-600 font-medium">📞 사후관리 {stats.todayFollowup}</span>}
             {stats.newConsult>0&&<span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 font-medium">💬 오늘상담 {stats.newConsult}</span>}
@@ -653,16 +814,59 @@ const SecretaryPage:React.FC = () => {
       </div>
 
       {/* 바디 */}
-      <div className="flex max-w-6xl w-full mx-auto px-6 py-4 gap-5">
+      <div className="flex max-w-6xl w-full mx-auto px-6 py-4 gap-5" style={{minHeight:600}}>
 
         {/* 사이드바 */}
-        <aside className="w-48 flex-shrink-0 hidden lg:flex flex-col gap-3 self-start sticky top-4">
-          <MiniCalendar onDateSelect={(d)=>{setSchedDate(d);setTab("schedule");}} selectedDate={schedDate}/>
-          <div className={`${CARD} p-3`}>
-            <p className="text-[10px] font-medium text-gray-400 uppercase tracking-widest mb-2">바로가기</p>
-            <button onClick={()=>navigate("/work/call-management")} className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg border border-gray-200 text-xs text-[#0f172a] font-semibold hover:bg-gray-50 transition-all mb-1.5">📋 상담관리</button>
-            <button onClick={()=>navigate("/work/dashboard")} className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition-all">📊 대시보드</button>
+        <aside className="w-56 flex-shrink-0 hidden lg:flex flex-col gap-3 self-start sticky top-4">
+          <MiniCalendar
+            onDateSelect={(d)=>{setSchedDate(d);setTab("schedule");}}
+            selectedDate={schedDate}
+            calSchedules={calSch}
+            calTodos={calTdo}
+            gcalEvents={gcalEvents}
+            onMonthChange={(yr,mo)=>{void loadCalData(yr,mo); if(gcalConnected) void loadGcalEvents(yr,mo);}}
+          />
+          <div className="flex gap-2">
+            <button onClick={()=>navigate("/work/call-management")} className="flex-1 flex items-center justify-center gap-1 px-2 py-2 rounded-xl border border-gray-200 text-xs text-[#0f172a] font-semibold hover:bg-gray-50 transition-all">📋 상담관리</button>
+            <button onClick={()=>navigate("/work/dashboard")} className="flex-1 flex items-center justify-center gap-1 px-2 py-2 rounded-xl border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition-all">📊 대시보드</button>
           </div>
+          {/* 구글 캘린더 연동 */}
+          <div className={`${CARD} p-3`}>
+            <div className="flex items-center gap-2 mb-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <path d="M19 4h-1V2h-2v2H8V2H6v2H5C3.9 4 3 4.9 3 6v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z" fill="#4285f4"/>
+              </svg>
+              <span className="text-xs font-semibold text-[#0f172a]">구글 캘린더</span>
+              {gcalConnected&&<span className="ml-auto w-2 h-2 rounded-full bg-emerald-500"/>}
+            </div>
+            {gcalConnected ? (
+              <div>
+                <p className="text-[10px] text-emerald-600 mb-1.5">✅ 연동됨 — 일정 자동 동기화 중</p>
+                <button onClick={()=>void disconnectGcal()}
+                  className="w-full text-xs text-gray-500 hover:text-red-500 py-1 transition-all">
+                  연동 해제
+                </button>
+              </div>
+            ) : (
+              <div>
+                <p className="text-[10px] text-gray-400 mb-1.5">연동하면 일정이 구글 캘린더와 양방향 동기화됩니다</p>
+                <button onClick={()=>void connectGcal()}
+                  className="w-full flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg bg-[#4285f4] text-white text-xs font-semibold hover:bg-[#3367d6] transition-all">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="white"><path d="M19 4h-1V2h-2v2H8V2H6v2H5C3.9 4 3 4.9 3 6v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"/></svg>
+                  구글 캘린더 연동
+                </button>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => {
+              const now = new Date();
+              void loadCalData(now.getFullYear(), now.getMonth());
+            }}
+            className="w-full flex items-center justify-center gap-1 px-2 py-2 rounded-xl border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition-all"
+          >
+            🔄 캘린더 새로고침
+          </button>
         </aside>
 
         {/* 메인 */}
@@ -776,7 +980,7 @@ const SecretaryPage:React.FC = () => {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className={`text-sm font-medium text-[#0f172a] ${t.is_done?"line-through":""}`}>{t.title}</span>
-                            <PriBadge p={t.priority}/>
+                            
                             {t.category&&<span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{WL[t.category]??t.category}</span>}
                             <LinkBadge id={t.consultation_id} onClick={()=>navigate(`/work/call-management?id=${t.consultation_id}`)}/>
                           </div>
@@ -959,7 +1163,7 @@ const SecretaryPage:React.FC = () => {
 
           {/* ══ AI 채팅 ══ */}
           {tab==="chat"&&(
-            <div className={`${CARD} p-4`} style={{minHeight:420}}>
+            <div className={`${CARD} p-4`} style={{height:520,display:"flex",flexDirection:"column"}}>
               {histLoading&&(
                 <div className="flex items-center justify-center h-20 gap-2 text-xs text-gray-400">
                   <span className="w-1.5 h-1.5 rounded-full bg-gray-300 animate-bounce" style={{animationDelay:"0ms"}}/>
@@ -975,7 +1179,7 @@ const SecretaryPage:React.FC = () => {
                   <p className="text-xs">할일·일정·고객 문의를 자동으로 분류·저장합니다</p>
                 </div>
               )}
-              <div className="space-y-4">
+              <div className="flex-1 overflow-y-auto space-y-4 pr-1">
                 {msgs.map((m,i)=>(
                   <div key={i} className={`flex gap-2.5 ${m.role==="user"?"flex-row-reverse":""}`}>
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5 ${m.role==="assistant"?"bg-[#0f172a] text-white":"bg-orange-500 text-white"}`}>
