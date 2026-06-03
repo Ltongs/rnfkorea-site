@@ -69,7 +69,7 @@ const WL:Record<string,string> = {
 const CAT_LBL:Record<string,string> = {meeting:"미팅",call:"통화",task:"업무",followup:"사후관리"};
 const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료"};
 const PRI_LBL:Record<string,string> = {urgent:"긴급",normal:"일반",low:"낮음"};
-const ACT_LBL:Record<string,string> = {todo:"✅ 할일",schedule:"📅 일정",order:"💬 상담접수",consult_update:"🔄 상담 업데이트"};
+const ACT_LBL:Record<string,string> = {todo:"✅ 할일",schedule:"📅 일정",order:"💬 상담접수",claim:"🏥 청구접수",consult_update:"🔄 상담 업데이트"};
 const CAT_CLR:Record<string,string> = {meeting:"#60a5fa",call:"#fb923c",followup:"#c084fc",task:"#34d399"};
 const CLAIM_TYPE_LBL:Record<string,string> = {inpatient:"입원",outpatient:"통원",surgery:"수술",death:"사망",other:"기타"};
 const CLAIM_STS_LBL:Record<string,string> = {requested:"청구요청",processing:"청구대행중",paid:"지급완료",rejected:"거절"};
@@ -472,6 +472,14 @@ const SecretaryInsPage:React.FC = () => {
   const [claimFilter,setClaimFilter]         = useState<"all"|"active"|"paid">("active");
   const [newClaim,setNewClaim]               = useState({customer_name:"",phone:"",product_name:"",claim_date:todayStr(),claim_type:"outpatient" as Claim["claim_type"],memo:""});
 
+  // 상세/편집 확장 상태
+  const [expandedClaim,setExpandedClaim]     = useState<number|null>(null);
+  const [editingClaim,setEditingClaim]       = useState<Partial<Claim>|null>(null);
+  const [expandedPolicy,setExpandedPolicy]   = useState<number|null>(null);
+  const [editingPolicy,setEditingPolicy]     = useState<Partial<Policy>|null>(null);
+  const [expandedConsult,setExpandedConsult] = useState<number|null>(null);
+  const [editingConsult,setEditingConsult]   = useState<Partial<Consult>|null>(null);
+
   // 고객 조회
   const [custSearch,setCustSearch]           = useState("");
   const [custResults,setCustResults]         = useState<{customer_key:string;customer_name:string}[]>([]);
@@ -788,6 +796,44 @@ const SecretaryInsPage:React.FC = () => {
     setClaimLoading(false);
   },[claimFilter]);
 
+  async function saveClaim(id:number){
+    if(!editingClaim)return;
+    await supabase.from("ins_claims").update({
+      product_name:editingClaim.product_name,
+      claim_date:editingClaim.claim_date,
+      claim_type:editingClaim.claim_type,
+      status:editingClaim.status,
+      memo:editingClaim.memo??null,
+    }).eq("id",id);
+    setEditingClaim(null); setExpandedClaim(null);
+    void loadClaims(); showToast("청구 수정 완료");
+  }
+
+  async function savePolicy(id:number){
+    if(!editingPolicy)return;
+    await supabase.from("ins_policies").update({
+      product_name:editingPolicy.product_name,
+      start_date:editingPolicy.start_date,
+      expiry_date:editingPolicy.expiry_date??null,
+      memo:editingPolicy.memo??null,
+    }).eq("id",id);
+    setEditingPolicy(null); setExpandedPolicy(null);
+    void loadPolicies(); showToast("계약 수정 완료");
+  }
+
+  async function saveConsult(id:number){
+    if(!editingConsult)return;
+    await supabase.from("consultation_cases").update({
+      status:editingConsult.status,
+      summary:editingConsult.summary,
+      followup_needed:editingConsult.followup_needed,
+      next_followup_date:editingConsult.next_followup_date??null,
+    }).eq("id",id);
+    setEditingConsult(null); setExpandedConsult(null);
+    void loadConsults(); showToast("상담 수정 완료");
+  }
+
+  // ─── 청구 등록 ──────────────────────────────────────────────────────────────
   async function addClaim(){
     if(!newClaim.customer_name||!newClaim.product_name||!newClaim.claim_date)return;
     const cKey = makeCustomerKey(newClaim.customer_name, newClaim.phone);
@@ -978,6 +1024,7 @@ const SecretaryInsPage:React.FC = () => {
         if(saved.some((s:any)=>s.type==="schedule")) void loadSchedules();
         if(saved.some((s:any)=>s.type==="todo"))     void loadTodos();
         if(saved.some((s:any)=>s.type==="order"))    void loadOrders();
+        if(saved.some((s:any)=>s.type==="claim"))    void loadClaims();
         const cc=saved.filter((s:any)=>s.consultation_id).length;
         showToast(`${saved.length}건 저장${cc>0?` + 상담관리 ${cc}건`:""}`);
       }
@@ -1351,35 +1398,64 @@ const SecretaryInsPage:React.FC = () => {
                   <p className="text-sm font-semibold text-[#0f172a]">💬 최근 상담</p>
                   <div className="flex gap-2">
                     <button className={BTG} onClick={()=>void loadConsults()}>새로고침</button>
-                    <button className={BTG} onClick={()=>navigate("/work/call-management")}>전체 보기 →</button>
                   </div>
                 </div>
                 {cLoading?<p className="text-xs text-gray-400">불러오는 중...</p>
                   :recentC.length===0?<p className="text-sm text-gray-400 text-center py-4">최근 상담이 없습니다</p>
                   :(
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full text-sm">
-                        <thead><tr className="border-b border-gray-100">
-                          {["고객명","업무","요약","상태","등록일",""].map(h=><th key={h} className="text-left py-1.5 px-2 text-xs font-medium text-gray-400">{h}</th>)}
-                        </tr></thead>
-                        <tbody>
-                          {recentC.map(c=>(
-                            <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50">
-                              <td className="py-1.5 px-2 font-medium text-[#0f172a] whitespace-nowrap">{c.customer_name}</td>
-                              <td className="py-1.5 px-2 whitespace-nowrap"><span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600">{WL[c.work_type]??c.work_type}</span></td>
-                              <td className="py-1.5 px-2 text-gray-600 max-w-[160px] truncate">{c.summary}</td>
-                              <td className="py-1.5 px-2 whitespace-nowrap"><StsBadge s={c.status}/></td>
-                              <td className="py-1.5 px-2 text-xs text-gray-400 whitespace-nowrap">{fmtDT(c.created_at)}</td>
-                              <td className="py-1.5 px-2">
-                                <div className="flex gap-1">
-                                  <button className={BTG} onClick={()=>quickChat(`"${c.customer_name}" ${WL[c.work_type]??""} 후속 조치: ${c.summary}`)}>AI</button>
-                                  <button className={BTG} onClick={()=>navigate(`/work/call-management?id=${c.id}`)}>열기</button>
+                    <div className="space-y-2">
+                      {recentC.map(c=>(
+                        <div key={c.id} className={`${CARD} overflow-hidden`}>
+                          {/* 요약 행 */}
+                          <div className="p-3 flex items-start gap-3 cursor-pointer hover:bg-gray-50 transition-all"
+                            onClick={()=>{
+                              if(expandedConsult===c.id){setExpandedConsult(null);setEditingConsult(null);}
+                              else{setExpandedConsult(c.id);setEditingConsult({...c});}
+                            }}>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-semibold text-[#0f172a]">{c.customer_name}</span>
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600">{WL[c.work_type]??c.work_type}</span>
+                                <StsBadge s={c.status}/>
+                                <span className="text-xs text-gray-400">{fmtDT(c.created_at)}</span>
+                              </div>
+                              <p className="text-xs text-gray-600 mt-0.5 truncate">{c.summary}</p>
+                              {c.followup_needed&&c.next_followup_date&&(
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-purple-50 text-purple-600 mt-1 inline-block">📞 사후관리 {fmtDate(c.next_followup_date)}</span>
+                              )}
+                            </div>
+                            <span className="text-gray-300 text-xs flex-shrink-0">{expandedConsult===c.id?"▲":"▼"}</span>
+                          </div>
+                          {/* 상세/수정 패널 */}
+                          {expandedConsult===c.id&&editingConsult&&(
+                            <div className="border-t border-gray-100 p-3 bg-gray-50 space-y-3">
+                              <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">상세 수정</p>
+                              <div className="grid grid-cols-2 gap-2.5">
+                                <div><label className={LBL}>상태</label>
+                                  <select className={CTRL} value={editingConsult.status??""} onChange={e=>setEditingConsult(p=>({...p,status:e.target.value}))}>
+                                    <option value="new">신규</option><option value="pending">대기</option>
+                                    <option value="in_progress">진행중</option><option value="completed">완료</option>
+                                  </select>
                                 </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                                <div><label className={LBL}>사후관리</label>
+                                  <select className={CTRL} value={editingConsult.followup_needed?"true":"false"} onChange={e=>setEditingConsult(p=>({...p,followup_needed:e.target.value==="true"}))}>
+                                    <option value="false">없음</option><option value="true">필요</option>
+                                  </select>
+                                </div>
+                                {editingConsult.followup_needed&&(
+                                  <div><label className={LBL}>사후관리 날짜</label><input type="date" className={CTRL} value={editingConsult.next_followup_date??""} onChange={e=>setEditingConsult(p=>({...p,next_followup_date:e.target.value}))}/></div>
+                                )}
+                                <div className="col-span-2"><label className={LBL}>요약</label><textarea className={TA2} rows={2} value={editingConsult.summary??""} onChange={e=>setEditingConsult(p=>({...p,summary:e.target.value}))}/></div>
+                              </div>
+                              <div className="flex gap-2">
+                                <button className={BTP} onClick={()=>void saveConsult(c.id)}>저장</button>
+                                <button className={BTS} onClick={()=>{setExpandedConsult(null);setEditingConsult(null);}}>취소</button>
+                                <button className={BTG} onClick={()=>quickChat(`"${c.customer_name}" ${WL[c.work_type]??""} 후속 조치: ${c.summary}`)}>AI</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   )
                 }
@@ -1550,52 +1626,56 @@ const SecretaryInsPage:React.FC = () => {
                   :policies.filter(p=>!policySearch||p.customer_name.includes(policySearch)||p.product_name.includes(policySearch)).length===0
                     ?<div className={`${CARD} p-6 text-center text-gray-400 text-sm`}>등록된 계약이 없습니다</div>
                     :(
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full text-sm">
-                          <thead><tr className="border-b border-gray-200">
-                            {["고객명","연락처","상품명","가입일","만기일","D-day","메모",""].map(h=>(
-                              <th key={h} className="text-left py-2 px-2 text-xs font-medium text-gray-400 whitespace-nowrap">{h}</th>
-                            ))}
-                          </tr></thead>
-                          <tbody>
-                            {policies
-                              .filter(p=>!policySearch||p.customer_name.includes(policySearch)||p.product_name.includes(policySearch))
-                              .map(p=>{
-                                const days=daysUntilExpiry(p.expiry_date);
-                                const isExpiring=days!==null&&days<=30&&days>=0;
-                                return(
-                                  <tr key={p.id} className={`border-b border-gray-50 hover:bg-gray-50 ${isExpiring?"bg-red-50/50":""}`}>
-                                    <td className="py-2 px-2 font-medium text-[#0f172a] whitespace-nowrap">{p.customer_name}</td>
-                                    <td className="py-2 px-2 text-xs whitespace-nowrap">
-                                      <span className="font-mono text-gray-400">{p.customer_key}</span>
-                                    </td>
-                                    <td className="py-2 px-2 whitespace-nowrap">
+                      <div className="space-y-2">
+                        {policies
+                          .filter(p=>!policySearch||p.customer_name.includes(policySearch)||p.product_name.includes(policySearch))
+                          .map(p=>{
+                            const days=daysUntilExpiry(p.expiry_date);
+                            const isExpiring=days!==null&&days<=30&&days>=0;
+                            return(
+                              <div key={p.id} className={`${CARD} overflow-hidden`}>
+                                {/* 요약 행 */}
+                                <div className={`p-4 flex items-center gap-3 cursor-pointer hover:bg-gray-50 transition-all ${isExpiring?"bg-red-50/40":""}`}
+                                  onClick={()=>{
+                                    if(expandedPolicy===p.id){setExpandedPolicy(null);setEditingPolicy(null);}
+                                    else{setExpandedPolicy(p.id);setEditingPolicy({...p});}
+                                  }}>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="text-sm font-semibold text-[#0f172a]">{p.customer_name}</span>
+                                      <span className="font-mono text-xs text-gray-400">{p.customer_key}</span>
                                       <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">{p.product_name}</span>
-                                    </td>
-                                    <td className="py-2 px-2 text-xs text-gray-500 whitespace-nowrap">{fmtDate(p.start_date)}</td>
-                                    <td className="py-2 px-2 text-xs whitespace-nowrap">
-                                      {p.expiry_date?<span className={isExpiring?"text-red-500 font-semibold":"text-gray-500"}>{fmtDate(p.expiry_date)}</span>:<span className="text-gray-300">—</span>}
-                                    </td>
-                                    <td className="py-2 px-2 whitespace-nowrap">
-                                      {days===null?<span className="text-gray-300 text-xs">—</span>
-                                        :days<0?<span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-400">만기</span>
-                                        :days===0?<span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-bold">오늘</span>
-                                        :isExpiring?<span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 font-semibold">D-{days}</span>
-                                        :<span className="text-xs text-gray-400">D-{days}</span>
-                                      }
-                                    </td>
-                                    <td className="py-2 px-2 text-xs text-gray-400 max-w-[120px] truncate">{p.memo??""}</td>
-                                    <td className="py-2 px-2">
-                                      <div className="flex gap-1">
-                                        <button className={BTG} onClick={()=>quickChat(`"${p.customer_name}" ${p.product_name}${p.expiry_date?` 만기 ${days}일 남음`:""} — 상담 준비해줘`)}>AI</button>
-                                        <button className="text-xs text-red-400 hover:text-red-600 px-1" onClick={()=>void delPolicy(p.id)}>삭제</button>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                          </tbody>
-                        </table>
+                                      {isExpiring&&<span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${days===0?"bg-red-100 text-red-700":"bg-orange-50 text-orange-600"}`}>{days===0?"오늘만기":`D-${days}`}</span>}
+                                    </div>
+                                    <div className="flex gap-3 mt-0.5 text-xs text-gray-400">
+                                      <span>가입 {fmtDate(p.start_date)}</span>
+                                      {p.expiry_date&&<span className={isExpiring?"text-red-500 font-medium":""}>만기 {fmtDate(p.expiry_date)}</span>}
+                                      {p.memo&&<span className="truncate max-w-[150px]">{p.memo}</span>}
+                                    </div>
+                                  </div>
+                                  <span className="text-gray-300 text-xs flex-shrink-0">{expandedPolicy===p.id?"▲":"▼"}</span>
+                                </div>
+                                {/* 상세/수정 패널 */}
+                                {expandedPolicy===p.id&&editingPolicy&&(
+                                  <div className="border-t border-gray-100 p-4 bg-gray-50 space-y-3">
+                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">상세 수정</p>
+                                    <div className="grid grid-cols-2 gap-2.5">
+                                      <div className="col-span-2"><label className={LBL}>상품명</label><input className={CTRL} value={editingPolicy.product_name??""} onChange={e=>setEditingPolicy(p=>({...p,product_name:e.target.value}))}/></div>
+                                      <div><label className={LBL}>가입일</label><input type="date" className={CTRL} value={editingPolicy.start_date??""} onChange={e=>setEditingPolicy(p=>({...p,start_date:e.target.value}))}/></div>
+                                      <div><label className={LBL}>만기일</label><input type="date" className={CTRL} value={editingPolicy.expiry_date??""} onChange={e=>setEditingPolicy(p=>({...p,expiry_date:e.target.value}))}/></div>
+                                      <div className="col-span-2"><label className={LBL}>메모</label><textarea className={TA2} rows={2} value={editingPolicy.memo??""} onChange={e=>setEditingPolicy(p=>({...p,memo:e.target.value}))}/></div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <button className={BTP} onClick={()=>void savePolicy(p.id)}>저장</button>
+                                      <button className={BTS} onClick={()=>{setExpandedPolicy(null);setEditingPolicy(null);}}>취소</button>
+                                      <button className={BTG} onClick={()=>quickChat(`"${p.customer_name}" ${p.product_name}${p.expiry_date?` 만기 ${days}일 남음`:""} — 갱신 상담 준비해줘`)}>AI</button>
+                                      <button className="ml-auto text-xs text-red-400 hover:text-red-600" onClick={()=>void delPolicy(p.id)}>삭제</button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                       </div>
                     )
                 }
@@ -1662,8 +1742,13 @@ const SecretaryInsPage:React.FC = () => {
                         {claims
                           .filter(c=>!claimSearch||c.customer_name.includes(claimSearch)||c.product_name.includes(claimSearch))
                           .map(c=>(
-                            <div key={c.id} className={`${CARD} p-4`}>
-                              <div className="flex items-start gap-3">
+                            <div key={c.id} className={`${CARD} overflow-hidden`}>
+                              {/* 요약 행 — 클릭으로 펼침 */}
+                              <div className="p-4 flex items-start gap-3 cursor-pointer hover:bg-gray-50 transition-all"
+                                onClick={()=>{
+                                  if(expandedClaim===c.id){setExpandedClaim(null);setEditingClaim(null);}
+                                  else{setExpandedClaim(c.id);setEditingClaim({...c});}
+                                }}>
                                 <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center text-lg flex-shrink-0">
                                   {{inpatient:"🏥",outpatient:"🩺",surgery:"🔬",death:"🕊️",other:"📄"}[c.claim_type]}
                                 </div>
@@ -1680,17 +1765,37 @@ const SecretaryInsPage:React.FC = () => {
                                     {c.memo&&<span className="text-xs text-gray-500 truncate max-w-[200px]">{c.memo}</span>}
                                   </div>
                                 </div>
-                                <div className="flex gap-1.5 flex-shrink-0 flex-wrap">
-                                  {/* 상태 전환 버튼 */}
-                                  {c.status==="requested"&&<button className={BTO} onClick={()=>void setClaimStatus(c.id,"processing")}>대행중</button>}
-                                  {c.status==="processing"&&<button className={BTE} onClick={()=>void setClaimStatus(c.id,"paid")}>지급완료</button>}
-                                  {(c.status==="requested"||c.status==="processing")&&(
-                                    <button className="px-3 py-1.5 rounded-xl border border-red-200 text-xs text-red-500 hover:bg-red-50" onClick={()=>void setClaimStatus(c.id,"rejected")}>거절</button>
-                                  )}
-                                  <button className={BTG} onClick={()=>quickChat(`"${c.customer_name}" ${c.product_name} ${CLAIM_TYPE_LBL[c.claim_type]} 청구 진행 상황 정리해줘`)}>AI</button>
-                                  <button className="text-xs text-red-400 hover:text-red-600 px-1" onClick={()=>void delClaim(c.id)}>삭제</button>
-                                </div>
+                                <span className="text-gray-300 text-xs flex-shrink-0">{expandedClaim===c.id?"▲":"▼"}</span>
                               </div>
+                              {/* 상세/수정 패널 */}
+                              {expandedClaim===c.id&&editingClaim&&(
+                                <div className="border-t border-gray-100 p-4 bg-gray-50 space-y-3">
+                                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">상세 수정</p>
+                                  <div className="grid grid-cols-2 gap-2.5">
+                                    <div><label className={LBL}>상품명</label><input className={CTRL} value={editingClaim.product_name??""} onChange={e=>setEditingClaim(p=>({...p,product_name:e.target.value}))}/></div>
+                                    <div><label className={LBL}>청구일</label><input type="date" className={CTRL} value={editingClaim.claim_date??""} onChange={e=>setEditingClaim(p=>({...p,claim_date:e.target.value}))}/></div>
+                                    <div><label className={LBL}>청구 유형</label>
+                                      <select className={CTRL} value={editingClaim.claim_type??""} onChange={e=>setEditingClaim(p=>({...p,claim_type:e.target.value as Claim["claim_type"]}))}>
+                                        <option value="outpatient">통원</option><option value="inpatient">입원</option>
+                                        <option value="surgery">수술</option><option value="death">사망</option><option value="other">기타</option>
+                                      </select>
+                                    </div>
+                                    <div><label className={LBL}>진행 상태</label>
+                                      <select className={CTRL} value={editingClaim.status??""} onChange={e=>setEditingClaim(p=>({...p,status:e.target.value as Claim["status"]}))}>
+                                        <option value="requested">청구요청</option><option value="processing">청구대행중</option>
+                                        <option value="paid">지급완료</option><option value="rejected">거절</option>
+                                      </select>
+                                    </div>
+                                    <div className="col-span-2"><label className={LBL}>메모</label><textarea className={TA2} rows={2} value={editingClaim.memo??""} onChange={e=>setEditingClaim(p=>({...p,memo:e.target.value}))}/></div>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <button className={BTP} onClick={()=>void saveClaim(c.id)}>저장</button>
+                                    <button className={BTS} onClick={()=>{setExpandedClaim(null);setEditingClaim(null);}}>취소</button>
+                                    <button className={BTG} onClick={()=>quickChat(`"${c.customer_name}" ${c.product_name} ${CLAIM_TYPE_LBL[c.claim_type]} 청구 진행 상황 정리해줘`)}>AI</button>
+                                    <button className="ml-auto text-xs text-red-400 hover:text-red-600" onClick={()=>void delClaim(c.id)}>삭제</button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           ))}
                       </div>

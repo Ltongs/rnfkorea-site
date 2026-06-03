@@ -8,7 +8,7 @@ const CORS = {
 };
 
 const TODAY_ISO = new Date().toISOString().slice(0,10);
-const TODAY_KR  = new Date().toLocaleDateString("ko-KR",{year:"numeric",month:"2-digit",day:"2-digit"})
+const TODAY_KR  = new Date().toLocaleDateString("ko-KR",{year:"numeric",month:"2-digit",day:"2-digit",timeZone:"Asia/Seoul"})
   .replace(/\. /g,"-").replace(".","");
 
 const SYSTEM = `You are a Korean AI secretary for an insurance consultant (보험설계사).
@@ -25,21 +25,27 @@ todo: {"type":"todo","title":"string","description":null,"priority":"urgent|norm
 
 schedule: {"type":"schedule","title":"string","description":null,"schedule_date":"YYYY-MM-DD","start_time":"HH:MM|null","category":"meeting|call|task|followup","location":null,"related_type":"insurance"}
 
-order (NEW insurance consultation): {"type":"order","customer_name":"string","phone":null,"channel":"kakao|phone|visit|web","work_type":"insurance","summary":"string","detail":null}
+order (NEW insurance consultation): {"type":"order","customer_name":"string","phone_last4":"string|null","channel":"kakao|phone|visit|web","work_type":"insurance","summary":"string","detail":null}
 
-consult_update (UPDATE existing customer insurance info): {"type":"consult_update","customer_name":"string","work_type":"insurance","keywords":["keyword1"],"update_memo":"string","finance_fields":null}
+claim (insurance claim request): {"type":"claim","customer_name":"string","phone_last4":"string|null","product_name":"string","claim_date":"YYYY-MM-DD","claim_type":"inpatient|outpatient|surgery|death|other","memo":"string|null"}
+
+consult_update (UPDATE existing customer insurance info): {"type":"consult_update","customer_name":"string","work_type":"insurance","keywords":["keyword1"],"update_memo":"string"}
+
+CLAIM TYPE RULES:
+- 치과, 내과, 외래, 통원 → "outpatient"
+- 입원 → "inpatient"
+- 수술 → "surgery"
+- 사망 → "death"
+- 기타 → "other"
+- phone_last4: extract last 4 digits from phone number (e.g. "01050549006" → "9006")
 
 RULES:
-- ALL work_type must be "insurance" — this assistant handles insurance ONLY
-- Existing customer update (보험 조건, 갱신, 심사, 계약 진행 등) → consult_update
+- Insurance claim request (보험청구, 청구요청, 청구대행) → claim
 - New insurance inquiry → order
+- Existing customer update → consult_update
 - Task/reminder → todo
 - Meeting/call schedule → schedule
-- General question → actions:[]
-
-Insurance context:
-- Common terms: 종신보험, 실손보험, 암보험, 연금보험, 변액보험, 자동차보험, 갱신, 심사, 설계, 계약, 청약, 보장분석, 해지, 환급
-- Channel types: kakao(카카오톡), phone(전화), visit(방문), web(온라인)`;
+- General question → actions:[]`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -55,19 +61,16 @@ serve(async (req) => {
     const sbKey = Deno.env.get("APP_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const db = createClient(sbUrl, sbKey);
 
-    // ── confirmUpdate: 사용자 승인 ────────────────────────────────
+    // ── confirmUpdate ─────────────────────────────────────────────
     if (confirmUpdate) {
       const { consultation_id, update_memo } = confirmUpdate;
       const appendText = `[${TODAY_KR} AI비서(Ins)] ${update_memo}`;
-
       const { data: caseRow } = await db.from("ins_consultation_cases")
         .select("detail_memo").eq("id", consultation_id).single();
-
       const prev = caseRow?.detail_memo ?? "";
       await db.from("ins_consultation_cases").update({
         detail_memo: prev ? `${prev}\n${appendText}` : appendText,
       }).eq("id", consultation_id);
-
       return new Response(
         JSON.stringify({ reply:`✅ 상담#${consultation_id} 업데이트 완료`, actions:[], saved:[{type:"consult_update",id:consultation_id}], pendingUpdates:[] }),
         { headers: { ...CORS, "Content-Type":"application/json" } }
@@ -120,41 +123,55 @@ serve(async (req) => {
           if (!error && data) saved.push({type:"schedule",id:data.id});
         }
 
-        // ── 상담 접수 (신규 고객) ──────────────────────────────────
+        // ── 상담 접수 ──────────────────────────────────────────────
         if (a.type === "order") {
+          const last4 = String(a.phone_last4??"").replace(/\D/g,"").slice(-4);
+          const cKey = last4 ? `${String(a.customer_name).trim()}_${last4}` : String(a.customer_name).trim();
           let cid: number|null = null;
           const {data:cd} = await db.from("ins_consultation_cases").insert({
-            customer_name:a.customer_name, phone:a.phone??"미입력",
+            customer_key:cKey, customer_name:a.customer_name, phone:last4||"미입력",
             work_type:"registration_insurance", status:"new",
             summary:`[AI비서(Ins) 자동접수] ${a.summary}`,
             detail_memo:a.detail??null, followup_needed:false,
             call_datetime:new Date().toISOString(),
           }).select("id").single();
           if (cd) cid = cd.id;
-
           const {data:od} = await db.from("ins_orders").insert({
-            customer_name:a.customer_name, phone:a.phone??null, channel:a.channel??"phone",
+            customer_key:cKey, customer_name:a.customer_name, channel:a.channel??"phone",
             work_type:"insurance", summary:a.summary, detail:a.detail??null,
             status:"new", consultation_id:cid,
           }).select("id").single();
           if (od) saved.push({type:"order",id:od.id,consultation_id:cid??undefined});
         }
 
+        // ── 보험금 청구 ────────────────────────────────────────────
+        if (a.type === "claim") {
+          const last4 = String(a.phone_last4??"").replace(/\D/g,"").slice(-4);
+          const cKey = last4 ? `${String(a.customer_name).trim()}_${last4}` : String(a.customer_name).trim();
+          const {data,error} = await db.from("ins_claims").insert({
+            customer_key:cKey,
+            customer_name:a.customer_name,
+            product_name:a.product_name??"미확인",
+            claim_date:a.claim_date??TODAY_ISO,
+            claim_type:a.claim_type??"other",
+            status:"requested",
+            memo:a.memo??null,
+          }).select("id").single();
+          if (!error && data) saved.push({type:"claim",id:data.id});
+        }
+
         // ── 상담 업데이트 ──────────────────────────────────────────
         if (a.type === "consult_update") {
           const kws = (a.keywords as string[]) ?? [];
-
           const {data:cands} = await db.from("ins_consultation_cases")
             .select("id,customer_name,work_type,status,summary,detail_memo,created_at")
             .eq("customer_name", a.customer_name)
             .eq("work_type","registration_insurance")
             .order("created_at",{ascending:false}).limit(5);
-
           if (!cands || cands.length === 0) {
             pendingUpdates.push({action:a, candidates:[], bestMatch:null});
             continue;
           }
-
           let best = cands[0] as Record<string,unknown>;
           if (cands.length > 1) {
             let top = -1;
@@ -164,13 +181,11 @@ serve(async (req) => {
               if (score > top) { top=score; best=c; }
             }
           }
-
           const appendText = `[${TODAY_KR} AI비서(Ins)] ${a.update_memo}`;
           const prev = (best.detail_memo as string) ?? "";
           await db.from("ins_consultation_cases").update({
             detail_memo: prev ? `${prev}\n${appendText}` : appendText,
           }).eq("id", best.id);
-
           saved.push({type:"consult_update", id:best.id as number});
         }
       }
