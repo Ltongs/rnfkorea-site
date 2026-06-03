@@ -76,7 +76,19 @@ const CLAIM_STS_LBL:Record<string,string> = {requested:"청구요청",processing
 const CLAIM_STS_CLR:Record<string,string> = {requested:"bg-yellow-50 text-yellow-700",processing:"bg-blue-50 text-blue-700",paid:"bg-emerald-50 text-emerald-700",rejected:"bg-red-50 text-red-600"};
 
 // ─── 유틸 ─────────────────────────────────────────────────────────────────────
-const todayStr = () => { const d=new Date(); d.setHours(d.getHours()+9); return d.toISOString().slice(0,10); };
+// 한국 시간 기준 오늘 날짜 YYYY-MM-DD
+const todayStr = () => {
+  const d = new Date();
+  return d.toLocaleDateString("ko-KR",{year:"numeric",month:"2-digit",day:"2-digit",timeZone:"Asia/Seoul"})
+    .replace(/\. /g,"-").replace(".","").trim();
+};
+// n일 후 날짜 YYYY-MM-DD
+const addDays = (base:string, n:number) => {
+  const d = new Date(base+"T00:00:00");
+  d.setDate(d.getDate()+n);
+  return d.toLocaleDateString("ko-KR",{year:"numeric",month:"2-digit",day:"2-digit",timeZone:"Asia/Seoul"})
+    .replace(/\. /g,"-").replace(".","").trim();
+};
 // 이름 + 전화번호 끝 4자리 → customer_key (예: 홍길동_1234)
 const makeCustomerKey = (name:string, phone:string) => {
   const digits = phone.replace(/\D/g,"");
@@ -587,8 +599,7 @@ const SecretaryInsPage:React.FC = () => {
   }
 
   const loadStats = useCallback(async()=>{
-    const d30 = new Date(); d30.setDate(d30.getDate()+30);
-    const d30str = d30.toISOString().slice(0,10);
+    const d30str = addDays(todayStr(), 30);
     const [a,b,c,d,e,f,g,h] = await Promise.all([
       supabase.from("ins_schedules").select("id",{count:"exact"}).eq("schedule_date",todayStr()).eq("is_done",false),
       supabase.from("ins_todos").select("id",{count:"exact"}).eq("is_done",false),
@@ -620,7 +631,14 @@ const SecretaryInsPage:React.FC = () => {
 
   const loadSchedules = useCallback(async()=>{
     setSchedLoading(true);
-    const {data} = await supabase.from("ins_schedules").select("*").eq("schedule_date",schedDate).order("start_time",{ascending:true});
+    const tomorrow = new Date(schedDate+"T00:00:00");
+    tomorrow.setDate(tomorrow.getDate()+1);
+    const tomorrowStr = addDays(schedDate, 1);
+    const {data} = await supabase.from("ins_schedules").select("*")
+      .gte("schedule_date", schedDate)
+      .lte("schedule_date", tomorrowStr)
+      .order("schedule_date",{ascending:true})
+      .order("start_time",{ascending:true});
     if(data)setSchedules(data as Schedule[]);
     setSchedLoading(false);
   },[schedDate]);
@@ -690,10 +708,15 @@ const SecretaryInsPage:React.FC = () => {
   useEffect(()=>{
     if(tab==="schedule"){
       const today = todayStr();
+      const tomorrow = new Date(today+"T00:00:00");
+      tomorrow.setDate(tomorrow.getDate()+1);
+      const tomorrowStr = addDays(today, 1);
       setSchedDate(today);
       setSchedLoading(true);
       Promise.all([
-        supabase.from("ins_schedules").select("*").eq("schedule_date",today).order("start_time",{ascending:true}),
+        supabase.from("ins_schedules").select("*")
+          .gte("schedule_date",today).lte("schedule_date",tomorrowStr)
+          .order("schedule_date",{ascending:true}).order("start_time",{ascending:true}),
         supabase.from("ins_todos").select("*").eq("is_done",false).order("priority").order("created_at",{ascending:false}),
       ]).then(([sr,tr])=>{
         if(sr.data) setSchedules(sr.data as Schedule[]);
@@ -709,8 +732,7 @@ const SecretaryInsPage:React.FC = () => {
   // ─── 계약 CRUD ──────────────────────────────────────────────────────────────
   const loadPolicies = useCallback(async()=>{
     setPolicyLoading(true);
-    const d30 = new Date(); d30.setDate(d30.getDate()+30);
-    const d30str = d30.toISOString().slice(0,10);
+    const d30str = addDays(todayStr(), 30);
     const [all,exp] = await Promise.all([
       supabase.from("ins_policies").select("*").order("expiry_date",{ascending:true}),
       supabase.from("ins_policies").select("*").gte("expiry_date",todayStr()).lte("expiry_date",d30str).order("expiry_date",{ascending:true}),
@@ -941,7 +963,7 @@ const SecretaryInsPage:React.FC = () => {
     setChatLoading(true);
     try{
       const {data:{session}}=await supabase.auth.getSession();
-      const res=await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/secretary-ai`,{
+      const res=await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/secretary-ai-ins`,{
         method:"POST",
         headers:{"Content-Type":"application/json",Authorization:`Bearer ${session?.access_token??""}`},
         body:JSON.stringify({messages:next.map(m=>({role:m.role,content:m.content})),autoSave}),
@@ -952,6 +974,10 @@ const SecretaryInsPage:React.FC = () => {
       setMsgs(p=>[...p,{role:"assistant",content:reply,saved,actions,pendingUpdates,ts:nowTs()}]);
       if(saved.length>0){
         void loadStats();
+        // 저장된 타입에 따라 해당 탭 데이터 즉시 갱신
+        if(saved.some((s:any)=>s.type==="schedule")) void loadSchedules();
+        if(saved.some((s:any)=>s.type==="todo"))     void loadTodos();
+        if(saved.some((s:any)=>s.type==="order"))    void loadOrders();
         const cc=saved.filter((s:any)=>s.consultation_id).length;
         showToast(`${saved.length}건 저장${cc>0?` + 상담관리 ${cc}건`:""}`);
       }
@@ -977,10 +1003,7 @@ const SecretaryInsPage:React.FC = () => {
     setChatLoading(true);
     try{
       const {data:{session}}=await supabase.auth.getSession();
-      const res=await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/secretary-ai`,{
-        method:"POST",
-        headers:{"Content-Type":"application/json",Authorization:`Bearer ${session?.access_token??""}`},
-        body:JSON.stringify({messages:[{role:"user",content:"confirm_update"}],autoSave:false,confirmUpdate:{consultation_id:cid,update_memo:action.update_memo,update_summary:action.update_summary??null,update_status:action.update_status??null}}),
+      const res=await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/secretary-ai-ins`,{
       });
       const d=await res.json();
       setMsgs(p=>p.map((m,i)=>i!==msgIdx?m:{...m,pendingUpdates:[],saved:[...(m.saved??[]),...(d.saved??[])]}));
@@ -1151,27 +1174,48 @@ const SecretaryInsPage:React.FC = () => {
                 </div>
               )}
               {schedLoading?<p className="text-sm text-gray-400 p-4">불러오는 중...</p>
-                :schedules.length===0?<div className={`${CARD} p-8 text-center text-gray-400 text-sm`}>{fmtDate(schedDate)} 일정이 없습니다</div>
-                :schedules.map(s=>(
-                  <div key={s.id} className={`${CARD} p-4 flex items-start gap-3 ${s.is_done?"opacity-60":""}`}>
-                    <CatDot c={s.category}/>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`text-sm font-semibold text-[#0f172a] ${s.is_done?"line-through":""}`}>{s.title}</span>
-                        <span className="text-xs text-gray-400">{CAT_LBL[s.category]}</span>
-                        {s.related_type&&<span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600">{WL[s.related_type]??s.related_type}</span>}
-                        <LinkBadge id={s.consultation_id} onClick={()=>navigate(`/work/call-management?id=${s.consultation_id}`)}/>
+                :schedules.length===0?<div className={`${CARD} p-8 text-center text-gray-400 text-sm`}>오늘·내일 일정이 없습니다</div>
+                :(()=>{
+                  // 날짜별 그룹핑
+                  const groups = new Map<string,Schedule[]>();
+                  schedules.forEach(s=>{
+                    if(!groups.has(s.schedule_date)) groups.set(s.schedule_date,[]);
+                    groups.get(s.schedule_date)!.push(s);
+                  });
+                  const today = todayStr();
+                  return Array.from(groups.entries()).map(([date,list])=>(
+                    <div key={date} className="space-y-2">
+                      {/* 날짜 구분 헤더 */}
+                      <div className="flex items-center gap-2 pt-1">
+                        <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${date===today?"bg-[#0f172a] text-white":"bg-blue-50 text-blue-600"}`}>
+                          {date===today?"📅 오늘 D-day":"📅 내일 D+1"}
+                        </span>
+                        <span className="text-xs text-gray-400">{fmtDate(date)} · {list.length}건</span>
+                        <div className="flex-1 h-px bg-gray-100"/>
                       </div>
-                      {(s.start_time||s.location)&&<p className="text-xs text-gray-400 mt-0.5">{[s.start_time?fmtTime(s.start_time):null,s.location].filter(Boolean).join(" · ")}</p>}
-                      {s.description&&<p className="text-xs text-gray-500 mt-0.5">{s.description}</p>}
+                      {list.map(s=>(
+                        <div key={s.id} className={`${CARD} p-4 flex items-start gap-3 ${s.is_done?"opacity-60":""}`}>
+                          <CatDot c={s.category}/>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`text-sm font-semibold text-[#0f172a] ${s.is_done?"line-through":""}`}>{s.title}</span>
+                              <span className="text-xs text-gray-400">{CAT_LBL[s.category]}</span>
+                              {s.related_type&&<span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600">{WL[s.related_type]??s.related_type}</span>}
+                              <LinkBadge id={s.consultation_id} onClick={()=>navigate(`/work/call-management?id=${s.consultation_id}`)}/>
+                            </div>
+                            {(s.start_time||s.location)&&<p className="text-xs text-gray-400 mt-0.5">{[s.start_time?fmtTime(s.start_time):null,s.location].filter(Boolean).join(" · ")}</p>}
+                            {s.description&&<p className="text-xs text-gray-500 mt-0.5">{s.description}</p>}
+                          </div>
+                          <div className="flex gap-1.5 flex-shrink-0">
+                            <button className={BTG} onClick={()=>void toggleSched(s.id,s.is_done)}>{s.is_done?"되돌리기":"완료"}</button>
+                            <button className={BTG} onClick={()=>quickChat(`"${s.title}" 미팅 내용 정리해줘. 메모: `)}>AI요약</button>
+                            <button className="text-xs text-red-400 hover:text-red-600 px-1" onClick={()=>void delSched(s.id)}>삭제</button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <div className="flex gap-1.5 flex-shrink-0">
-                      <button className={BTG} onClick={()=>void toggleSched(s.id,s.is_done)}>{s.is_done?"되돌리기":"완료"}</button>
-                      <button className={BTG} onClick={()=>quickChat(`"${s.title}" 미팅 내용 정리해줘. 메모: `)}>AI요약</button>
-                      <button className="text-xs text-red-400 hover:text-red-600 px-1" onClick={()=>void delSched(s.id)}>삭제</button>
-                    </div>
-                  </div>
-                ))
+                  ));
+                })()
               }
               {/* 당일 마감 할일 */}
               {(()=>{
