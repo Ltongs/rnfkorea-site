@@ -5,7 +5,7 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
-type TabKey = "chat"|"schedule"|"todo"|"orders";
+type TabKey = "chat"|"schedule"|"todo"|"consults";
 type Schedule = {
   id:number; title:string; description:string|null; schedule_date:string;
   start_time:string|null; end_time:string|null;
@@ -43,13 +43,12 @@ type ChatMsg = {
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
 const WL:Record<string,string> = {
-  insurance:"보험",tire:"타이어",finance:"금융",forklift:"지게차",battery:"배터리",
-  registration_insurance:"보험",tire_sales:"타이어",forklift_sales:"지게차",battery_sales:"배터리",
+  insurance:"보험",registration_insurance:"보험",
 };
 const CAT_LBL:Record<string,string> = {meeting:"미팅",call:"통화",task:"업무",followup:"사후관리"};
 const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료"};
 const PRI_LBL:Record<string,string> = {urgent:"긴급",normal:"일반",low:"낮음"};
-const ACT_LBL:Record<string,string> = {todo:"✅ 할일",schedule:"📅 일정",order:"📦 주문",consult_update:"🔄 상담 업데이트"};
+const ACT_LBL:Record<string,string> = {todo:"✅ 할일",schedule:"📅 일정",order:"💬 상담접수",consult_update:"🔄 상담 업데이트"};
 const CAT_CLR:Record<string,string> = {meeting:"#60a5fa",call:"#fb923c",followup:"#c084fc",task:"#34d399"};
 
 // ─── 유틸 ─────────────────────────────────────────────────────────────────────
@@ -538,8 +537,8 @@ const SecretaryInsPage:React.FC = () => {
       supabase.from("ins_todos").select("id",{count:"exact"}).eq("is_done",false),
       supabase.from("ins_todos").select("id",{count:"exact"}).eq("is_done",false).eq("priority","urgent"),
       supabase.from("ins_orders").select("id",{count:"exact"}).eq("status","new"),
-      supabase.from("ins_consultation_cases").select("id",{count:"exact"}).eq("followup_needed",true).eq("next_followup_date",todayStr()),
-      supabase.from("ins_consultation_cases").select("id",{count:"exact"}).gte("created_at",todayStr()+"T00:00:00").lte("created_at",todayStr()+"T23:59:59"),
+      supabase.from("consultation_cases").select("id",{count:"exact"}).eq("work_type","registration_insurance").eq("followup_needed",true).eq("next_followup_date",todayStr()),
+      supabase.from("consultation_cases").select("id",{count:"exact"}).eq("work_type","registration_insurance").gte("created_at",todayStr()+"T00:00:00").lte("created_at",todayStr()+"T23:59:59"),
     ]);
     setStats({todaySch:a.count??0,activeTodo:b.count??0,urgentTodo:c.count??0,newOrders:d.count??0,todayFollowup:e.count??0,newConsult:f.count??0});
   },[]);
@@ -589,9 +588,17 @@ const SecretaryInsPage:React.FC = () => {
 
   const loadConsults = useCallback(async()=>{
     setCLoading(true);
+    // admin@rnfkorea.co.kr 의 consultation_cases 중 보험(registration_insurance) 건만 조회
     const [fr,rr] = await Promise.all([
-      supabase.from("ins_consultation_cases").select("id,customer_name,phone,telecom_provider,work_type,status,summary,followup_needed,next_followup_date,created_at").eq("followup_needed",true).eq("next_followup_date",todayStr()).order("created_at",{ascending:false}).limit(10),
-      supabase.from("ins_consultation_cases").select("id,customer_name,phone,telecom_provider,work_type,status,summary,followup_needed,next_followup_date,created_at").order("created_at",{ascending:false}).limit(8),
+      supabase.from("consultation_cases")
+        .select("id,customer_name,phone,telecom_provider,work_type,status,summary,followup_needed,next_followup_date,created_at")
+        .eq("work_type","registration_insurance")
+        .eq("followup_needed",true).eq("next_followup_date",todayStr())
+        .order("created_at",{ascending:false}).limit(10),
+      supabase.from("consultation_cases")
+        .select("id,customer_name,phone,telecom_provider,work_type,status,summary,followup_needed,next_followup_date,created_at")
+        .eq("work_type","registration_insurance")
+        .order("created_at",{ascending:false}).limit(20),
     ]);
     if(fr.data)setFollowups(fr.data as Consult[]);
     if(rr.data)setRecentC(rr.data as Consult[]);
@@ -638,7 +645,7 @@ const SecretaryInsPage:React.FC = () => {
     if(tab==="todo") void loadTodos();
   },[tab, loadTodos]);
   useEffect(()=>{if(tab==="todo")void loadTodos();},[tab,loadTodos]);
-  useEffect(()=>{if(tab==="orders"){void loadOrders();void loadConsults();}},[tab,loadOrders,loadConsults]);
+  useEffect(()=>{if(tab==="consults"){void loadOrders();void loadConsults();}},[tab,loadOrders,loadConsults]);
 
   // ─── 일정 CRUD ──────────────────────────────────────────────────────────────
   async function addSchedule(){
@@ -694,16 +701,15 @@ const SecretaryInsPage:React.FC = () => {
     setTodos(p=>p.filter(t=>t.id!==id)); void loadStats();
   }
 
-  // ─── 주문 CRUD ──────────────────────────────────────────────────────────────
+  // ─── 상담 CRUD ──────────────────────────────────────────────────────────────
   async function addOrder(){
     if(!newOrder.customer_name||!newOrder.summary)return;
     let cid:number|null=null;
-    if(syncConsult&&newOrder.work_type){
-      const wm:Record<string,string>={insurance:"registration_insurance",tire:"tire_sales",finance:"finance",forklift:"forklift_sales",battery:"battery_sales"};
+    if(syncConsult){
       const {data:cd,error:ce}=await supabase.from("ins_consultation_cases").insert({
         customer_name:newOrder.customer_name,phone:newOrder.phone||"미입력",telecom_provider:newOrder.telecom_provider||null,
-        work_type:wm[newOrder.work_type]??newOrder.work_type,status:"new",
-        summary:`[AI비서 ${newOrder.channel==="kakao"?"카카오":newOrder.channel} 접수] ${newOrder.summary}`,
+        work_type:"registration_insurance",status:"new",
+        summary:`[AI비서(Ins) ${newOrder.channel==="kakao"?"카카오":newOrder.channel} 접수] ${newOrder.summary}`,
         detail_memo:newOrder.detail||null,followup_needed:false,call_datetime:new Date().toISOString(),
       }).select("id").single();
       if(ce){showToast("상담관리 연동 실패","err");return;}
@@ -711,10 +717,10 @@ const SecretaryInsPage:React.FC = () => {
     }
     const {error}=await supabase.from("ins_orders").insert({
       customer_name:newOrder.customer_name,phone:newOrder.phone||null,channel:newOrder.channel,
-      work_type:newOrder.work_type||null,summary:newOrder.summary,detail:newOrder.detail||null,status:"new",consultation_id:cid,
+      work_type:"insurance",summary:newOrder.summary,detail:newOrder.detail||null,status:"new",consultation_id:cid,
     });
     if(!error){
-      showToast(cid?`주문 + 상담관리 등록 완료 (상담#${cid})`:"주문 등록 완료");
+      showToast(cid?`상담 등록 완료 (상담#${cid})`:"상담 등록 완료");
       setShowOrderForm(false);
       setNewOrder({customer_name:"",phone:"",channel:"kakao",work_type:"",summary:"",detail:"",telecom_provider:"",region:""});
       void loadOrders(); void loadStats();
@@ -823,22 +829,22 @@ const SecretaryInsPage:React.FC = () => {
             <div className="w-8 h-8 rounded-xl bg-[#0f172a] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">AI</div>
             <div>
               <h1 className="text-sm font-bold text-[#0f172a]">AI 비서 (Ins)</h1>
-              <p className="text-xs text-gray-400">두서없이 말씀하시면 자동 저장 · 상담관리 연동</p>
+              <p className="text-xs text-gray-400">보험 상담을 자동 기록·분류·저장합니다</p>
             </div>
           </div>
           {/* 통계 배지 */}
           <div className="flex items-center gap-1.5 flex-wrap text-xs">
             <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 font-medium">📅 {stats.todaySch}</span>
             <span className="px-2.5 py-1 rounded-full bg-orange-50 text-orange-600 font-medium">✅ {stats.activeTodo}</span>
-            <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-600 font-medium">📦 {stats.newOrders}</span>
+            <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-600 font-medium">💬 신규 {stats.newOrders}</span>
             {stats.todayFollowup>0&&<span className="px-2.5 py-1 rounded-full bg-purple-50 text-purple-600 font-medium">📞 사후관리 {stats.todayFollowup}</span>}
-            {stats.newConsult>0&&<span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 font-medium">💬 오늘상담 {stats.newConsult}</span>}
+            {stats.newConsult>0&&<span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 font-medium">🛡 오늘보험상담 {stats.newConsult}</span>}
           </div>
           {/* 탭 */}
           <div className="flex items-center gap-1.5">
-            {(["chat","schedule","todo","orders"] as TabKey[]).map(t=>(
+            {(["chat","schedule","todo","consults"] as TabKey[]).map(t=>(
               <button key={t} className={`${TB} ${tab===t?TA:TI}`} onClick={()=>setTab(t)}>
-                {{chat:"💬 채팅",schedule:"📅 일정",todo:"✅ 할일",orders:"📦 주문·상담"}[t]}
+                {{chat:"💬 채팅",schedule:"📅 일정",todo:"✅ 할일",consults:"🛡 상담"}[t]}
               </button>
             ))}
           </div>
@@ -859,8 +865,8 @@ const SecretaryInsPage:React.FC = () => {
             onMonthChange={(yr,mo)=>{void loadCalData(yr,mo); if(gcalConnected) void loadGcalEvents(yr,mo);}}
           />
           <div className="flex gap-2">
-            <button onClick={()=>navigate("/work/call-management")} className="flex-1 flex items-center justify-center gap-1 px-2 py-2 rounded-xl border border-gray-200 text-xs text-[#0f172a] font-semibold hover:bg-gray-50 transition-all">📋 상담관리</button>
-            <button onClick={()=>navigate("/work/dashboard")} className="flex-1 flex items-center justify-center gap-1 px-2 py-2 rounded-xl border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition-all">📊 대시보드</button>
+            <button onClick={()=>setTab("consults")} className="flex-1 flex items-center justify-center gap-1 px-2 py-2 rounded-xl border border-gray-200 text-xs text-[#0f172a] font-semibold hover:bg-gray-50 transition-all">🛡 보험상담</button>
+            <button onClick={()=>setTab("schedule")} className="flex-1 flex items-center justify-center gap-1 px-2 py-2 rounded-xl border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition-all">📅 일정</button>
           </div>
           {/* 구글 캘린더 연동 */}
           <div className={`${CARD} p-3`}>
@@ -929,7 +935,7 @@ const SecretaryInsPage:React.FC = () => {
                     <div><label className={LBL}>장소</label><input className={CTRL} value={newSched.location} onChange={e=>setNewSched(p=>({...p,location:e.target.value}))} placeholder="장소"/></div>
                     <div><label className={LBL}>업무 분류</label>
                       <select className={CTRL} value={newSched.related_type} onChange={e=>setNewSched(p=>({...p,related_type:e.target.value}))}>
-                        <option value="">선택 안함</option><option value="insurance">보험</option><option value="tire">타이어</option><option value="finance">금융</option><option value="forklift">지게차</option><option value="battery">배터리</option>
+                        <option value="">선택 안함</option><option value="insurance">보험</option>
                       </select>
                     </div>
                     <div className="col-span-2"><label className={LBL}>🔗 상담 ID (사후관리 시 next_followup_date 자동 업데이트)</label><input className={CTRL} value={newSched.consultation_id} onChange={e=>setNewSched(p=>({...p,consultation_id:e.target.value.replace(/\D/g,"")}))} placeholder="숫자만"/></div>
@@ -1015,7 +1021,7 @@ const SecretaryInsPage:React.FC = () => {
                     </div>
                     <div><label className={LBL}>업무 분류</label>
                       <select className={CTRL} value={newTodo.category} onChange={e=>setNewTodo(p=>({...p,category:e.target.value}))}>
-                        <option value="">선택 안함</option><option value="insurance">보험</option><option value="tire">타이어</option><option value="finance">금융</option><option value="forklift">지게차</option><option value="battery">배터리</option><option value="admin">관리</option>
+                        <option value="">선택 안함</option><option value="insurance">보험</option><option value="admin">관리</option>
                       </select>
                     </div>
                     <div><label className={LBL}>마감일</label><input type="date" className={CTRL} value={newTodo.due_date} onChange={e=>setNewTodo(p=>({...p,due_date:e.target.value}))}/></div>
@@ -1056,7 +1062,7 @@ const SecretaryInsPage:React.FC = () => {
           )}
 
           {/* ══ 주문·상담 ══ */}
-          {tab==="orders"&&(
+          {tab==="consults"&&(
             <div className="space-y-4 pb-4">
               {/* 사후관리 */}
               {followups.length>0&&(
@@ -1128,21 +1134,21 @@ const SecretaryInsPage:React.FC = () => {
                   )
                 }
               </div>
-              {/* 카카오·주문 */}
+              {/* 카카오·상담 접수 */}
               <div>
                 <div className="flex items-center gap-2 flex-wrap mb-2">
-                  <p className="text-sm font-semibold text-[#0f172a]">📦 카카오·기타 주문</p>
+                  <p className="text-sm font-semibold text-[#0f172a]">🛡 보험 상담 접수</p>
                   <div className="flex gap-1.5 ml-auto flex-wrap">
                     {(["active","all","done"] as const).map(f=>(
                       <button key={f} className={`${TB} text-xs py-1 px-2.5 ${ordFilter===f?TA:TI}`} onClick={()=>setOrdFilter(f)}>{{active:"진행중",all:"전체",done:"완료"}[f]}</button>
                     ))}
-                    <button className={BTP} onClick={()=>setShowOrderForm(v=>!v)}>{showOrderForm?"닫기":"+ 등록"}</button>
+                    <button className={BTP} onClick={()=>setShowOrderForm(v=>!v)}>{showOrderForm?"닫기":"+ 상담등록"}</button>
                   </div>
                 </div>
                 {showOrderForm&&(
                   <div className={`${CARD} p-4 mb-3`}>
                     <div className="flex items-center justify-between mb-3">
-                      <p className="text-sm font-semibold text-[#0f172a]">새 주문/문의 등록</p>
+                      <p className="text-sm font-semibold text-[#0f172a]">새 보험 상담 등록</p>
                       <label className="flex items-center gap-1.5 cursor-pointer">
                         <div className={`w-9 h-5 rounded-full transition-colors relative ${syncConsult?"bg-emerald-500":"bg-gray-300"}`} onClick={()=>setSyncConsult(v=>!v)}>
                           <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${syncConsult?"translate-x-4":"translate-x-0.5"}`}/>
@@ -1150,44 +1156,36 @@ const SecretaryInsPage:React.FC = () => {
                         <span className="text-xs text-gray-600">{syncConsult?"🔗 상담관리 자동등록":"연동 OFF"}</span>
                       </label>
                     </div>
-                    {syncConsult&&<div className="mb-3 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-700">✅ ins_consultation_cases에도 자동 등록됩니다</div>}
+                    {syncConsult&&<div className="mb-3 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-700">✅ 보험 상담으로 ins_consultation_cases에 자동 등록됩니다</div>}
                     <div className="grid grid-cols-2 gap-2.5 mb-3">
                       <div><label className={LBL}>고객명 *</label><input className={CTRL} value={newOrder.customer_name} onChange={e=>setNewOrder(p=>({...p,customer_name:e.target.value}))} placeholder="고객명"/></div>
                       <div><label className={LBL}>연락처</label><input className={CTRL} value={newOrder.phone} onChange={e=>setNewOrder(p=>({...p,phone:e.target.value}))} placeholder="010-0000-0000"/></div>
-                      <div><label className={LBL}>채널</label>
+                      <div><label className={LBL}>접수 채널</label>
                         <select className={CTRL} value={newOrder.channel} onChange={e=>setNewOrder(p=>({...p,channel:e.target.value as any}))}>
                           <option value="kakao">카카오톡</option><option value="phone">전화</option><option value="visit">방문</option><option value="web">홈페이지</option>
                         </select>
                       </div>
-                      <div><label className={LBL}>업무 유형</label>
-                        <select className={CTRL} value={newOrder.work_type} onChange={e=>setNewOrder(p=>({...p,work_type:e.target.value}))}>
-                          <option value="">선택</option><option value="insurance">보험</option><option value="tire">타이어</option><option value="finance">금융</option><option value="forklift">지게차</option><option value="battery">배터리</option>
-                        </select>
-                      </div>
-                      {syncConsult&&<>
-                        <div><label className={LBL}>통신사</label><input className={CTRL} value={newOrder.telecom_provider} onChange={e=>setNewOrder(p=>({...p,telecom_provider:e.target.value}))} placeholder="SKT/KT/LG"/></div>
-                        <div><label className={LBL}>지역</label><input className={CTRL} value={newOrder.region} onChange={e=>setNewOrder(p=>({...p,region:e.target.value}))} placeholder="지역"/></div>
-                      </>}
-                      <div className="col-span-2"><label className={LBL}>요약 *</label><input className={CTRL} value={newOrder.summary} onChange={e=>setNewOrder(p=>({...p,summary:e.target.value}))} placeholder="문의/주문 내용 요약"/></div>
-                      <div className="col-span-2"><label className={LBL}>상세</label><textarea className={TA2} rows={2} value={newOrder.detail} onChange={e=>setNewOrder(p=>({...p,detail:e.target.value}))}/></div>
+                      <div><label className={LBL}>통신사</label><input className={CTRL} value={newOrder.telecom_provider} onChange={e=>setNewOrder(p=>({...p,telecom_provider:e.target.value}))} placeholder="SKT/KT/LG"/></div>
+                      <div className="col-span-2"><label className={LBL}>상담 내용 요약 *</label><input className={CTRL} value={newOrder.summary} onChange={e=>setNewOrder(p=>({...p,summary:e.target.value}))} placeholder="보험 상담 내용 요약"/></div>
+                      <div className="col-span-2"><label className={LBL}>상세 메모</label><textarea className={TA2} rows={2} value={newOrder.detail} onChange={e=>setNewOrder(p=>({...p,detail:e.target.value}))}/></div>
                     </div>
                     <div className="flex gap-2"><button className={BTP} onClick={()=>void addOrder()}>저장{syncConsult?" + 상담관리":""}</button><button className={BTS} onClick={()=>setShowOrderForm(false)}>취소</button></div>
                   </div>
                 )}
                 {orderLoading?<p className="text-sm text-gray-400 p-4">불러오는 중...</p>
-                  :orders.length===0?<div className={`${CARD} p-6 text-center text-gray-400 text-sm`}>주문/문의가 없습니다</div>
+                  :orders.length===0?<div className={`${CARD} p-6 text-center text-gray-400 text-sm`}>등록된 상담이 없습니다</div>
                   :(
                     <div className="space-y-2">
                       {orders.map(o=>(
                         <div key={o.id} className={`${CARD} p-4`}>
                           <div className="flex items-start gap-3">
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm flex-shrink-0 ${o.channel==="kakao"?"bg-yellow-100":"bg-gray-100"}`}>
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm flex-shrink-0 ${o.channel==="kakao"?"bg-yellow-100":"bg-blue-50"}`}>
                               {{kakao:"💬",phone:"📞",visit:"🏢",web:"🌐"}[o.channel]}
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-sm font-semibold text-[#0f172a]">{o.customer_name}</span>
-                                {o.work_type&&<span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600">{WL[o.work_type]}</span>}
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">🛡 보험</span>
                                 <StsBadge s={o.status}/>
                                 {o.phone&&<a href={`tel:${o.phone.replace(/-/g,"")}`} className="text-xs text-orange-500 hover:underline">{o.phone}</a>}
                                 <LinkBadge id={o.consultation_id} onClick={()=>navigate(`/work/call-management?id=${o.consultation_id}`)}/>
@@ -1197,11 +1195,11 @@ const SecretaryInsPage:React.FC = () => {
                             </div>
                             <div className="flex gap-1.5 flex-shrink-0 flex-wrap">
                               {o.status!=="done"&&<>
-                                {o.status==="new"&&<button className={BTO} onClick={()=>void setOrderStatus(o.id,"processing")}>처리중</button>}
+                                {o.status==="new"&&<button className={BTO} onClick={()=>void setOrderStatus(o.id,"processing")}>진행중</button>}
                                 <button className={BTE} onClick={()=>void setOrderStatus(o.id,"done")}>완료</button>
                               </>}
                               <button className={BTG} onClick={()=>setExpandedOrder(expandedOrder===o.id?null:o.id)}>{expandedOrder===o.id?"접기":"상세"}</button>
-                              <button className={BTG} onClick={()=>quickChat(`"${o.customer_name}" ${WL[o.work_type??""]??""} 문의 처리: ${o.summary}`)}>AI</button>
+                              <button className={BTG} onClick={()=>quickChat(`"${o.customer_name}" 보험 상담 처리: ${o.summary}`)}>AI</button>
                             </div>
                           </div>
                           {expandedOrder===o.id&&(
@@ -1275,16 +1273,16 @@ const SecretaryInsPage:React.FC = () => {
           {/* ══ 입력창 (항상 하단 고정) ══ */}
           <div className="flex-shrink-0 pt-2">
             <div className="flex flex-wrap gap-1.5 mb-2">
-              {["오늘 현황 요약","긴급 할일","오늘 사후관리","방금 통화 저장","미팅 메모 정리"].map(c=>(
+              {["오늘 상담 요약","긴급 할일","오늘 사후관리","방금 보험 통화 저장","고객 미팅 메모 정리"].map(c=>(
                 <button key={c} onClick={()=>quickChat(c.includes("저장")||c.includes("정리")?c+". ":c+" 알려줘")}
-                  className="px-2.5 py-1 rounded-full border border-gray-200 text-xs text-gray-500 hover:border-orange-300 hover:text-orange-500 bg-white transition-all">
+                  className="px-2.5 py-1 rounded-full border border-gray-200 text-xs text-gray-500 hover:border-blue-300 hover:text-blue-500 bg-white transition-all">
                   {c}
                 </button>
               ))}
             </div>
             <div className={`${CARD} py-2.5 px-3`}>
               <div className="flex items-center justify-between mb-1.5">
-                <p className="text-xs text-gray-400">두서없이 말씀하시면 AI가 자동 분류·저장합니다</p>
+                <p className="text-xs text-gray-400">보험 상담 내용을 말씀하시면 AI가 자동 분류·저장합니다</p>
                 <label className="flex items-center gap-1.5 cursor-pointer flex-shrink-0">
                   <div className={`w-8 h-4 rounded-full transition-colors relative ${autoSave?"bg-emerald-500":"bg-gray-300"}`} onClick={()=>setAutoSave(v=>!v)}>
                     <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${autoSave?"translate-x-4":"translate-x-0.5"}`}/>
@@ -1294,7 +1292,7 @@ const SecretaryInsPage:React.FC = () => {
               </div>
               <div className="flex gap-2 items-end">
                 <textarea ref={chatInputRef} className={`${TA2} flex-1 min-h-[38px] max-h-24`} rows={1}
-                  placeholder="할일, 일정, 고객 문의... 자동 저장됩니다"
+                  placeholder="보험 상담 내용, 고객 정보, 할일, 일정... 자동 저장됩니다"
                   value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={chatKey}/>
                 <button className={`${BTP} h-9 px-4 flex-shrink-0`} onClick={()=>void sendChat()} disabled={chatLoading||!chatInput.trim()}>전송</button>
               </div>

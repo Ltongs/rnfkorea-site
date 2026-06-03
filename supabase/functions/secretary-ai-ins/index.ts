@@ -7,16 +7,11 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const WMAP: Record<string,string> = {
-  insurance:"registration_insurance", tire:"tire_sales", finance:"finance",
-  forklift:"forklift_sales", battery:"battery_sales",
-};
-
 const TODAY_ISO = new Date().toISOString().slice(0,10);
 const TODAY_KR  = new Date().toLocaleDateString("ko-KR",{year:"numeric",month:"2-digit",day:"2-digit"})
   .replace(/\. /g,"-").replace(".","");
 
-const SYSTEM = `You are a Korean AI secretary for RNF Korea company.
+const SYSTEM = `You are a Korean AI secretary for an insurance consultant (보험설계사).
 Today: ${TODAY_ISO}
 
 CRITICAL: Output ONLY raw JSON. No markdown, no code blocks, no text before/after JSON.
@@ -26,27 +21,25 @@ Format:
 
 Action types:
 
-todo: {"type":"todo","title":"string","description":null,"priority":"urgent|normal|low","category":"insurance|tire|finance|forklift|battery|admin|null","due_date":"YYYY-MM-DD|null"}
+todo: {"type":"todo","title":"string","description":null,"priority":"urgent|normal|low","category":"insurance|followup|admin|null","due_date":"YYYY-MM-DD|null"}
 
-schedule: {"type":"schedule","title":"string","description":null,"schedule_date":"YYYY-MM-DD","start_time":"HH:MM|null","category":"meeting|call|task|followup","location":null,"related_type":"insurance|tire|finance|forklift|battery|null"}
+schedule: {"type":"schedule","title":"string","description":null,"schedule_date":"YYYY-MM-DD","start_time":"HH:MM|null","category":"meeting|call|task|followup","location":null,"related_type":"insurance"}
 
-order (NEW customer): {"type":"order","customer_name":"string","phone":null,"channel":"kakao|phone|visit|web","work_type":"insurance|tire|finance|forklift|battery|null","summary":"string","detail":null}
+order (NEW insurance consultation): {"type":"order","customer_name":"string","phone":null,"channel":"kakao|phone|visit|web","work_type":"insurance","summary":"string","detail":null}
 
-consult_update (UPDATE existing customer info): {"type":"consult_update","customer_name":"string","work_type":"finance|insurance|tire|forklift|battery","keywords":["keyword1"],"update_memo":"string","finance_fields":{"finance_amount":null,"finance_interest_rate":null,"finance_period":null,"finance_company":null,"finance_product":null,"finance_vehicle_model":null,"finance_incentive":null}}
-
-finance_fields rules (only for finance type):
-- "한도 6720만원" → finance_amount: 67200000
-- "금리 9%" or "금리 9.0%" → finance_interest_rate: 9.0
-- "36개월" or "기간 36" → finance_period: 36
-- "인센티브 2.5%" → finance_incentive: 2.5
-- null if not mentioned
+consult_update (UPDATE existing customer insurance info): {"type":"consult_update","customer_name":"string","work_type":"insurance","keywords":["keyword1"],"update_memo":"string","finance_fields":null}
 
 RULES:
-- Existing customer info update (한도, 금리, 조건, 차종 확인 등) → consult_update
-- New customer inquiry → order
-- Task → todo
-- Meeting/schedule → schedule
-- General question → actions:[]`;
+- ALL work_type must be "insurance" — this assistant handles insurance ONLY
+- Existing customer update (보험 조건, 갱신, 심사, 계약 진행 등) → consult_update
+- New insurance inquiry → order
+- Task/reminder → todo
+- Meeting/call schedule → schedule
+- General question → actions:[]
+
+Insurance context:
+- Common terms: 종신보험, 실손보험, 암보험, 연금보험, 변액보험, 자동차보험, 갱신, 심사, 설계, 계약, 청약, 보장분석, 해지, 환급
+- Channel types: kakao(카카오톡), phone(전화), visit(방문), web(온라인)`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -122,28 +115,26 @@ serve(async (req) => {
           const {data,error} = await db.from("ins_schedules").insert({
             title:a.title, description:a.description??null, schedule_date:a.schedule_date??TODAY_ISO,
             start_time:a.start_time??null, category:a.category??"meeting",
-            location:a.location??null, related_type:a.related_type??null,
+            location:a.location??null, related_type:"insurance",
           }).select("id").single();
           if (!error && data) saved.push({type:"schedule",id:data.id});
         }
 
-        // ── 주문 (신규 고객) ──────────────────────────────────────
+        // ── 상담 접수 (신규 고객) ──────────────────────────────────
         if (a.type === "order") {
-          const wt = a.work_type ? (WMAP[a.work_type as string]??a.work_type) : null;
           let cid: number|null = null;
-          if (wt) {
-            const {data:cd} = await db.from("ins_consultation_cases").insert({
-              customer_name:a.customer_name, phone:a.phone??"미입력",
-              work_type:wt, status:"new",
-              summary:`[AI비서(Ins) 자동접수] ${a.summary}`,
-              detail_memo:a.detail??null, followup_needed:false,
-              call_datetime:new Date().toISOString(),
-            }).select("id").single();
-            if (cd) cid = cd.id;
-          }
+          const {data:cd} = await db.from("ins_consultation_cases").insert({
+            customer_name:a.customer_name, phone:a.phone??"미입력",
+            work_type:"registration_insurance", status:"new",
+            summary:`[AI비서(Ins) 자동접수] ${a.summary}`,
+            detail_memo:a.detail??null, followup_needed:false,
+            call_datetime:new Date().toISOString(),
+          }).select("id").single();
+          if (cd) cid = cd.id;
+
           const {data:od} = await db.from("ins_orders").insert({
             customer_name:a.customer_name, phone:a.phone??null, channel:a.channel??"phone",
-            work_type:a.work_type??null, summary:a.summary, detail:a.detail??null,
+            work_type:"insurance", summary:a.summary, detail:a.detail??null,
             status:"new", consultation_id:cid,
           }).select("id").single();
           if (od) saved.push({type:"order",id:od.id,consultation_id:cid??undefined});
@@ -151,12 +142,12 @@ serve(async (req) => {
 
         // ── 상담 업데이트 ──────────────────────────────────────────
         if (a.type === "consult_update") {
-          const wt = WMAP[a.work_type as string] ?? a.work_type as string;
           const kws = (a.keywords as string[]) ?? [];
 
           const {data:cands} = await db.from("ins_consultation_cases")
             .select("id,customer_name,work_type,status,summary,detail_memo,created_at")
-            .eq("customer_name", a.customer_name).eq("work_type", wt)
+            .eq("customer_name", a.customer_name)
+            .eq("work_type","registration_insurance")
             .order("created_at",{ascending:false}).limit(5);
 
           if (!cands || cands.length === 0) {
@@ -185,7 +176,6 @@ serve(async (req) => {
       }
     }
 
-    // ── 채팅 로그 저장은 프론트에서 처리 (ins_chat_logs) ──────────
     return new Response(
       JSON.stringify({reply:parsed.reply, actions:parsed.actions, saved, pendingUpdates}),
       { headers:{...CORS,"Content-Type":"application/json"} }
