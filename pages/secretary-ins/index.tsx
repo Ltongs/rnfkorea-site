@@ -50,7 +50,7 @@ type Claim = {
   id:number; customer_key:string; customer_name:string;
   product_name:string; claim_date:string;
   claim_type:"inpatient"|"outpatient"|"surgery"|"death"|"other";
-  status:"requested"|"processing"|"paid"|"rejected";
+  status:"requested"|"processing"|"completed";
   memo:string|null; created_at:string;
 };
 // 고객 조회용 — customer_key 기준 통합 프로필
@@ -60,6 +60,16 @@ type CustomerProfile = {
   policies: Policy[];
   consults: Consult[];
   claims: Claim[];
+};
+type CustomerInfo = {
+  id?: number;
+  customer_key: string;
+  bank_name: string;
+  bank_account: string;
+  card_company: string;
+  card_number: string;
+  card_expiry: string;
+  memo: string;
 };
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
@@ -72,8 +82,8 @@ const PRI_LBL:Record<string,string> = {urgent:"긴급",normal:"일반",low:"낮�
 const ACT_LBL:Record<string,string> = {todo:"✅ 할일",schedule:"📅 일정",order:"💬 상담접수",claim:"🏥 청구접수",consult_update:"🔄 상담 업데이트"};
 const CAT_CLR:Record<string,string> = {meeting:"#60a5fa",call:"#fb923c",followup:"#c084fc",task:"#34d399"};
 const CLAIM_TYPE_LBL:Record<string,string> = {inpatient:"입원",outpatient:"통원",surgery:"수술",death:"사망",other:"기타"};
-const CLAIM_STS_LBL:Record<string,string> = {requested:"청구요청",processing:"청구대행중",paid:"지급완료",rejected:"거절"};
-const CLAIM_STS_CLR:Record<string,string> = {requested:"bg-yellow-50 text-yellow-700",processing:"bg-blue-50 text-blue-700",paid:"bg-emerald-50 text-emerald-700",rejected:"bg-red-50 text-red-600"};
+const CLAIM_STS_LBL:Record<string,string> = {requested:"청구요청",processing:"청구중",completed:"청구완료"};
+const CLAIM_STS_CLR:Record<string,string> = {requested:"bg-yellow-50 text-yellow-700",processing:"bg-blue-50 text-blue-700",completed:"bg-emerald-50 text-emerald-700"};
 
 // ─── 유틸 ─────────────────────────────────────────────────────────────────────
 // 한국 시간 기준 오늘 날짜 YYYY-MM-DD
@@ -469,7 +479,7 @@ const SecretaryInsPage:React.FC = () => {
   const [claimLoading,setClaimLoading]       = useState(false);
   const [showClaimForm,setShowClaimForm]     = useState(false);
   const [claimSearch,setClaimSearch]         = useState("");
-  const [claimFilter,setClaimFilter]         = useState<"all"|"active"|"paid">("active");
+  const [claimFilter,setClaimFilter]         = useState<"all"|"active"|"completed">("active");
   const [newClaim,setNewClaim]               = useState({customer_name:"",phone:"",product_name:"",claim_date:todayStr(),claim_type:"outpatient" as Claim["claim_type"],memo:""});
 
   // 상세/편집 확장 상태
@@ -486,6 +496,10 @@ const SecretaryInsPage:React.FC = () => {
   const [custLoading,setCustLoading]         = useState(false);
   const [selectedCust,setSelectedCust]       = useState<CustomerProfile|null>(null);
   const [custDetailLoading,setCustDetailLoading] = useState(false);
+  // 고객 정보 (계좌/카드/메모)
+  const [custInfo,setCustInfo]               = useState<CustomerInfo|null>(null);
+  const [editingCustInfo,setEditingCustInfo] = useState(false);
+  const [custInfoForm,setCustInfoForm]       = useState<CustomerInfo>({customer_key:"",bank_name:"",bank_account:"",card_company:"",card_number:"",card_expiry:"",memo:""});
 
   // 달력 데이터
   const [calSch,setCalSch] = useState<CalSch[]>([]);
@@ -790,7 +804,7 @@ const SecretaryInsPage:React.FC = () => {
     setClaimLoading(true);
     let q = supabase.from("ins_claims").select("*").order("claim_date",{ascending:false});
     if(claimFilter==="active") q = q.in("status",["requested","processing"]);
-    else if(claimFilter==="paid") q = q.eq("status","paid");
+    else if(claimFilter==="completed") q = q.eq("status","completed");
     const {data} = await q.limit(60);
     if(data) setClaims(data as Claim[]);
     setClaimLoading(false);
@@ -885,13 +899,29 @@ const SecretaryInsPage:React.FC = () => {
     setCustLoading(false);
   },[]);
 
+  async function saveCustInfo(){
+    if(!selectedCust) return;
+    const payload = {...custInfoForm, customer_key:selectedCust.customer_key};
+    if(custInfo?.id){
+      await supabase.from("ins_customer_info").update(payload).eq("id",custInfo.id);
+    } else {
+      const {data} = await supabase.from("ins_customer_info").insert(payload).select("*").single();
+      if(data) setCustInfo(data as CustomerInfo);
+    }
+    setCustInfo(payload as CustomerInfo);
+    setEditingCustInfo(false);
+    showToast("고객 정보 저장 완료");
+  }
+
   const loadCustomerProfile = useCallback(async(key:string, name:string)=>{
     setCustDetailLoading(true);
     setSelectedCust(null);
-    const [pr,cr,clr] = await Promise.all([
+    setCustInfo(null);
+    const [pr,cr,clr,ir] = await Promise.all([
       supabase.from("ins_policies").select("*").eq("customer_key",key).order("start_date",{ascending:false}),
       supabase.from("ins_consultation_cases").select("*").eq("customer_key",key).order("created_at",{ascending:false}),
       supabase.from("ins_claims").select("*").eq("customer_key",key).order("claim_date",{ascending:false}),
+      supabase.from("ins_customer_info").select("*").eq("customer_key",key).maybeSingle(),
     ]);
     setSelectedCust({
       customer_key:key, customer_name:name,
@@ -899,6 +929,12 @@ const SecretaryInsPage:React.FC = () => {
       consults:(cr.data??[]) as Consult[],
       claims:(clr.data??[]) as Claim[],
     });
+    if(ir.data){
+      setCustInfo(ir.data as CustomerInfo);
+      setCustInfoForm(ir.data as CustomerInfo);
+    } else {
+      setCustInfoForm({customer_key:key,bank_name:"",bank_account:"",card_company:"",card_number:"",card_expiry:"",memo:""});
+    }
     setCustDetailLoading(false);
   },[]);
 
@@ -1690,9 +1726,9 @@ const SecretaryInsPage:React.FC = () => {
                 <div className="flex items-center gap-2 flex-wrap mb-2">
                   <p className="text-sm font-semibold text-[#0f172a]">🏥 보험금 청구 관리</p>
                   <div className="flex gap-1.5 ml-auto flex-wrap items-center">
-                    {(["active","paid","all"] as const).map(f=>(
+                    {(["active","completed","all"] as const).map(f=>(
                       <button key={f} className={`${TB} text-xs py-1 px-2.5 ${claimFilter===f?TA:TI}`} onClick={()=>setClaimFilter(f)}>
-                        {{active:"진행중",paid:"지급완료",all:"전체"}[f]}
+                        {{active:"진행중",completed:"청구완료",all:"전체"}[f]}
                       </button>
                     ))}
                     <input className="h-8 rounded-xl border border-gray-200 px-3 text-xs bg-white focus:outline-none focus:border-orange-400 w-32" placeholder="고객명·상품 검색" value={claimSearch} onChange={e=>setClaimSearch(e.target.value)}/>
@@ -1782,8 +1818,8 @@ const SecretaryInsPage:React.FC = () => {
                                     </div>
                                     <div><label className={LBL}>진행 상태</label>
                                       <select className={CTRL} value={editingClaim.status??""} onChange={e=>setEditingClaim(p=>({...p,status:e.target.value as Claim["status"]}))}>
-                                        <option value="requested">청구요청</option><option value="processing">청구대행중</option>
-                                        <option value="paid">지급완료</option><option value="rejected">거절</option>
+                                        <option value="requested">청구요청</option><option value="processing">청구중</option>
+                                        <option value="completed">청구완료</option>
                                       </select>
                                     </div>
                                     <div className="col-span-2"><label className={LBL}>메모</label><textarea className={TA2} rows={2} value={editingClaim.memo??""} onChange={e=>setEditingClaim(p=>({...p,memo:e.target.value}))}/></div>
@@ -1880,6 +1916,68 @@ const SecretaryInsPage:React.FC = () => {
                       </div>
                     </div>
                     <button className={BTG} onClick={()=>quickChat(`고객 "${selectedCust.customer_name}"(${selectedCust.customer_key}) 전체 현황 정리해줘`)}>AI 요약</button>
+                  </div>
+
+                  {/* 고객 기본 정보 */}
+                  <div className={`${CARD} p-4`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-sm font-semibold text-[#0f172a]">💳 고객 정보</p>
+                      <button className={BTG} onClick={()=>setEditingCustInfo(v=>!v)}>
+                        {editingCustInfo?"닫기":"수정"}
+                      </button>
+                    </div>
+                    {!editingCustInfo?(
+                      <div className="space-y-2.5">
+                        {/* 계좌 */}
+                        <div className="flex items-start gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
+                          <span className="text-base flex-shrink-0">🏦</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-gray-400 mb-0.5">계좌번호</p>
+                            {custInfo?.bank_name||custInfo?.bank_account
+                              ?<p className="text-sm text-[#0f172a]">{[custInfo.bank_name,custInfo.bank_account].filter(Boolean).join(" · ")}</p>
+                              :<p className="text-xs text-gray-300">미등록</p>
+                            }
+                          </div>
+                        </div>
+                        {/* 카드 */}
+                        <div className="flex items-start gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
+                          <span className="text-base flex-shrink-0">💳</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-gray-400 mb-0.5">카드번호</p>
+                            {custInfo?.card_company||custInfo?.card_number
+                              ?<p className="text-sm text-[#0f172a]">{[custInfo.card_company,custInfo.card_number,custInfo.card_expiry].filter(Boolean).join(" · ")}</p>
+                              :<p className="text-xs text-gray-300">미등록</p>
+                            }
+                          </div>
+                        </div>
+                        {/* 메모 */}
+                        <div className="flex items-start gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
+                          <span className="text-base flex-shrink-0">📝</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-gray-400 mb-0.5">메모</p>
+                            {custInfo?.memo
+                              ?<p className="text-sm text-[#0f172a] whitespace-pre-wrap">{custInfo.memo}</p>
+                              :<p className="text-xs text-gray-300">없음</p>
+                            }
+                          </div>
+                        </div>
+                      </div>
+                    ):(
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-2.5">
+                          <div><label className={LBL}>🏦 은행명</label><input className={CTRL} value={custInfoForm.bank_name} onChange={e=>setCustInfoForm(p=>({...p,bank_name:e.target.value}))} placeholder="예: 우리은행"/></div>
+                          <div><label className={LBL}>계좌번호</label><input className={CTRL} value={custInfoForm.bank_account} onChange={e=>setCustInfoForm(p=>({...p,bank_account:e.target.value}))} placeholder="000-000-000000"/></div>
+                          <div><label className={LBL}>💳 카드사</label><input className={CTRL} value={custInfoForm.card_company} onChange={e=>setCustInfoForm(p=>({...p,card_company:e.target.value}))} placeholder="예: 신한카드"/></div>
+                          <div><label className={LBL}>카드번호</label><input className={CTRL} value={custInfoForm.card_number} onChange={e=>setCustInfoForm(p=>({...p,card_number:e.target.value}))} placeholder="0000-0000-0000-0000"/></div>
+                          <div><label className={LBL}>유효기간</label><input className={CTRL} value={custInfoForm.card_expiry} onChange={e=>setCustInfoForm(p=>({...p,card_expiry:e.target.value}))} placeholder="MM/YY"/></div>
+                        </div>
+                        <div><label className={LBL}>📝 메모</label><textarea className={TA2} rows={3} value={custInfoForm.memo} onChange={e=>setCustInfoForm(p=>({...p,memo:e.target.value}))} placeholder="특이사항, 청구 관련 메모 등"/></div>
+                        <div className="flex gap-2">
+                          <button className={BTP} onClick={()=>void saveCustInfo()}>저장</button>
+                          <button className={BTS} onClick={()=>setEditingCustInfo(false)}>취소</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* 계약 목록 */}
