@@ -5,7 +5,7 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
-type TabKey = "chat"|"schedule"|"todo"|"consults";
+type TabKey = "chat"|"schedule"|"todo"|"consults"|"policies";
 type Schedule = {
   id:number; title:string; description:string|null; schedule_date:string;
   start_time:string|null; end_time:string|null;
@@ -39,6 +39,16 @@ type ChatMsg = {
   saved?:{type:string;id:number;consultation_id?:number}[];
   actions?:Record<string,unknown>[];
   pendingUpdates?:PendingUpdate[];
+};
+type Policy = {
+  id:number;
+  customer_name:string;
+  phone:string|null;
+  product_name:string;
+  start_date:string;
+  expiry_date:string|null;
+  memo:string|null;
+  created_at:string;
 };
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
@@ -415,6 +425,14 @@ const SecretaryInsPage:React.FC = () => {
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
+  // 계약 관리
+  const [policies,setPolicies]               = useState<Policy[]>([]);
+  const [policyLoading,setPolicyLoading]     = useState(false);
+  const [expiringPolicies,setExpiringPolicies] = useState<Policy[]>([]); // 만기 30일 이내
+  const [showPolicyForm,setShowPolicyForm]   = useState(false);
+  const [newPolicy,setNewPolicy]             = useState({customer_name:"",phone:"",product_name:"",start_date:"",expiry_date:"",memo:""});
+  const [policySearch,setPolicySearch]       = useState("");
+
   // 달력 데이터
   const [calSch,setCalSch] = useState<CalSch[]>([]);
   const [calTdo,setCalTdo] = useState<CalTdo[]>([]);
@@ -423,7 +441,7 @@ const SecretaryInsPage:React.FC = () => {
   const [gcalEvents,setGcalEvents] = useState<{id:string;title:string;start:string;color?:string}[]>([]);
 
   // 통계
-  const [stats,setStats] = useState({todaySch:0,activeTodo:0,urgentTodo:0,newOrders:0,todayFollowup:0,newConsult:0});
+  const [stats,setStats] = useState({todaySch:0,activeTodo:0,urgentTodo:0,newOrders:0,todayFollowup:0,newConsult:0,expiringCount:0});
 
   // 토스트
   const [toast,setToast] = useState<{msg:string;type:"ok"|"err"}|null>(null);
@@ -532,15 +550,18 @@ const SecretaryInsPage:React.FC = () => {
   }
 
   const loadStats = useCallback(async()=>{
-    const [a,b,c,d,e,f] = await Promise.all([
+    const d30 = new Date(); d30.setDate(d30.getDate()+30);
+    const d30str = d30.toISOString().slice(0,10);
+    const [a,b,c,d,e,f,g] = await Promise.all([
       supabase.from("ins_schedules").select("id",{count:"exact"}).eq("schedule_date",todayStr()).eq("is_done",false),
       supabase.from("ins_todos").select("id",{count:"exact"}).eq("is_done",false),
       supabase.from("ins_todos").select("id",{count:"exact"}).eq("is_done",false).eq("priority","urgent"),
       supabase.from("ins_orders").select("id",{count:"exact"}).eq("status","new"),
       supabase.from("consultation_cases").select("id",{count:"exact"}).eq("work_type","registration_insurance").eq("followup_needed",true).eq("next_followup_date",todayStr()),
       supabase.from("consultation_cases").select("id",{count:"exact"}).eq("work_type","registration_insurance").gte("created_at",todayStr()+"T00:00:00").lte("created_at",todayStr()+"T23:59:59"),
+      supabase.from("ins_policies").select("id",{count:"exact"}).gte("expiry_date",todayStr()).lte("expiry_date",d30str),
     ]);
-    setStats({todaySch:a.count??0,activeTodo:b.count??0,urgentTodo:c.count??0,newOrders:d.count??0,todayFollowup:e.count??0,newConsult:f.count??0});
+    setStats({todaySch:a.count??0,activeTodo:b.count??0,urgentTodo:c.count??0,newOrders:d.count??0,todayFollowup:e.count??0,newConsult:f.count??0,expiringCount:g.count??0});
   },[]);
 
   const loadChatHist = useCallback(async()=>{
@@ -647,7 +668,53 @@ const SecretaryInsPage:React.FC = () => {
   useEffect(()=>{if(tab==="todo")void loadTodos();},[tab,loadTodos]);
   useEffect(()=>{if(tab==="consults"){void loadOrders();void loadConsults();}},[tab,loadOrders,loadConsults]);
 
-  // ─── 일정 CRUD ──────────────────────────────────────────────────────────────
+  // ─── 계약 CRUD ──────────────────────────────────────────────────────────────
+  const loadPolicies = useCallback(async()=>{
+    setPolicyLoading(true);
+    const d30 = new Date(); d30.setDate(d30.getDate()+30);
+    const d30str = d30.toISOString().slice(0,10);
+    const [all,exp] = await Promise.all([
+      supabase.from("ins_policies").select("*").order("expiry_date",{ascending:true}),
+      supabase.from("ins_policies").select("*").gte("expiry_date",todayStr()).lte("expiry_date",d30str).order("expiry_date",{ascending:true}),
+    ]);
+    if(all.data) setPolicies(all.data as Policy[]);
+    if(exp.data) setExpiringPolicies(exp.data as Policy[]);
+    setPolicyLoading(false);
+  },[]);
+
+  async function addPolicy(){
+    if(!newPolicy.customer_name||!newPolicy.product_name||!newPolicy.start_date)return;
+    const {error}=await supabase.from("ins_policies").insert({
+      customer_name:newPolicy.customer_name,
+      phone:newPolicy.phone||null,
+      product_name:newPolicy.product_name,
+      start_date:newPolicy.start_date,
+      expiry_date:newPolicy.expiry_date||null,
+      memo:newPolicy.memo||null,
+    });
+    if(!error){
+      showToast("계약 등록 완료");
+      setShowPolicyForm(false);
+      setNewPolicy({customer_name:"",phone:"",product_name:"",start_date:"",expiry_date:"",memo:""});
+      void loadPolicies(); void loadStats();
+    }
+  }
+
+  async function delPolicy(id:number){
+    await supabase.from("ins_policies").delete().eq("id",id);
+    setPolicies(p=>p.filter(x=>x.id!==id));
+    setExpiringPolicies(p=>p.filter(x=>x.id!==id));
+    void loadStats();
+  }
+
+  // 만기까지 남은 일수
+  const daysUntilExpiry = (expiry:string|null) => {
+    if(!expiry) return null;
+    const diff = Math.ceil((new Date(expiry).getTime()-new Date(todayStr()).getTime())/(1000*60*60*24));
+    return diff;
+  };
+
+  useEffect(()=>{if(tab==="policies"){void loadPolicies();}},[tab,loadPolicies]);
   async function addSchedule(){
     if(!newSched.title)return;
     if(newSched.category==="followup"&&newSched.consultation_id){
@@ -839,12 +906,20 @@ const SecretaryInsPage:React.FC = () => {
             <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-600 font-medium">💬 신규 {stats.newOrders}</span>
             {stats.todayFollowup>0&&<span className="px-2.5 py-1 rounded-full bg-purple-50 text-purple-600 font-medium">📞 사후관리 {stats.todayFollowup}</span>}
             {stats.newConsult>0&&<span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 font-medium">🛡 오늘보험상담 {stats.newConsult}</span>}
+            {stats.expiringCount>0&&(
+              <button onClick={()=>setTab("policies")} className="px-2.5 py-1 rounded-full bg-red-50 text-red-600 font-medium animate-pulse hover:bg-red-100 transition-all">
+                ⚠️ 만기임박 {stats.expiringCount}건
+              </button>
+            )}
           </div>
           {/* 탭 */}
-          <div className="flex items-center gap-1.5">
-            {(["chat","schedule","todo","consults"] as TabKey[]).map(t=>(
-              <button key={t} className={`${TB} ${tab===t?TA:TI}`} onClick={()=>setTab(t)}>
-                {{chat:"💬 채팅",schedule:"📅 일정",todo:"✅ 할일",consults:"🛡 상담"}[t]}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {(["chat","schedule","todo","consults","policies"] as TabKey[]).map(t=>(
+              <button key={t} className={`${TB} ${tab===t?TA:TI} relative`} onClick={()=>setTab(t)}>
+                {{chat:"💬 채팅",schedule:"📅 일정",todo:"✅ 할일",consults:"🛡 상담",policies:"📋 계약"}[t]}
+                {t==="policies"&&stats.expiringCount>0&&(
+                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center">{stats.expiringCount}</span>
+                )}
               </button>
             ))}
           </div>
@@ -1213,6 +1288,136 @@ const SecretaryInsPage:React.FC = () => {
                       ))}
                     </div>
                   )
+                }
+              </div>
+            </div>
+          )}
+
+          {/* ══ 계약 관리 ══ */}
+          {tab==="policies"&&(
+            <div className="space-y-4 pb-4">
+
+              {/* 만기 임박 알람 */}
+              {expiringPolicies.length>0&&(
+                <div className={`${CARD} p-4 border-red-200 bg-red-50`}>
+                  <p className="text-sm font-semibold text-red-700 mb-3 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-red-500 inline-block animate-pulse"/>
+                    ⚠️ 만기 30일 이내 — {expiringPolicies.length}건
+                  </p>
+                  <div className="space-y-2">
+                    {expiringPolicies.map(p=>{
+                      const days=daysUntilExpiry(p.expiry_date);
+                      return(
+                        <div key={p.id} className="flex items-center gap-3 p-3 rounded-xl bg-white border border-red-200">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-semibold text-[#0f172a]">{p.customer_name}</span>
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">{p.product_name}</span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${days!==null&&days<=7?"bg-red-100 text-red-700":"bg-orange-50 text-orange-600"}`}>
+                                {days===0?"오늘 만기":days!==null?`D-${days}`:"만기일 미정"}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 mt-0.5">
+                              <span className="text-xs text-gray-500">가입 {fmtDate(p.start_date)}</span>
+                              {p.expiry_date&&<span className="text-xs text-red-500 font-medium">만기 {fmtDate(p.expiry_date)}</span>}
+                              {p.phone&&<a href={`tel:${p.phone.replace(/-/g,"")}`} className="text-xs text-orange-500 hover:underline">{p.phone}</a>}
+                            </div>
+                          </div>
+                          <button className={BTO} onClick={()=>quickChat(`"${p.customer_name}" ${p.product_name} 만기 ${days}일 남음 — 갱신 상담 준비해줘`)}>AI준비</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 계약 목록 */}
+              <div>
+                <div className="flex items-center gap-2 flex-wrap mb-2">
+                  <p className="text-sm font-semibold text-[#0f172a]">📋 계약 목록</p>
+                  <div className="flex gap-2 ml-auto flex-wrap items-center">
+                    <input
+                      className="h-8 rounded-xl border border-gray-200 px-3 text-xs text-[#0f172a] bg-white focus:outline-none focus:border-orange-400 w-36"
+                      placeholder="고객명·상품명 검색"
+                      value={policySearch}
+                      onChange={e=>setPolicySearch(e.target.value)}
+                    />
+                    <button className={BTG} onClick={()=>void loadPolicies()}>새로고침</button>
+                    <button className={BTP} onClick={()=>setShowPolicyForm(v=>!v)}>{showPolicyForm?"닫기":"+ 계약등록"}</button>
+                  </div>
+                </div>
+
+                {/* 등록 폼 */}
+                {showPolicyForm&&(
+                  <div className={`${CARD} p-4 mb-3`}>
+                    <p className="text-sm font-semibold text-[#0f172a] mb-3">새 계약 등록</p>
+                    <div className="grid grid-cols-2 gap-2.5 mb-3">
+                      <div><label className={LBL}>고객명 *</label><input className={CTRL} value={newPolicy.customer_name} onChange={e=>setNewPolicy(p=>({...p,customer_name:e.target.value}))} placeholder="고객명"/></div>
+                      <div><label className={LBL}>연락처</label><input className={CTRL} value={newPolicy.phone} onChange={e=>setNewPolicy(p=>({...p,phone:e.target.value}))} placeholder="010-0000-0000"/></div>
+                      <div className="col-span-2"><label className={LBL}>상품명 *</label><input className={CTRL} value={newPolicy.product_name} onChange={e=>setNewPolicy(p=>({...p,product_name:e.target.value}))} placeholder="예: 무배당종신보험, 실손의료비보험"/></div>
+                      <div><label className={LBL}>가입일 *</label><input type="date" className={CTRL} value={newPolicy.start_date} onChange={e=>setNewPolicy(p=>({...p,start_date:e.target.value}))}/></div>
+                      <div><label className={LBL}>만기일</label><input type="date" className={CTRL} value={newPolicy.expiry_date} onChange={e=>setNewPolicy(p=>({...p,expiry_date:e.target.value}))}/></div>
+                      <div className="col-span-2"><label className={LBL}>메모</label><input className={CTRL} value={newPolicy.memo} onChange={e=>setNewPolicy(p=>({...p,memo:e.target.value}))} placeholder="특이사항, 갱신 조건 등"/></div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button className={BTP} onClick={()=>void addPolicy()}>저장</button>
+                      <button className={BTS} onClick={()=>setShowPolicyForm(false)}>취소</button>
+                    </div>
+                  </div>
+                )}
+
+                {policyLoading?<p className="text-sm text-gray-400 p-4">불러오는 중...</p>
+                  :policies.filter(p=>!policySearch||p.customer_name.includes(policySearch)||p.product_name.includes(policySearch)).length===0
+                    ?<div className={`${CARD} p-6 text-center text-gray-400 text-sm`}>등록된 계약이 없습니다</div>
+                    :(
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                          <thead><tr className="border-b border-gray-200">
+                            {["고객명","연락처","상품명","가입일","만기일","D-day","메모",""].map(h=>(
+                              <th key={h} className="text-left py-2 px-2 text-xs font-medium text-gray-400 whitespace-nowrap">{h}</th>
+                            ))}
+                          </tr></thead>
+                          <tbody>
+                            {policies
+                              .filter(p=>!policySearch||p.customer_name.includes(policySearch)||p.product_name.includes(policySearch))
+                              .map(p=>{
+                                const days=daysUntilExpiry(p.expiry_date);
+                                const isExpiring=days!==null&&days<=30&&days>=0;
+                                return(
+                                  <tr key={p.id} className={`border-b border-gray-50 hover:bg-gray-50 ${isExpiring?"bg-red-50/50":""}`}>
+                                    <td className="py-2 px-2 font-medium text-[#0f172a] whitespace-nowrap">{p.customer_name}</td>
+                                    <td className="py-2 px-2 text-xs text-gray-500 whitespace-nowrap">
+                                      {p.phone?<a href={`tel:${p.phone.replace(/-/g,"")}`} className="text-orange-500 hover:underline">{p.phone}</a>:"—"}
+                                    </td>
+                                    <td className="py-2 px-2 whitespace-nowrap">
+                                      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">{p.product_name}</span>
+                                    </td>
+                                    <td className="py-2 px-2 text-xs text-gray-500 whitespace-nowrap">{fmtDate(p.start_date)}</td>
+                                    <td className="py-2 px-2 text-xs whitespace-nowrap">
+                                      {p.expiry_date?<span className={isExpiring?"text-red-500 font-semibold":"text-gray-500"}>{fmtDate(p.expiry_date)}</span>:<span className="text-gray-300">—</span>}
+                                    </td>
+                                    <td className="py-2 px-2 whitespace-nowrap">
+                                      {days===null?<span className="text-gray-300 text-xs">—</span>
+                                        :days<0?<span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-400">만기</span>
+                                        :days===0?<span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-bold">오늘</span>
+                                        :isExpiring?<span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 font-semibold">D-{days}</span>
+                                        :<span className="text-xs text-gray-400">D-{days}</span>
+                                      }
+                                    </td>
+                                    <td className="py-2 px-2 text-xs text-gray-400 max-w-[120px] truncate">{p.memo??""}</td>
+                                    <td className="py-2 px-2">
+                                      <div className="flex gap-1">
+                                        <button className={BTG} onClick={()=>quickChat(`"${p.customer_name}" ${p.product_name}${p.expiry_date?` 만기 ${days}일 남음`:""} — 상담 준비해줘`)}>AI</button>
+                                        <button className="text-xs text-red-400 hover:text-red-600 px-1" onClick={()=>void delPolicy(p.id)}>삭제</button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )
                 }
               </div>
             </div>
