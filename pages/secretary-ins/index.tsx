@@ -64,6 +64,7 @@ type CustomerProfile = {
 type CustomerInfo = {
   id?: number;
   customer_key: string;
+  phone: string;
   bank_name: string;
   bank_account: string;
   card_company: string;
@@ -99,7 +100,8 @@ const addDays = (base:string, n:number) => {
   return d.toLocaleDateString("ko-KR",{year:"numeric",month:"2-digit",day:"2-digit",timeZone:"Asia/Seoul"})
     .replace(/\. /g,"-").replace(".","").trim();
 };
-// 이름 + 전화번호 끝 4자리 → customer_key (예: 홍길동_1234)
+// 이름 + 전화번호 → customer_key (예: 홍길동_1234)
+// phone 은 전체번호 저장, customer_key 는 끝4자리 기반
 const makeCustomerKey = (name:string, phone:string) => {
   const digits = phone.replace(/\D/g,"");
   const last4 = digits.slice(-4);
@@ -499,7 +501,12 @@ const SecretaryInsPage:React.FC = () => {
   // 고객 정보 (계좌/카드/메모)
   const [custInfo,setCustInfo]               = useState<CustomerInfo|null>(null);
   const [editingCustInfo,setEditingCustInfo] = useState(false);
-  const [custInfoForm,setCustInfoForm]       = useState<CustomerInfo>({customer_key:"",bank_name:"",bank_account:"",card_company:"",card_number:"",card_expiry:"",memo:""});
+  const [custInfoForm,setCustInfoForm]       = useState<CustomerInfo>({customer_key:"",phone:"",bank_name:"",bank_account:"",card_company:"",card_number:"",card_expiry:"",memo:""});
+  // 엑셀 업로드
+  const [showUpload,setShowUpload]           = useState(false);
+  const [uploadLoading,setUploadLoading]     = useState(false);
+  const [uploadResult,setUploadResult]       = useState<{ok:number;skip:number;err:string[]}|null>(null);
+  const uploadRef                            = useRef<HTMLInputElement>(null);
 
   // 달력 데이터
   const [calSch,setCalSch] = useState<CalSch[]>([]);
@@ -913,6 +920,76 @@ const SecretaryInsPage:React.FC = () => {
     showToast("고객 정보 저장 완료");
   }
 
+  // ─── 엑셀 업로드 ────────────────────────────────────────────────────────────
+  async function handleUpload(e:React.ChangeEvent<HTMLInputElement>){
+    const file = e.target.files?.[0];
+    if(!file) return;
+    setUploadLoading(true);
+    setUploadResult(null);
+    try {
+      const XLSX = await import("https://cdn.sheetjs.com/xlsx-latest/package/xlsx.mjs" as any);
+      const buf  = await file.arrayBuffer();
+      const wb   = XLSX.read(buf, {type:"array", cellDates:true});
+
+      // "고객정보" 시트 우선, 없으면 첫 번째 시트
+      const sheetName = wb.SheetNames.includes("고객정보") ? "고객정보" : wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
+      if(!ws){ showToast("시트를 찾을 수 없습니다","err"); setUploadLoading(false); return; }
+
+      const rows:any[][] = XLSX.utils.sheet_to_json(ws, {header:1, defval:""});
+      // 3행 = 컬럼키(숨김), 4행 = 헤더, 5행부터 데이터
+      let ok=0, skip=0;
+      const errs:string[] = [];
+
+      for(let i=4; i<rows.length; i++){
+        const r = rows[i];
+        const name    = String(r[0]??"").trim();
+        const phone   = String(r[1]??"").replace(/[^0-9]/g,""); // 전체번호 숫자만
+        const product = String(r[2]??"").trim();
+        const start   = r[3] instanceof Date ? r[3].toISOString().slice(0,10) : String(r[3]??"").trim();
+        const expiry  = r[4] instanceof Date ? r[4].toISOString().slice(0,10) : String(r[4]??"").trim();
+        const bankName    = String(r[5]??"").trim();
+        const bankAccount = String(r[6]??"").trim();
+        const cardCompany = String(r[7]??"").trim();
+        const cardNumber  = String(r[8]??"").trim();
+        const cardExpiry  = String(r[9]??"").trim();
+        const memo        = String(r[10]??"").trim();
+
+        if(!name||!product||!start){ skip++; continue; }
+        const last4 = phone.slice(-4);
+        const cKey  = last4 ? `${name}_${last4}` : name;
+
+        // ① ins_policies 저장
+        const {error:pe} = await supabase.from("ins_policies").insert({
+          customer_key:cKey, customer_name:name,
+          product_name:product, start_date:start,
+          expiry_date:expiry||null, memo:memo||null,
+        });
+        if(pe){ errs.push(`계약[${i-3}행] ${name}: ${pe.message}`); continue; }
+
+        // ② ins_customer_info upsert (계좌/카드 중 하나라도 있으면)
+        if(bankName||bankAccount||cardCompany||cardNumber||cardExpiry||phone){
+          await supabase.from("ins_customer_info").upsert({
+            customer_key:cKey,
+            phone:phone||null,
+            bank_name:bankName||null, bank_account:bankAccount||null,
+            card_company:cardCompany||null, card_number:cardNumber||null,
+            card_expiry:cardExpiry||null,
+            memo:memo||null,
+          },{onConflict:"customer_key"});
+        }
+        ok++;
+      }
+
+      setUploadResult({ok, skip, err:errs});
+      if(ok>0) showToast(`${ok}건 업로드 완료`);
+    } catch(err:any){
+      showToast(`업로드 오류: ${err.message}`,"err");
+    }
+    setUploadLoading(false);
+    if(uploadRef.current) uploadRef.current.value="";
+  }
+
   const loadCustomerProfile = useCallback(async(key:string, name:string)=>{
     setCustDetailLoading(true);
     setSelectedCust(null);
@@ -933,7 +1010,7 @@ const SecretaryInsPage:React.FC = () => {
       setCustInfo(ir.data as CustomerInfo);
       setCustInfoForm(ir.data as CustomerInfo);
     } else {
-      setCustInfoForm({customer_key:key,bank_name:"",bank_account:"",card_company:"",card_number:"",card_expiry:"",memo:""});
+      setCustInfoForm({customer_key:key,phone:"",bank_name:"",bank_account:"",card_company:"",card_number:"",card_expiry:"",memo:""});
     }
     setCustDetailLoading(false);
   },[]);
@@ -1521,7 +1598,7 @@ const SecretaryInsPage:React.FC = () => {
                     {syncConsult&&<div className="mb-3 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-700">✅ 보험 상담으로 ins_consultation_cases에 자동 등록됩니다</div>}
                     <div className="grid grid-cols-2 gap-2.5 mb-3">
                       <div><label className={LBL}>고객명 *</label><input className={CTRL} value={newOrder.customer_name} onChange={e=>setNewOrder(p=>({...p,customer_name:e.target.value}))} placeholder="고객명"/></div>
-                      <div><label className={LBL}>연락처 끝 4자리</label><input className={CTRL} value={newOrder.phone} onChange={e=>setNewOrder(p=>({...p,phone:e.target.value.replace(/\D/g,"").slice(-4)}))} placeholder="숫자 4자리" maxLength={4}/></div>
+                      <div><label className={LBL}>전화번호</label><input className={CTRL} value={newOrder.phone} onChange={e=>setNewOrder(p=>({...p,phone:e.target.value}))} placeholder="010-0000-0000"/></div>
                       <div><label className={LBL}>접수 채널</label>
                         <select className={CTRL} value={newOrder.channel} onChange={e=>setNewOrder(p=>({...p,channel:e.target.value as any}))}>
                           <option value="kakao">카카오톡</option><option value="phone">전화</option><option value="visit">방문</option><option value="web">홈페이지</option>
@@ -1640,7 +1717,7 @@ const SecretaryInsPage:React.FC = () => {
                     <p className="text-sm font-semibold text-[#0f172a] mb-3">새 계약 등록</p>
                     <div className="grid grid-cols-2 gap-2.5 mb-3">
                       <div><label className={LBL}>고객명 *</label><input className={CTRL} value={newPolicy.customer_name} onChange={e=>setNewPolicy(p=>({...p,customer_name:e.target.value}))} placeholder="고객명"/></div>
-                      <div><label className={LBL}>전화번호 끝 4자리 *</label><input className={CTRL} value={newPolicy.phone} onChange={e=>setNewPolicy(p=>({...p,phone:e.target.value.replace(/\D/g,"").slice(-4)}))} placeholder="숫자 4자리" maxLength={4}/></div>
+                      <div><label className={LBL}>전화번호</label><input className={CTRL} value={newPolicy.phone} onChange={e=>setNewPolicy(p=>({...p,phone:e.target.value}))} placeholder="010-0000-0000"/></div>
                       {newPolicy.customer_name&&newPolicy.phone&&(
                         <div className="col-span-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-xs text-gray-500">
                           고객 키: <span className="font-mono font-semibold text-[#0f172a]">{makeCustomerKey(newPolicy.customer_name,newPolicy.phone)}</span>
@@ -1743,7 +1820,7 @@ const SecretaryInsPage:React.FC = () => {
                     <p className="text-sm font-semibold text-[#0f172a] mb-3">새 청구 등록</p>
                     <div className="grid grid-cols-2 gap-2.5 mb-3">
                       <div><label className={LBL}>고객명 *</label><input className={CTRL} value={newClaim.customer_name} onChange={e=>setNewClaim(p=>({...p,customer_name:e.target.value}))} placeholder="고객명"/></div>
-                      <div><label className={LBL}>전화번호 끝 4자리 *</label><input className={CTRL} value={newClaim.phone} onChange={e=>setNewClaim(p=>({...p,phone:e.target.value.replace(/\D/g,"").slice(-4)}))} placeholder="숫자 4자리" maxLength={4}/></div>
+                      <div><label className={LBL}>전화번호</label><input className={CTRL} value={newClaim.phone} onChange={e=>setNewClaim(p=>({...p,phone:e.target.value}))} placeholder="010-0000-0000"/></div>
                       {newClaim.customer_name&&newClaim.phone&&(
                         <div className="col-span-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-xs text-gray-500">
                           고객 키: <span className="font-mono font-semibold text-[#0f172a]">{makeCustomerKey(newClaim.customer_name,newClaim.phone)}</span>
@@ -1847,7 +1924,58 @@ const SecretaryInsPage:React.FC = () => {
 
               {/* 검색창 */}
               <div className={`${CARD} p-4`}>
-                <p className="text-sm font-semibold text-[#0f172a] mb-3">👤 고객 조회</p>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-semibold text-[#0f172a]">👤 고객 조회</p>
+                  <div className="flex gap-2">
+                    <button className={BTG} onClick={()=>setShowUpload(v=>!v)}>
+                      📥 엑셀 업로드
+                    </button>
+                    <a
+                      href="/고객정보_업로드_템플릿.xlsx"
+                      download
+                      className={`${BTG} no-underline`}
+                      onClick={async(e)=>{
+                        // Supabase Storage에서 다운로드 (또는 public 경로)
+                        // 여기서는 안내만
+                        e.preventDefault();
+                        showToast("템플릿은 채팅에서 다운로드하세요");
+                      }}
+                    >
+                      📄 템플릿 다운로드
+                    </a>
+                  </div>
+                </div>
+
+                {/* 업로드 패널 */}
+                {showUpload&&(
+                  <div className="mb-4 p-4 rounded-xl bg-blue-50 border border-blue-200">
+                    <p className="text-xs font-semibold text-blue-700 mb-2">📥 엑셀 파일 업로드</p>
+                    <p className="text-xs text-blue-600 mb-3">
+                      템플릿의 <strong>고객정보</strong> 시트에 데이터를 입력하고 업로드하세요.
+                      계약 정보와 고객 기본 정보(계좌·카드)를 한 행에 입력하면 자동으로 각각 저장됩니다.
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        ref={uploadRef}
+                        type="file"
+                        accept=".xlsx,.xls"
+                        onChange={e=>void handleUpload(e)}
+                        className="text-xs text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#0f172a] file:text-white hover:file:opacity-90 cursor-pointer"
+                        disabled={uploadLoading}
+                      />
+                      {uploadLoading&&<span className="text-xs text-blue-600 animate-pulse">업로드 중...</span>}
+                    </div>
+                    {uploadResult&&(
+                      <div className="mt-3 p-3 rounded-lg bg-white border border-blue-100 text-xs space-y-1">
+                        <p className="text-emerald-600 font-semibold">✅ 성공: {uploadResult.ok}건</p>
+                        {uploadResult.skip>0&&<p className="text-gray-400">⏭ 건너뜀: {uploadResult.skip}건 (필수값 누락)</p>}
+                        {uploadResult.err.map((e,i)=>(
+                          <p key={i} className="text-red-500">❌ {e}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="flex gap-2">
                   <input
                     className={`${CTRL} flex-1`}
@@ -1908,7 +2036,10 @@ const SecretaryInsPage:React.FC = () => {
                     </div>
                     <div className="flex-1">
                       <h2 className="text-base font-bold text-[#0f172a]">{selectedCust.customer_name}</h2>
-                      <p className="font-mono text-xs text-gray-400 mt-0.5">{selectedCust.customer_key}</p>
+                      <div className="flex items-center gap-3 mt-0.5">
+                        <p className="font-mono text-xs text-gray-400">{selectedCust.customer_key}</p>
+                        {custInfo?.phone&&<a href={`tel:${custInfo.phone.replace(/-/g,"")}`} className="text-xs text-orange-500 hover:underline">📞 {custInfo.phone}</a>}
+                      </div>
                       <div className="flex gap-3 mt-1.5 text-xs">
                         <span className="text-blue-600">📋 계약 {selectedCust.policies.length}건</span>
                         <span className="text-emerald-600">🛡 상담 {selectedCust.consults.length}건</span>
@@ -1928,7 +2059,17 @@ const SecretaryInsPage:React.FC = () => {
                     </div>
                     {!editingCustInfo?(
                       <div className="space-y-2.5">
-                        {/* 계좌 */}
+                        {/* 전화번호 */}
+                        <div className="flex items-start gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
+                          <span className="text-base flex-shrink-0">📞</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-gray-400 mb-0.5">전화번호</p>
+                            {custInfo?.phone
+                              ?<a href={`tel:${custInfo.phone.replace(/-/g,"")}`} className="text-sm text-orange-500 hover:underline">{custInfo.phone}</a>
+                              :<p className="text-xs text-gray-300">미등록</p>
+                            }
+                          </div>
+                        </div>
                         <div className="flex items-start gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
                           <span className="text-base flex-shrink-0">🏦</span>
                           <div className="flex-1 min-w-0">
@@ -1965,6 +2106,7 @@ const SecretaryInsPage:React.FC = () => {
                     ):(
                       <div className="space-y-3">
                         <div className="grid grid-cols-2 gap-2.5">
+                          <div className="col-span-2"><label className={LBL}>📞 전화번호</label><input className={CTRL} value={custInfoForm.phone} onChange={e=>setCustInfoForm(p=>({...p,phone:e.target.value}))} placeholder="010-0000-0000"/></div>
                           <div><label className={LBL}>🏦 은행명</label><input className={CTRL} value={custInfoForm.bank_name} onChange={e=>setCustInfoForm(p=>({...p,bank_name:e.target.value}))} placeholder="예: 우리은행"/></div>
                           <div><label className={LBL}>계좌번호</label><input className={CTRL} value={custInfoForm.bank_account} onChange={e=>setCustInfoForm(p=>({...p,bank_account:e.target.value}))} placeholder="000-000-000000"/></div>
                           <div><label className={LBL}>💳 카드사</label><input className={CTRL} value={custInfoForm.card_company} onChange={e=>setCustInfoForm(p=>({...p,card_company:e.target.value}))} placeholder="예: 신한카드"/></div>
