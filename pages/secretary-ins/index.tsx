@@ -447,8 +447,8 @@ const SecretaryInsPage:React.FC = () => {
     }
     if(!token) return;
     const [sr,tr] = await Promise.all([
-      supabase.from("secretary_schedules").select("id,title,schedule_date,start_time,category,is_done").gte("schedule_date",from).lte("schedule_date",to),
-      supabase.from("secretary_todos").select("id,title,due_date,priority,is_done").gte("due_date",from).lte("due_date",to).eq("is_done",false),
+      supabase.from("ins_schedules").select("id,title,schedule_date,start_time,category,is_done").gte("schedule_date",from).lte("schedule_date",to),
+      supabase.from("ins_todos").select("id,title,due_date,priority,is_done").gte("due_date",from).lte("due_date",to).eq("is_done",false),
     ]);
     if(sr.data) setCalSch(sr.data as CalSch[]);
     if(tr.data) setCalTdo(tr.data as CalTdo[]);
@@ -534,19 +534,19 @@ const SecretaryInsPage:React.FC = () => {
 
   const loadStats = useCallback(async()=>{
     const [a,b,c,d,e,f] = await Promise.all([
-      supabase.from("secretary_schedules").select("id",{count:"exact"}).eq("schedule_date",todayStr()).eq("is_done",false),
-      supabase.from("secretary_todos").select("id",{count:"exact"}).eq("is_done",false),
-      supabase.from("secretary_todos").select("id",{count:"exact"}).eq("is_done",false).eq("priority","urgent"),
-      supabase.from("secretary_orders").select("id",{count:"exact"}).eq("status","new"),
-      supabase.from("consultation_cases").select("id",{count:"exact"}).eq("followup_needed",true).eq("next_followup_date",todayStr()),
-      supabase.from("consultation_cases").select("id",{count:"exact"}).gte("created_at",todayStr()+"T00:00:00").lte("created_at",todayStr()+"T23:59:59"),
+      supabase.from("ins_schedules").select("id",{count:"exact"}).eq("schedule_date",todayStr()).eq("is_done",false),
+      supabase.from("ins_todos").select("id",{count:"exact"}).eq("is_done",false),
+      supabase.from("ins_todos").select("id",{count:"exact"}).eq("is_done",false).eq("priority","urgent"),
+      supabase.from("ins_orders").select("id",{count:"exact"}).eq("status","new"),
+      supabase.from("ins_consultation_cases").select("id",{count:"exact"}).eq("followup_needed",true).eq("next_followup_date",todayStr()),
+      supabase.from("ins_consultation_cases").select("id",{count:"exact"}).gte("created_at",todayStr()+"T00:00:00").lte("created_at",todayStr()+"T23:59:59"),
     ]);
     setStats({todaySch:a.count??0,activeTodo:b.count??0,urgentTodo:c.count??0,newOrders:d.count??0,todayFollowup:e.count??0,newConsult:f.count??0});
   },[]);
 
   const loadChatHist = useCallback(async()=>{
     setHistLoading(true);
-    const {data} = await supabase.from("secretary_chat_logs").select("role,content,created_at").order("created_at",{ascending:true}).limit(40);
+    const {data} = await supabase.from("ins_chat_logs").select("role,content,created_at").order("created_at",{ascending:true}).limit(40);
     setMsgs((data??[]).map(r=>({
       role:r.role as "user"|"assistant",
       content:r.content,
@@ -562,14 +562,14 @@ const SecretaryInsPage:React.FC = () => {
 
   const loadSchedules = useCallback(async()=>{
     setSchedLoading(true);
-    const {data} = await supabase.from("secretary_schedules").select("*").eq("schedule_date",schedDate).order("start_time",{ascending:true});
+    const {data} = await supabase.from("ins_schedules").select("*").eq("schedule_date",schedDate).order("start_time",{ascending:true});
     if(data)setSchedules(data as Schedule[]);
     setSchedLoading(false);
   },[schedDate]);
 
   const loadTodos = useCallback(async()=>{
     setTodoLoading(true);
-    let q = supabase.from("secretary_todos").select("*").order("priority").order("created_at",{ascending:false});
+    let q = supabase.from("ins_todos").select("*").order("priority").order("created_at",{ascending:false});
     if(tdFilter==="active")q=q.eq("is_done",false);
     if(tdFilter==="done")q=q.eq("is_done",true);
     const {data} = await q;
@@ -579,7 +579,7 @@ const SecretaryInsPage:React.FC = () => {
 
   const loadOrders = useCallback(async()=>{
     setOrderLoading(true);
-    let q = supabase.from("secretary_orders").select("*").order("created_at",{ascending:false});
+    let q = supabase.from("ins_orders").select("*").order("created_at",{ascending:false});
     if(ordFilter==="active")q=q.in("status",["new","pending","processing"]);
     if(ordFilter==="done")q=q.eq("status","done");
     const {data} = await q;
@@ -590,8 +590,8 @@ const SecretaryInsPage:React.FC = () => {
   const loadConsults = useCallback(async()=>{
     setCLoading(true);
     const [fr,rr] = await Promise.all([
-      supabase.from("consultation_cases").select("id,customer_name,phone,telecom_provider,work_type,status,summary,followup_needed,next_followup_date,created_at").eq("followup_needed",true).eq("next_followup_date",todayStr()).order("created_at",{ascending:false}).limit(10),
-      supabase.from("consultation_cases").select("id,customer_name,phone,telecom_provider,work_type,status,summary,followup_needed,next_followup_date,created_at").order("created_at",{ascending:false}).limit(8),
+      supabase.from("ins_consultation_cases").select("id,customer_name,phone,telecom_provider,work_type,status,summary,followup_needed,next_followup_date,created_at").eq("followup_needed",true).eq("next_followup_date",todayStr()).order("created_at",{ascending:false}).limit(10),
+      supabase.from("ins_consultation_cases").select("id,customer_name,phone,telecom_provider,work_type,status,summary,followup_needed,next_followup_date,created_at").order("created_at",{ascending:false}).limit(8),
     ]);
     if(fr.data)setFollowups(fr.data as Consult[]);
     if(rr.data)setRecentC(rr.data as Consult[]);
@@ -627,8 +627,8 @@ const SecretaryInsPage:React.FC = () => {
       setSchedDate(today);
       setSchedLoading(true);
       Promise.all([
-        supabase.from("secretary_schedules").select("*").eq("schedule_date",today).order("start_time",{ascending:true}),
-        supabase.from("secretary_todos").select("*").eq("is_done",false).order("priority").order("created_at",{ascending:false}),
+        supabase.from("ins_schedules").select("*").eq("schedule_date",today).order("start_time",{ascending:true}),
+        supabase.from("ins_todos").select("*").eq("is_done",false).order("priority").order("created_at",{ascending:false}),
       ]).then(([sr,tr])=>{
         if(sr.data) setSchedules(sr.data as Schedule[]);
         if(tr.data) setTodos(tr.data as Todo[]);
@@ -644,9 +644,9 @@ const SecretaryInsPage:React.FC = () => {
   async function addSchedule(){
     if(!newSched.title)return;
     if(newSched.category==="followup"&&newSched.consultation_id){
-      await supabase.from("consultation_cases").update({next_followup_date:newSched.schedule_date,followup_needed:true}).eq("id",Number(newSched.consultation_id));
+      await supabase.from("ins_consultation_cases").update({next_followup_date:newSched.schedule_date,followup_needed:true}).eq("id",Number(newSched.consultation_id));
     }
-    const {data:schedData,error}=await supabase.from("secretary_schedules").insert({
+    const {data:schedData,error}=await supabase.from("ins_schedules").insert({
       title:newSched.title,description:newSched.description||null,schedule_date:newSched.schedule_date,
       start_time:newSched.start_time||null,end_time:newSched.end_time||null,category:newSched.category,
       location:newSched.location||null,related_type:newSched.related_type||null,
@@ -667,18 +667,18 @@ const SecretaryInsPage:React.FC = () => {
     }
   }
   async function toggleSched(id:number,done:boolean){
-    await supabase.from("secretary_schedules").update({is_done:!done}).eq("id",id);
+    await supabase.from("ins_schedules").update({is_done:!done}).eq("id",id);
     setSchedules(p=>p.map(s=>s.id===id?{...s,is_done:!done}:s));
   }
   async function delSched(id:number){
-    await supabase.from("secretary_schedules").delete().eq("id",id);
+    await supabase.from("ins_schedules").delete().eq("id",id);
     setSchedules(p=>p.filter(s=>s.id!==id)); void loadStats();
   }
 
   // ─── 할일 CRUD ──────────────────────────────────────────────────────────────
   async function addTodo(){
     if(!newTodo.title)return;
-    const {error}=await supabase.from("secretary_todos").insert({
+    const {error}=await supabase.from("ins_todos").insert({
       title:newTodo.title,description:newTodo.description||null,priority:newTodo.priority,
       category:newTodo.category||null,due_date:newTodo.due_date||null,
       consultation_id:newTodo.consultation_id?Number(newTodo.consultation_id):null,
@@ -686,11 +686,11 @@ const SecretaryInsPage:React.FC = () => {
     if(!error){showToast("할일 저장 완료");setShowTodoForm(false);setNewTodo({title:"",description:"",priority:"normal",category:"",due_date:"",consultation_id:""});void loadTodos();void loadStats();void loadCalData(new Date().getFullYear(),new Date().getMonth());}
   }
   async function toggleTodo(id:number,done:boolean){
-    await supabase.from("secretary_todos").update({is_done:!done,done_at:!done?new Date().toISOString():null}).eq("id",id);
+    await supabase.from("ins_todos").update({is_done:!done,done_at:!done?new Date().toISOString():null}).eq("id",id);
     void loadTodos(); void loadStats();
   }
   async function delTodo(id:number){
-    await supabase.from("secretary_todos").delete().eq("id",id);
+    await supabase.from("ins_todos").delete().eq("id",id);
     setTodos(p=>p.filter(t=>t.id!==id)); void loadStats();
   }
 
@@ -700,7 +700,7 @@ const SecretaryInsPage:React.FC = () => {
     let cid:number|null=null;
     if(syncConsult&&newOrder.work_type){
       const wm:Record<string,string>={insurance:"registration_insurance",tire:"tire_sales",finance:"finance",forklift:"forklift_sales",battery:"battery_sales"};
-      const {data:cd,error:ce}=await supabase.from("consultation_cases").insert({
+      const {data:cd,error:ce}=await supabase.from("ins_consultation_cases").insert({
         customer_name:newOrder.customer_name,phone:newOrder.phone||"미입력",telecom_provider:newOrder.telecom_provider||null,
         work_type:wm[newOrder.work_type]??newOrder.work_type,status:"new",
         summary:`[AI비서 ${newOrder.channel==="kakao"?"카카오":newOrder.channel} 접수] ${newOrder.summary}`,
@@ -709,7 +709,7 @@ const SecretaryInsPage:React.FC = () => {
       if(ce){showToast("상담관리 연동 실패","err");return;}
       if(cd)cid=cd.id;
     }
-    const {error}=await supabase.from("secretary_orders").insert({
+    const {error}=await supabase.from("ins_orders").insert({
       customer_name:newOrder.customer_name,phone:newOrder.phone||null,channel:newOrder.channel,
       work_type:newOrder.work_type||null,summary:newOrder.summary,detail:newOrder.detail||null,status:"new",consultation_id:cid,
     });
@@ -721,17 +721,17 @@ const SecretaryInsPage:React.FC = () => {
     }
   }
   async function setOrderStatus(id:number,status:Order["status"]){
-    await supabase.from("secretary_orders").update({status,...(status==="done"?{completed_at:new Date().toISOString()}:{})}).eq("id",id);
+    await supabase.from("ins_orders").update({status,...(status==="done"?{completed_at:new Date().toISOString()}:{})}).eq("id",id);
     const o=orders.find(x=>x.id===id);
     if(o?.consultation_id){
       const m:Record<string,string>={done:"completed",processing:"in_progress",new:"new",pending:"pending"};
-      await supabase.from("consultation_cases").update({status:m[status]??status}).eq("id",o.consultation_id);
+      await supabase.from("ins_consultation_cases").update({status:m[status]??status}).eq("id",o.consultation_id);
       showToast("상태 변경 + 상담관리 동기화");
     }
     void loadOrders(); void loadStats();
   }
   async function delOrder(id:number){
-    await supabase.from("secretary_orders").delete().eq("id",id);
+    await supabase.from("ins_orders").delete().eq("id",id);
     setOrders(p=>p.filter(o=>o.id!==id)); void loadStats();
   }
 
@@ -760,7 +760,7 @@ const SecretaryInsPage:React.FC = () => {
         showToast(`${saved.length}건 저장${cc>0?` + 상담관리 ${cc}건`:""}`);
       }
       if(pendingUpdates.length>0)showToast(`상담 업데이트 ${pendingUpdates.length}건 확인 필요`,"err");
-      await supabase.from("secretary_chat_logs").insert([
+      await supabase.from("ins_chat_logs").insert([
         {role:"user",content:text,session_id:"main"},
         {role:"assistant",content:reply,session_id:"main"},
       ]);
@@ -1150,7 +1150,7 @@ const SecretaryInsPage:React.FC = () => {
                         <span className="text-xs text-gray-600">{syncConsult?"🔗 상담관리 자동등록":"연동 OFF"}</span>
                       </label>
                     </div>
-                    {syncConsult&&<div className="mb-3 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-700">✅ consultation_cases에도 자동 등록됩니다</div>}
+                    {syncConsult&&<div className="mb-3 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-700">✅ ins_consultation_cases에도 자동 등록됩니다</div>}
                     <div className="grid grid-cols-2 gap-2.5 mb-3">
                       <div><label className={LBL}>고객명 *</label><input className={CTRL} value={newOrder.customer_name} onChange={e=>setNewOrder(p=>({...p,customer_name:e.target.value}))} placeholder="고객명"/></div>
                       <div><label className={LBL}>연락처</label><input className={CTRL} value={newOrder.phone} onChange={e=>setNewOrder(p=>({...p,phone:e.target.value}))} placeholder="010-0000-0000"/></div>
