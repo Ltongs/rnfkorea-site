@@ -371,10 +371,10 @@ function MiniCalendar({
 }
 
 // ─── 메인 컴포넌트 ────────────────────────────────────────────────────────────
-const SecretaryPage:React.FC = () => {
-  const {user,isAdmin,isSubAdmin} = useAuth() as any;
+const SecretaryInsPage:React.FC = () => {
+  const {user,isInsAI} = useAuth() as any;
   const navigate = useNavigate();
-  if(!user||(!isAdmin&&!isSubAdmin))return <Navigate to="/" replace/>;
+  if(!user||!isInsAI)return <Navigate to="/" replace/>;
 
   const [tab,setTab] = useState<TabKey>("chat");
 
@@ -822,7 +822,7 @@ const SecretaryPage:React.FC = () => {
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-[#0f172a] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">AI</div>
             <div>
-              <h1 className="text-sm font-bold text-[#0f172a]">AI 비서</h1>
+              <h1 className="text-sm font-bold text-[#0f172a]">AI 비서 (Ins)</h1>
               <p className="text-xs text-gray-400">두서없이 말씀하시면 자동 저장 · 상담관리 연동</p>
             </div>
           </div>
@@ -1307,4 +1307,4 @@ const SecretaryPage:React.FC = () => {
   );
 };
 
-export default SecretaryPage;
+export default SecretaryInsPage;

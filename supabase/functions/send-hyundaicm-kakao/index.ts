@@ -11,13 +11,6 @@ const SENDER_PHONE      = Deno.env.get("SOLAPI_SENDER")     ?? "01050549006";
 const RECIPIENTS_RAW = Deno.env.get("SMS_RECIPIENTS") ?? "01050549006,01095250707,01079310339";
 const RECIPIENTS     = RECIPIENTS_RAW.split(",").map((n) => n.replace(/\D/g, ""));
 
-// 수신자 ID → 전화번호 매핑 (보류 기능에서 선택적 발송에 사용)
-const RECIPIENT_ID_MAP: Record<string, string> = {
-  tongs:    RECIPIENTS[0] ?? "01050549006", // 이동수 (관리자)
-  p2001103: RECIPIENTS[1] ?? "01095250707", // 현대CM 담당자
-  nhcap:    RECIPIENTS[2] ?? "01079310339", // NH캐피탈 담당자
-};
-
 // 나르미 전용 수신자
 const NARUMI_RECIPIENTS_RAW = Deno.env.get("NARUMI_SMS_RECIPIENTS") ?? "01050549006,01020793025";
 const NARUMI_RECIPIENTS     = NARUMI_RECIPIENTS_RAW.split(",").map((n) => n.replace(/\D/g, ""));
@@ -58,15 +51,6 @@ async function sendSms(text: string, recipients: string[] = RECIPIENTS): Promise
     throw new Error(`SMS 발송 실패: ${err}`);
   }
   console.log("솔라피 결과:", JSON.stringify(await res.json()));
-}
-
-// 수신자 ID 배열로 발송 (보류 기능용)
-async function sendSmsToIds(text: string, recipientIds: string[]): Promise<void> {
-  const phones = recipientIds
-    .map((id) => RECIPIENT_ID_MAP[id])
-    .filter(Boolean);
-  if (phones.length === 0) throw new Error("유효한 수신자가 없습니다.");
-  await sendSms(text, phones);
 }
 
 // ─────────────────────────────────────────────
@@ -226,6 +210,17 @@ function buildMessage(body: Record<string, string>): string {
     registered: "등록완료", completed: "차량등록증 완료",
   };
 
+  if (type === "narumi_insurance_confirmed") {
+    return [
+      "[나르미 보험확인완료]", "",
+      body.vin     ? `VIN: ${body.vin}`      : "",
+      customerName ? `고객: ${customerName}` : "",
+      salesRep     ? `영업: ${salesRep}`     : "",
+      "", "✅ 보험확인완료",
+      `시간: ${now}`,
+    ].filter(Boolean).join("\n");
+  }
+
   if (type === "narumi_new") {
     return [
       "[나르미 신규 등록]", "",
@@ -252,7 +247,7 @@ function buildMessage(body: Record<string, string>): string {
   if (type === "narumi_vehicle_doc") {
     return [
       "[나르미 차량등록증 업로드]", "",
-      body.vin     ? `VIN: ${body.vin}`      : "",
+      body.vin     ? `VIN: ${body.vin}`   : "",
       customerName ? `고객: ${customerName}` : "",
       salesRep     ? `영업: ${salesRep}`     : "",
       "", "차량등록증이 업로드되었습니다.",
@@ -260,14 +255,15 @@ function buildMessage(body: Record<string, string>): string {
     ].filter(Boolean).join("\n");
   }
 
-  // ── 나르미 등록서류 수령 ────────────────────────────────
-  if (type === "narumi_docs_ready") {
+
+  // ── 나르미 등록완료 ─────────────────────────────────────
+  if (type === "narumi_status" && (body.nextStatus === "registered" || body.nextStatus === "등록완료")) {
     return [
-      "[나르미 등록서류 수령]", "",
+      "[나르미 등록완료]", "",
       body.vin     ? `VIN: ${body.vin}`      : "",
       customerName ? `고객: ${customerName}` : "",
       salesRep     ? `영업: ${salesRep}`     : "",
-      "", "📄 등록서류를 수령하였습니다.",
+      "", "✅ 차량 등록이 완료되었습니다.",
       `시간: ${now}`,
     ].filter(Boolean).join("\n");
   }
@@ -286,44 +282,23 @@ function buildMessage(body: Record<string, string>): string {
     ].filter(Boolean).join("\n");
   }
 
-  if (type === "hold_registered") {
-    // 보류 등록 즉시 → 전체 수신자에게 발송
-    const scheduledDate = body.scheduledAt
-      ? new Date(body.scheduledAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })
-      : "-";
+  // edit 타입 (변경사항 상세 포함)
+  if (type === "edit") {
     return [
-      "[HD현대(부산/경남) 보류 등록]",
-      "",
+      "[HD현대(부산/경남) 할부 정보 수정]", "",
       `번호: ${caseNo ?? "-"}`,
       `고객: ${customerName} (${customerType})`,
-      `장비: ${equipmentTon ?? "-"}`,
+      `현재단계: ${prevStatus ?? "-"}`,
       `영업: ${salesRep ?? "-"}`,
       "",
-      `⏰ 재통화 예정: ${scheduledDate}`,
-      body.holdNote       ? `메모: ${body.holdNote}`                   : "",
-      body.recipientNames ? `알림 수신: ${body.recipientNames}` : "",
+      "── 변경사항 ──",
+      body.changedSummary ?? "변경사항 없음",
+      "",
       `시간: ${now}`,
     ].filter(Boolean).join("\n");
   }
 
-  if (type === "hold_reminder") {
-    // 예약 시간 도달 → 선택된 수신자에게만 발송
-    return [
-      "[HD현대(부산/경남) 재통화 알림]",
-      "",
-      `번호: ${caseNo ?? "-"}`,
-      `고객: ${customerName} (${customerType})`,
-      `장비: ${equipmentTon ?? "-"}`,
-      `영업: ${salesRep ?? "-"}`,
-      `현재단계: ${body.currentStatus ?? "-"}`,
-      "",
-      "📞 재통화 예정 시간입니다.",
-      body.holdNote ? `메모: ${body.holdNote}` : "",
-      `시간: ${now}`,
-    ].filter(Boolean).join("\n");
-  }
-
-  throw new Error(`알 수 없는 type: ${type}`);
+  throw new Error("type은 'new' 또는 'status_change' 이어야 합니다.");
 }
 
 // ─────────────────────────────────────────────
@@ -341,20 +316,6 @@ serve(async (req) => {
 
     // 나르미 타입은 나르미 전용 수신자로 발송
     const isNarumi = typeof body.type === "string" && body.type.startsWith("narumi");
-
-    // hold_registered: 전체 수신자 발송
-    // hold_reminder: 선택된 수신자(recipientIds)에만 발송
-    if (body.type === "hold_reminder") {
-      const ids: string[] = Array.isArray((body as any).recipientIds)
-        ? (body as any).recipientIds
-        : JSON.parse((body as any).recipientIds ?? "[]");
-      await sendSmsToIds(message, ids);
-      return new Response(
-        JSON.stringify({ success: true, recipients: ids }),
-        { headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
-      );
-    }
-
     await sendSms(message, isNarumi ? NARUMI_RECIPIENTS : RECIPIENTS);
 
     return new Response(

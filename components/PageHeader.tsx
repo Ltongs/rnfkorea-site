@@ -93,7 +93,7 @@ function calcMobileMenuStyle(btnEl: HTMLButtonElement | null): MobileMenuStyle {
 export default function PageHeader() {
   const { pathname } = useLocation();
   const nav = useNavigate();
-  const { user, canViewAll, isAdmin, isSubAdmin, isNarumi, isLotte, isInsuranceManager, isHyundaiCM, isNhCapital } = useAuth() as any;
+  const { user, canViewAll, isAdmin, isSubAdmin, isNarumi, isLotte, isInsuranceManager, isHyundaiCM, isNhCapital, isInsAI } = useAuth() as any;
   const isAdminLevel = isAdmin || isSubAdmin;
 
   const [openBiz, setOpenBiz] = useState(false);
@@ -287,6 +287,7 @@ export default function PageHeader() {
 
     // 운영대시보드 등 기타 내부 경로
     if (user && canViewAll) nav(path);
+    else if (user && isInsAI && path === "/work/secretary-ins") nav(path);
     else nav("/narumi/login");
   };
 
@@ -302,7 +303,7 @@ export default function PageHeader() {
         className="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 h-16 md:h-20 flex items-center justify-between overflow-visible"
       >
         <Link
-          to="/"
+          to={(isAdmin || isSubAdmin) ? "/work/secretary" : "/"}
           className="flex items-center shrink-0"
           onClick={closeAll}
           aria-label="RNF KOREA 홈으로 이동"
@@ -554,6 +555,16 @@ export default function PageHeader() {
                       onClick={() => goWorkInternalOnly("/work/secretary")}
                     >
                       🤖 AI 비서
+                    </button>
+                  )}
+
+                  {isInsAI && (
+                    <button
+                      type="button"
+                      className={`${dropItem} text-orange-600 font-semibold`}
+                      onClick={() => goWorkInternalOnly("/work/secretary-ins")}
+                    >
+                      🤖 AI 비서 (Ins)
                     </button>
                   )}
 

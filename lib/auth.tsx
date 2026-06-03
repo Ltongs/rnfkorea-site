@@ -22,6 +22,7 @@ type AuthContextType = {
   isInsuranceManager: boolean;
   isHyundaiCM: boolean;   // 현대건설기계 (배성구 팀장)
   isNhCapital: boolean;   // 농협캐피탈 (강신규 소장)
+  isInsAI: boolean;       // AI 비서 (Ins) 전용 (everyasset.fc@gmail.com)
   isInternal: boolean;
 
   // page permissions
@@ -58,6 +59,7 @@ function getRoleFlags(emailRaw?: string | null) {
   const isHyundaiCM        = email === "p2001103@hanmail.net";   // 현대건설기계 배성구 팀장
   const isNhCapital        = email === "allbar7555@naver.com"      // 농협캐피탈 강신규 소장
                           || email === "yongbaek_jo@orix.co.kr";  // ORIX 조용백
+  const isInsAI            = email === "everyasset.fc@gmail.com"; // AI 비서 (Ins) 전용
 
   // isHyundaiCM / isNhCapital 은 각자 전용 페이지만 볼 수 있으므로
   // isInternal(나르미 공통 접근)에는 포함하지 않음
@@ -72,6 +74,7 @@ function getRoleFlags(emailRaw?: string | null) {
     isInsuranceManager,
     isHyundaiCM,
     isNhCapital,
+    isInsAI,
     isInternal,
   };
 }
@@ -85,6 +88,7 @@ function getPermissions(emailRaw?: string | null) {
     isInsuranceManager,
     isHyundaiCM,
     isNhCapital,
+    isInsAI,
     isInternal,
   } = getRoleFlags(emailRaw);
 
@@ -98,6 +102,7 @@ function getPermissions(emailRaw?: string | null) {
     isInsuranceManager,
     isHyundaiCM,
     isNhCapital,
+    isInsAI,
     isInternal,
 
     canViewAll:          isInternal,
@@ -147,17 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(nextSession?.user ?? null);
       setLoading(false);
 
-      // admin/subAdmin 로그인 시 AI비서 페이지로 자동 이동
-      if (event === "SIGNED_IN" && nextSession?.user) {
-        const { isAdmin, isSubAdmin } = getRoleFlags(nextSession.user.email);
-        if (isAdmin || isSubAdmin) {
-          // BrowserRouter 환경이므로 window.location 사용 (navigate 불필요)
-          const current = window.location.pathname;
-          if (current === "/" || current.includes("/login")) {
-            window.location.replace("/work/secretary");
-          }
-        }
-      }
+      // 리디렉션은 App.tsx의 라우트에서 처리
     });
 
     return () => {
@@ -203,6 +198,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isInsuranceManager: permissionState.isInsuranceManager,
       isHyundaiCM:        permissionState.isHyundaiCM,
       isNhCapital:        permissionState.isNhCapital,
+      isInsAI:            permissionState.isInsAI,
       isInternal:         permissionState.isInternal,
 
       canViewAll:         permissionState.canViewAll,

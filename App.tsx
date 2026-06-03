@@ -75,6 +75,7 @@ import ExportInquiryPage from "./pages/Export/ExportInquiryPage";
 import BatteryShopPage from "./pages/battery-shop";
 import TireRentalPage from "./pages/TireRental/index";
 import SecretaryPage from "./pages/secretary/index";
+import SecretaryInsPage from "./pages/secretary-ins/index";
 
 /* utils / config */
 import { fetchTireRows } from "./lib/tiresCsv";
@@ -1354,8 +1355,15 @@ const ProtectedRoute: React.FC<{
 };
 
 const AppRoutes = () => {
-  const { isAdmin, isSubAdmin } = useAuth() as any;
+  const { isAdmin, isSubAdmin, isInsAI, loading } = useAuth() as any;
   const isAdminLevel = isAdmin || isSubAdmin;
+
+  // 로딩 중에는 리디렉션 판단 보류
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center text-gray-400">
+      <div className="w-6 h-6 border-2 border-orange-400 border-t-transparent rounded-full animate-spin"/>
+    </div>
+  );
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-white">
@@ -1377,7 +1385,11 @@ const AppRoutes = () => {
       {/* ✅ <main> 에 id와 role 명시 → 스크린리더 + 검색엔진 본문 인식 */}
       <main id="main-content" role="main" className="w-full">
         <Routes>
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={
+            isAdminLevel
+              ? <Navigate to="/work/secretary" replace />
+              : <HomePage />
+          } />
           <Route path="/tires" element={<TiresPage />} />
           <Route path="/battery" element={<BatteryPage />} />
           <Route path="/export" element={<ExportPage />} />
@@ -1452,6 +1464,12 @@ const AppRoutes = () => {
           <Route
             path="/work/secretary"
             element={isAdminLevel ? <SecretaryPage /> : <Navigate to="/" replace />}
+          />
+
+          {/* AI 비서 (Ins) — everyasset.fc@gmail.com 전용 */}
+          <Route
+            path="/work/secretary-ins"
+            element={isInsAI ? <SecretaryInsPage /> : <Navigate to="/" replace />}
           />
 
           {/* legacy */}
