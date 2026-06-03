@@ -5,7 +5,7 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
-type TabKey = "chat"|"schedule"|"todo"|"consults"|"policies";
+type TabKey = "chat"|"schedule"|"todo"|"consults"|"policies"|"claims"|"customers";
 type Schedule = {
   id:number; title:string; description:string|null; schedule_date:string;
   start_time:string|null; end_time:string|null;
@@ -18,14 +18,15 @@ type Todo = {
   due_date:string|null; is_done:boolean; done_at:string|null; consultation_id:number|null;
 };
 type Order = {
-  id:number; created_at:string; customer_name:string; phone:string|null;
+  id:number; created_at:string;
+  customer_key:string; customer_name:string;
   channel:"kakao"|"phone"|"visit"|"web"; work_type:string|null;
   summary:string; detail:string|null; status:"new"|"pending"|"processing"|"done";
   consultation_id:number|null;
 };
 type Consult = {
-  id:number; customer_name:string; phone:string; telecom_provider:string|null;
-  work_type:string; status:string; summary:string;
+  id:number; customer_key:string|null; customer_name:string; phone:string;
+  telecom_provider:string|null; work_type:string; status:string; summary:string;
   followup_needed:boolean; next_followup_date:string|null; created_at:string;
 };
 type PendingUpdate = {
@@ -41,14 +42,24 @@ type ChatMsg = {
   pendingUpdates?:PendingUpdate[];
 };
 type Policy = {
-  id:number;
-  customer_name:string;
-  phone:string|null;
-  product_name:string;
-  start_date:string;
-  expiry_date:string|null;
-  memo:string|null;
-  created_at:string;
+  id:number; customer_key:string; customer_name:string;
+  product_name:string; start_date:string; expiry_date:string|null;
+  memo:string|null; created_at:string;
+};
+type Claim = {
+  id:number; customer_key:string; customer_name:string;
+  product_name:string; claim_date:string;
+  claim_type:"inpatient"|"outpatient"|"surgery"|"death"|"other";
+  status:"requested"|"processing"|"paid"|"rejected";
+  memo:string|null; created_at:string;
+};
+// 고객 조회용 — customer_key 기준 통합 프로필
+type CustomerProfile = {
+  customer_key: string;
+  customer_name: string;
+  policies: Policy[];
+  consults: Consult[];
+  claims: Claim[];
 };
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
@@ -60,9 +71,18 @@ const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:
 const PRI_LBL:Record<string,string> = {urgent:"긴급",normal:"일반",low:"낮음"};
 const ACT_LBL:Record<string,string> = {todo:"✅ 할일",schedule:"📅 일정",order:"💬 상담접수",consult_update:"🔄 상담 업데이트"};
 const CAT_CLR:Record<string,string> = {meeting:"#60a5fa",call:"#fb923c",followup:"#c084fc",task:"#34d399"};
+const CLAIM_TYPE_LBL:Record<string,string> = {inpatient:"입원",outpatient:"통원",surgery:"수술",death:"사망",other:"기타"};
+const CLAIM_STS_LBL:Record<string,string> = {requested:"청구요청",processing:"청구대행중",paid:"지급완료",rejected:"거절"};
+const CLAIM_STS_CLR:Record<string,string> = {requested:"bg-yellow-50 text-yellow-700",processing:"bg-blue-50 text-blue-700",paid:"bg-emerald-50 text-emerald-700",rejected:"bg-red-50 text-red-600"};
 
 // ─── 유틸 ─────────────────────────────────────────────────────────────────────
 const todayStr = () => { const d=new Date(); d.setHours(d.getHours()+9); return d.toISOString().slice(0,10); };
+// 이름 + 전화번호 끝 4자리 → customer_key (예: 홍길동_1234)
+const makeCustomerKey = (name:string, phone:string) => {
+  const digits = phone.replace(/\D/g,"");
+  const last4 = digits.slice(-4);
+  return last4 ? `${name.trim()}_${last4}` : name.trim();
+};
 const nowTs = () => new Date().toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}).replace(". ","월 ").replace(". ","일 ");
 const pad2 = (n:number) => String(n).padStart(2,"0");
 const fmtDate = (d:string) => { const dt=new Date(d+(d.includes("T")?"":"T00:00:00")); return `${dt.getMonth()+1}월 ${dt.getDate()}일`; };
@@ -383,7 +403,6 @@ function MiniCalendar({
 const SecretaryInsPage:React.FC = () => {
   const {user,isInsAI} = useAuth() as any;
   const navigate = useNavigate();
-  if(!user||!isInsAI)return <Navigate to="/" replace/>;
 
   const [tab,setTab] = useState<TabKey>("chat");
 
@@ -428,10 +447,25 @@ const SecretaryInsPage:React.FC = () => {
   // 계약 관리
   const [policies,setPolicies]               = useState<Policy[]>([]);
   const [policyLoading,setPolicyLoading]     = useState(false);
-  const [expiringPolicies,setExpiringPolicies] = useState<Policy[]>([]); // 만기 30일 이내
+  const [expiringPolicies,setExpiringPolicies] = useState<Policy[]>([]);
   const [showPolicyForm,setShowPolicyForm]   = useState(false);
   const [newPolicy,setNewPolicy]             = useState({customer_name:"",phone:"",product_name:"",start_date:"",expiry_date:"",memo:""});
   const [policySearch,setPolicySearch]       = useState("");
+
+  // 청구 관리
+  const [claims,setClaims]                   = useState<Claim[]>([]);
+  const [claimLoading,setClaimLoading]       = useState(false);
+  const [showClaimForm,setShowClaimForm]     = useState(false);
+  const [claimSearch,setClaimSearch]         = useState("");
+  const [claimFilter,setClaimFilter]         = useState<"all"|"active"|"paid">("active");
+  const [newClaim,setNewClaim]               = useState({customer_name:"",phone:"",product_name:"",claim_date:todayStr(),claim_type:"outpatient" as Claim["claim_type"],memo:""});
+
+  // 고객 조회
+  const [custSearch,setCustSearch]           = useState("");
+  const [custResults,setCustResults]         = useState<{customer_key:string;customer_name:string}[]>([]);
+  const [custLoading,setCustLoading]         = useState(false);
+  const [selectedCust,setSelectedCust]       = useState<CustomerProfile|null>(null);
+  const [custDetailLoading,setCustDetailLoading] = useState(false);
 
   // 달력 데이터
   const [calSch,setCalSch] = useState<CalSch[]>([]);
@@ -441,11 +475,14 @@ const SecretaryInsPage:React.FC = () => {
   const [gcalEvents,setGcalEvents] = useState<{id:string;title:string;start:string;color?:string}[]>([]);
 
   // 통계
-  const [stats,setStats] = useState({todaySch:0,activeTodo:0,urgentTodo:0,newOrders:0,todayFollowup:0,newConsult:0,expiringCount:0});
+  const [stats,setStats] = useState({todaySch:0,activeTodo:0,urgentTodo:0,newOrders:0,todayFollowup:0,newConsult:0,expiringCount:0,activeClaims:0});
 
   // 토스트
   const [toast,setToast] = useState<{msg:string;type:"ok"|"err"}|null>(null);
   const showToast = (msg:string,type:"ok"|"err"="ok") => { setToast({msg,type}); setTimeout(()=>setToast(null),3500); };
+
+  // ─── 권한 체크 (모든 훅 선언 이후) ───────────────────────────────────────────
+  if(!user||!isInsAI)return <Navigate to="/" replace/>;
 
   // ─── 데이터 로드 ────────────────────────────────────────────────────────────
   const loadCalData = useCallback(async(yr:number,mo:number)=>{
@@ -552,7 +589,7 @@ const SecretaryInsPage:React.FC = () => {
   const loadStats = useCallback(async()=>{
     const d30 = new Date(); d30.setDate(d30.getDate()+30);
     const d30str = d30.toISOString().slice(0,10);
-    const [a,b,c,d,e,f,g] = await Promise.all([
+    const [a,b,c,d,e,f,g,h] = await Promise.all([
       supabase.from("ins_schedules").select("id",{count:"exact"}).eq("schedule_date",todayStr()).eq("is_done",false),
       supabase.from("ins_todos").select("id",{count:"exact"}).eq("is_done",false),
       supabase.from("ins_todos").select("id",{count:"exact"}).eq("is_done",false).eq("priority","urgent"),
@@ -560,8 +597,9 @@ const SecretaryInsPage:React.FC = () => {
       supabase.from("consultation_cases").select("id",{count:"exact"}).eq("work_type","registration_insurance").eq("followup_needed",true).eq("next_followup_date",todayStr()),
       supabase.from("consultation_cases").select("id",{count:"exact"}).eq("work_type","registration_insurance").gte("created_at",todayStr()+"T00:00:00").lte("created_at",todayStr()+"T23:59:59"),
       supabase.from("ins_policies").select("id",{count:"exact"}).gte("expiry_date",todayStr()).lte("expiry_date",d30str),
+      supabase.from("ins_claims").select("id",{count:"exact"}).in("status",["requested","processing"]),
     ]);
-    setStats({todaySch:a.count??0,activeTodo:b.count??0,urgentTodo:c.count??0,newOrders:d.count??0,todayFollowup:e.count??0,newConsult:f.count??0,expiringCount:g.count??0});
+    setStats({todaySch:a.count??0,activeTodo:b.count??0,urgentTodo:c.count??0,newOrders:d.count??0,todayFollowup:e.count??0,newConsult:f.count??0,expiringCount:g.count??0,activeClaims:h.count??0});
   },[]);
 
   const loadChatHist = useCallback(async()=>{
@@ -684,9 +722,10 @@ const SecretaryInsPage:React.FC = () => {
 
   async function addPolicy(){
     if(!newPolicy.customer_name||!newPolicy.product_name||!newPolicy.start_date)return;
+    const cKey = makeCustomerKey(newPolicy.customer_name, newPolicy.phone);
     const {error}=await supabase.from("ins_policies").insert({
+      customer_key:cKey,
       customer_name:newPolicy.customer_name,
-      phone:newPolicy.phone||null,
       product_name:newPolicy.product_name,
       start_date:newPolicy.start_date,
       expiry_date:newPolicy.expiry_date||null,
@@ -715,6 +754,87 @@ const SecretaryInsPage:React.FC = () => {
   };
 
   useEffect(()=>{if(tab==="policies"){void loadPolicies();}},[tab,loadPolicies]);
+
+  // ─── 청구 CRUD ──────────────────────────────────────────────────────────────
+  const loadClaims = useCallback(async()=>{
+    setClaimLoading(true);
+    let q = supabase.from("ins_claims").select("*").order("claim_date",{ascending:false});
+    if(claimFilter==="active") q = q.in("status",["requested","processing"]);
+    else if(claimFilter==="paid") q = q.eq("status","paid");
+    const {data} = await q.limit(60);
+    if(data) setClaims(data as Claim[]);
+    setClaimLoading(false);
+  },[claimFilter]);
+
+  async function addClaim(){
+    if(!newClaim.customer_name||!newClaim.product_name||!newClaim.claim_date)return;
+    const cKey = makeCustomerKey(newClaim.customer_name, newClaim.phone);
+    const {error}=await supabase.from("ins_claims").insert({
+      customer_key:cKey,
+      customer_name:newClaim.customer_name,
+      product_name:newClaim.product_name,
+      claim_date:newClaim.claim_date,
+      claim_type:newClaim.claim_type,
+      status:"requested",
+      memo:newClaim.memo||null,
+    });
+    if(!error){
+      showToast("청구 등록 완료");
+      setShowClaimForm(false);
+      setNewClaim({customer_name:"",phone:"",product_name:"",claim_date:todayStr(),claim_type:"outpatient",memo:""});
+      void loadClaims(); void loadStats();
+    }
+  }
+
+  async function setClaimStatus(id:number, status:Claim["status"]){
+    await supabase.from("ins_claims").update({status}).eq("id",id);
+    void loadClaims(); void loadStats();
+    showToast(CLAIM_STS_LBL[status]+"으로 변경");
+  }
+
+  async function delClaim(id:number){
+    await supabase.from("ins_claims").delete().eq("id",id);
+    setClaims(p=>p.filter(c=>c.id!==id)); void loadStats();
+  }
+
+  useEffect(()=>{if(tab==="claims"){void loadClaims();}},[tab,loadClaims]);
+
+  // ─── 고객 조회 ──────────────────────────────────────────────────────────────
+  const searchCustomers = useCallback(async(name:string)=>{
+    if(!name.trim()){setCustResults([]);return;}
+    setCustLoading(true);
+    const [pr,cr,clr] = await Promise.all([
+      supabase.from("ins_policies").select("customer_key,customer_name").ilike("customer_name",`%${name}%`),
+      supabase.from("ins_consultation_cases").select("customer_key,customer_name").ilike("customer_name",`%${name}%`),
+      supabase.from("ins_claims").select("customer_key,customer_name").ilike("customer_name",`%${name}%`),
+    ]);
+    const map = new Map<string,string>();
+    for(const row of [...(pr.data??[]),...(cr.data??[]),...(clr.data??[])]) {
+      if(row.customer_key && !map.has(row.customer_key))
+        map.set(row.customer_key, row.customer_name);
+    }
+    setCustResults(Array.from(map.entries()).map(([k,n])=>({customer_key:k,customer_name:n})));
+    setCustLoading(false);
+  },[]);
+
+  const loadCustomerProfile = useCallback(async(key:string, name:string)=>{
+    setCustDetailLoading(true);
+    setSelectedCust(null);
+    const [pr,cr,clr] = await Promise.all([
+      supabase.from("ins_policies").select("*").eq("customer_key",key).order("start_date",{ascending:false}),
+      supabase.from("ins_consultation_cases").select("*").eq("customer_key",key).order("created_at",{ascending:false}),
+      supabase.from("ins_claims").select("*").eq("customer_key",key).order("claim_date",{ascending:false}),
+    ]);
+    setSelectedCust({
+      customer_key:key, customer_name:name,
+      policies:(pr.data??[]) as Policy[],
+      consults:(cr.data??[]) as Consult[],
+      claims:(clr.data??[]) as Claim[],
+    });
+    setCustDetailLoading(false);
+  },[]);
+
+  // ─── 일정 CRUD ──────────────────────────────────────────────────────────────
   async function addSchedule(){
     if(!newSched.title)return;
     if(newSched.category==="followup"&&newSched.consultation_id){
@@ -771,9 +891,11 @@ const SecretaryInsPage:React.FC = () => {
   // ─── 상담 CRUD ──────────────────────────────────────────────────────────────
   async function addOrder(){
     if(!newOrder.customer_name||!newOrder.summary)return;
+    const cKey = makeCustomerKey(newOrder.customer_name, newOrder.phone);
     let cid:number|null=null;
     if(syncConsult){
       const {data:cd,error:ce}=await supabase.from("ins_consultation_cases").insert({
+        customer_key:cKey,
         customer_name:newOrder.customer_name,phone:newOrder.phone||"미입력",telecom_provider:newOrder.telecom_provider||null,
         work_type:"registration_insurance",status:"new",
         summary:`[AI비서(Ins) ${newOrder.channel==="kakao"?"카카오":newOrder.channel} 접수] ${newOrder.summary}`,
@@ -783,7 +905,8 @@ const SecretaryInsPage:React.FC = () => {
       if(cd)cid=cd.id;
     }
     const {error}=await supabase.from("ins_orders").insert({
-      customer_name:newOrder.customer_name,phone:newOrder.phone||null,channel:newOrder.channel,
+      customer_key:cKey,
+      customer_name:newOrder.customer_name,channel:newOrder.channel,
       work_type:"insurance",summary:newOrder.summary,detail:newOrder.detail||null,status:"new",consultation_id:cid,
     });
     if(!error){
@@ -911,14 +1034,22 @@ const SecretaryInsPage:React.FC = () => {
                 ⚠️ 만기임박 {stats.expiringCount}건
               </button>
             )}
+            {stats.activeClaims>0&&(
+              <button onClick={()=>setTab("claims")} className="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600 font-medium hover:bg-indigo-100 transition-all">
+                📋 청구진행 {stats.activeClaims}건
+              </button>
+            )}
           </div>
           {/* 탭 */}
           <div className="flex items-center gap-1.5 flex-wrap">
-            {(["chat","schedule","todo","consults","policies"] as TabKey[]).map(t=>(
+            {(["chat","schedule","todo","consults","policies","claims","customers"] as TabKey[]).map(t=>(
               <button key={t} className={`${TB} ${tab===t?TA:TI} relative`} onClick={()=>setTab(t)}>
-                {{chat:"💬 채팅",schedule:"📅 일정",todo:"✅ 할일",consults:"🛡 상담",policies:"📋 계약"}[t]}
+                {{chat:"💬 채팅",schedule:"📅 일정",todo:"✅ 할일",consults:"🛡 상담",policies:"📋 계약",claims:"🏥 청구",customers:"👤 고객조회"}[t]}
                 {t==="policies"&&stats.expiringCount>0&&(
                   <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center">{stats.expiringCount}</span>
+                )}
+                {t==="claims"&&stats.activeClaims>0&&(
+                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-indigo-500 text-white text-[10px] flex items-center justify-center">{stats.activeClaims}</span>
                 )}
               </button>
             ))}
@@ -1234,7 +1365,7 @@ const SecretaryInsPage:React.FC = () => {
                     {syncConsult&&<div className="mb-3 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-700">✅ 보험 상담으로 ins_consultation_cases에 자동 등록됩니다</div>}
                     <div className="grid grid-cols-2 gap-2.5 mb-3">
                       <div><label className={LBL}>고객명 *</label><input className={CTRL} value={newOrder.customer_name} onChange={e=>setNewOrder(p=>({...p,customer_name:e.target.value}))} placeholder="고객명"/></div>
-                      <div><label className={LBL}>연락처</label><input className={CTRL} value={newOrder.phone} onChange={e=>setNewOrder(p=>({...p,phone:e.target.value}))} placeholder="010-0000-0000"/></div>
+                      <div><label className={LBL}>연락처 끝 4자리</label><input className={CTRL} value={newOrder.phone} onChange={e=>setNewOrder(p=>({...p,phone:e.target.value.replace(/\D/g,"").slice(-4)}))} placeholder="숫자 4자리" maxLength={4}/></div>
                       <div><label className={LBL}>접수 채널</label>
                         <select className={CTRL} value={newOrder.channel} onChange={e=>setNewOrder(p=>({...p,channel:e.target.value as any}))}>
                           <option value="kakao">카카오톡</option><option value="phone">전화</option><option value="visit">방문</option><option value="web">홈페이지</option>
@@ -1260,9 +1391,9 @@ const SecretaryInsPage:React.FC = () => {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-sm font-semibold text-[#0f172a]">{o.customer_name}</span>
+                                <span className="font-mono text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{o.customer_key}</span>
                                 <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">🛡 보험</span>
                                 <StsBadge s={o.status}/>
-                                {o.phone&&<a href={`tel:${o.phone.replace(/-/g,"")}`} className="text-xs text-orange-500 hover:underline">{o.phone}</a>}
                                 <LinkBadge id={o.consultation_id} onClick={()=>navigate(`/work/call-management?id=${o.consultation_id}`)}/>
                               </div>
                               <p className="text-sm text-gray-700 mt-0.5">{o.summary}</p>
@@ -1320,7 +1451,7 @@ const SecretaryInsPage:React.FC = () => {
                             <div className="flex items-center gap-3 mt-0.5">
                               <span className="text-xs text-gray-500">가입 {fmtDate(p.start_date)}</span>
                               {p.expiry_date&&<span className="text-xs text-red-500 font-medium">만기 {fmtDate(p.expiry_date)}</span>}
-                              {p.phone&&<a href={`tel:${p.phone.replace(/-/g,"")}`} className="text-xs text-orange-500 hover:underline">{p.phone}</a>}
+                              <span className="font-mono text-xs text-gray-400">{p.customer_key}</span>
                             </div>
                           </div>
                           <button className={BTO} onClick={()=>quickChat(`"${p.customer_name}" ${p.product_name} 만기 ${days}일 남음 — 갱신 상담 준비해줘`)}>AI준비</button>
@@ -1353,7 +1484,12 @@ const SecretaryInsPage:React.FC = () => {
                     <p className="text-sm font-semibold text-[#0f172a] mb-3">새 계약 등록</p>
                     <div className="grid grid-cols-2 gap-2.5 mb-3">
                       <div><label className={LBL}>고객명 *</label><input className={CTRL} value={newPolicy.customer_name} onChange={e=>setNewPolicy(p=>({...p,customer_name:e.target.value}))} placeholder="고객명"/></div>
-                      <div><label className={LBL}>연락처</label><input className={CTRL} value={newPolicy.phone} onChange={e=>setNewPolicy(p=>({...p,phone:e.target.value}))} placeholder="010-0000-0000"/></div>
+                      <div><label className={LBL}>전화번호 끝 4자리 *</label><input className={CTRL} value={newPolicy.phone} onChange={e=>setNewPolicy(p=>({...p,phone:e.target.value.replace(/\D/g,"").slice(-4)}))} placeholder="숫자 4자리" maxLength={4}/></div>
+                      {newPolicy.customer_name&&newPolicy.phone&&(
+                        <div className="col-span-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-xs text-gray-500">
+                          고객 키: <span className="font-mono font-semibold text-[#0f172a]">{makeCustomerKey(newPolicy.customer_name,newPolicy.phone)}</span>
+                        </div>
+                      )}
                       <div className="col-span-2"><label className={LBL}>상품명 *</label><input className={CTRL} value={newPolicy.product_name} onChange={e=>setNewPolicy(p=>({...p,product_name:e.target.value}))} placeholder="예: 무배당종신보험, 실손의료비보험"/></div>
                       <div><label className={LBL}>가입일 *</label><input type="date" className={CTRL} value={newPolicy.start_date} onChange={e=>setNewPolicy(p=>({...p,start_date:e.target.value}))}/></div>
                       <div><label className={LBL}>만기일</label><input type="date" className={CTRL} value={newPolicy.expiry_date} onChange={e=>setNewPolicy(p=>({...p,expiry_date:e.target.value}))}/></div>
@@ -1386,8 +1522,8 @@ const SecretaryInsPage:React.FC = () => {
                                 return(
                                   <tr key={p.id} className={`border-b border-gray-50 hover:bg-gray-50 ${isExpiring?"bg-red-50/50":""}`}>
                                     <td className="py-2 px-2 font-medium text-[#0f172a] whitespace-nowrap">{p.customer_name}</td>
-                                    <td className="py-2 px-2 text-xs text-gray-500 whitespace-nowrap">
-                                      {p.phone?<a href={`tel:${p.phone.replace(/-/g,"")}`} className="text-orange-500 hover:underline">{p.phone}</a>:"—"}
+                                    <td className="py-2 px-2 text-xs whitespace-nowrap">
+                                      <span className="font-mono text-gray-400">{p.customer_key}</span>
                                     </td>
                                     <td className="py-2 px-2 whitespace-nowrap">
                                       <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">{p.product_name}</span>
@@ -1420,6 +1556,266 @@ const SecretaryInsPage:React.FC = () => {
                     )
                 }
               </div>
+            </div>
+          )}
+
+          {/* ══ 청구 관리 ══ */}
+          {tab==="claims"&&(
+            <div className="space-y-4 pb-4">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap mb-2">
+                  <p className="text-sm font-semibold text-[#0f172a]">🏥 보험금 청구 관리</p>
+                  <div className="flex gap-1.5 ml-auto flex-wrap items-center">
+                    {(["active","paid","all"] as const).map(f=>(
+                      <button key={f} className={`${TB} text-xs py-1 px-2.5 ${claimFilter===f?TA:TI}`} onClick={()=>setClaimFilter(f)}>
+                        {{active:"진행중",paid:"지급완료",all:"전체"}[f]}
+                      </button>
+                    ))}
+                    <input className="h-8 rounded-xl border border-gray-200 px-3 text-xs bg-white focus:outline-none focus:border-orange-400 w-32" placeholder="고객명·상품 검색" value={claimSearch} onChange={e=>setClaimSearch(e.target.value)}/>
+                    <button className={BTG} onClick={()=>void loadClaims()}>새로고침</button>
+                    <button className={BTP} onClick={()=>setShowClaimForm(v=>!v)}>{showClaimForm?"닫기":"+ 청구등록"}</button>
+                  </div>
+                </div>
+
+                {/* 등록 폼 */}
+                {showClaimForm&&(
+                  <div className={`${CARD} p-4 mb-3`}>
+                    <p className="text-sm font-semibold text-[#0f172a] mb-3">새 청구 등록</p>
+                    <div className="grid grid-cols-2 gap-2.5 mb-3">
+                      <div><label className={LBL}>고객명 *</label><input className={CTRL} value={newClaim.customer_name} onChange={e=>setNewClaim(p=>({...p,customer_name:e.target.value}))} placeholder="고객명"/></div>
+                      <div><label className={LBL}>전화번호 끝 4자리 *</label><input className={CTRL} value={newClaim.phone} onChange={e=>setNewClaim(p=>({...p,phone:e.target.value.replace(/\D/g,"").slice(-4)}))} placeholder="숫자 4자리" maxLength={4}/></div>
+                      {newClaim.customer_name&&newClaim.phone&&(
+                        <div className="col-span-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-xs text-gray-500">
+                          고객 키: <span className="font-mono font-semibold text-[#0f172a]">{makeCustomerKey(newClaim.customer_name,newClaim.phone)}</span>
+                        </div>
+                      )}
+                      <div className="col-span-2"><label className={LBL}>보험 상품명 *</label><input className={CTRL} value={newClaim.product_name} onChange={e=>setNewClaim(p=>({...p,product_name:e.target.value}))} placeholder="예: 실손의료비보험"/></div>
+                      <div><label className={LBL}>청구 요청일 *</label><input type="date" className={CTRL} value={newClaim.claim_date} onChange={e=>setNewClaim(p=>({...p,claim_date:e.target.value}))}/></div>
+                      <div><label className={LBL}>청구 유형</label>
+                        <select className={CTRL} value={newClaim.claim_type} onChange={e=>setNewClaim(p=>({...p,claim_type:e.target.value as Claim["claim_type"]}))}>
+                          <option value="outpatient">통원</option>
+                          <option value="inpatient">입원</option>
+                          <option value="surgery">수술</option>
+                          <option value="death">사망</option>
+                          <option value="other">기타</option>
+                        </select>
+                      </div>
+                      <div className="col-span-2"><label className={LBL}>메모</label><input className={CTRL} value={newClaim.memo} onChange={e=>setNewClaim(p=>({...p,memo:e.target.value}))} placeholder="특이사항, 서류 준비 현황 등"/></div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button className={BTP} onClick={()=>void addClaim()}>저장</button>
+                      <button className={BTS} onClick={()=>setShowClaimForm(false)}>취소</button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 청구 목록 */}
+                {claimLoading?<p className="text-sm text-gray-400 p-4">불러오는 중...</p>
+                  :claims.filter(c=>!claimSearch||c.customer_name.includes(claimSearch)||c.product_name.includes(claimSearch)).length===0
+                    ?<div className={`${CARD} p-6 text-center text-gray-400 text-sm`}>청구 내역이 없습니다</div>
+                    :(
+                      <div className="space-y-2">
+                        {claims
+                          .filter(c=>!claimSearch||c.customer_name.includes(claimSearch)||c.product_name.includes(claimSearch))
+                          .map(c=>(
+                            <div key={c.id} className={`${CARD} p-4`}>
+                              <div className="flex items-start gap-3">
+                                <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center text-lg flex-shrink-0">
+                                  {{inpatient:"🏥",outpatient:"🩺",surgery:"🔬",death:"🕊️",other:"📄"}[c.claim_type]}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-sm font-semibold text-[#0f172a]">{c.customer_name}</span>
+                                    <span className="font-mono text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{c.customer_key}</span>
+                                    <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600">{CLAIM_TYPE_LBL[c.claim_type]}</span>
+                                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${CLAIM_STS_CLR[c.status]}`}>{CLAIM_STS_LBL[c.status]}</span>
+                                  </div>
+                                  <p className="text-sm text-gray-700 mt-0.5">{c.product_name}</p>
+                                  <div className="flex items-center gap-3 mt-0.5">
+                                    <span className="text-xs text-gray-400">청구일 {fmtDate(c.claim_date)}</span>
+                                    {c.memo&&<span className="text-xs text-gray-500 truncate max-w-[200px]">{c.memo}</span>}
+                                  </div>
+                                </div>
+                                <div className="flex gap-1.5 flex-shrink-0 flex-wrap">
+                                  {/* 상태 전환 버튼 */}
+                                  {c.status==="requested"&&<button className={BTO} onClick={()=>void setClaimStatus(c.id,"processing")}>대행중</button>}
+                                  {c.status==="processing"&&<button className={BTE} onClick={()=>void setClaimStatus(c.id,"paid")}>지급완료</button>}
+                                  {(c.status==="requested"||c.status==="processing")&&(
+                                    <button className="px-3 py-1.5 rounded-xl border border-red-200 text-xs text-red-500 hover:bg-red-50" onClick={()=>void setClaimStatus(c.id,"rejected")}>거절</button>
+                                  )}
+                                  <button className={BTG} onClick={()=>quickChat(`"${c.customer_name}" ${c.product_name} ${CLAIM_TYPE_LBL[c.claim_type]} 청구 진행 상황 정리해줘`)}>AI</button>
+                                  <button className="text-xs text-red-400 hover:text-red-600 px-1" onClick={()=>void delClaim(c.id)}>삭제</button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    )
+                }
+              </div>
+            </div>
+          )}
+
+          {/* ══ 고객 조회 ══ */}
+          {tab==="customers"&&(
+            <div className="space-y-4 pb-4">
+
+              {/* 검색창 */}
+              <div className={`${CARD} p-4`}>
+                <p className="text-sm font-semibold text-[#0f172a] mb-3">👤 고객 조회</p>
+                <div className="flex gap-2">
+                  <input
+                    className={`${CTRL} flex-1`}
+                    placeholder="고객 이름 입력 (동명이인 모두 표시)"
+                    value={custSearch}
+                    onChange={e=>{setCustSearch(e.target.value); void searchCustomers(e.target.value);}}
+                    onKeyDown={e=>{if(e.key==="Enter") void searchCustomers(custSearch);}}
+                  />
+                  <button className={BTP} onClick={()=>void searchCustomers(custSearch)}>검색</button>
+                  {selectedCust&&<button className={BTS} onClick={()=>{setSelectedCust(null);setCustSearch("");setCustResults([]);}}>초기화</button>}
+                </div>
+
+                {/* 검색 결과 — 고객 카드 목록 */}
+                {custLoading&&<p className="text-xs text-gray-400 mt-3">검색 중...</p>}
+                {!custLoading&&custResults.length===0&&custSearch.trim()&&(
+                  <p className="text-sm text-gray-400 mt-3 text-center py-4">"{custSearch}" 검색 결과가 없습니다</p>
+                )}
+                {custResults.length>0&&!selectedCust&&(
+                  <div className="mt-3">
+                    <p className="text-xs text-gray-400 mb-2">{custResults.length}명 검색됨 — 고객을 선택하세요</p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {custResults.map(c=>(
+                        <button key={c.customer_key}
+                          className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-white hover:border-orange-300 hover:bg-orange-50 transition-all text-left"
+                          onClick={()=>void loadCustomerProfile(c.customer_key, c.customer_name)}
+                        >
+                          <div className="w-9 h-9 rounded-full bg-[#0f172a] flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+                            {c.customer_name.slice(0,1)}
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-[#0f172a]">{c.customer_name}</p>
+                            <p className="font-mono text-xs text-gray-400">{c.customer_key}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 고객 상세 프로필 */}
+              {custDetailLoading&&(
+                <div className="flex items-center justify-center py-12 gap-2 text-gray-400">
+                  <span className="w-2 h-2 rounded-full bg-gray-300 animate-bounce" style={{animationDelay:"0ms"}}/>
+                  <span className="w-2 h-2 rounded-full bg-gray-300 animate-bounce" style={{animationDelay:"150ms"}}/>
+                  <span className="w-2 h-2 rounded-full bg-gray-300 animate-bounce" style={{animationDelay:"300ms"}}/>
+                  <span className="text-sm">불러오는 중...</span>
+                </div>
+              )}
+
+              {selectedCust&&!custDetailLoading&&(
+                <div className="space-y-4">
+
+                  {/* 고객 헤더 */}
+                  <div className={`${CARD} p-4 flex items-center gap-4`}>
+                    <div className="w-12 h-12 rounded-full bg-[#0f172a] flex items-center justify-center text-white text-lg font-bold flex-shrink-0">
+                      {selectedCust.customer_name.slice(0,1)}
+                    </div>
+                    <div className="flex-1">
+                      <h2 className="text-base font-bold text-[#0f172a]">{selectedCust.customer_name}</h2>
+                      <p className="font-mono text-xs text-gray-400 mt-0.5">{selectedCust.customer_key}</p>
+                      <div className="flex gap-3 mt-1.5 text-xs">
+                        <span className="text-blue-600">📋 계약 {selectedCust.policies.length}건</span>
+                        <span className="text-emerald-600">🛡 상담 {selectedCust.consults.length}건</span>
+                        <span className="text-indigo-600">🏥 청구 {selectedCust.claims.length}건</span>
+                      </div>
+                    </div>
+                    <button className={BTG} onClick={()=>quickChat(`고객 "${selectedCust.customer_name}"(${selectedCust.customer_key}) 전체 현황 정리해줘`)}>AI 요약</button>
+                  </div>
+
+                  {/* 계약 목록 */}
+                  <div className={`${CARD} p-4`}>
+                    <p className="text-sm font-semibold text-[#0f172a] mb-3">📋 가입 계약</p>
+                    {selectedCust.policies.length===0
+                      ?<p className="text-xs text-gray-400 text-center py-3">계약 없음</p>
+                      :<div className="space-y-2">
+                        {selectedCust.policies.map(p=>{
+                          const days=daysUntilExpiry(p.expiry_date);
+                          const isExpiring=days!==null&&days<=30&&days>=0;
+                          return(
+                            <div key={p.id} className={`flex items-center gap-3 p-3 rounded-xl border ${isExpiring?"border-red-200 bg-red-50":"border-gray-100 bg-gray-50"}`}>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-xs font-semibold text-blue-600 px-2 py-0.5 rounded-full bg-blue-50">{p.product_name}</span>
+                                  {isExpiring&&<span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold">D-{days}</span>}
+                                </div>
+                                <div className="flex gap-3 mt-1 text-xs text-gray-500">
+                                  <span>가입 {fmtDate(p.start_date)}</span>
+                                  {p.expiry_date&&<span className={isExpiring?"text-red-500 font-medium":""}> 만기 {fmtDate(p.expiry_date)}</span>}
+                                  {p.memo&&<span className="text-gray-400 truncate max-w-[150px]">{p.memo}</span>}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    }
+                  </div>
+
+                  {/* 상담 이력 */}
+                  <div className={`${CARD} p-4`}>
+                    <p className="text-sm font-semibold text-[#0f172a] mb-3">🛡 상담 이력</p>
+                    {selectedCust.consults.length===0
+                      ?<p className="text-xs text-gray-400 text-center py-3">상담 이력 없음</p>
+                      :<div className="space-y-2">
+                        {selectedCust.consults.map(c=>(
+                          <div key={c.id} className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <StsBadge s={c.status}/>
+                                <span className="text-xs text-gray-400">{fmtDT(c.created_at)}</span>
+                                {c.followup_needed&&c.next_followup_date&&(
+                                  <span className="text-xs px-2 py-0.5 rounded-full bg-purple-50 text-purple-600">사후관리 {fmtDate(c.next_followup_date)}</span>
+                                )}
+                              </div>
+                              <p className="text-xs text-gray-700 mt-1 line-clamp-2">{c.summary}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    }
+                  </div>
+
+                  {/* 청구 이력 */}
+                  <div className={`${CARD} p-4`}>
+                    <p className="text-sm font-semibold text-[#0f172a] mb-3">🏥 청구 이력</p>
+                    {selectedCust.claims.length===0
+                      ?<p className="text-xs text-gray-400 text-center py-3">청구 이력 없음</p>
+                      :<div className="space-y-2">
+                        {selectedCust.claims.map(c=>(
+                          <div key={c.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50">
+                            <div className="text-lg flex-shrink-0">
+                              {{inpatient:"🏥",outpatient:"🩺",surgery:"🔬",death:"🕊️",other:"📄"}[c.claim_type]}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-medium text-gray-700">{c.product_name}</span>
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{CLAIM_TYPE_LBL[c.claim_type]}</span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${CLAIM_STS_CLR[c.status]}`}>{CLAIM_STS_LBL[c.status]}</span>
+                              </div>
+                              <div className="flex gap-3 mt-0.5 text-xs text-gray-400">
+                                <span>청구일 {fmtDate(c.claim_date)}</span>
+                                {c.memo&&<span className="truncate max-w-[180px]">{c.memo}</span>}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    }
+                  </div>
+
+                </div>
+              )}
             </div>
           )}
 
