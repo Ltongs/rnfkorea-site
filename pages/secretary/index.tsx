@@ -372,7 +372,7 @@ function MiniCalendar({
 
 // ─── 메인 컴포넌트 ────────────────────────────────────────────────────────────
 const SecretaryPage:React.FC = () => {
-  const {user,isAdmin,isSubAdmin} = useAuth() as any;
+  const {user,isAdmin,isSubAdmin,logout} = useAuth() as any;
   const navigate = useNavigate();
   if(!user||(!isAdmin&&!isSubAdmin))return <Navigate to="/" replace/>;
 
@@ -419,6 +419,9 @@ const SecretaryPage:React.FC = () => {
   // 달력 데이터
   const [calSch,setCalSch] = useState<CalSch[]>([]);
   const [calTdo,setCalTdo] = useState<CalTdo[]>([]);
+  // 현재 캘린더가 보고 있는 연/월 추적
+  const [calViewYear,setCalViewYear]   = useState(new Date().getFullYear());
+  const [calViewMonth,setCalViewMonth] = useState(new Date().getMonth());
   // 구글 캘린더
   const [gcalConnected,setGcalConnected] = useState(false);
   const [gcalEvents,setGcalEvents] = useState<{id:string;title:string;start:string;color?:string}[]>([]);
@@ -524,11 +527,26 @@ const SecretaryPage:React.FC = () => {
     if(!user||!gcalConnected) return;
     try{
       const {data:{session}} = await supabase.auth.getSession();
-      await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-sync`,{
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-sync`,{
         method:"POST",
         headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token??""}`},
         body:JSON.stringify({action:"create",user_id:user.id,event:{...schedule,schedule_id:schedule.id}}),
       });
+      const d = await res.json();
+      // 응답에서 생성된 이벤트를 즉시 gcalEvents 상태에 추가
+      if(d.event){
+        const newEvt = {
+          id: d.event.id ?? String(Date.now()),
+          title: d.event.summary ?? schedule.title,
+          start: d.event.start?.date || d.event.start?.dateTime?.slice(0,10) || schedule.schedule_date,
+          color: "#4285f4",
+        };
+        setGcalEvents(prev=>[...prev, newEvt]);
+        void loadCalData(calViewYear, calViewMonth);
+      } else {
+        await new Promise(r=>setTimeout(r,1500));
+        void loadGcalEvents(calViewYear, calViewMonth);
+      }
     }catch(e){console.error("gcal sync error",e);}
   }
 
@@ -604,7 +622,7 @@ const SecretaryPage:React.FC = () => {
       if((event==="SIGNED_IN"||event==="TOKEN_REFRESHED"||event==="INITIAL_SESSION") && session){
         void loadStats();
         void loadChatHist();
-        void loadCalData(new Date().getFullYear(), new Date().getMonth());
+        void loadCalData(calViewYear, calViewMonth);
         void checkGcalConnection();
       }
     });
@@ -657,7 +675,7 @@ const SecretaryPage:React.FC = () => {
       setShowSchedForm(false);
       setNewSched({title:"",description:"",schedule_date:todayStr(),start_time:"",end_time:"",category:"meeting",location:"",related_type:"",consultation_id:""});
       void loadSchedules(); void loadStats();
-      void loadCalData(new Date().getFullYear(), new Date().getMonth());
+      void loadCalData(calViewYear, calViewMonth);
       // 구글 캘린더 동기화
       if(gcalConnected && schedData) void syncToGcal({
         id:schedData.id, title:newSched.title, description:newSched.description||null,
@@ -683,7 +701,7 @@ const SecretaryPage:React.FC = () => {
       category:newTodo.category||null,due_date:newTodo.due_date||null,
       consultation_id:newTodo.consultation_id?Number(newTodo.consultation_id):null,
     });
-    if(!error){showToast("할일 저장 완료");setShowTodoForm(false);setNewTodo({title:"",description:"",priority:"normal",category:"",due_date:"",consultation_id:""});void loadTodos();void loadStats();void loadCalData(new Date().getFullYear(),new Date().getMonth());}
+    if(!error){showToast("할일 저장 완료");setShowTodoForm(false);setNewTodo({title:"",description:"",priority:"normal",category:"",due_date:"",consultation_id:""});void loadTodos();void loadStats();void loadCalData(calViewYear, calViewMonth);}
   }
   async function toggleTodo(id:number,done:boolean){
     await supabase.from("secretary_todos").update({is_done:!done,done_at:!done?new Date().toISOString():null}).eq("id",id);
@@ -756,6 +774,23 @@ const SecretaryPage:React.FC = () => {
       setMsgs(p=>[...p,{role:"assistant",content:reply,saved,actions,pendingUpdates,ts:nowTs()}]);
       if(saved.length>0){
         void loadStats();
+        if(saved.some((s:any)=>s.type==="schedule")){
+          void loadSchedules();
+          void loadCalData(calViewYear, calViewMonth);
+          if(gcalConnected){
+            const schedIds = saved.filter((s:any)=>s.type==="schedule").map((s:any)=>s.id);
+            for(const sid of schedIds){
+              const {data:sd} = await supabase.from("secretary_schedules").select("*").eq("id",sid).single();
+              if(sd) void syncToGcal({
+                id:sd.id, title:sd.title, description:sd.description??null,
+                schedule_date:sd.schedule_date, start_time:sd.start_time??null,
+                end_time:sd.end_time??null, location:sd.location??null,
+              });
+            }
+          }
+        }
+        if(saved.some((s:any)=>s.type==="todo"))  { void loadTodos();  void loadCalData(calViewYear, calViewMonth); }
+        if(saved.some((s:any)=>s.type==="order"))   void loadOrders();
         const cc=saved.filter((s:any)=>s.consultation_id).length;
         showToast(`${saved.length}건 저장${cc>0?` + 상담관리 ${cc}건`:""}`);
       }
@@ -825,6 +860,12 @@ const SecretaryPage:React.FC = () => {
               <h1 className="text-sm font-bold text-[#0f172a]">AI 비서</h1>
               <p className="text-xs text-gray-400">두서없이 말씀하시면 자동 저장 · 상담관리 연동</p>
             </div>
+            <button
+              onClick={()=>void logout()}
+              className="ml-2 px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-all"
+            >
+              로그아웃
+            </button>
           </div>
           {/* 통계 배지 */}
           <div className="flex items-center gap-1.5 flex-wrap text-xs">
@@ -856,7 +897,7 @@ const SecretaryPage:React.FC = () => {
             calSchedules={calSch}
             calTodos={calTdo}
             gcalEvents={gcalEvents}
-            onMonthChange={(yr,mo)=>{void loadCalData(yr,mo); if(gcalConnected) void loadGcalEvents(yr,mo);}}
+            onMonthChange={(yr,mo)=>{setCalViewYear(yr);setCalViewMonth(mo);void loadCalData(yr,mo); if(gcalConnected) void loadGcalEvents(yr,mo);}}
           />
           <div className="flex gap-2">
             <button onClick={()=>navigate("/work/call-management")} className="flex-1 flex items-center justify-center gap-1 px-2 py-2 rounded-xl border border-gray-200 text-xs text-[#0f172a] font-semibold hover:bg-gray-50 transition-all">📋 상담관리</button>
@@ -892,8 +933,9 @@ const SecretaryPage:React.FC = () => {
           </div>
           <button
             onClick={() => {
-              const now = new Date();
-              void loadCalData(now.getFullYear(), now.getMonth());
+              void loadCalData(calViewYear, calViewMonth);
+              if(gcalConnected) void loadGcalEvents(calViewYear, calViewMonth);
+              void loadSchedules();
             }}
             className="w-full flex items-center justify-center gap-1 px-2 py-2 rounded-xl border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition-all"
           >

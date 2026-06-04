@@ -425,7 +425,7 @@ function MiniCalendar({
 
 // ─── 메인 컴포넌트 ────────────────────────────────────────────────────────────
 const SecretaryInsPage:React.FC = () => {
-  const {user,isInsAI} = useAuth() as any;
+  const {user,isInsAI,logout} = useAuth() as any;
   const navigate = useNavigate();
 
   const [tab,setTab] = useState<TabKey>("chat");
@@ -511,6 +511,9 @@ const SecretaryInsPage:React.FC = () => {
   // 달력 데이터
   const [calSch,setCalSch] = useState<CalSch[]>([]);
   const [calTdo,setCalTdo] = useState<CalTdo[]>([]);
+  // 현재 캘린더가 보고 있는 연/월 추적
+  const [calViewYear,setCalViewYear]   = useState(new Date().getFullYear());
+  const [calViewMonth,setCalViewMonth] = useState(new Date().getMonth());
   // 구글 캘린더
   const [gcalConnected,setGcalConnected] = useState(false);
   const [gcalEvents,setGcalEvents] = useState<{id:string;title:string;start:string;color?:string}[]>([]);
@@ -619,11 +622,28 @@ const SecretaryInsPage:React.FC = () => {
     if(!user||!gcalConnected) return;
     try{
       const {data:{session}} = await supabase.auth.getSession();
-      await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-sync`,{
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-sync`,{
         method:"POST",
         headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token??""}`},
         body:JSON.stringify({action:"create",user_id:user.id,event:{...schedule,schedule_id:schedule.id}}),
       });
+      const d = await res.json();
+      // 응답에서 생성된 이벤트를 즉시 gcalEvents 상태에 추가
+      if(d.event){
+        const newEvt = {
+          id: d.event.id ?? String(Date.now()),
+          title: d.event.summary ?? schedule.title,
+          start: d.event.start?.date || d.event.start?.dateTime?.slice(0,10) || schedule.schedule_date,
+          color: "#4285f4",
+        };
+        setGcalEvents(prev=>[...prev, newEvt]);
+        // 달력 점 반영을 위해 calData도 갱신
+        void loadCalData(calViewYear, calViewMonth);
+      } else {
+        // 응답에 이벤트 없으면 딜레이 후 재조회
+        await new Promise(r=>setTimeout(r,1500));
+        void loadGcalEvents(calViewYear, calViewMonth);
+      }
     }catch(e){console.error("gcal sync error",e);}
   }
 
@@ -717,7 +737,7 @@ const SecretaryInsPage:React.FC = () => {
       if((event==="SIGNED_IN"||event==="TOKEN_REFRESHED"||event==="INITIAL_SESSION") && session){
         void loadStats();
         void loadChatHist();
-        void loadCalData(new Date().getFullYear(), new Date().getMonth());
+        void loadCalData(calViewYear, calViewMonth);
         void checkGcalConnection();
       }
     });
@@ -1032,7 +1052,7 @@ const SecretaryInsPage:React.FC = () => {
       setShowSchedForm(false);
       setNewSched({title:"",description:"",schedule_date:todayStr(),start_time:"",end_time:"",category:"meeting",location:"",related_type:"",consultation_id:""});
       void loadSchedules(); void loadStats();
-      void loadCalData(new Date().getFullYear(), new Date().getMonth());
+      void loadCalData(calViewYear, calViewMonth);
       // 구글 캘린더 동기화
       if(gcalConnected && schedData) void syncToGcal({
         id:schedData.id, title:newSched.title, description:newSched.description||null,
@@ -1058,7 +1078,7 @@ const SecretaryInsPage:React.FC = () => {
       category:newTodo.category||null,due_date:newTodo.due_date||null,
       consultation_id:newTodo.consultation_id?Number(newTodo.consultation_id):null,
     });
-    if(!error){showToast("할일 저장 완료");setShowTodoForm(false);setNewTodo({title:"",description:"",priority:"normal",category:"",due_date:"",consultation_id:""});void loadTodos();void loadStats();void loadCalData(new Date().getFullYear(),new Date().getMonth());}
+    if(!error){showToast("할일 저장 완료");setShowTodoForm(false);setNewTodo({title:"",description:"",priority:"normal",category:"",due_date:"",consultation_id:""});void loadTodos();void loadStats();void loadCalData(calViewYear, calViewMonth);}
   }
   async function toggleTodo(id:number,done:boolean){
     await supabase.from("ins_todos").update({is_done:!done,done_at:!done?new Date().toISOString():null}).eq("id",id);
@@ -1134,10 +1154,25 @@ const SecretaryInsPage:React.FC = () => {
       if(saved.length>0){
         void loadStats();
         // 저장된 타입에 따라 해당 탭 데이터 즉시 갱신
-        if(saved.some((s:any)=>s.type==="schedule")) void loadSchedules();
-        if(saved.some((s:any)=>s.type==="todo"))     void loadTodos();
-        if(saved.some((s:any)=>s.type==="order"))    void loadOrders();
-        if(saved.some((s:any)=>s.type==="claim"))    void loadClaims();
+        if(saved.some((s:any)=>s.type==="schedule")){
+          void loadSchedules();
+          void loadCalData(calViewYear, calViewMonth);
+          // 구글 캘린더 동기화 — 저장된 일정 ID로 DB에서 상세 조회 후 Push
+          if(gcalConnected){
+            const schedIds = saved.filter((s:any)=>s.type==="schedule").map((s:any)=>s.id);
+            for(const sid of schedIds){
+              const {data:sd} = await supabase.from("ins_schedules").select("*").eq("id",sid).single();
+              if(sd) void syncToGcal({
+                id:sd.id, title:sd.title, description:sd.description??null,
+                schedule_date:sd.schedule_date, start_time:sd.start_time??null,
+                end_time:sd.end_time??null, location:sd.location??null,
+              });
+            }
+          }
+        }
+        if(saved.some((s:any)=>s.type==="todo"))  { void loadTodos();  void loadCalData(calViewYear, calViewMonth); }
+        if(saved.some((s:any)=>s.type==="order"))   void loadOrders();
+        if(saved.some((s:any)=>s.type==="claim"))   void loadClaims();
         const cc=saved.filter((s:any)=>s.consultation_id).length;
         showToast(`${saved.length}건 저장${cc>0?` + 상담관리 ${cc}건`:""}`);
       }
@@ -1204,6 +1239,12 @@ const SecretaryInsPage:React.FC = () => {
               <h1 className="text-sm font-bold text-[#0f172a]">AI 비서 (Ins)</h1>
               <p className="text-xs text-gray-400">보험 상담을 자동 기록·분류·저장합니다</p>
             </div>
+            <button
+              onClick={()=>void logout()}
+              className="ml-2 px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-all"
+            >
+              로그아웃
+            </button>
           </div>
           {/* 통계 배지 */}
           <div className="flex items-center gap-1.5 flex-wrap text-xs">
@@ -1251,7 +1292,7 @@ const SecretaryInsPage:React.FC = () => {
             calSchedules={calSch}
             calTodos={calTdo}
             gcalEvents={gcalEvents}
-            onMonthChange={(yr,mo)=>{void loadCalData(yr,mo); if(gcalConnected) void loadGcalEvents(yr,mo);}}
+            onMonthChange={(yr,mo)=>{setCalViewYear(yr);setCalViewMonth(mo);void loadCalData(yr,mo); if(gcalConnected) void loadGcalEvents(yr,mo);}}
           />
           <div className="flex gap-2">
             <button onClick={()=>setTab("consults")} className="flex-1 flex items-center justify-center gap-1 px-2 py-2 rounded-xl border border-gray-200 text-xs text-[#0f172a] font-semibold hover:bg-gray-50 transition-all">🛡 보험상담</button>
@@ -1287,8 +1328,9 @@ const SecretaryInsPage:React.FC = () => {
           </div>
           <button
             onClick={() => {
-              const now = new Date();
-              void loadCalData(now.getFullYear(), now.getMonth());
+              void loadCalData(calViewYear, calViewMonth);
+              if(gcalConnected) void loadGcalEvents(calViewYear, calViewMonth);
+              void loadSchedules();
             }}
             className="w-full flex items-center justify-center gap-1 px-2 py-2 rounded-xl border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition-all"
           >
@@ -1304,7 +1346,7 @@ const SecretaryInsPage:React.FC = () => {
             <div className="space-y-3 pb-4">
               <div className="flex items-center gap-2 flex-wrap">
                 <input type="date" className={`${CTRL} w-36`} value={schedDate} onChange={e=>setSchedDate(e.target.value)}/>
-                <button className={BTS} onClick={()=>void loadSchedules()}>새로고침</button>
+                <button className={BTS} onClick={()=>{void loadSchedules(); if(gcalConnected) void loadGcalEvents(new Date().getFullYear(), new Date().getMonth());}}>새로고침</button>
                 <button className={BTP} onClick={()=>setShowSchedForm(v=>!v)}>{showSchedForm?"닫기":"+ 일정 추가"}</button>
                 <button className="ml-auto text-xs text-orange-500 hover:underline" onClick={()=>quickChat("오늘 일정 브리핑해줘")}>AI 브리핑 →</button>
               </div>

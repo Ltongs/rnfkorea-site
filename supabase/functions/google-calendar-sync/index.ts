@@ -1,5 +1,4 @@
 // supabase/functions/google-calendar-sync/index.ts
-// 구글 캘린더 읽기/쓰기/삭제
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -18,11 +17,9 @@ async function getValidToken(db: ReturnType<typeof createClient>, userId: string
 
   if (!data) throw new Error("구글 캘린더 미연동");
 
-  // 만료 5분 전이면 갱신
   const expiresAt = new Date(data.expires_at).getTime();
   if (Date.now() < expiresAt - 5 * 60 * 1000) return data.access_token;
 
-  // access_token 갱신
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -56,7 +53,7 @@ serve(async (req) => {
     const baseUrl = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events`;
     const headers = { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
 
-    // ── 이벤트 목록 조회 (달력 표시용)
+    // ── 이벤트 목록 조회
     if (action === "list") {
       const yr = year ?? new Date().getFullYear();
       const mo = month ?? new Date().getMonth();
@@ -82,16 +79,21 @@ serve(async (req) => {
           : { date: event.schedule_date },
         end: event.end_time
           ? { dateTime: `${event.schedule_date}T${event.end_time}:00+09:00`, timeZone: "Asia/Seoul" }
+          : event.start_time
+          ? { dateTime: `${event.schedule_date}T${event.start_time}:00+09:00`, timeZone: "Asia/Seoul" }
           : { date: event.schedule_date },
         location: event.location ?? "",
       };
       const res = await fetch(baseUrl, { method: "POST", headers, body: JSON.stringify(body) });
       const data = await res.json();
-      // google_event_id를 secretary_schedules에 저장
+
+      // ins_schedules에 google_event_id 저장
       if (event.schedule_id && data.id) {
-        await db.from("secretary_schedules").update({ google_event_id: data.id }).eq("id", event.schedule_id);
+        await db.from("ins_schedules").update({ google_event_id: data.id }).eq("id", event.schedule_id);
       }
-      return new Response(JSON.stringify({ ok: true, google_event_id: data.id }), {
+
+      // 생성된 이벤트 전체를 반환 (프론트에서 즉시 상태 반영용)
+      return new Response(JSON.stringify({ ok: true, google_event_id: data.id, event: data }), {
         headers: { ...CORS, "Content-Type": "application/json" },
       });
     }
