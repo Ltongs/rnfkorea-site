@@ -1,6 +1,7 @@
 // supabase/functions/send-hyundaicm-kakao/index.ts
 // 발송 방식: 솔라피 SMS
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // ─── 솔라피 환경변수 ─────────────────────────────────────────
 const SOLAPI_API_KEY    = Deno.env.get("SOLAPI_API_KEY")    ?? "";
@@ -317,6 +318,147 @@ serve(async (req) => {
     // 나르미 타입은 나르미 전용 수신자로 발송
     const isNarumi = typeof body.type === "string" && body.type.startsWith("narumi");
     await sendSms(message, isNarumi ? NARUMI_RECIPIENTS : RECIPIENTS);
+
+    // ── 신규 접수 시 자동 등록 ─────────────────────────────
+    if (body.type === "new") {
+      try {
+        const sbUrl = Deno.env.get("APP_SUPABASE_URL") ?? Deno.env.get("SUPABASE_URL") ?? "";
+        const sbKey = Deno.env.get("APP_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+        const db = createClient(sbUrl, sbKey);
+
+        const today = new Date();
+        const todayIso = today.toISOString().slice(0, 10);
+
+        // 내일 날짜 계산 (팔로업 기본 D+1)
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowIso = tomorrow.toISOString().slice(0, 10);
+
+        const schedTitle = `${body.customerName} (신규접수)`;
+        const schedDesc  = [
+          `케이스번호: ${body.caseNo ?? "-"}`,
+          `고객: ${body.customerName} (${body.customerType ?? "-"})`,
+          `장비: ${body.equipmentTon ?? "-"}`,
+          `금융사: ${body.financeCompany ?? "-"}`,
+          body.installmentPrincipal ? `할부원금: ${Number(body.installmentPrincipal).toLocaleString("ko-KR")}원` : "",
+          `영업: ${body.salesRep ?? "-"}`,
+        ].filter(Boolean).join(" / ");
+
+        // 1. secretary_schedules에 팔로업 일정 생성
+        await db.from("secretary_schedules").insert({
+          title:         schedTitle,
+          description:   schedDesc,
+          schedule_date: tomorrowIso,
+          start_time:    "09:00",
+          category:      "followup",
+          related_type:  "finance",
+        });
+
+        // 1-2. secretary_todos에 할일 자동 생성
+        await db.from("secretary_todos").insert({
+          title:       `${body.customerName} (신규접수)`,
+          description: schedDesc,
+          priority:    "urgent",
+          category:    "finance",
+          is_done:     false,
+        });
+
+        // 2. secretary_chat_logs에 알림 메시지 추가
+        const chatMsg = [
+          `🏗 **현대건설기계 신규 접수 알림**`,
+          ``,
+          `**${body.customerName}** (${body.customerType ?? "-"}) 고객이 신규 접수되었습니다.`,
+          `케이스번호: ${body.caseNo ?? "-"}`,
+          `장비: ${body.equipmentTon ?? "-"} / 금융사: ${body.financeCompany ?? "-"}`,
+          body.installmentPrincipal ? `할부원금: ${Number(body.installmentPrincipal).toLocaleString("ko-KR")}원` : "",
+          ``,
+          `📅 내일(${tomorrowIso}) 팔로업 일정이 자동 등록되었습니다.`,
+        ].filter(Boolean).join("\n");
+
+        await db.from("secretary_chat_logs").insert({
+          role:       "assistant",
+          content:    chatMsg,
+          session_id: "main",
+        });
+
+        console.log("[자동등록] 팔로업 일정 + 채팅 알림 등록 완료:", body.customerName);
+      } catch (autoErr) {
+        console.error("[자동등록 오류]:", autoErr);
+        // 자동 등록 실패해도 SMS 발송은 성공 처리
+      }
+    }
+
+    // ── 상태 변경 시 할일 자동 업데이트 ─────────────────────────
+    if (body.type === "status_change" && !isNarumi) {
+      try {
+        const sbUrl = Deno.env.get("APP_SUPABASE_URL") ?? Deno.env.get("SUPABASE_URL") ?? "";
+        const sbKey = Deno.env.get("APP_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+        const db = createClient(sbUrl, sbKey);
+
+        const { nextStatus, customerName, caseNo } = body;
+        const today = new Date();
+
+        if (nextStatus === "인센티브지급") {
+          // 기존 할일 완료 처리
+          const { data: existingTodos } = await db.from("secretary_todos")
+            .select("id").ilike("title", `%${customerName}%`).eq("is_done", false);
+          if (existingTodos && existingTodos.length > 0) {
+            await db.from("secretary_todos")
+              .update({ is_done: true })
+              .in("id", existingTodos.map((t: any) => t.id));
+          }
+        } else {
+          // 단계별 할일 제목/우선순위/마감일 정의
+          const stageMap: Record<string, { title: string; priority: string }> = {
+            "신용조회":    { title: "신용조회 중",           priority: "normal"  },
+            "보완":        { title: "보완서류 징구",          priority: "urgent"  },
+            "승인":        { title: "승인 - 서류등록 진행",   priority: "urgent"  },
+            "보류":        { title: "보류 - 재통화 예약",     priority: "normal"  },
+            "거절":        { title: "거절 - 고객 안내",       priority: "normal"  },
+            "서류등록":    { title: "서류등록 완료 확인",     priority: "normal"  },
+            "전자계약발송":{ title: "전자계약 발송 완료",     priority: "normal"  },
+            "확정":        { title: "확정완료",               priority: "normal"  },
+          };
+          const stage = stageMap[nextStatus];
+          if (stage) {
+            const newTitle = `${customerName} (${nextStatus})`;
+            const desc = `케이스: ${caseNo ?? "-"} / ${customerName} → ${nextStatus}`;
+
+            // 기존 할일 찾기
+            const { data: existing } = await db.from("secretary_todos")
+              .select("id").ilike("title", `%${customerName}%`)
+              .eq("is_done", false).order("created_at", { ascending: false }).limit(1);
+
+            if (existing && existing.length > 0) {
+              // 기존 할일 업데이트
+              await db.from("secretary_todos").update({
+                title:       newTitle,
+                description: desc,
+                priority:    stage.priority,
+              }).eq("id", existing[0].id);
+            } else {
+              // 없으면 신규 생성
+              await db.from("secretary_todos").insert({
+                title:       newTitle,
+                description: desc,
+                priority:    stage.priority,
+                category:    "finance",
+                is_done:     false,
+              });
+            }
+
+            // secretary_chat_logs에 알림
+            const chatMsg = `🏗 **현대건설기계 단계 변경**\n\n**${customerName}** (${caseNo ?? "-"}) → **${nextStatus}**\n할일 업데이트: ${newTitle}`;
+            await db.from("secretary_chat_logs").insert({
+              role: "assistant", content: chatMsg, session_id: "main",
+            });
+          }
+        }
+        console.log("[할일 업데이트] 완료:", nextStatus, customerName);
+      } catch (autoErr) {
+        console.error("[할일 업데이트 오류]:", autoErr);
+      }
+    }
 
     return new Response(
       JSON.stringify({ success: true, recipients: isNarumi ? NARUMI_RECIPIENTS : RECIPIENTS }),

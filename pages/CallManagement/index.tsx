@@ -569,6 +569,7 @@ const CallManagementPage: React.FC = () => {
   const [expandedBatteryDetail, setExpandedBatteryDetail] =
     useState<BatteryDetailRow | null>(null);
   const [editingCaseId, setEditingCaseId] = useState<number | null>(null);
+  const [pendingOpenId, setPendingOpenId] = useState<string|null>(null);
   const [showTodoBox, setShowTodoBox] = useState(false);
   const [showListFilters, setShowListFilters] = useState(false);
   const [showFollowupFilters, setShowFollowupFilters] = useState(false);
@@ -1251,6 +1252,7 @@ const CallManagementPage: React.FC = () => {
 
     const caseRows = (data || []) as ConsultationRow[];
     setRows(caseRows);
+    (window as any).__consultRows = caseRows;
     setLoadingList(false);
 
     const ids = caseRows.map((r) => r.id);
@@ -1642,11 +1644,33 @@ const CallManagementPage: React.FC = () => {
   };
 
   useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const targetId = params.get("id");
+    if (targetId) setPendingOpenId(targetId);
+  }, [location.search]);
+
+  useEffect(() => {
     if (user && canAccessConsulting) {
       fetchConsultations();
       fetchInsuranceExpiries();
     }
   }, [user, canAccessConsulting]);
+
+  // pendingOpenId + rows 모두 준비되면 해당 건 열기
+  useEffect(() => {
+    if (!pendingOpenId || rows.length === 0) return;
+    const row = rows.find((r: any) => String(r.id) === pendingOpenId);
+    if (!row) return;
+    const fd = financeDetailsMap[row.id] ?? null;
+    const id2 = insuranceDetailsMap[row.id] ?? null;
+    const td = tireDetailsMap[row.id] ?? null;
+    const fld = forkliftDetailsMap[row.id] ?? null;
+    const bd = batteryDetailsMap[row.id] ?? null;
+    setTab("new");
+    populateFormForEdit(row, id2, td, fd, fld, bd);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    setPendingOpenId(null);
+  }, [pendingOpenId, rows, financeDetailsMap, insuranceDetailsMap, tireDetailsMap, forkliftDetailsMap, batteryDetailsMap]);
 
   useEffect(() => {
     if (user && canAccessConsulting && tab === "followups") {
@@ -1676,6 +1700,8 @@ const CallManagementPage: React.FC = () => {
       setTireAssociationName("");
     }
   }, [tireInflowChannel, tireAssociationName]);
+
+
 
   useEffect(() => {
     const payload = (location.state as any)?.narumiInsurancePrefill;
