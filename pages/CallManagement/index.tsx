@@ -10,7 +10,8 @@ type WorkType =
   | "tire_sales"
   | "finance"
   | "forklift_sales"
-  | "battery_sales";
+  | "battery_sales"
+  | "export";
 
 type ConsultationRow = {
   id: number;
@@ -27,7 +28,9 @@ type ConsultationRow = {
     | "tire_sales"
     | "finance"
     | "forklift_sales"
-    | "battery_sales";
+    | "battery_sales"
+    | "export";
+  sub_type: string | null;
   status: string;
   summary: string;
   detail_memo: string | null;
@@ -278,6 +281,7 @@ function formatWorkType(value: ConsultationRow["work_type"] | string | null) {
   if (value === "registration_insurance") return "보험";
   if (value === "tire_sales") return "타이어";
   if (value === "finance") return "금융";
+  if (value === "export") return "수출";
   return value || "-";
 }
 
@@ -290,7 +294,9 @@ function formatDateOnly(value: string | null) {
 
 
 function formatCompactSummary(row: ConsultationRow) {
-  return `${formatWorkType(row.work_type)} / ${row.customer_name || "-"}`;
+  const wt = formatWorkType(row.work_type);
+  const st = (row as any).sub_type;
+  return `${wt}${st ? `(${st})` : ""} / ${row.customer_name || "-"}`;
 }
 
 function formatDateInputValue(value: string | null) {
@@ -408,6 +414,7 @@ const CallManagementPage: React.FC = () => {
   const [companyName, setCompanyName] = useState("");
   const [region, setRegion] = useState("");
   const [workType, setWorkType] = useState<WorkType>("");
+  const [subType, setSubType] = useState<string>("");
   const [status, setStatus] = useState("new");
   const [nextFollowupDate, setNextFollowupDate] = useState("");
 
@@ -625,6 +632,7 @@ const CallManagementPage: React.FC = () => {
     if (value === "finance") return "금융";
     if (value === "forklift_sales") return "지게차";
     if (value === "battery_sales") return "배터리";
+    if (value === "export") return "수출";
     return value || "-";
   };
 
@@ -979,6 +987,7 @@ const CallManagementPage: React.FC = () => {
     setCompanyName(row.company_name || "");
     setRegion(row.region || "");
     setWorkType(row.work_type || "");
+    setSubType((row as any).sub_type || "");
     setStatus(row.status || "new");
     setNextFollowupDate(row.next_followup_date || "");
 
@@ -1200,7 +1209,7 @@ const CallManagementPage: React.FC = () => {
     setCompanyName("");
     setRegion("");
     setWorkType("");
-    setStatus("new");
+    setSubType("");
     setNextFollowupDate("");
     resetTireFields();
     resetInsuranceFields();
@@ -1858,6 +1867,7 @@ const CallManagementPage: React.FC = () => {
       company_name: null,
       region: null,
       work_type: workType,
+      sub_type: subType || null,
       status: isClosing ? "closed" : editingCaseId ? status || "new" : "new",
       summary: autoSummary,
       detail_memo: detailMemoForCase,
@@ -2279,6 +2289,7 @@ const CallManagementPage: React.FC = () => {
           <div className="text-lg font-semibold text-navy-900">{title}</div>
 
           {tab === "new" && (
+            <>
             <div className="flex items-center gap-2 flex-wrap">
               <div className="text-sm font-semibold text-gray-600"></div>
               <button
@@ -2334,7 +2345,56 @@ const CallManagementPage: React.FC = () => {
                   배터리
                 </button>
               )}
+              {!insuranceOnlyScope && (
+                <button
+                  type="button"
+                  className={`${typeBtnBase} ${
+                    workType === "export" ? typeBtnActive : typeBtnInactive
+                  }`}
+                  onClick={() => setWorkType("export")}
+                >
+                  수출
+                </button>
+              )}
             </div>
+            {/* 세분류 선택 */}
+            {workType && workType !== "registration_insurance" && (
+              <div className="mt-2">
+                <label className="block text-xs font-medium text-gray-500 mb-1">세분류</label>
+                <select
+                  className="w-full h-9 rounded-xl border border-gray-200 px-3 text-sm text-[#0f172a] bg-white focus:outline-none focus:border-orange-400"
+                  value={subType}
+                  onChange={(e) => setSubType(e.target.value)}
+                >
+                  <option value="">선택 안함</option>
+                  {workType === "tire_sales" && <>
+                    <option value="화물차">화물차</option>
+                    <option value="지게차">지게차</option>
+                    <option value="고소작업대">고소작업대</option>
+                  </>}
+                  {workType === "battery_sales" && <>
+                    <option value="지게차">지게차</option>
+                    <option value="고소작업대">고소작업대</option>
+                    <option value="농기계">농기계</option>
+                  </>}
+                  {workType === "finance" && <>
+                    <option value="현대건설기계">현대건설기계</option>
+                    <option value="기타할부금융">기타할부금융</option>
+                  </>}
+                  {workType === "forklift_sales" && <>
+                    <option value="신차">신차</option>
+                    <option value="중고">중고</option>
+                    <option value="렌탈">렌탈</option>
+                  </>}
+                  {workType === "export" && <>
+                    <option value="고소작업대(중고)">고소작업대(중고)</option>
+                    <option value="배터리">배터리</option>
+                    <option value="기타">기타</option>
+                  </>}
+                </select>
+              </div>
+            )}
+            </>
           )}
         </div>
 
@@ -3524,6 +3584,7 @@ const CallManagementPage: React.FC = () => {
                     <option value="finance">금융</option>
                     <option value="forklift_sales">지게차</option>
                     <option value="battery_sales">배터리</option>
+                    <option value="export">수출</option>
                   </select>
                 </div>
 
@@ -3654,7 +3715,10 @@ const CallManagementPage: React.FC = () => {
                               {row.phone}
                             </a>
                           </td>
-                          <td className={tdClass}>{formatWorkType(row.work_type)}</td>
+                          <td className={tdClass}>
+                            {formatWorkType(row.work_type)}
+                            {row.sub_type && <span className="ml-1 text-xs text-gray-400">({row.sub_type})</span>}
+                          </td>
                           <td className={tdClass}>{row.summary}</td>
                           <td className={tdClass}>
                             {isClosingCase(

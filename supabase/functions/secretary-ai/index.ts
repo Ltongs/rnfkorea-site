@@ -9,7 +9,7 @@ const CORS = {
 
 const WMAP: Record<string,string> = {
   insurance:"registration_insurance", tire:"tire_sales", finance:"finance",
-  forklift:"forklift_sales", battery:"battery_sales",
+  forklift:"forklift_sales", battery:"battery_sales", export:"export",
 };
 
 const DTABLE: Record<string,string> = {
@@ -18,6 +18,7 @@ const DTABLE: Record<string,string> = {
   finance:                "consultation_finance_details",
   forklift_sales:         "consultation_forklift_details",
   battery_sales:          "consultation_battery_details",
+  export:                 "consultation_export_details",
 };
 
 // 현대건설기계 유효 상태값
@@ -69,8 +70,17 @@ todo: {"type":"todo","title":"string","description":null,"priority":"urgent|norm
 
 schedule: {"type":"schedule","title":"string","description":null,"schedule_date":"YYYY-MM-DD","start_time":"HH:MM|null","category":"meeting|call|task|followup","location":null,"related_type":"insurance|tire|finance|forklift|battery|null"}
 
-order (NEW customer): {"type":"order","customer_name":"string","phone":null,"channel":"kakao|phone|visit|web","work_type":"insurance|tire|finance|forklift|battery|null","summary":"string","detail":null,
-"tire_fields":{"vehicle_info":"string|null","vehicle_type":"string|null","tire_size":"string|null","front_quantity":"number|null","rear_quantity":"number|null","process_status":"발주","region_detail":"string|null"}}
+order (NEW customer): {"type":"order","customer_name":"string","phone":null,"channel":"kakao|phone|visit|web","work_type":"insurance|tire|finance|forklift|battery|export|null","sub_type":"string|null","summary":"string","detail":null,
+"tire_fields":{"vehicle_info":"string|null","vehicle_type":"string|null","tire_size":"string|null","front_quantity":"number|null","rear_quantity":"number|null","process_status":"발주","region_detail":"string|null"},
+"export_fields":{"export_type":"string|null","destination_country":"string|null","product_name":"string|null","quantity":"number|null","unit_price":"number|null","incoterms":"string|null"}}
+
+sub_type 매핑 (work_type에 따라 ALWAYS 추출):
+- tire: "화물차" | "지게차" | "고소작업대" (차량 종류로 판단: 화물차/트럭→"화물차", 지게차→"지게차", 고소작업대/스카이/AWP→"고소작업대")
+- battery: "지게차" | "고소작업대" | "농기계"
+- finance: "현대건설기계" | "기타할부금융" ("현대건설기계","HCM"→"현대건설기계", 나머지→"기타할부금융")
+- forklift: "신차" | "중고" | "렌탈" ("중고"→"중고", "렌탈"→"렌탈", 나머지→"신차")
+- export: "고소작업대(중고)" | "배터리" | "기타"
+- insurance: null (세분류 없음)
 
 CRITICAL tire_fields rules — MUST FILL when work_type is "tire":
 - ALWAYS include tire_fields object when work_type is "tire"
@@ -81,12 +91,22 @@ CRITICAL tire_fields rules — MUST FILL when work_type is "tire":
 - rear_quantity: 후륜 수량 숫자 — "후륜 2개"→2, "2개"→2 (전/후 구분 없으면 rear에)
 - process_status: 항상 "발주" (고정값, 절대 null 금지)
 - MANDATORY EXAMPLE:
-  Input: "형제중기 18*7-8 두산 3톤 후륜 2개 주문"
-  Output tire_fields: {"vehicle_info":"두산","vehicle_type":"3톤","tire_size":"18*7-8","front_quantity":null,"rear_quantity":2,"process_status":"발주","region_detail":null}
+  Input: "형제중기 지게차 18*7-8 두산 3톤 후륜 2개 주문"
+  Output: work_type:"tire", sub_type:"지게차", tire_fields:{"vehicle_info":"두산","vehicle_type":"3톤","tire_size":"18*7-8","front_quantity":null,"rear_quantity":2,"process_status":"발주","region_detail":null}
+
+export_fields rules (only when work_type is "export"):
+- export_type: "awp_used"(고소작업대중고) | "battery" | "other"
+- destination_country: 수출 대상국 ("케냐"→"케냐", "나이지리아"→"나이지리아")
+- product_name: 제품명
+- quantity: 수량
+- unit_price: 단가 (언급 시)
+- incoterms: FOB/CIF/EXW 등 (언급 시)
+- EXAMPLE: "케냐 바이어 고소작업대 중고 10대 수출 문의"
+  → work_type:"export", sub_type:"고소작업대(중고)", export_fields:{"export_type":"awp_used","destination_country":"케냐","quantity":10}
 
 consult_update (UPDATE existing customer info):
 {"type":"consult_update","customer_name":"string","work_type":"finance|insurance|tire|forklift|battery|null","keywords":["keyword1"],"update_memo":"string",
-"direct_fields":{"phone":null,"status":null,"finance_stage":null,"followup_needed":null,"next_followup_date":null,"summary":null},
+"direct_fields":{"phone":null,"status":null,"sub_type":null,"finance_stage":null,"followup_needed":null,"next_followup_date":null,"summary":null},
 "finance_fields":{"finance_amount":null,"finance_interest_rate":null,"finance_period":null,"finance_company":null,"finance_product":null,"finance_vehicle_model":null,"finance_incentive":null}}
 
 MULTIPLE customers: if message mentions 2+ customers with same update → generate one consult_update action per customer
@@ -861,11 +881,13 @@ serve(async (req) => {
 
         if (a.type === "order") {
           const wt = a.work_type ? (WMAP[a.work_type as string]??a.work_type) : null;
+          const subType = (a.sub_type as string|null) ?? null;
           let cid: number|null = null;
           if (wt) {
             const {data:cd} = await db.from("consultation_cases").insert({
               customer_name:a.customer_name, phone:a.phone??"미입력",
               work_type:wt, status:"new",
+              sub_type: subType,
               summary:`[AI비서 자동접수] ${a.summary}`,
               detail_memo:a.detail??null, followup_needed:false,
               call_datetime:new Date().toISOString(),
@@ -916,6 +938,21 @@ serve(async (req) => {
                 console.log("[tire_insert] cid:", cid, "insert:", JSON.stringify(tireInsert));
                 const {error: tireErr} = await db.from("consultation_tire_details").insert(tireInsert);
                 console.log("[tire_insert] error:", tireErr?.message ?? "none");
+              }
+
+              // 수출 상세 필드 저장
+              if (wt === "export") {
+                const ef = a.export_fields as Record<string,unknown>|null ?? {};
+                const exportInsert: Record<string,unknown> = { consultation_id: cid };
+                exportInsert.export_type         = (ef.export_type as string|null) ?? null;
+                exportInsert.destination_country = (ef.destination_country as string|null) ?? null;
+                exportInsert.product_name        = (ef.product_name as string|null) ?? null;
+                exportInsert.quantity            = ef.quantity ? Number(ef.quantity) : null;
+                exportInsert.unit_price          = ef.unit_price ? Number(ef.unit_price) : null;
+                exportInsert.incoterms           = (ef.incoterms as string|null) ?? null;
+                exportInsert.export_stage        = "inquiry";
+                const {error:expErr} = await db.from("consultation_export_details").insert(exportInsert);
+                console.log("[export_insert] error:", expErr?.message ?? "none");
               }
             }
           }
@@ -1009,6 +1046,7 @@ serve(async (req) => {
           if (df) {
             if (df.phone != null)               caseDirectUpdate.phone               = df.phone;
             if (df.status != null)              caseDirectUpdate.status              = df.status;
+            if (df.sub_type != null)            caseDirectUpdate.sub_type            = df.sub_type;
             if (df.followup_needed != null)     caseDirectUpdate.followup_needed     = df.followup_needed;
             if (df.next_followup_date != null)  caseDirectUpdate.next_followup_date  = df.next_followup_date;
             if (df.summary != null)             caseDirectUpdate.summary             = df.summary;

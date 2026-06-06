@@ -572,9 +572,15 @@ function MiniCalendar({
   }
   tdoMapRef.current = tdoMap;
 
+  // 로컬 일정 제목 집합 — 공백/대소문자 무시하여 구글 캘린더 중복 제거 (완전 일치만)
+  const localTitles = new Set(calSchedules.map(s=>s.title.trim().toLowerCase().replace(/\s+/g," ")));
+
   const gcalMap = new Map<string,{id:string;title:string;color:string}[]>();
   for(const e of (gcalEvents??[])){
     if(!e.start) continue;
+    const normalized = e.title.trim().toLowerCase().replace(/\s+/g," ");
+    // 로컬에 동일 제목(완전 일치)이 있으면 구글 항목 제외
+    if(localTitles.has(normalized)) continue;
     if(!gcalMap.has(e.start))gcalMap.set(e.start,[]);
     gcalMap.get(e.start)!.push({id:e.id,title:e.title,color:e.color??"#4285f4"});
   }
@@ -682,6 +688,10 @@ const SecretaryPage:React.FC = () => {
   const [schedules,setSchedules]     = useState<Schedule[]>([]);
   const [schedLoading,setSchedLoading] = useState(false);
   const [schedDate,setSchedDate]     = useState(todayStr);
+  const [schedViewMode,setSchedViewMode] = useState<"day"|"week"|"all">("day");
+  const [schedShowDone,setSchedShowDone] = useState(false);
+  const [allSchedules,setAllSchedules]   = useState<Schedule[]>([]);
+  const [allSchedLoading,setAllSchedLoading] = useState(false);
   const [showSchedForm,setShowSchedForm] = useState(false);
   const [schedModal,setSchedModal] = useState<{s:Schedule}|null>(null);
   const [schedProgress,setSchedProgress] = useState({memo:"",next_date:"",next_time:""});
@@ -909,6 +919,33 @@ const SecretaryPage:React.FC = () => {
     setSchedLoading(false);
   },[schedDate]);
 
+  const loadAllSchedules = useCallback(async(mode:"week"|"all", baseDate:string, showDone:boolean)=>{
+    setAllSchedLoading(true);
+    let from = baseDate, to = "2099-12-31";
+    if(mode==="week"){
+      const d=new Date(baseDate);
+      // 이번 주 월요일
+      const day=d.getDay(); const diff=day===0?-6:1-day;
+      d.setDate(d.getDate()+diff);
+      from=d.toISOString().slice(0,10);
+      const d2=new Date(d); d2.setDate(d2.getDate()+6);
+      to=d2.toISOString().slice(0,10);
+    } else {
+      // 전체: 1개월 전부터 3개월 후까지
+      const d=new Date(baseDate); d.setMonth(d.getMonth()-1);
+      from=d.toISOString().slice(0,10);
+      const d2=new Date(baseDate); d2.setMonth(d2.getMonth()+3);
+      to=d2.toISOString().slice(0,10);
+    }
+    let q = supabase.from("secretary_schedules").select("*")
+      .gte("schedule_date",from).lte("schedule_date",to)
+      .order("schedule_date",{ascending:true}).order("start_time",{ascending:true});
+    if(!showDone) q=q.eq("is_done",false);
+    const {data}=await q;
+    if(data) setAllSchedules(data as Schedule[]);
+    setAllSchedLoading(false);
+  },[]);
+
   const loadTodos = useCallback(async()=>{
     setTodoLoading(true);
     let q = supabase.from("secretary_todos").select("*").order("priority").order("created_at",{ascending:false});
@@ -988,6 +1025,7 @@ const SecretaryPage:React.FC = () => {
     if(tab==="schedule"){
       const today = todayStr();
       setSchedDate(today);
+      setSchedViewMode("day");
       setSchedLoading(true);
       Promise.all([
         supabase.from("secretary_schedules").select("*").gte("schedule_date",today).lte("schedule_date",(()=>{const d=new Date(today);d.setDate(d.getDate()+1);return d.toISOString().slice(0,10);})()).order("schedule_date",{ascending:true}).order("start_time",{ascending:true}),
@@ -1424,8 +1462,25 @@ const SecretaryPage:React.FC = () => {
           {tab==="schedule"&&(
             <div className="space-y-3 pb-4">
               <div className="flex items-center gap-2 flex-wrap">
-                <input type="date" className={`${CTRL} w-36`} value={schedDate} onChange={e=>setSchedDate(e.target.value)}/>
-                <button className={BTS} onClick={()=>void loadSchedules()}>새로고침</button>
+                {/* 뷰모드 토글 */}
+                {(["day","week","all"] as const).map(m=>(
+                  <button key={m} className={`px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${schedViewMode===m?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200 hover:border-orange-300"}`}
+                    onClick={()=>{
+                      setSchedViewMode(m);
+                      if(m==="day") void loadSchedules();
+                      else void loadAllSchedules(m, schedDate, schedShowDone);
+                    }}>
+                    {{day:"일별",week:"주간",all:"전체"}[m]}
+                  </button>
+                ))}
+                {schedViewMode==="day"&&<input type="date" className={`${CTRL} w-36`} value={schedDate} onChange={e=>setSchedDate(e.target.value)}/>}
+                {schedViewMode!=="day"&&(
+                  <label className="flex items-center gap-1 text-xs text-gray-500 cursor-pointer">
+                    <input type="checkbox" checked={schedShowDone} onChange={e=>{setSchedShowDone(e.target.checked);void loadAllSchedules(schedViewMode as "week"|"all",schedDate,e.target.checked);}}/>
+                    완료 포함
+                  </label>
+                )}
+                <button className={BTS} onClick={()=>{ if(schedViewMode==="day") void loadSchedules(); else void loadAllSchedules(schedViewMode as "week"|"all",schedDate,schedShowDone); }}>새로고침</button>
                 <button className={BTP} onClick={()=>setShowSchedForm(v=>!v)}>{showSchedForm?"닫기":"+ 일정 추가"}</button>
                 <button className="ml-auto text-xs text-orange-500 hover:underline" onClick={()=>quickChat("오늘 일정 브리핑해줘")}>AI 브리핑 →</button>
               </div>
@@ -1454,7 +1509,36 @@ const SecretaryPage:React.FC = () => {
                   <div className="flex gap-2"><button className={BTP} onClick={()=>void addSchedule()}>저장</button><button className={BTS} onClick={()=>setShowSchedForm(false)}>취소</button></div>
                 </div>
               )}
-              {schedLoading?<p className="text-sm text-gray-400 p-4">불러오는 중...</p>
+              {schedViewMode!=="day"&&(
+                allSchedLoading?<p className="text-sm text-gray-400 p-4">불러오는 중...</p>
+                :allSchedules.length===0?<div className={`${CARD} p-8 text-center text-gray-400 text-sm`}>일정이 없습니다</div>
+                :<div className="space-y-1">
+                  {/* 날짜별 그룹핑 */}
+                  {Array.from(new Set(allSchedules.map(s=>s.schedule_date))).map(date=>(
+                    <div key={date}>
+                      <p className="text-xs font-semibold text-gray-400 px-1 py-1 mt-2">{fmtDate(date)} ({["일","월","화","수","목","금","토"][new Date(date+"T00:00:00").getDay()]})</p>
+                      {allSchedules.filter(s=>s.schedule_date===date).map(s=>(
+                        <div key={s.id} className={`${CARD} p-3.5 flex items-start gap-3 cursor-pointer hover:bg-blue-50 transition-all mb-1.5 ${s.is_done?"opacity-50":""}`}
+                          onClick={()=>{setSchedModal({s});setSchedProgress({memo:"",next_date:"",next_time:""});}}>
+                          <CatDot c={s.category}/>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {s.is_done&&<span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 font-medium">완료</span>}
+                              <span className={`text-sm font-semibold text-[#0f172a] ${s.is_done?"line-through":""}`}>{s.title}</span>
+                              <span className="text-xs text-gray-400">{CAT_LBL[s.category]}</span>
+                              {s.related_type&&<span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600">{WL[s.related_type]??s.related_type}</span>}
+                            </div>
+                            {(s.start_time||s.location)&&<p className="text-xs text-gray-400 mt-0.5">{[s.start_time?fmtTime(s.start_time):null,s.location].filter(Boolean).join(" · ")}</p>}
+                            {s.progress_memo&&<p className="text-xs text-blue-500 mt-1 line-clamp-1">📝 {s.progress_memo.split("\n").slice(-1)[0]}</p>}
+                          </div>
+                          <button className="text-xs text-red-400 hover:text-red-600 px-1 flex-shrink-0" onClick={e=>{e.stopPropagation();void delSched(s.id);setAllSchedules(p=>p.filter(x=>x.id!==s.id));}}>삭제</button>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {schedViewMode==="day"&&(schedLoading?<p className="text-sm text-gray-400 p-4">불러오는 중...</p>
                 :schedules.length===0?<div className={`${CARD} p-8 text-center text-gray-400 text-sm`}>{fmtDate(schedDate)} 일정이 없습니다</div>
                 :schedules.map(s=>(
                   <div key={s.id} className={`${CARD} p-4 flex items-start gap-3 cursor-pointer hover:bg-blue-50 transition-all ${s.is_done?"opacity-60":""}`}
@@ -1477,7 +1561,7 @@ const SecretaryPage:React.FC = () => {
                     <button className="text-xs text-red-400 hover:text-red-600 px-1 flex-shrink-0" onClick={e=>{e.stopPropagation();void delSched(s.id);}}>삭제</button>
                   </div>
                 ))
-              }
+              )}
               {/* 당일 마감 할일 */}
               {(()=>{
                 const tomorrow2 = (()=>{const d=new Date(schedDate);d.setDate(d.getDate()+1);return d.toISOString().slice(0,10);})();
