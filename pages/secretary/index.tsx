@@ -1521,10 +1521,12 @@ const SecretaryPage:React.FC = () => {
                       {allSchedules.filter(s=>s.schedule_date===date).map(s=>(
                         <div key={s.id} className={`${CARD} p-3.5 flex items-start gap-3 cursor-pointer hover:bg-blue-50 transition-all mb-1.5 ${s.is_done?"opacity-50":""}`}
                           onClick={()=>{setSchedModal({s});setSchedProgress({memo:"",next_date:"",next_time:""});}}>
-                          <CatDot c={s.category}/>
+                          <button className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-all ${s.is_done?"bg-emerald-500 border-emerald-500":"border-gray-300 hover:border-emerald-400"}`}
+                            onClick={e=>{e.stopPropagation();void toggleSched(s.id,s.is_done);setAllSchedules(p=>p.map(x=>x.id===s.id?{...x,is_done:!x.is_done}:x));}}>
+                            {s.is_done&&<span className="text-white text-[10px]">✓</span>}
+                          </button>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              {s.is_done&&<span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 font-medium">완료</span>}
                               <span className={`text-sm font-semibold text-[#0f172a] ${s.is_done?"line-through":""}`}>{s.title}</span>
                               <span className="text-xs text-gray-400">{CAT_LBL[s.category]}</span>
                               {s.related_type&&<span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600">{WL[s.related_type]??s.related_type}</span>}
