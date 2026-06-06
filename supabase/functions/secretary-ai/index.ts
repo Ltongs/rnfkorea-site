@@ -62,18 +62,19 @@ todo: {"type":"todo","title":"string","description":null,"priority":"urgent|norm
 schedule: {"type":"schedule","title":"string","description":null,"schedule_date":"YYYY-MM-DD","start_time":"HH:MM|null","category":"meeting|call|task|followup","location":null,"related_type":"insurance|tire|finance|forklift|battery|null"}
 
 order (NEW customer): {"type":"order","customer_name":"string","phone":null,"channel":"kakao|phone|visit|web","work_type":"insurance|tire|finance|forklift|battery|null","summary":"string","detail":null,
-"tire_fields":{"vehicle_info":null,"vehicle_type":null,"tire_size":null,"front_quantity":null,"rear_quantity":null,"process_status":null,"region_detail":null}}
+"tire_fields":{"vehicle_info":"string|null","vehicle_type":"string|null","tire_size":"string|null","front_quantity":"number|null","rear_quantity":"number|null","process_status":"발주","region_detail":"string|null"}}
 
-tire_fields rules (only when work_type is "tire"):
-- vehicle_info: 차량 브랜드 ("두산", "현대", "도요타", "TCM" 등)
-- vehicle_type: 차량종류/톤수 ("1톤", "3톤", "5톤", "지게차", "굴삭기" 등)
-- tire_size: 타이어 규격 ("18*7-8", "250-15", "28*9-15", "6.50-10" 등)
-- front_quantity: 전륜 수량 (숫자)
-- rear_quantity: 후륜 수량 (숫자, "후륜 2개" → 2)
-- process_status: 주문 접수 시 항상 "발주" 로 설정 (DB 저장값: "발주")
-- region_detail: 지역 정보 언급 시
-- quantity가 "2개", "4개" 등으로만 언급되고 전/후 구분 없으면 → rear_quantity에 입력
-- Example: "형제중기 18*7-8 두산 3톤 후륜 2개 주문" → vehicle_info:"두산", vehicle_type:"3톤", tire_size:"18*7-8", rear_quantity:2, process_status:"발주"
+CRITICAL tire_fields rules — MUST FILL when work_type is "tire":
+- ALWAYS include tire_fields object when work_type is "tire"
+- vehicle_info: 메시지에서 차량 브랜드 추출 — "두산"→"두산", "현대"→"현대", "TCM"→"TCM", "도요타"→"도요타"
+- vehicle_type: 메시지에서 차량 톤수/종류 추출 — "3톤"→"3톤", "5톤"→"5톤", "1톤"→"1톤"
+- tire_size: 메시지에서 타이어 규격 추출 — "18*7-8"→"18*7-8", "250-15"→"250-15", "28*9-15"→"28*9-15"
+- front_quantity: 전륜 수량 숫자 (없으면 null)
+- rear_quantity: 후륜 수량 숫자 — "후륜 2개"→2, "2개"→2 (전/후 구분 없으면 rear에)
+- process_status: 항상 "발주" (고정값, 절대 null 금지)
+- MANDATORY EXAMPLE:
+  Input: "형제중기 18*7-8 두산 3톤 후륜 2개 주문"
+  Output tire_fields: {"vehicle_info":"두산","vehicle_type":"3톤","tire_size":"18*7-8","front_quantity":null,"rear_quantity":2,"process_status":"발주","region_detail":null}
 
 consult_update (UPDATE existing customer info):
 {"type":"consult_update","customer_name":"string","work_type":"finance|insurance|tire|forklift|battery|null","keywords":["keyword1"],"update_memo":"string",
@@ -849,23 +850,49 @@ serve(async (req) => {
             if (cd) {
               cid = cd.id;
 
-              // 타이어 상세 필드 저장 (tire_fields가 있을 때)
-              const tf = a.tire_fields as Record<string,unknown>|null;
-              if (wt === "tire_sales" && tf) {
+              // 타이어 상세 필드 저장 (tire_sales이면 항상 insert, summary에서 파싱 보완)
+              if (wt === "tire_sales") {
+                const tf = a.tire_fields as Record<string,unknown>|null ?? {};
+                const summary = (a.summary as string) ?? "";
+
+                // summary 텍스트에서 직접 파싱 (AI가 tire_fields 누락 시 보완)
+                const sizeMatch  = summary.match(/([0-9]+[*xX×][0-9]+-[0-9]+|[0-9]+\/[0-9]+R[0-9]+|[0-9]+\.[0-9]+-[0-9]+|[0-9]+-[0-9]+)/);
+                const rearMatch  = summary.match(/후륜?\s*([0-9]+)개?/);
+                const frontMatch = summary.match(/전륜?\s*([0-9]+)개?/);
+                const tonMatch   = summary.match(/([0-9]+(?:\.[0-9]+)?)\s*톤/);
+                const qtyMatch   = summary.match(/([0-9]+)\s*개/);
+
+                // 브랜드 키워드 매칭
+                const brandKws = ["두산","현대","기아","대우","TCM","도요타","볼보","클라크","닛산","한국","금호","넥센"];
+                let brandFound = "";
+                for (const bk of brandKws) {
+                  if (summary.includes(bk)) { brandFound = bk; break; }
+                }
+
                 const tireInsert: Record<string,unknown> = { consultation_id: cid };
-                if (tf.vehicle_info    != null) tireInsert.vehicle_info    = tf.vehicle_info;
-                if (tf.vehicle_type    != null) tireInsert.vehicle_type    = tf.vehicle_type;
-                if (tf.tire_size       != null) tireInsert.tire_size       = tf.tire_size;
-                if (tf.front_quantity  != null) tireInsert.front_quantity  = Number(tf.front_quantity);
-                if (tf.rear_quantity   != null) tireInsert.rear_quantity   = Number(tf.rear_quantity);
-                // process_status: AI가 지정하거나 기본값 "발주"
-                tireInsert.process_status = (tf.process_status as string|null) ?? "발주";
-                if (tf.region_detail   != null) tireInsert.region_detail   = tf.region_detail;
-                // quantity = front+rear 합산
-                const fq = tf.front_quantity ? Number(tf.front_quantity) : 0;
-                const rq = tf.rear_quantity  ? Number(tf.rear_quantity)  : 0;
-                if (fq + rq > 0) tireInsert.quantity = fq + rq;
-                await db.from("consultation_tire_details").insert(tireInsert);
+                tireInsert.vehicle_info   = (tf.vehicle_info as string|null) ?? (brandFound || null);
+                tireInsert.vehicle_type   = (tf.vehicle_type   as string|null) ?? (tonMatch ? tonMatch[1]+"톤" : null);
+                tireInsert.tire_size      = (tf.tire_size      as string|null) ?? (sizeMatch ? sizeMatch[0] : null);
+                // process_status: DB constraint 허용값 매핑
+                const psRaw = (tf.process_status as string|null) ?? "waiting_order";
+                const psMap: Record<string,string> = {
+                  "발주":"waiting_order", "발주대기":"waiting_order",
+                  "문의접수":"inquiry_received", "규격확인중":"size_confirming",
+                  "견적발송":"quote_sent", "납품":"delivery_or_replacement",
+                  "교체중":"delivery_or_replacement", "완료":"completed", "보류":"hold",
+                };
+                tireInsert.process_status = psMap[psRaw] ?? "waiting_order";
+
+                const fq = tf.front_quantity ? Number(tf.front_quantity) : (frontMatch ? Number(frontMatch[1]) : 0);
+                const rq = tf.rear_quantity  ? Number(tf.rear_quantity)  : (rearMatch  ? Number(rearMatch[1])  : (qtyMatch ? Number(qtyMatch[1]) : 0));
+                if (fq > 0) tireInsert.front_quantity = fq;
+                if (rq > 0) tireInsert.rear_quantity  = rq;
+                if (fq + rq > 0) tireInsert.quantity  = fq + rq;
+                if (tf.region_detail != null) tireInsert.region_detail = tf.region_detail;
+
+                console.log("[tire_insert] cid:", cid, "insert:", JSON.stringify(tireInsert));
+                const {error: tireErr} = await db.from("consultation_tire_details").insert(tireInsert);
+                console.log("[tire_insert] error:", tireErr?.message ?? "none");
               }
             }
           }

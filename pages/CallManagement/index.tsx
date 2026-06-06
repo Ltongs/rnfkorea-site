@@ -3235,8 +3235,7 @@ const CallManagementPage: React.FC = () => {
                       <option value="inquiry_received">문의접수</option>
                       <option value="size_confirming">규격확인중</option>
                       <option value="quote_sent">견적발송</option>
-                      <option value="발주">발주</option>
-                      <option value="waiting_order">발주대기</option>
+                      <option value="waiting_order">발주/발주대기</option>
                       <option value="delivery_or_replacement">납품/교체중</option>
                       <option value="completed">완료</option>
                       <option value="hold">보류</option>
