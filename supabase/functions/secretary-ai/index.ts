@@ -26,7 +26,14 @@ type HCMStatus = typeof HCM_STATUSES[number];
 
 const KAKAO_EDGE_URL = "https://nfwtsptqloefsbpjvdyu.supabase.co/functions/v1/send-hyundaicm-kakao";
 
-const TODAY_ISO = new Date().toISOString().slice(0,10);
+// 한국 시간 기준 오늘 날짜 계산 (UTC+9)
+const _now = new Date();
+const _kst = new Date(_now.getTime() + 9*60*60*1000);
+const TODAY_ISO = _kst.toISOString().slice(0,10);
+const _DOW_KO = ["일요일","월요일","화요일","수요일","목요일","금요일","토요일"];
+const _DOW_EN = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const TODAY_DOW_KO = _DOW_KO[_kst.getUTCDay()];
+const TODAY_DOW_EN = _DOW_EN[_kst.getUTCDay()];
 // 한국 요일 기준: 월요일=1, 화요일=2, 수요일=3, 목요일=4, 금요일=5, 토요일=6, 일요일=0
 // "다음 주 월요일" = 이번 주 월요일 + 7일 (월요일 시작 기준)
 function getNextWeekday(baseDate: string, weekday: number): string {
@@ -45,8 +52,9 @@ const TODAY_KR  = new Date().toLocaleDateString("ko-KR",{year:"numeric",month:"2
   .replace(/\. /g,"-").replace(".","");
 
 const SYSTEM = `You are a Korean AI secretary for RNF Korea company.
-Today: ${TODAY_ISO} (Friday, 금요일)
-Korean week starts Monday. "다음 주 월요일" = next Monday = ${getNextWeekday(TODAY_ISO,1)}, "다음 주 화요일" = ${getNextWeekday(TODAY_ISO,2)}, "다음 주 수요일" = ${getNextWeekday(TODAY_ISO,3)}, "다음 주 목요일" = ${getNextWeekday(TODAY_ISO,4)}, "다음 주 금요일" = ${getNextWeekday(TODAY_ISO,5)}
+Today: ${TODAY_ISO} (${TODAY_DOW_EN}, ${TODAY_DOW_KO})
+Korean week starts Monday. "다음 주 월요일" = ${getNextWeekday(TODAY_ISO,1)}, "다음 주 화요일" = ${getNextWeekday(TODAY_ISO,2)}, "다음 주 수요일" = ${getNextWeekday(TODAY_ISO,3)}, "다음 주 목요일" = ${getNextWeekday(TODAY_ISO,4)}, "다음 주 금요일" = ${getNextWeekday(TODAY_ISO,5)}, "다음 주 토요일" = ${getNextWeekday(TODAY_ISO,6)}, "이번 주 일요일" = ${getNextWeekday(TODAY_ISO,0)}
+"이번 주 일요일" and "다음 주 일요일" use weekday=0. Always calculate dates dynamically based on TODAY_ISO above.
 "이번 주 월요일" means the Monday of the current week (may be in the past).
 Always calculate relative dates based on Korean week (Monday=start).
 
@@ -170,6 +178,21 @@ schedule_update (UPDATE existing schedule progress + optional next schedule/todo
 
 MULTIPLE schedules: if message mentions updates for 2+ different schedules → generate one schedule_update per item
 Example: "형제중기 A/S 화요일 재장착, 라이즈리프트 완료, 아톰리프트 월요일 확인" → THREE schedule_update actions
+
+CRITICAL schedule vs schedule_update distinction:
+- schedule (NEW): 아직 일정이 없고 앞으로 할 일을 등록 → "반출 예정", "방문 예정", "확인 필요", "어레인지 완료" (새 일정 생성)
+- schedule_update (UPDATE): 이미 등록된 일정의 진행상황 업데이트 → "완료됐습니다", "결과는", "미팅 후"
+
+COMPLEX MESSAGE with multiple NEW schedules example:
+Input: "형제중기 A/S는 일요일 반출후 다음 주 화요일 재장착할 예정입니다. 라이즈리프트와 삼우 방문일정은 어레인지 완료되었습니다. 아톰리프트는 다음 주 월요일 진행상황 확인이 필요합니다."
+→ FOUR schedule actions:
+  1. schedule {title:"형제중기 A/S 타이어 반출", schedule_date:"이번 주 일요일", category:"task"}
+  2. schedule {title:"형제중기 A/S 타이어 재장착", schedule_date:"다음 주 화요일", category:"task"}
+  3. schedule {title:"라이즈리프트/삼우 방문", schedule_date:"(언급된 날짜 또는 오늘)", category:"meeting"}
+  4. schedule {title:"아톰리프트 진행상황 확인", schedule_date:"다음 주 월요일", category:"followup"}
+
+"이번 주 일요일" = ${getNextWeekday(TODAY_ISO,0)} (this Sunday)
+"예정", "할 예정", "필요합니다", "어레인지 완료" → NEW schedule action, NOT schedule_update
 
 RULES (priority order — match the FIRST rule that fits):
 
