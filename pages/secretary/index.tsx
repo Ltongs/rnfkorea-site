@@ -144,8 +144,7 @@ function SavedCard({actions,saved,onNav}:{actions:Record<string,unknown>[];saved
 // ─── 업무현황 탭 컴포넌트 ──────────────────────────────────────────────────────
 function StatusTabContent({
   hyundaiTasks, narumiTasks, recentC, statusLoading,
-  chatInput, chatLoading,
-  setChatInput, onRefresh, onNavigate, onSendChat, onTabChat,
+  onRefresh, onNavigate,
   BTS, BTG, BTP, TA2, CARD, md2html, fmtDate,
 }:any) {
   const thisMonth = new Date().getMonth();
@@ -210,7 +209,7 @@ function StatusTabContent({
                 </div>
                 <p className="text-xs text-gray-400 mt-0.5 truncate">{c.summary}</p>
               </div>
-              <button className={BTG} onClick={(e:any)=>{e.stopPropagation();onTabChat();setChatInput(`"${c.customer_name}" 상담 내용: ${c.summary} — 다음 대응 제안해줘`);setTimeout(onSendChat,50);}}>AI</button>
+
             </div>
           ))}
           {items.length>4&&<p className="text-xs text-gray-400 text-center pt-1">+{items.length-4}건 더 있음</p>}
@@ -317,31 +316,6 @@ function StatusTabContent({
         <ConsultPanel title="기타상담" emoji="💬" items={cOther} moCount={cOtherMo} bg="bg-orange-50" txt="text-orange-700" hoverBg="hover:bg-orange-50"/>
       </div>
 
-      <div className={`${CARD} py-2.5 px-3`}>
-        <p className="text-xs text-gray-400 mb-1.5">💬 AI에게 직접 지시 — 현대건설기계 상태 변경, 상담 업데이트 등</p>
-        <div className="flex gap-2 items-end">
-          <textarea
-            className={`${TA2} flex-1 min-h-[38px] max-h-24`} rows={1}
-            placeholder="예: 정덕수 건 승인, 금리 3.5%, 한도 2억"
-            value={chatInput}
-            onChange={(e:any)=>setChatInput(e.target.value)}
-            onKeyDown={(e:any)=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();onTabChat();setTimeout(onSendChat,50);}}}
-          />
-          <button
-            className={`${BTP} h-9 px-4 flex-shrink-0`}
-            onClick={()=>{onTabChat();setTimeout(onSendChat,50);}}
-            disabled={chatLoading||!chatInput.trim()}
-          >전송</button>
-        </div>
-        <div className="flex gap-1.5 mt-2 flex-wrap">
-          {["현황 요약","긴급 업무","현대건설기계 상태 변경"].map((c:string)=>(
-            <button key={c} onClick={()=>{setChatInput(c==="현대건설기계 상태 변경"?c+" — ":c+" 알려줘");onTabChat();setTimeout(onSendChat,80);}}
-              className="px-2.5 py-1 rounded-full border border-gray-200 text-xs text-gray-500 hover:border-orange-300 hover:text-orange-500 bg-white transition-all">
-              {c}
-            </button>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
@@ -732,6 +706,8 @@ const SecretaryPage:React.FC = () => {
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const headerBarRef = useRef<HTMLDivElement>(null);
+  const [headerBarHeight, setHeaderBarHeight] = useState(128);
 
   // 달력 데이터
   const [calSch,setCalSch] = useState<CalSch[]>([]);
@@ -879,22 +855,17 @@ const SecretaryPage:React.FC = () => {
     setStats({todaySch:a.count??0,activeTodo:b.count??0,urgentTodo:c.count??0,newOrders:d.count??0,todayFollowup:e.count??0,newConsult:f.count??0});
   },[]);
 
-  const loadChatHist = useCallback(async()=>{
-    setHistLoading(true);
-    // ascending:true 로 가져오면 DB 정렬 자체가 오래된순→최신순 → reverse() 불필요
-    const {data} = await supabase.from("secretary_chat_logs").select("role,content,created_at").order("created_at",{ascending:true}).limit(200);
-    const mapped = (data??[]).map(r=>({
+  const loadChatHist = useCallback(async(initial=false)=>{
+    if(initial) setHistLoading(true);
+    // 최신 200개를 내림차순으로 가져온 뒤 역순 정렬 → 항상 최신 대화 포함
+    const {data} = await supabase.from("secretary_chat_logs").select("role,content,created_at").order("created_at",{ascending:false}).limit(200);
+    const mapped = (data??[]).reverse().map(r=>({
       role:r.role as "user"|"assistant",
       content:r.content,
       ts:new Date(r.created_at).toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}).replace(". ","월 ").replace(". ","일 "),
     }));
-    setMsgs(prev=>{
-      // 이미 현재 세션에서 메시지가 쌓인 경우(새 전송 후 재로드 방지): DB 이력은 뒤에 합치지 않고 그대로 유지
-      if(prev.length>0) return prev;
-      return mapped;
-    });
-    setHistLoading(false);
-    // 히스토리 로드 완료 후 맨 아래로 스크롤 (렌더링 완료 후 3단계)
+    setMsgs(mapped);
+    if(initial) setHistLoading(false);
     [50,200,500].forEach(ms=>setTimeout(()=>{
       const c = chatContainerRef.current;
       if(c) c.scrollTop = c.scrollHeight;
@@ -907,7 +878,7 @@ const SecretaryPage:React.FC = () => {
     const nextDay = d.toISOString().slice(0,10);
     // 선택 날짜 기준 일정 + 현대건설기계 미완료 팔로업(날짜 지나도 고정)
     const [r1, r2] = await Promise.all([
-      supabase.from("secretary_schedules").select("*").gte("schedule_date",schedDate).lte("schedule_date",nextDay).order("schedule_date",{ascending:true}).order("start_time",{ascending:true}),
+      supabase.from("secretary_schedules").select("*").gte("schedule_date",schedDate).lte("schedule_date",nextDay).eq("is_done",false).order("schedule_date",{ascending:true}).order("start_time",{ascending:true}),
       supabase.from("secretary_schedules").select("*").eq("category","followup").eq("related_type","finance").eq("is_done",false).lt("schedule_date",schedDate),
     ]);
     const pinned = (r2.data ?? []) as Schedule[];
@@ -1003,7 +974,7 @@ const SecretaryPage:React.FC = () => {
     const {data:{subscription}} = supabase.auth.onAuthStateChange((event, session)=>{
       if((event==="SIGNED_IN"||event==="TOKEN_REFRESHED"||event==="INITIAL_SESSION") && session){
         void loadStats();
-        void loadChatHist();
+        void loadChatHist(true);
         void loadCalData(calViewYear, calViewMonth);
         void checkGcalConnection();
       }
@@ -1028,7 +999,7 @@ const SecretaryPage:React.FC = () => {
       setSchedViewMode("day");
       setSchedLoading(true);
       Promise.all([
-        supabase.from("secretary_schedules").select("*").gte("schedule_date",today).lte("schedule_date",(()=>{const d=new Date(today);d.setDate(d.getDate()+1);return d.toISOString().slice(0,10);})()).order("schedule_date",{ascending:true}).order("start_time",{ascending:true}),
+        supabase.from("secretary_schedules").select("*").gte("schedule_date",today).lte("schedule_date",(()=>{const d=new Date(today);d.setDate(d.getDate()+1);return d.toISOString().slice(0,10);})()).eq("is_done",false).order("schedule_date",{ascending:true}).order("start_time",{ascending:true}),
         supabase.from("secretary_todos").select("*").eq("is_done",false).order("priority").order("created_at",{ascending:false}),
       ]).then(([sr,tr])=>{
         if(sr.data) setSchedules(sr.data as Schedule[]);
@@ -1131,7 +1102,7 @@ const SecretaryPage:React.FC = () => {
       const wm:Record<string,string>={insurance:"registration_insurance",tire:"tire_sales",finance:"finance",forklift:"forklift_sales",battery:"battery_sales"};
       const {data:cd,error:ce}=await supabase.from("consultation_cases").insert({
         customer_name:newOrder.customer_name,phone:newOrder.phone||"미입력",telecom_provider:newOrder.telecom_provider||null,
-        work_type:wm[newOrder.work_type]??newOrder.work_type,status:"new",
+        work_type:wm[newOrder.work_type]??newOrder.work_type,status:"in_progress",
         summary:`[AI비서 ${newOrder.channel==="kakao"?"카카오":newOrder.channel} 접수] ${newOrder.summary}`,
         detail_memo:newOrder.detail||null,followup_needed:false,call_datetime:new Date().toISOString(),
       }).select("id").single();
@@ -1153,7 +1124,7 @@ const SecretaryPage:React.FC = () => {
     await supabase.from("secretary_orders").update({status,...(status==="done"?{completed_at:new Date().toISOString()}:{})}).eq("id",id);
     const o=orders.find(x=>x.id===id);
     if(o?.consultation_id){
-      const m:Record<string,string>={done:"completed",processing:"in_progress",new:"new",pending:"pending"};
+      const m:Record<string,string>={done:"completed",processing:"in_progress",new:"in_progress",pending:"on_hold"};
       await supabase.from("consultation_cases").update({status:m[status]??status}).eq("id",o.consultation_id);
       showToast("상태 변경 + 상담관리 동기화");
     }
@@ -1189,7 +1160,7 @@ const SecretaryPage:React.FC = () => {
       const res=await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/secretary-ai`,{
         method:"POST",
         headers:{"Content-Type":"application/json",Authorization:`Bearer ${session?.access_token??""}`},
-        body:JSON.stringify({messages:next.map(m=>({role:m.role,content:m.content})),autoSave}),
+        body:JSON.stringify({messages:[{role:"user",content:text}],autoSave}),
       });
       const d=await res.json();
       const reply:string=d.reply??d.content?.[0]?.text??"응답을 받지 못했습니다.";
@@ -1226,6 +1197,7 @@ const SecretaryPage:React.FC = () => {
         {role:"user",content:text,session_id:"main"},
         {role:"assistant",content:reply,session_id:"main"},
       ]);
+
     }catch{
       setMsgs(p=>[...p,{role:"assistant",content:"⚠️ 연결 오류가 발생했습니다."}]);
     }
@@ -1291,6 +1263,22 @@ const SecretaryPage:React.FC = () => {
   function rejectHyundaiUpdate(msgIdx:number,uidx:number){
     setMsgs(p=>p.map((m,i)=>i!==msgIdx?m:{...m,pendingHyundaiUpdates:(m.pendingHyundaiUpdates??[]).filter((_,j)=>j!==uidx)}));
   }
+
+  // 헤더 높이 동적 측정
+  useEffect(()=>{
+    const el = headerBarRef.current;
+    if(!el) return;
+    const ob = new ResizeObserver(()=>{
+      const rect = el.getBoundingClientRect();
+      // PageHeader top 오프셋 + 헤더 자신 높이
+      setHeaderBarHeight(rect.top + rect.height);
+    });
+    ob.observe(el);
+    // 초기 측정
+    const rect = el.getBoundingClientRect();
+    setHeaderBarHeight(rect.top + rect.height);
+    return ()=>ob.disconnect();
+  },[]);
 
   // 푸터 숨기기
   useEffect(()=>{
@@ -1362,7 +1350,7 @@ const SecretaryPage:React.FC = () => {
       )}
 
       {/* 헤더 - PageHeader(64px) 바로 아래 sticky */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3 flex-shrink-0 fixed top-16 md:top-20 left-0 right-0 z-[200] shadow-sm">
+      <div ref={headerBarRef} className="bg-white border-b border-gray-200 px-6 py-3 flex-shrink-0 fixed top-16 md:top-20 left-0 right-0 z-[200] shadow-sm">
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-[#0f172a] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">AI</div>
@@ -1397,8 +1385,9 @@ const SecretaryPage:React.FC = () => {
         </div>
       </div>
 
-      {/* fixed 헤더 높이만큼 spacer */}
-      <div className="h-[56px] flex-shrink-0"/>
+
+      {/* fixed 헤더 spacer — 동적 높이 */}
+      <div style={{height: headerBarHeight}} className="flex-shrink-0"/>
       {/* 바디 */}
       <div className="flex max-w-6xl w-full mx-auto px-6 py-4 gap-5" style={{minHeight:600}}>
 
@@ -1604,14 +1593,9 @@ const SecretaryPage:React.FC = () => {
               recentC={recentC}
               statusLoading={statusLoading}
 
-              chatInput={chatInput}
-              chatLoading={chatLoading}
-              setChatInput={setChatInput}
               onRefresh={()=>void loadStatusData()}
               onNavigate={navigate}
-              onSendChat={()=>{setTab("chat");setTimeout(()=>void sendChat(),50);}}
-              onTabChat={()=>setTab("chat")}
-              BTS={BTS} BTG={BTG} BTP={BTP} TA2={TA2} CARD={CARD} md2html={md2html} fmtDate={fmtDate}
+
             />
           )}
 

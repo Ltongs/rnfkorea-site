@@ -72,6 +72,7 @@ schedule: {"type":"schedule","title":"string","description":null,"schedule_date"
 
 order (NEW customer): {"type":"order","customer_name":"string","phone":null,"channel":"kakao|phone|visit|web","work_type":"insurance|tire|finance|forklift|battery|export|null","sub_type":"string|null","summary":"string","detail":null,
 "tire_fields":{"vehicle_info":"string|null","vehicle_type":"string|null","tire_size":"string|null","front_quantity":"number|null","rear_quantity":"number|null","process_status":"발주","region_detail":"string|null"},
+"battery_fields":{"battery_vehicle_type":"지게차|고소작업대|골프카트|기타|null","battery_drive_type":"seated|standing|special|null","battery_voltage":"number|null","battery_capacity_ah":"number|null","battery_size_l":"number|null","battery_due_date":"YYYY-MM-DD|null","battery_weight_kg":"number|null","battery_unit_price_per_kwh":"number|null","battery_unit_sale_price":"number|null","battery_quantity":"number|null"},
 "export_fields":{"export_type":"string|null","destination_country":"string|null","product_name":"string|null","quantity":"number|null","unit_price":"number|null","incoterms":"string|null"}}
 
 sub_type 매핑 (work_type에 따라 ALWAYS 추출):
@@ -93,6 +94,21 @@ CRITICAL tire_fields rules — MUST FILL when work_type is "tire":
 - MANDATORY EXAMPLE:
   Input: "형제중기 지게차 18*7-8 두산 3톤 후륜 2개 주문"
   Output: work_type:"tire", sub_type:"지게차", tire_fields:{"vehicle_info":"두산","vehicle_type":"3톤","tire_size":"18*7-8","front_quantity":null,"rear_quantity":2,"process_status":"발주","region_detail":null}
+
+battery_fields rules — MUST FILL when work_type is "battery":
+- ALWAYS include battery_fields object when work_type is "battery"
+- battery_vehicle_type: "지게차" | "고소작업대" | "골프카트" | "기타"
+- battery_drive_type: "seated"(좌승) | "standing"(입승) | "special"(특수) — 지게차일 때만
+- battery_voltage: 전압 숫자 — "51.2V" → 51.2, "48V" → 48
+- battery_capacity_ah: 용량(Ah) — "150Ah" → 150, "200Ah" → 200
+- battery_size_l: 규격 L — 언급 시
+- battery_due_date: 납품 예정일 — "6월 22일" → "2026-06-22", "22일" → 당월 22일
+- battery_unit_price_per_kwh: kWh당 단가 (언급 시)
+- battery_unit_sale_price: 판매단가 (원) — "200만원/개" → 2000000, "개당 150만" → 1500000
+- battery_quantity: 수량 (개) — "2개" → 2, "3대" → 3
+- MANDATORY EXAMPLE:
+  Input: "타미우스CC 골프카트용 배터리 2개 주문, 51.2V 150Ah, 납품예정일자 22일"
+  Output: work_type:"battery", sub_type:"골프카트", battery_fields:{"battery_vehicle_type":"골프카트","battery_voltage":51.2,"battery_capacity_ah":150,"battery_due_date":"2026-06-22","battery_quantity":2,"battery_unit_sale_price":2000000}
 
 export_fields rules (only when work_type is "export"):
 - export_type: "awp_used"(고소작업대중고) | "battery" | "other"
@@ -117,8 +133,8 @@ direct_fields rules:
 - status update (consultation_cases.status): general status
   - "승인" or "완료" → status: "completed"
   - "진행중" or "상담중" → status: "in_progress"
-  - "대기" or "보류" → status: "pending"
-  - "신규" → status: "new"
+  - "대기" or "보류" → status: "on_hold"
+  - "신규" → status: "in_progress"
 - finance_stage (consultation_finance_details.finance_stage): for finance work_type ONLY
   - "승인" or "승인완료" → finance_stage: "approved"
   - "확정" or "확정완료" → finance_stage: "confirmed"
@@ -884,16 +900,36 @@ serve(async (req) => {
           const subType = (a.sub_type as string|null) ?? null;
           let cid: number|null = null;
           if (wt) {
-            const {data:cd} = await db.from("consultation_cases").insert({
+            // sub_type 컬럼 존재 여부를 모르므로 먼저 sub_type 포함해서 시도,
+            // 실패 시 sub_type 제외하고 재시도
+            const baseInsert: Record<string,unknown> = {
               customer_name:a.customer_name, phone:a.phone??"미입력",
-              work_type:wt, status:"new",
-              sub_type: subType,
+              work_type:wt, status:"in_progress",
               summary:`[AI비서 자동접수] ${a.summary}`,
               detail_memo:a.detail??null, followup_needed:false,
               call_datetime:new Date().toISOString(),
-            }).select("id").single();
+            };
+
+            let {data:cd, error:cdErr} = await db.from("consultation_cases")
+              .insert({...baseInsert, sub_type: subType})
+              .select("id").single();
+
+            // sub_type 컬럼 없는 경우 fallback
+            if (cdErr && cdErr.message?.includes("sub_type")) {
+              console.log("[order] sub_type 컬럼 없음, sub_type 제외 재시도");
+              const res2 = await db.from("consultation_cases")
+                .insert(baseInsert).select("id").single();
+              cd = res2.data;
+              cdErr = res2.error;
+            }
+
+            if (cdErr) {
+              console.error("[order] consultation_cases INSERT 실패:", cdErr.message, JSON.stringify(cdErr));
+            }
+
             if (cd) {
               cid = cd.id;
+              console.log("[order] consultation_cases 저장 성공, cid:", cid);
 
               // 타이어 상세 필드 저장 (tire_sales이면 항상 insert, summary에서 파싱 보완)
               if (wt === "tire_sales") {
@@ -938,6 +974,64 @@ serve(async (req) => {
                 console.log("[tire_insert] cid:", cid, "insert:", JSON.stringify(tireInsert));
                 const {error: tireErr} = await db.from("consultation_tire_details").insert(tireInsert);
                 console.log("[tire_insert] error:", tireErr?.message ?? "none");
+              }
+
+              // 배터리 상세 필드 저장
+              if (wt === "battery_sales") {
+                const bf = a.battery_fields as Record<string,unknown>|null ?? {};
+                const summary = (a.summary as string) ?? "";
+
+                // summary 텍스트에서 직접 파싱 (AI가 battery_fields 누락 시 보완)
+                const voltageMatch  = summary.match(/([0-9]+(?:\.[0-9]+)?)\s*[Vv]/);
+                const capacityMatch = summary.match(/([0-9]+(?:\.[0-9]+)?)\s*[Aa]h/i);
+                const dueDateMatch  = summary.match(/([0-9]{1,2})월\s*([0-9]{1,2})일|납품.*?([0-9]{1,2})일/);
+
+                // 차종 키워드 매핑
+                let vehicleType: string | null = (bf.battery_vehicle_type as string|null) ?? null;
+                if (!vehicleType) {
+                  if (summary.includes("골프카트") || summary.includes("골프")) vehicleType = "골프카트";
+                  else if (summary.includes("고소작업대") || summary.includes("고소")) vehicleType = "고소작업대";
+                  else if (summary.includes("지게차")) vehicleType = "지게차";
+                }
+
+                // 납품일 파싱
+                let dueDate: string | null = (bf.battery_due_date as string|null) ?? null;
+                if (!dueDate && dueDateMatch) {
+                  const kstNow = new Date(new Date().getTime() + 9*60*60*1000);
+                  const yr = kstNow.getUTCFullYear();
+                  const mo = dueDateMatch[1] ? String(dueDateMatch[1]).padStart(2,"0") : String(kstNow.getUTCMonth()+1).padStart(2,"0");
+                  const dd = (dueDateMatch[2] || dueDateMatch[3] || "").padStart(2,"0");
+                  if (dd !== "00") dueDate = `${yr}-${mo}-${dd}`;
+                }
+
+                const batteryInsert: Record<string,unknown> = { consultation_id: cid };
+                batteryInsert.battery_vehicle_type     = vehicleType;
+                batteryInsert.battery_drive_type       = (bf.battery_drive_type as string|null) ?? null;
+                batteryInsert.battery_voltage          = bf.battery_voltage ? Number(bf.battery_voltage) : (voltageMatch ? Number(voltageMatch[1]) : null);
+                batteryInsert.battery_capacity_ah      = bf.battery_capacity_ah ? Number(bf.battery_capacity_ah) : (capacityMatch ? Number(capacityMatch[1]) : null);
+                batteryInsert.battery_size_l           = bf.battery_size_l ? Number(bf.battery_size_l) : null;
+                batteryInsert.battery_due_date         = dueDate;
+                batteryInsert.battery_weight_kg        = bf.battery_weight_kg ? Number(bf.battery_weight_kg) : null;
+                batteryInsert.battery_unit_price_per_kwh = bf.battery_unit_price_per_kwh ? Number(bf.battery_unit_price_per_kwh) : null;
+
+                // 판매단가/수량 파싱
+                const unitSaleRaw = bf.battery_unit_sale_price ? Number(bf.battery_unit_sale_price) : null;
+                const qtyRaw = bf.battery_quantity ? Number(bf.battery_quantity) : null;
+                // summary에서 직접 파싱 (AI 누락 시 보완)
+                const unitSaleMatch = summary.match(/(\d[\d,]*)\s*만?원\s*\/\s*(?:개|대|EA)/i);
+                const qtyMatch2 = summary.match(/(\d+)\s*(?:개|대|EA)/i);
+                const unitSaleFromText = unitSaleMatch ? (summary.match(unitSaleMatch[0])![0].includes("만") ? Number(unitSaleMatch[1].replace(/,/g,""))*10000 : Number(unitSaleMatch[1].replace(/,/g,""))) : null;
+                const qtyFromText = qtyMatch2 ? Number(qtyMatch2[1]) : null;
+                const finalUnitSale = unitSaleRaw ?? unitSaleFromText;
+                const finalQty = qtyRaw ?? qtyFromText;
+                batteryInsert.battery_unit_sale_price = finalUnitSale;
+                batteryInsert.battery_quantity = finalQty;
+                batteryInsert.battery_sale_price = (finalUnitSale && finalQty) ? Math.round(finalUnitSale * finalQty) : null;
+
+
+                console.log("[battery_insert] cid:", cid, "insert:", JSON.stringify(batteryInsert));
+                const {error: batteryErr} = await db.from("consultation_battery_details").insert(batteryInsert);
+                console.log("[battery_insert] error:", batteryErr?.message ?? "none");
               }
 
               // 수출 상세 필드 저장
@@ -1058,7 +1152,7 @@ serve(async (req) => {
           if (!caseDirectUpdate.status) {
             if (memoText.includes("승인"))                                              caseDirectUpdate.status = "completed";
             else if (memoText.includes("진행중") || memoText.includes("상담중"))        caseDirectUpdate.status = "in_progress";
-            else if (memoText.includes("대기") || memoText.includes("보류"))           caseDirectUpdate.status = "pending";
+            else if (memoText.includes("대기") || memoText.includes("보류"))           caseDirectUpdate.status = "on_hold";
             else if (memoText.includes("완료"))                                        caseDirectUpdate.status = "completed";
           }
           if (!financeStageValue && wt === "finance") {

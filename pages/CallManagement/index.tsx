@@ -104,7 +104,7 @@ type BatteryDetailRow = {
   consultation_id: number;
   battery_vehicle_type: string | null;
   battery_drive_type: string | null;
-  battery_status: string | null;
+
   battery_voltage: number | null;
   battery_capacity_ah: number | null;
   battery_total_capacity_kwh: number | null;
@@ -114,6 +114,9 @@ type BatteryDetailRow = {
   battery_expected_price: number | null;
   battery_unit_price_per_kwh: number | null;
   battery_exchange_rate: number | null;
+  battery_unit_sale_price: number | null;
+  battery_quantity: number | null;
+  battery_sale_price: number | null;
   note: string | null;
 };
 
@@ -426,8 +429,7 @@ const CallManagementPage: React.FC = () => {
   const [tireRegionDetail, setTireRegionDetail] = useState("");
   const [tireInflowChannel, setTireInflowChannel] = useState("");
   const [tireAssociationName, setTireAssociationName] = useState("");
-  const [tireProcessStatus, setTireProcessStatus] =
-    useState("inquiry_received");
+  const [progressStage, setProgressStage] = useState<string>("consulting");
   const [tireNote, setTireNote] = useState("");
 
   const [insuranceVehicleNo, setInsuranceVehicleNo] = useState("");
@@ -486,20 +488,20 @@ const CallManagementPage: React.FC = () => {
   const [financePeriod, setFinancePeriod] = useState("");
   const [financeInterestRate, setFinanceInterestRate] = useState("");
   const [financeIncentive, setFinanceIncentive] = useState("");
-  const [financeStage, setFinanceStage] = useState("consulting");
+  const [financeStage, setFinanceStage] = useState("received");
   const [financeNote, setFinanceNote] = useState("");
 
   const [forkliftCondition, setForkliftCondition] = useState("");
   const [forkliftType, setForkliftType] = useState("");
   const [forkliftTon, setForkliftTon] = useState("");
-  const [forkliftStatus, setForkliftStatus] = useState("quote");
+
   const [forkliftOptionNote, setForkliftOptionNote] = useState("");
   const [forkliftSaleMethod, setForkliftSaleMethod] = useState("");
   const [forkliftNote, setForkliftNote] = useState("");
 
   const [batteryVehicleType, setBatteryVehicleType] = useState("");
   const [batteryDriveType, setBatteryDriveType] = useState("");
-  const [batteryStatus, setBatteryStatus] = useState("quote");
+
   const [batteryVoltage, setBatteryVoltage] = useState("");
   const [batteryCapacityAh, setBatteryCapacityAh] = useState("");
   const [batterySizeL, setBatterySizeL] = useState("");
@@ -507,6 +509,8 @@ const CallManagementPage: React.FC = () => {
   const [batteryWeightKg, setBatteryWeightKg] = useState("");
   const [batteryUnitPricePerKwh, setBatteryUnitPricePerKwh] = useState("");
   const [batteryExchangeRate, setBatteryExchangeRate] = useState("");
+  const [batteryUnitSalePrice, setBatteryUnitSalePrice] = useState("");
+  const [batteryQuantity, setBatteryQuantity] = useState("");
   const [batteryNote, setBatteryNote] = useState("");
 
   const [followupRescheduleMap, setFollowupRescheduleMap] = useState<Record<number, string>>({});
@@ -594,19 +598,19 @@ const CallManagementPage: React.FC = () => {
     return (voltage * capacityAh) / 1000;
   }, [batteryVoltage, batteryCapacityAh]);
 
-  const batteryExpectedPrice = useMemo(() => {
-    const unit = Number(batteryUnitPricePerKwh || 0);
-    const fx = Number(batteryExchangeRate || 0);
-    if (!batteryTotalCapacityKwh || !unit || !fx) return 0;
-    return batteryTotalCapacityKwh * unit * fx;
-  }, [batteryTotalCapacityKwh, batteryUnitPricePerKwh, batteryExchangeRate]);
+  const batterySalePrice = useMemo(() => {
+    const unit = Number(batteryUnitSalePrice || 0);
+    const qty  = Number(batteryQuantity || 0);
+    if (!unit || !qty) return 0;
+    return unit * qty;
+  }, [batteryUnitSalePrice, batteryQuantity]);
+
+
 
   const isClosingByCurrentForm = () => {
     if (workType === "registration_insurance") return policyIssued;
-    if (workType === "tire_sales") return tireProcessStatus === "completed";
     if (workType === "finance") return financeStage === "confirmed";
-    if (workType === "forklift_sales") return forkliftStatus === "delivered" || forkliftStatus === "cancelled";
-    if (workType === "battery_sales") return batteryStatus === "delivered" || batteryStatus === "cancelled";
+    if (["tire_sales","forklift_sales","battery_sales","export"].includes(workType)) return progressStage === "invoiced";
     return false;
   };
 
@@ -619,10 +623,13 @@ const CallManagementPage: React.FC = () => {
     batteryDetail?: BatteryDetailRow | null
   ) => {
     if (row.work_type === "registration_insurance") return Boolean(insuranceDetail?.policy_issued);
-    if (row.work_type === "tire_sales") return tireDetail?.process_status === "completed";
+    if (["tire_sales","forklift_sales","battery_sales","export"].includes(row.work_type)) {
+      const s = row.work_type === "tire_sales" ? tireDetail?.process_status
+               : row.work_type === "forklift_sales" ? resolvedForkliftStatus(forkliftDetail)
+               : resolvedBatteryStatus(batteryDetail);
+      return s === "invoiced" || s === "completed";
+    }
     if (row.work_type === "finance") return financeDetail?.finance_stage === "confirmed";
-    if (row.work_type === "forklift_sales") { const s = resolvedForkliftStatus(forkliftDetail); return s === "delivered" || s === "cancelled"; }
-    if (row.work_type === "battery_sales") { const s = resolvedBatteryStatus(batteryDetail); return s === "delivered" || s === "cancelled"; }
     return false;
   };
 
@@ -650,14 +657,41 @@ const CallManagementPage: React.FC = () => {
     return value || "-";
   };
 
-  const formatForkliftStatus = (value: string | null) => {
-    if (value === "quote") return "견적";
-    if (value === "proposal") return "제안";
-    if (value === "waiting_payment") return "결제대기";
-    if (value === "delivered") return "납품";
-    if (value === "cancelled") return "취소";
+  // ── 공통 진행단계 (타이어/지게차/배터리/수출)
+  const COMMON_STAGES = [
+    { value: "consulting", label: "상담" },
+    { value: "quote",      label: "견적" },
+    { value: "contract",   label: "계약" },
+    { value: "delivery",   label: "납품" },
+    { value: "invoiced",   label: "계산서발행" },
+  ] as const;
+  type CommonStageValue = typeof COMMON_STAGES[number]["value"];
+
+  const formatCommonStage = (value: string | null) => {
+    const found = COMMON_STAGES.find(s => s.value === value);
+    if (found) return found.label;
+    // 레거시 값 호환
+    if (value === "inquiry_received" || value === "size_confirming") return "상담";
+    if (value === "quote_sent" || value === "proposal")               return "견적";
+    if (value === "waiting_order" || value === "waiting_payment")     return "계약";
+    if (value === "delivery_or_replacement" || value === "delivered") return "납품";
+    if (value === "completed")                                        return "계산서발행";
+    if (value === "hold" || value === "cancelled")                    return "보류";
     return value || "-";
   };
+
+  // 레거시 값 → 새 공통 단계값으로 정규화
+  const normalizeToCommonStage = (value: string | null | undefined): CommonStageValue => {
+    if (!value) return "consulting";
+    if (["consulting"].includes(value))                               return "consulting";
+    if (["quote", "inquiry_received", "size_confirming", "quote_sent", "proposal"].includes(value)) return "quote";
+    if (["contract", "waiting_order", "waiting_payment"].includes(value)) return "contract";
+    if (["delivery", "delivery_or_replacement", "delivered"].includes(value)) return "delivery";
+    if (["invoiced", "completed"].includes(value))                    return "invoiced";
+    return "consulting";
+  };
+
+  const formatForkliftStatus = (value: string | null) => formatCommonStage(value);
 
   const formatForkliftSaleMethod = (value: string | null) => {
     if (value === "cash") return "현금";
@@ -668,6 +702,7 @@ const CallManagementPage: React.FC = () => {
   };
 
   const formatBatteryVehicleType = (value: string | null) => {
+    // DB 허용값이 한글이므로 그대로 반환, 레거시 영문 값 호환
     if (value === "forklift") return "지게차";
     if (value === "awp") return "고소작업대";
     if (value === "golfcart") return "골프카트";
@@ -681,14 +716,7 @@ const CallManagementPage: React.FC = () => {
     return value || "-";
   };
 
-  const formatBatteryStatus = (value: string | null) => {
-    if (value === "quote") return "견적";
-    if (value === "proposal") return "제안";
-    if (value === "waiting_payment") return "결제대기";
-    if (value === "delivered") return "납품";
-    if (value === "cancelled") return "취소";
-    return value || "-";
-  };
+  const formatBatteryStatus = (value: string | null) => formatCommonStage(value);
 
   const stripStatusMeta = (value: string | null | undefined) =>
     String(value || "").replace(/^\[status:[^\]]+\]\s*/, "").trim();
@@ -705,7 +733,7 @@ const CallManagementPage: React.FC = () => {
   const resolvedBatteryStatus = (detail?: BatteryDetailRow | null) => {
     const raw = String(detail?.note || "");
     const matched = raw.match(/\[status:([^\]]+)\]/);
-    return matched?.[1] || detail?.battery_status || null;
+    return matched?.[1] || null;
   };
 
   const formatStatus = (value: string) => {
@@ -736,24 +764,21 @@ const CallManagementPage: React.FC = () => {
     return done.length ? done.join(" → ") : "미진행";
   };
 
-  const formatTireProcessStatus = (value: string | null) => {
-    if (value === "inquiry_received") return "문의접수";
-    if (value === "size_confirming") return "규격확인중";
-    if (value === "quote_sent") return "견적발송";
-    if (value === "waiting_order") return "발주";
-    if (value === "delivery_or_replacement") return "납품";
-    if (value === "completed") return "완료";
-    if (value === "hold") return "보류";
-    return value || "-";
-  };
+  const formatTireProcessStatus = (value: string | null) => formatCommonStage(value);
 
   const formatFinanceStage = (value: string | null) => {
-    if (value === "consulting") return "상담";
-    if (value === "quote_submitted") return "견적제출";
-    if (value === "approved") return "승인";
-    if (value === "rejected") return "부결";
-    if (value === "documents_requested") return "서류징구";
-    if (value === "confirmed") return "확정";
+    if (value === "received")          return "접수";
+    if (value === "credit_check")      return "신용조회";
+    if (value === "approved")          return "승인";
+    if (value === "supplement")        return "보완";
+    if (value === "rejected")          return "거절";
+    if (value === "doc_registration")  return "서류등록";
+    if (value === "contract_sent")     return "전자계약발송";
+    if (value === "confirmed")         return "확정";
+    // 레거시 값 호환
+    if (value === "consulting")           return "접수";
+    if (value === "quote_submitted")      return "신용조회";
+    if (value === "documents_requested")  return "서류등록";
     return value || "-";
   };
 
@@ -1039,7 +1064,7 @@ const CallManagementPage: React.FC = () => {
       setTireRegionDetail(tireDetail?.region_detail || "");
       setTireInflowChannel(tireDetail?.inflow_channel || "");
       setTireAssociationName(tireDetail?.association_name || "");
-      setTireProcessStatus(tireDetail?.process_status || "inquiry_received");
+      setProgressStage(normalizeToCommonStage(tireDetail?.process_status));
       setTireNote(tireDetail?.note || "");
     }
 
@@ -1066,7 +1091,7 @@ const CallManagementPage: React.FC = () => {
           ? String(financeDetail.finance_incentive)
           : ""
       );
-      setFinanceStage(financeDetail?.finance_stage || "consulting");
+      setFinanceStage(financeDetail?.finance_stage || "received");
       setFinanceNote(financeDetail?.note || "");
     }
 
@@ -1074,7 +1099,7 @@ const CallManagementPage: React.FC = () => {
       setForkliftCondition(forkliftDetail?.forklift_condition || "");
       setForkliftType(forkliftDetail?.forklift_type || "");
       setForkliftTon(forkliftDetail?.forklift_ton || "");
-      setForkliftStatus(resolvedForkliftStatus(forkliftDetail) || "quote");
+      setProgressStage(normalizeToCommonStage(resolvedForkliftStatus(forkliftDetail)));
       setForkliftOptionNote(forkliftDetail?.forklift_option_note || "");
       setForkliftSaleMethod(forkliftDetail?.forklift_sale_method || "");
       setForkliftNote(stripStatusMeta(forkliftDetail?.note || ""));
@@ -1083,7 +1108,7 @@ const CallManagementPage: React.FC = () => {
     if (row.work_type === "battery_sales") {
       setBatteryVehicleType(batteryDetail?.battery_vehicle_type || "");
       setBatteryDriveType(batteryDetail?.battery_drive_type || "");
-      setBatteryStatus(resolvedBatteryStatus(batteryDetail) || "quote");
+      setProgressStage(normalizeToCommonStage(resolvedBatteryStatus(batteryDetail)));
       setBatteryVoltage(
         batteryDetail?.battery_voltage !== null && batteryDetail?.battery_voltage !== undefined
           ? String(batteryDetail.battery_voltage)
@@ -1092,6 +1117,16 @@ const CallManagementPage: React.FC = () => {
       setBatteryCapacityAh(
         batteryDetail?.battery_capacity_ah !== null && batteryDetail?.battery_capacity_ah !== undefined
           ? String(batteryDetail.battery_capacity_ah)
+          : ""
+      );
+      setBatteryUnitSalePrice(
+        batteryDetail?.battery_unit_sale_price !== null && batteryDetail?.battery_unit_sale_price !== undefined
+          ? String(batteryDetail.battery_unit_sale_price)
+          : ""
+      );
+      setBatteryQuantity(
+        batteryDetail?.battery_quantity !== null && batteryDetail?.battery_quantity !== undefined
+          ? String(batteryDetail.battery_quantity)
           : ""
       );
       setBatterySizeL(
@@ -1142,7 +1177,7 @@ const CallManagementPage: React.FC = () => {
     setTireRegionDetail("");
     setTireInflowChannel("");
     setTireAssociationName("");
-    setTireProcessStatus("inquiry_received");
+    setProgressStage("consulting");
     setTireNote("");
   };
 
@@ -1172,7 +1207,7 @@ const CallManagementPage: React.FC = () => {
     setFinancePeriod("");
     setFinanceInterestRate("");
     setFinanceIncentive("");
-    setFinanceStage("consulting");
+    setFinanceStage("received");
     setFinanceNote("");
   };
 
@@ -1180,7 +1215,7 @@ const CallManagementPage: React.FC = () => {
     setForkliftCondition("");
     setForkliftType("");
     setForkliftTon("");
-    setForkliftStatus("quote");
+    setProgressStage("consulting");
     setForkliftOptionNote("");
     setForkliftSaleMethod("");
     setForkliftNote("");
@@ -1189,7 +1224,7 @@ const CallManagementPage: React.FC = () => {
   const resetBatteryFields = () => {
     setBatteryVehicleType("");
     setBatteryDriveType("");
-    setBatteryStatus("quote");
+    setProgressStage("consulting");
     setBatteryVoltage("");
     setBatteryCapacityAh("");
     setBatterySizeL("");
@@ -1197,6 +1232,8 @@ const CallManagementPage: React.FC = () => {
     setBatteryWeightKg("");
     setBatteryUnitPricePerKwh("");
     setBatteryExchangeRate("");
+    setBatteryUnitSalePrice("");
+    setBatteryQuantity("");
     setBatteryNote("");
   };
 
@@ -1455,7 +1492,7 @@ const CallManagementPage: React.FC = () => {
         "배터리",
         customerName.trim() || "고객",
         formatBatteryVehicleType(batteryVehicleType),
-        formatBatteryStatus(batteryStatus),
+        formatCommonStage(progressStage),
         `${batteryVoltage || "-"}V`,
         `${batteryCapacityAh || "-"}Ah`,
       ].join(" / ");
@@ -2027,7 +2064,7 @@ const CallManagementPage: React.FC = () => {
             inflow_channel: tireInflowChannel || null,
             association_name:
               tireInflowChannel === "association" ? tireAssociationName || null : null,
-            process_status: tireProcessStatus || "inquiry_received",
+            process_status: progressStage || "consulting",
               note: tireNote.trim() || null,
             },
           ],
@@ -2087,10 +2124,10 @@ const CallManagementPage: React.FC = () => {
               forklift_condition: forkliftCondition || null,
               forklift_type: forkliftType || null,
               forklift_ton: forkliftTon.trim() || null,
-              forklift_status: forkliftStatus && forkliftStatus !== "cancelled" ? forkliftStatus : null,
+              forklift_status: progressStage || "consulting",
               forklift_option_note: forkliftOptionNote.trim() || null,
               forklift_sale_method: forkliftSaleMethod || null,
-              note: withStatusMeta(forkliftStatus || "quote", forkliftNote.trim()),
+              note: forkliftNote.trim() || null,
             },
           ],
           { onConflict: "consultation_id" }
@@ -2121,10 +2158,12 @@ const CallManagementPage: React.FC = () => {
               battery_size_l: batterySizeL ? Number(batterySizeL) : null,
               battery_due_date: batteryDueDate || null,
               battery_weight_kg: batteryWeightKg ? Number(batteryWeightKg) : null,
-              battery_expected_price: batteryExpectedPrice ? Math.round(batteryExpectedPrice) : null,
               battery_unit_price_per_kwh: batteryUnitPricePerKwh ? Number(batteryUnitPricePerKwh) : null,
               battery_exchange_rate: batteryExchangeRate ? Number(batteryExchangeRate) : null,
-              note: withStatusMeta(batteryStatus || "quote", batteryNote.trim()),
+              battery_unit_sale_price: batteryUnitSalePrice ? Number(batteryUnitSalePrice.replace(/,/g,"")) : null,
+              battery_quantity: batteryQuantity ? Number(batteryQuantity) : null,
+              battery_sale_price: batterySalePrice ? Math.round(batterySalePrice) : null,
+              note: batteryNote.trim() || null,
             },
           ],
           { onConflict: "consultation_id" }
@@ -2137,6 +2176,20 @@ const CallManagementPage: React.FC = () => {
         await fetchInsuranceExpiries();
         setTab("list");
         return;
+      }
+    }
+
+    if (workType === "export") {
+      const { error: exportError } = await supabase
+        .from("consultation_export_details")
+        .upsert(
+          [{ consultation_id: savedCaseId, export_stage: progressStage || "consulting" }],
+          { onConflict: "consultation_id" }
+        );
+      if (exportError) {
+        alert(`상담건은 저장되었지만 수출 상세 저장 실패: ${exportError.message}`);
+        await fetchConsultations(); await fetchFollowups(); await fetchInsuranceExpiries();
+        setTab("list"); return;
       }
     }
 
@@ -2823,11 +2876,13 @@ const CallManagementPage: React.FC = () => {
                       value={financeStage}
                       onChange={(e) => setFinanceStage(e.target.value)}
                     >
-                      <option value="consulting">상담</option>
-                      <option value="quote_submitted">견적제출</option>
+                      <option value="received">접수</option>
+                      <option value="credit_check">신용조회</option>
                       <option value="approved">승인</option>
-                      <option value="rejected">부결</option>
-                      <option value="documents_requested">서류징구</option>
+                      <option value="supplement">보완</option>
+                      <option value="rejected">거절</option>
+                      <option value="doc_registration">서류등록</option>
+                      <option value="contract_sent">전자계약발송</option>
                       <option value="confirmed">확정</option>
                     </select>
                   </div>
@@ -2904,17 +2959,15 @@ const CallManagementPage: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className={labelClass}>상태</label>
+                    <label className={labelClass}>진행단계</label>
                     <select
                       className={controlClass}
-                      value={forkliftStatus}
-                      onChange={(e) => setForkliftStatus(e.target.value)}
+                      value={progressStage}
+                      onChange={(e) => setProgressStage(e.target.value)}
                     >
-                      <option value="quote">견적</option>
-                      <option value="proposal">제안</option>
-                      <option value="waiting_payment">결제대기</option>
-                      <option value="delivered">납품</option>
-                      <option value="cancelled">취소</option>
+                      {COMMON_STAGES.map(s => (
+                        <option key={s.value} value={s.value}>{s.label}</option>
+                      ))}
                     </select>
                   </div>
 
@@ -2983,9 +3036,10 @@ const CallManagementPage: React.FC = () => {
                       onChange={(e) => setBatteryVehicleType(e.target.value)}
                     >
                       <option value="">선택</option>
-                      <option value="forklift">지게차</option>
-                      <option value="awp">고소작업대</option>
-                      <option value="golfcart">골프카트</option>
+                      <option value="지게차">지게차</option>
+                      <option value="고소작업대">고소작업대</option>
+                      <option value="골프카트">골프카트</option>
+                      <option value="기타">기타</option>
                     </select>
                   </div>
 
@@ -3004,17 +3058,15 @@ const CallManagementPage: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className={labelClass}>상태</label>
+                    <label className={labelClass}>진행단계</label>
                     <select
                       className={controlClass}
-                      value={batteryStatus}
-                      onChange={(e) => setBatteryStatus(e.target.value)}
+                      value={progressStage}
+                      onChange={(e) => setProgressStage(e.target.value)}
                     >
-                      <option value="quote">견적</option>
-                      <option value="proposal">제안</option>
-                      <option value="waiting_payment">결제대기</option>
-                      <option value="delivered">납품</option>
-                      <option value="cancelled">취소</option>
+                      {COMMON_STAGES.map(s => (
+                        <option key={s.value} value={s.value}>{s.label}</option>
+                      ))}
                     </select>
                   </div>
 
@@ -3123,17 +3175,49 @@ const CallManagementPage: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className={labelClass}>예상견적가</label>
+                    <label className={labelClass}>판매단가</label>
                     <div className="relative">
                       <input
                         type="text"
-                        className={`${controlClass} pr-10 bg-gray-50`}
-                        value={batteryExpectedPrice ? Math.round(batteryExpectedPrice).toLocaleString("ko-KR") : ""}
+                        inputMode="decimal"
+                        className={`${controlClass} pr-6`}
+                        placeholder="예: 850000"
+                        value={batteryUnitSalePrice}
+                        onChange={(e) => setBatteryUnitSalePrice(e.target.value.replace(/[^0-9]/g, ""))}
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">원</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>수량</label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        className={`${controlClass} pr-6`}
+                        placeholder="예: 2"
+                        value={batteryQuantity}
+                        onChange={(e) => setBatteryQuantity(e.target.value.replace(/[^0-9]/g, ""))}
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">개</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>판매가격</label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        className={`${controlClass} pr-6 bg-gray-50`}
+                        value={batterySalePrice ? Math.round(batterySalePrice).toLocaleString("ko-KR") : ""}
                         readOnly
                       />
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">원</span>
                     </div>
                   </div>
+
+
 
                   <div>
                     <label className={labelClass}>사후관리 (F/Up)</label>
@@ -3157,6 +3241,40 @@ const CallManagementPage: React.FC = () => {
                     value={batteryNote}
                     onChange={(e) => setBatteryNote(e.target.value)}
                   />
+                </div>
+              </div>
+            )}
+
+            {workType === "export" && (
+              <div className="space-y-4 pt-2">
+                <div className={sectionTitleClass}>수출 상세</div>
+
+                <div className={grid5Class}>
+                  <div>
+                    <label className={labelClass}>진행단계</label>
+                    <select
+                      className={controlClass}
+                      value={progressStage}
+                      onChange={(e) => setProgressStage(e.target.value)}
+                    >
+                      {COMMON_STAGES.map(s => (
+                        <option key={s.value} value={s.value}>{s.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>사후관리 (F/Up)</label>
+                    <input
+                      type="date"
+                      className={controlClass}
+                      value={nextFollowupDate}
+                      onChange={(e) => setNextFollowupDate(e.target.value)}
+                    />
+                    <div className="mt-1 text-xs font-semibold text-gray-500">
+                      {nextFollowupDate ? "대상" : "비대상"}
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -3286,19 +3404,15 @@ const CallManagementPage: React.FC = () => {
                   )}
 
                   <div>
-                    <label className={labelClass}>타이어 진행상태</label>
+                    <label className={labelClass}>진행단계</label>
                     <select
                       className={controlClass}
-                      value={tireProcessStatus}
-                      onChange={(e) => setTireProcessStatus(e.target.value)}
+                      value={progressStage}
+                      onChange={(e) => setProgressStage(e.target.value)}
                     >
-                      <option value="inquiry_received">문의접수</option>
-                      <option value="size_confirming">규격확인중</option>
-                      <option value="quote_sent">견적발송</option>
-                      <option value="waiting_order">발주/발주대기</option>
-                      <option value="delivery_or_replacement">납품/교체중</option>
-                      <option value="completed">완료</option>
-                      <option value="hold">보류</option>
+                      {COMMON_STAGES.map(s => (
+                        <option key={s.value} value={s.value}>{s.label}</option>
+                      ))}
                     </select>
                   </div>
 
@@ -4009,9 +4123,9 @@ const CallManagementPage: React.FC = () => {
                                               </div>
 
                                               <div>
-                                                <div className={detailLabelClass}>상태</div>
+                                                <div className={detailLabelClass}>진행단계</div>
                                                 <div className={detailValueClass}>
-                                                  {formatForkliftStatus(resolvedForkliftStatus(expandedForkliftDetail))}
+                                                  {formatCommonStage(resolvedForkliftStatus(expandedForkliftDetail))}
                                                 </div>
                                               </div>
 
@@ -4057,9 +4171,9 @@ const CallManagementPage: React.FC = () => {
                                               </div>
 
                                               <div>
-                                                <div className={detailLabelClass}>상태</div>
+                                                <div className={detailLabelClass}>진행단계</div>
                                                 <div className={detailValueClass}>
-                                                  {formatBatteryStatus(resolvedBatteryStatus(expandedBatteryDetail))}
+                                                  {formatCommonStage(resolvedBatteryStatus(expandedBatteryDetail))}
                                                 </div>
                                               </div>
 
@@ -4106,9 +4220,23 @@ const CallManagementPage: React.FC = () => {
                                               </div>
 
                                               <div>
-                                                <div className={detailLabelClass}>예상견적가</div>
+                                                <div className={detailLabelClass}>판매단가</div>
                                                 <div className={detailValueClass}>
-                                                  {formatAmountDisplay(expandedBatteryDetail.battery_expected_price)}
+                                                  {formatAmountDisplay(expandedBatteryDetail.battery_unit_sale_price)}
+                                                </div>
+                                              </div>
+
+                                              <div>
+                                                <div className={detailLabelClass}>수량</div>
+                                                <div className={detailValueClass}>
+                                                  {expandedBatteryDetail.battery_quantity != null ? `${expandedBatteryDetail.battery_quantity}개` : "-"}
+                                                </div>
+                                              </div>
+
+                                              <div>
+                                                <div className={detailLabelClass}>판매가격</div>
+                                                <div className={detailValueClass}>
+                                                  {formatAmountDisplay(expandedBatteryDetail.battery_sale_price)}
                                                 </div>
                                               </div>
 
@@ -4201,11 +4329,9 @@ const CallManagementPage: React.FC = () => {
                                             </div>
 
                                             <div>
-                                              <div className={detailLabelClass}>진행상태</div>
+                                              <div className={detailLabelClass}>진행단계</div>
                                               <div className={detailValueClass}>
-                                                {formatTireProcessStatus(
-                                                  expandedTireDetail.process_status
-                                                )}
+                                                {formatCommonStage(expandedTireDetail.process_status)}
                                               </div>
                                             </div>
 
