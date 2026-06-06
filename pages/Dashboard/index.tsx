@@ -165,8 +165,8 @@ function tireStageLabel(value: string | null) {
   if (value === "inquiry_received") return "문의접수";
   if (value === "size_confirming") return "규격확인중";
   if (value === "quote_sent") return "견적발송";
-  if (value === "waiting_order") return "발주대기";
-  if (value === "delivery_or_replacement") return "납품/교체중";
+  if (value === "waiting_order") return "발주";
+  if (value === "delivery_or_replacement") return "납품";
   if (value === "completed") return "완료";
   if (value === "hold") return "보류";
   return value || "-";

@@ -732,8 +732,8 @@ const CallManagementPage: React.FC = () => {
     if (value === "inquiry_received") return "문의접수";
     if (value === "size_confirming") return "규격확인중";
     if (value === "quote_sent") return "견적발송";
-    if (value === "waiting_order") return "발주대기";
-    if (value === "delivery_or_replacement") return "납품/교체중";
+    if (value === "waiting_order") return "발주";
+    if (value === "delivery_or_replacement") return "납품";
     if (value === "completed") return "완료";
     if (value === "hold") return "보류";
     return value || "-";
@@ -3115,10 +3115,16 @@ const CallManagementPage: React.FC = () => {
                     >
                       <option value="">선택</option>
                       <option value="현대">현대</option>
+                      <option value="두산">두산</option>
                       <option value="기아">기아</option>
                       <option value="대우">대우</option>
+                      <option value="TCM">TCM</option>
+                      <option value="도요타">도요타</option>
+                      <option value="볼보">볼보</option>
+                      <option value="클라크">클라크</option>
+                      <option value="닛산">닛산</option>
                       <option value="수입">수입</option>
-                      <option value="지게차">지게차</option>
+                      <option value="기타">기타</option>
                     </select>
                   </div>
 
@@ -3229,6 +3235,7 @@ const CallManagementPage: React.FC = () => {
                       <option value="inquiry_received">문의접수</option>
                       <option value="size_confirming">규격확인중</option>
                       <option value="quote_sent">견적발송</option>
+                      <option value="발주">발주</option>
                       <option value="waiting_order">발주대기</option>
                       <option value="delivery_or_replacement">납품/교체중</option>
                       <option value="completed">완료</option>

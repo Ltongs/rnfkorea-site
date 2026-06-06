@@ -21,7 +21,7 @@ type Todo = {
 type Order = {
   id:number; created_at:string; customer_name:string; phone:string|null;
   channel:"kakao"|"phone"|"visit"|"web"; work_type:string|null;
-  summary:string; detail:string|null; status:"new"|"pending"|"processing"|"done";
+  summary:string; detail:string|null; status:"new"|"pending"|"processing"|"done"|"forwarded"|"delivered"|"wheel_returned"|"invoiced";
   consultation_id:number|null;
 };
 type Consult = {
@@ -60,9 +60,9 @@ const WL:Record<string,string> = {
   registration_insurance:"보험",tire_sales:"타이어",forklift_sales:"지게차",battery_sales:"배터리",
 };
 const CAT_LBL:Record<string,string> = {meeting:"미팅",call:"통화",task:"업무",followup:"사후관리"};
-const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료"};
+const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행"};
 const PRI_LBL:Record<string,string> = {urgent:"긴급",normal:"일반",low:"낮음"};
-const ACT_LBL:Record<string,string> = {todo:"✅ 할일",schedule:"📅 일정",order:"📦 주문",consult_update:"🔄 상담 업데이트",hyundaicm_update:"🏗 현대건설기계 변경"};
+const ACT_LBL:Record<string,string> = {todo:"✅ 할일",schedule:"📅 일정",order:"📦 주문",consult_update:"🔄 상담 업데이트",hyundaicm_update:"🏗 현대건설기계 변경",narumi_update:"🚛 나르미 단계 변경",schedule_update:"📅 일정 업데이트",schedule_edit:"✏️ 일정 수정",order_update:"📦 주문 상태 변경"};
 const CAT_CLR:Record<string,string> = {meeting:"#60a5fa",call:"#fb923c",followup:"#c084fc",task:"#34d399"};
 
 // ─── 유틸 ─────────────────────────────────────────────────────────────────────
@@ -144,8 +144,8 @@ function SavedCard({actions,saved,onNav}:{actions:Record<string,unknown>[];saved
 // ─── 업무현황 탭 컴포넌트 ──────────────────────────────────────────────────────
 function StatusTabContent({
   hyundaiTasks, narumiTasks, recentC, statusLoading,
-  aiSummary, aiSummaryLoading, chatInput, chatLoading,
-  setChatInput, onRefresh, onReloadAi, onNavigate, onSendChat, onTabChat,
+  chatInput, chatLoading,
+  setChatInput, onRefresh, onNavigate, onSendChat, onTabChat,
   BTS, BTG, BTP, TA2, CARD, md2html, fmtDate,
 }:any) {
   const thisMonth = new Date().getMonth();
@@ -316,20 +316,7 @@ function StatusTabContent({
         <ConsultPanel title="타이어상담" emoji="🔘" items={cTire} moCount={cTireMo} bg="bg-amber-50" txt="text-amber-700" hoverBg="hover:bg-amber-50"/>
         <ConsultPanel title="기타상담" emoji="💬" items={cOther} moCount={cOtherMo} bg="bg-orange-50" txt="text-orange-700" hoverBg="hover:bg-orange-50"/>
       </div>
-      <div className={`${CARD} p-4 border-l-4 border-[#0f172a]`}>
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-xs font-semibold text-[#0f172a]">✨ AI 업무 요약</p>
-          <button className={BTG} onClick={onReloadAi} disabled={aiSummaryLoading}>{aiSummaryLoading?"분석중...":"재요약"}</button>
-        </div>
-        {aiSummaryLoading?(
-          <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
-            {[0,150,300].map((d:number)=><span key={d} className="w-1.5 h-1.5 rounded-full bg-gray-300 animate-bounce" style={{animationDelay:`${d}ms`}}/>)}
-            <span>업무 현황 분석 중...</span>
-          </div>
-        ):(
-          <p className="text-sm text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{__html:md2html(aiSummary||"새로고침을 눌러 AI 요약을 불러오세요.")}}/>
-        )}
-      </div>
+
       <div className={`${CARD} py-2.5 px-3`}>
         <p className="text-xs text-gray-400 mb-1.5">💬 AI에게 직접 지시 — 현대건설기계 상태 변경, 상담 업데이트 등</p>
         <div className="flex gap-2 items-end">
@@ -711,8 +698,6 @@ const SecretaryPage:React.FC = () => {
   const [hyundaiTasks,setHyundaiTasks] = useState<HyundaiTask[]>([]);
   const [narumiTasks,setNarumiTasks]   = useState<NarumiTask[]>([]);
   const [statusLoading,setStatusLoading] = useState(false);
-  const [aiSummary,setAiSummary]       = useState<string>("");
-  const [aiSummaryLoading,setAiSummaryLoading] = useState(false);
 
   // 주문
   const [orders,setOrders]           = useState<Order[]>([]);
@@ -886,22 +871,24 @@ const SecretaryPage:React.FC = () => {
 
   const loadChatHist = useCallback(async()=>{
     setHistLoading(true);
-    const {data} = await supabase.from("secretary_chat_logs").select("role,content,created_at").order("created_at",{ascending:true}).limit(100);
-    // 이미 msgs에 내용이 있으면 (업무현황→채팅 탭 전환 등) 덮어쓰지 않음
+    // ascending:true 로 가져오면 DB 정렬 자체가 오래된순→최신순 → reverse() 불필요
+    const {data} = await supabase.from("secretary_chat_logs").select("role,content,created_at").order("created_at",{ascending:true}).limit(200);
+    const mapped = (data??[]).map(r=>({
+      role:r.role as "user"|"assistant",
+      content:r.content,
+      ts:new Date(r.created_at).toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}).replace(". ","월 ").replace(". ","일 "),
+    }));
     setMsgs(prev=>{
+      // 이미 현재 세션에서 메시지가 쌓인 경우(새 전송 후 재로드 방지): DB 이력은 뒤에 합치지 않고 그대로 유지
       if(prev.length>0) return prev;
-      return (data??[]).map(r=>({
-        role:r.role as "user"|"assistant",
-        content:r.content,
-        ts:new Date(r.created_at).toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}).replace(". ","월 ").replace(". ","일 "),
-      }));
+      return mapped;
     });
     setHistLoading(false);
-    // 히스토리 로드 완료 후 맨 아래로 스크롤
-    setTimeout(()=>{
+    // 히스토리 로드 완료 후 맨 아래로 스크롤 (렌더링 완료 후 3단계)
+    [50,200,500].forEach(ms=>setTimeout(()=>{
       const c = chatContainerRef.current;
       if(c) c.scrollTop = c.scrollHeight;
-    }, 100);
+    }, ms));
   },[]);
 
   const loadSchedules = useCallback(async()=>{
@@ -935,8 +922,8 @@ const SecretaryPage:React.FC = () => {
   const loadOrders = useCallback(async()=>{
     setOrderLoading(true);
     let q = supabase.from("secretary_orders").select("*").order("created_at",{ascending:false});
-    if(ordFilter==="active")q=q.in("status",["new","pending","processing"]);
-    if(ordFilter==="done")q=q.eq("status","done");
+    if(ordFilter==="active")q=q.in("status",["new","pending","processing","forwarded","delivered","wheel_returned"]);
+    if(ordFilter==="done")q=q.in("status",["done","invoiced"]);
     const {data} = await q;
     if(data)setOrders(data as Order[]);
     setOrderLoading(false);
@@ -961,21 +948,6 @@ const SecretaryPage:React.FC = () => {
       })) as Consult[]);
     }
     setStatusLoading(false);
-  },[]);
-
-  const loadAiStatusSummary = useCallback(async()=>{
-    setAiSummaryLoading(true);
-    try{
-      const {data:{session}}=await supabase.auth.getSession();
-      const res=await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/secretary-ai`,{
-        method:"POST",
-        headers:{"Content-Type":"application/json",Authorization:`Bearer ${session?.access_token??""}`},
-        body:JSON.stringify({messages:[{role:"user",content:"현재 업무 현황을 간략하게 요약해줘. 현대건설기계 심사 진행 건, 나르미 딜 진행 건, 상담관리 팔로업 건 중심으로 3~5문장으로 핵심만."}],autoSave:false}),
-      });
-      const d=await res.json();
-      setAiSummary(d.reply??d.content?.[0]?.text??"요약을 불러오지 못했습니다.");
-    }catch{setAiSummary("AI 요약 중 오류가 발생했습니다.");}
-    setAiSummaryLoading(false);
   },[]);
 
   const loadConsults = useCallback(async()=>{
@@ -1026,8 +998,9 @@ const SecretaryPage:React.FC = () => {
         setSchedLoading(false);
       });
     }
-    if(tab==="status"){ void loadStatusData(); void loadAiStatusSummary(); }
-  },[tab, loadStatusData, loadAiStatusSummary]);
+    if(tab==="status"){ void loadStatusData(); }
+    if(tab==="chat"){ setTimeout(()=>{ const c=chatContainerRef.current; if(c)c.scrollTop=c.scrollHeight; },100); }
+  },[tab, loadStatusData]);
   useEffect(()=>{if(tab==="orders"){void loadOrders();void loadConsults();}},[tab,loadOrders,loadConsults]);
 
   // ─── 일정 CRUD ──────────────────────────────────────────────────────────────
@@ -1154,7 +1127,16 @@ const SecretaryPage:React.FC = () => {
 
   // ─── AI 채팅 ────────────────────────────────────────────────────────────────
   const msgsRef = useRef<ChatMsg[]>([]);
-  useEffect(()=>{ msgsRef.current = msgs; },[msgs]);
+  useEffect(()=>{
+    msgsRef.current = msgs;
+    // 새 메시지 추가 시 자동 스크롤
+    if(msgs.length > 0){
+      setTimeout(()=>{
+        const c = chatContainerRef.current;
+        if(c) c.scrollTop = c.scrollHeight;
+      }, 50);
+    }
+  },[msgs]);
 
   async function sendChat(){
     const text=chatInput.trim();
@@ -1176,10 +1158,11 @@ const SecretaryPage:React.FC = () => {
       setMsgs(p=>[...p,{role:"assistant",content:reply,saved,actions,pendingUpdates,pendingHyundaiUpdates,ts:nowTs()}]);
       if(saved.length>0){
         void loadStats();
-        if(saved.some((s:any)=>s.type==="schedule")){
+        if(saved.some((s:any)=>["schedule","schedule_edit","schedule_update"].includes(s.type))){
           void loadSchedules();
           void loadCalData(calViewYear, calViewMonth);
           if(gcalConnected){
+            // 새로 생성된 일정만 구글 캘린더에 동기화 (schedule_edit/update는 기존 항목 수정이므로 skip)
             const schedIds = saved.filter((s:any)=>s.type==="schedule").map((s:any)=>s.id);
             for(const sid of schedIds){
               const {data:sd} = await supabase.from("secretary_schedules").select("*").eq("id",sid).single();
@@ -1193,10 +1176,13 @@ const SecretaryPage:React.FC = () => {
         }
         if(saved.some((s:any)=>s.type==="todo"))  { void loadTodos();  void loadCalData(calViewYear, calViewMonth); }
         if(saved.some((s:any)=>s.type==="order"))   void loadOrders();
+        if(saved.some((s:any)=>s.type==="order_update")) { void loadOrders(); void loadStats(); }
         const cc=saved.filter((s:any)=>s.consultation_id).length;
         showToast(`${saved.length}건 저장${cc>0?` + 상담관리 ${cc}건`:""}`);
       }
       if(pendingUpdates.length>0)showToast(`상담 업데이트 ${pendingUpdates.length}건 확인 필요`,"err");
+      const hasUpdate = saved.some((s:any)=>["consult_update","narumi_update","hyundaicm_update","order_update"].includes(s.type));
+      if(hasUpdate) setTimeout(()=>void loadStatusData(), 500);
       await supabase.from("secretary_chat_logs").insert([
         {role:"user",content:text,session_id:"main"},
         {role:"assistant",content:reply,session_id:"main"},
@@ -1530,13 +1516,11 @@ const SecretaryPage:React.FC = () => {
               narumiTasks={narumiTasks}
               recentC={recentC}
               statusLoading={statusLoading}
-              aiSummary={aiSummary}
-              aiSummaryLoading={aiSummaryLoading}
+
               chatInput={chatInput}
               chatLoading={chatLoading}
               setChatInput={setChatInput}
-              onRefresh={()=>{void loadStatusData();void loadAiStatusSummary();}}
-              onReloadAi={()=>void loadAiStatusSummary()}
+              onRefresh={()=>void loadStatusData()}
               onNavigate={navigate}
               onSendChat={()=>{setTab("chat");setTimeout(()=>void sendChat(),50);}}
               onTabChat={()=>setTab("chat")}
@@ -1682,10 +1666,13 @@ const SecretaryPage:React.FC = () => {
                               <p className="text-xs text-gray-400 mt-0.5">{fmtDT(o.created_at)}</p>
                             </div>
                             <div className="flex gap-1.5 flex-shrink-0 flex-wrap">
-                              {o.status!=="done"&&<>
+                              {(o.status==="new"||o.status==="pending"||o.status==="processing")&&<>
                                 {o.status==="new"&&<button className={BTO} onClick={()=>void setOrderStatus(o.id,"processing")}>처리중</button>}
                                 <button className={BTE} onClick={()=>void setOrderStatus(o.id,"done")}>완료</button>
                               </>}
+                              {o.status==="forwarded"&&<button className={BTE} onClick={()=>quickChat(`"${o.customer_name}" 납품 완료`)}>납품완료</button>}
+                              {o.status==="delivered"&&<button className={BTE} onClick={()=>quickChat(`"${o.customer_name}" 휠 반납 완료`)}>휠반납</button>}
+                              {o.status==="wheel_returned"&&<button className={BTE} onClick={()=>quickChat(`"${o.customer_name}" 계산서 발행 완료`)}>계산서발행</button>}
                               <button className={BTG} onClick={()=>setExpandedOrder(expandedOrder===o.id?null:o.id)}>{expandedOrder===o.id?"접기":"상세"}</button>
                               <button className={BTG} onClick={()=>quickChat(`"${o.customer_name}" ${WL[o.work_type??""]??""} 문의 처리: ${o.summary}`)}>AI</button>
                             </div>

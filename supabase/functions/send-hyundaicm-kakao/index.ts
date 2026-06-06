@@ -235,12 +235,17 @@ function buildMessage(body: Record<string, string>): string {
   }
 
   if (type === "narumi_status") {
+    const isHold   = body.nextStatus === "보류";
+    const isUnhold = body.nextStatus === "보류해제";
+    const header   = isHold ? "[나르미 보류]" : isUnhold ? "[나르미 보류해제]" : "[나르미 단계 변경]";
     return [
-      "[나르미 단계 변경]", "",
-      body.vin     ? `VIN: ${body.vin}`                                                          : "",
-      customerName ? `고객: ${customerName}`                                                     : "",
-      salesRep     ? `영업: ${salesRep}`                                                         : "",
-      `상태: ${statusKo[body.prevStatus] ?? body.prevStatus ?? "-"} → ${statusKo[body.nextStatus] ?? body.nextStatus ?? "-"}`,
+      header, "",
+      body.vin     ? `VIN: ${body.vin}`           : "",
+      customerName ? `고객: ${customerName}`       : "",
+      salesRep     ? `영업: ${salesRep}`           : "",
+      !isHold && !isUnhold ? `상태: ${statusKo[body.prevStatus] ?? body.prevStatus ?? "-"} → ${statusKo[body.nextStatus] ?? body.nextStatus ?? "-"}` : "",
+      isHold && body.holdReason ? `사유: ${body.holdReason}` : "",
+      isHold && body.nextFollowupDate ? `재확인: ${body.nextFollowupDate}` : "",
       `시간: ${now}`,
     ].filter(Boolean).join("\n");
   }
@@ -385,6 +390,84 @@ serve(async (req) => {
       } catch (autoErr) {
         console.error("[자동등록 오류]:", autoErr);
         // 자동 등록 실패해도 SMS 발송은 성공 처리
+      }
+    }
+
+    // ── 나르미 신규 등록 시 할일 자동 생성 ───────────────────────
+    if (body.type === "narumi_new") {
+      try {
+        const sbUrl = Deno.env.get("APP_SUPABASE_URL") ?? Deno.env.get("SUPABASE_URL") ?? "";
+        const sbKey = Deno.env.get("APP_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+        const db = createClient(sbUrl, sbKey);
+
+        const todoTitle = `${body.customerName ?? body.vin} (나르미 신규등록)`;
+        const desc = [
+          body.vin          ? `VIN: ${body.vin}`              : "",
+          body.customerName ? `고객: ${body.customerName}`     : "",
+          body.salesRep     ? `영업: ${body.salesRep}`         : "",
+          body.deliveryDate ? `출고일: ${body.deliveryDate}`   : "",
+          body.specialNote  ? `특이사항: ${body.specialNote}`  : "",
+        ].filter(Boolean).join(" / ");
+
+        await db.from("secretary_todos").insert({
+          title:    todoTitle,
+          description: desc,
+          priority: "normal",
+          category: "finance",
+          is_done:  false,
+        });
+
+        // 채팅 알림
+        await db.from("secretary_chat_logs").insert({
+          role: "assistant",
+          content: `🚛 **나르미 신규 등록**\n\n**${body.customerName ?? body.vin}** 신규 등록되었습니다.\nVIN: ${body.vin}\n할일이 자동 등록되었습니다.`,
+          session_id: "main",
+        });
+
+        console.log("[나르미 할일 생성]:", body.customerName ?? body.vin);
+      } catch (e) {
+        console.error("[나르미 할일 생성 오류]:", e);
+      }
+    }
+
+    // ── 나르미 단계 변경 시 할일 업데이트 ────────────────────────
+    if (isNarumi && body.type === "narumi_status") {
+      try {
+        const sbUrl = Deno.env.get("APP_SUPABASE_URL") ?? Deno.env.get("SUPABASE_URL") ?? "";
+        const sbKey = Deno.env.get("APP_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+        const db = createClient(sbUrl, sbKey);
+
+        const custName = body.customerName ?? body.vin ?? "";
+        const nextSt   = body.nextStatus ?? "";
+
+        // 단계 한글 매핑
+        const stageKo: Record<string,string> = {
+          todo: "신규등록", insurance: "보험완료", docs: "등록서류",
+          registered: "등록완료", completed: "차량등록증 완료",
+        };
+        const stageLabel = stageKo[nextSt] ?? nextSt;
+        const newTitle   = `${custName} (나르미 ${stageLabel})`;
+
+        // 기존 할일 찾기
+        const { data: existing } = await db.from("secretary_todos")
+          .select("id")
+          .ilike("title", `%${custName}%나르미%`)
+          .eq("is_done", false)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (existing && existing.length > 0) {
+          // 완료 단계면 할일 완료 처리, 아니면 제목 업데이트
+          const isDone = nextSt === "completed";
+          await db.from("secretary_todos").update({
+            title:   newTitle,
+            is_done: isDone,
+          }).eq("id", existing[0].id);
+        }
+
+        console.log("[나르미 할일 업데이트]:", custName, "→", stageLabel);
+      } catch (e) {
+        console.error("[나르미 할일 업데이트 오류]:", e);
       }
     }
 

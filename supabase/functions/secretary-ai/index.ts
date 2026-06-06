@@ -27,11 +27,28 @@ type HCMStatus = typeof HCM_STATUSES[number];
 const KAKAO_EDGE_URL = "https://nfwtsptqloefsbpjvdyu.supabase.co/functions/v1/send-hyundaicm-kakao";
 
 const TODAY_ISO = new Date().toISOString().slice(0,10);
+// 한국 요일 기준: 월요일=1, 화요일=2, 수요일=3, 목요일=4, 금요일=5, 토요일=6, 일요일=0
+// "다음 주 월요일" = 이번 주 월요일 + 7일 (월요일 시작 기준)
+function getNextWeekday(baseDate: string, weekday: number): string {
+  const d = new Date(baseDate);
+  const day = d.getDay(); // 0=일,1=월,...,6=토
+  const dayKr = day === 0 ? 7 : day; // 한국식: 월=1..일=7
+  const targetKr = weekday === 0 ? 7 : weekday;
+  let diff = targetKr - dayKr;
+  if (diff <= 0) diff += 7; // 이미 지났으면 다음 주
+  diff += 7; // "다음 주"이므로 +7
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().slice(0,10);
+}
+// 예: getNextWeekday(TODAY_ISO, 2) → 다음 주 화요일
 const TODAY_KR  = new Date().toLocaleDateString("ko-KR",{year:"numeric",month:"2-digit",day:"2-digit"})
   .replace(/\. /g,"-").replace(".","");
 
 const SYSTEM = `You are a Korean AI secretary for RNF Korea company.
-Today: ${TODAY_ISO}
+Today: ${TODAY_ISO} (Friday, 금요일)
+Korean week starts Monday. "다음 주 월요일" = next Monday = ${getNextWeekday(TODAY_ISO,1)}, "다음 주 화요일" = ${getNextWeekday(TODAY_ISO,2)}, "다음 주 수요일" = ${getNextWeekday(TODAY_ISO,3)}, "다음 주 목요일" = ${getNextWeekday(TODAY_ISO,4)}, "다음 주 금요일" = ${getNextWeekday(TODAY_ISO,5)}
+"이번 주 월요일" means the Monday of the current week (may be in the past).
+Always calculate relative dates based on Korean week (Monday=start).
 
 CRITICAL: Output ONLY raw JSON. No markdown, no code blocks, no text before/after JSON.
 
@@ -44,7 +61,19 @@ todo: {"type":"todo","title":"string","description":null,"priority":"urgent|norm
 
 schedule: {"type":"schedule","title":"string","description":null,"schedule_date":"YYYY-MM-DD","start_time":"HH:MM|null","category":"meeting|call|task|followup","location":null,"related_type":"insurance|tire|finance|forklift|battery|null"}
 
-order (NEW customer): {"type":"order","customer_name":"string","phone":null,"channel":"kakao|phone|visit|web","work_type":"insurance|tire|finance|forklift|battery|null","summary":"string","detail":null}
+order (NEW customer): {"type":"order","customer_name":"string","phone":null,"channel":"kakao|phone|visit|web","work_type":"insurance|tire|finance|forklift|battery|null","summary":"string","detail":null,
+"tire_fields":{"vehicle_info":null,"vehicle_type":null,"tire_size":null,"front_quantity":null,"rear_quantity":null,"process_status":null,"region_detail":null}}
+
+tire_fields rules (only when work_type is "tire"):
+- vehicle_info: 차량 브랜드 ("두산", "현대", "도요타", "TCM" 등)
+- vehicle_type: 차량종류/톤수 ("1톤", "3톤", "5톤", "지게차", "굴삭기" 등)
+- tire_size: 타이어 규격 ("18*7-8", "250-15", "28*9-15", "6.50-10" 등)
+- front_quantity: 전륜 수량 (숫자)
+- rear_quantity: 후륜 수량 (숫자, "후륜 2개" → 2)
+- process_status: 주문 접수 시 항상 "발주" 로 설정 (DB 저장값: "발주")
+- region_detail: 지역 정보 언급 시
+- quantity가 "2개", "4개" 등으로만 언급되고 전/후 구분 없으면 → rear_quantity에 입력
+- Example: "형제중기 18*7-8 두산 3톤 후륜 2개 주문" → vehicle_info:"두산", vehicle_type:"3톤", tire_size:"18*7-8", rear_quantity:2, process_status:"발주"
 
 consult_update (UPDATE existing customer info):
 {"type":"consult_update","customer_name":"string","work_type":"finance|insurance|tire|forklift|battery|null","keywords":["keyword1"],"update_memo":"string",
@@ -90,11 +119,56 @@ finance_fields rules (only for finance type):
 - "인센티브 2.5%" → finance_incentive: 2.5
 - null if not mentioned
 
-schedule_update (UPDATE existing schedule progress):
-{"type":"schedule_update","title_keyword":"string","progress_memo":"string","next_schedule_date":"YYYY-MM-DD|null","next_schedule_time":"HH:MM|null"}
-- Use when user mentions progress/result of a scheduled meeting or task
+order_update (UPDATE tb_orders status - tire/battery orders):
+{"type":"order_update","customer_name":"string","product_keyword":"string|null","next_status":"forwarded|delivered|wheel_returned|invoiced","memo":"string|null","price_to_customer":null,"price_from_jinheung":null,"margin":null}
+- next_status values:
+  "forwarded"     → (주)진흥 전달 완료 (forwarded_at 자동 기록)
+  "delivered"     → 납품 완료 (delivered_at 자동 기록)
+  "wheel_returned"→ 휠 반납 완료 (wheel_returned_at 자동 기록)
+  "invoiced"      → 계산서 발행 완료 → 주문 완료 처리 (invoiced_at 자동 기록)
+- customer_name: 고객명 or 회사명
+- product_keyword: 타이어 규격/품명 일부 (알 경우)
+- price_to_customer: 고객 판매가 (원, "120만원" → 1200000)
+- price_from_jinheung: 진흥 매입가
+- margin: 마진 (직접 입력 또는 자동 계산)
+- Use when: "형제중기 타이어 진흥 전달", "OO 납품완료", "OO 휠 반납", "OO 계산서 발행"
+
+narumi_update (UPDATE narumi_tasks stage):
+{"type":"narumi_update","customer_name":"string","vin_keyword":"string|null","next_stage":"보험|등록서류|등록완료|완료|보류|보류해제|우편발송","memo":"string|null","tracking_no":"string|null","hold_reason":"string|null","next_followup_date":"YYYY-MM-DD|null"}
+- next_stage values:
+  "보험"→has_insurance=true
+  "등록서류"→docs_ready=true
+  "등록완료"→is_registered=true
+  "완료"→status=completed
+  "보류"→on_hold=true (hold_reason, next_followup_date 포함)
+  "보류해제"→on_hold=false
+  "우편발송"→postal_tracking_no 업데이트 (tracking_no 필수)
+- customer_name: 고객명 or 회사명
+- vin_keyword: VIN 일부 (알 경우)
+- tracking_no: 등기번호 (우편발송 시)
+- hold_reason: 보류 사유
+- next_followup_date: 보류 시 다음 확인 날짜
+
+schedule_edit (EDIT existing schedule - change date/title/time):
+{"type":"schedule_edit","title_keyword":"string","new_date":"YYYY-MM-DD|null","new_title":"string|null","new_time":"HH:MM|null","new_location":"string|null"}
+- Use when user says "일정 수정", "날짜 변경", "XX일로 바꿔줘", "제목 변경"
 - title_keyword: key words from the schedule title to find it
+- Only set fields that need to change, leave others null
+- Example: "14일 뉴질랜드 박람회 일정을 24일로 수정" → title_keyword:"뉴질랜드", new_date:"2026-06-24"
+
+schedule_update (UPDATE existing schedule progress + optional next schedule/todo):
+{"type":"schedule_update","title_keyword":"string","progress_memo":"string","next_schedule_date":"YYYY-MM-DD|null","next_schedule_time":"HH:MM|null","next_schedule_title":"string|null","create_todo":false,"todo_title":"string|null","mark_done":false}
+- Use when user mentions progress/result of a scheduled meeting or task
+- title_keyword: key words from the schedule title to find it (use most distinctive word)
 - progress_memo: what happened, results, next actions
+- next_schedule_date: if next meeting/visit/check is mentioned, set the date (use relative dates: "다음 주 화요일" → calculate actual date from today ${TODAY_ISO})
+- next_schedule_title: title for the next schedule if different from original
+- create_todo: true if a todo item should be created instead of schedule
+- todo_title: title for the todo item
+- mark_done: true if this schedule should be marked as completed
+
+MULTIPLE schedules: if message mentions updates for 2+ different schedules → generate one schedule_update per item
+Example: "형제중기 A/S 화요일 재장착, 라이즈리프트 완료, 아톰리프트 월요일 확인" → THREE schedule_update actions
 
 RULES (priority order — match the FIRST rule that fits):
 
@@ -105,13 +179,26 @@ KEY DISTINCTION — hyundaicm_update vs consult_update:
 - consult_update: for customers in consultation_cases (금융/보험/타이어/지게차/배터리 상담관리)
   - Context clues: "금융상담", "보험", "타이어", "상담관리", "진행단계", or no specific system mentioned
 
+0. FIRST CHECK: schedule date/title/time change → schedule_edit
+   TRIGGER WORDS: "수정", "변경해줘", "바꿔줘", "로 변경", "로 수정", "날짜 바꿔", "옮겨줘"
+   Examples:
+   - "14일 뉴질랜드 박람회를 24일로 수정" → schedule_edit {title_keyword:"뉴질랜드", new_date:"2026-06-24"}
+   - "제주 출장 일정 22일로 변경" → schedule_edit {title_keyword:"제주", new_date:"2026-06-22"}
+   - "홍승점 미팅 시간 오후 3시로 변경" → schedule_edit {title_keyword:"홍승점", new_time:"15:00"}
+   IMPORTANT: If message contains schedule name + new date/time + 수정/변경 → ALWAYS schedule_edit, NOT schedule_update
+
 1. ONLY use hyundaicm_update when message explicitly mentions 현대건설기계/심사/할부금융 context
+1-b. narumi stage change → narumi_update (나르미, 차량등록, 보험완료, 등록서류, 등록완료 언급 시)
+1-c. tire/battery order status change → order_update (타이어/배터리 주문, 진흥 전달, 납품, 휠반납, 계산서 언급 시)
+1-d. schedule date/title change → schedule_edit (see rule 0 above)
    OR uses hyundaicm-specific terms: 서류등록, 전자계약발송, 신용조회, 보완요청
    - "보류입니다", "보류로 변경" with hyundaicm context → hyundaicm_update next_status="보류"
    - "승인났어요" with hyundaicm context → hyundaicm_update next_status="승인"
 2. Status/info update for consultation_cases customers → consult_update
    - "승인으로 진행상태 변경", "진행중으로 변경", "전화번호 업데이트" → consult_update
+   - "확정완료", "확정 처리" for finance customers → consult_update with finance_stage: "confirmed"
    - Use direct_fields.status for status changes: 승인→"completed", 진행중→"in_progress", 대기→"pending"
+   - IMPORTANT: customer names like "성수연", "정부경" without explicit hyundaicm context → consult_update
 3. New customer inquiry → order
 4. Task → todo
 5. Meeting/schedule → schedule
@@ -243,6 +330,177 @@ serve(async (req) => {
     const pendingUpdates: {action:Record<string,unknown>;candidates:Record<string,unknown>[];bestMatch:Record<string,unknown>|null}[] = [];
     const pendingHyundaiUpdates: {action:Record<string,unknown>;matches:{id:number;customer_name:string;status:string;caseNo:string;equipment_ton:string|null;finance_company:string|null;customer_type:string;sales_rep:string|null;installment_principal:number|null}[]}[] = [];
 
+    // ── schedule_edit: autoSave 여부와 무관하게 항상 실행
+    // 사용자 JWT (google-calendar-sync 호출 시 Authorization 헤더에 사용)
+    const authHeader = req.headers.get("authorization") ?? req.headers.get("Authorization") ?? "";
+    const userJwt = authHeader.replace(/^Bearer\s+/i, "").trim();
+
+    // google_calendar_tokens 테이블에서 첫 번째 유효한 user_id 직접 조회 (JWT sub 불일치 우회)
+    let gcalUserId = "";
+    try {
+      const { data: gcalTokenRow } = await db.from("google_calendar_tokens")
+        .select("user_id").limit(1).single();
+      gcalUserId = gcalTokenRow?.user_id ?? "";
+    } catch { gcalUserId = ""; }
+    console.log("[schedule_edit] gcalUserId:", gcalUserId);
+
+    if (parsed.actions?.length > 0) {
+      for (const a of parsed.actions) {
+        if (a.type !== "schedule_edit") continue;
+
+        const kw = (a.title_keyword as string ?? "").toLowerCase();
+        const newDate     = a.new_date     as string|null ?? null;
+        const newTitle    = a.new_title    as string|null ?? null;
+        const newTime     = a.new_time     as string|null ?? null;
+        const newLocation = a.new_location as string|null ?? null;
+
+        console.log("[schedule_edit] keyword:", kw, "new_date:", newDate, "new_title:", newTitle, "new_time:", newTime);
+
+        // ① 로컬 DB에서 먼저 검색
+        const {data:editRows} = await db.from("secretary_schedules")
+          .select("id,title,schedule_date,start_time,gcal_event_id")
+          .ilike("title", `%${kw}%`)
+          .order("schedule_date", {ascending:true}).limit(5);
+
+        console.log("[schedule_edit] local rows:", editRows?.length ?? 0);
+
+        if (editRows && editRows.length > 0) {
+          // ── 로컬 DB 수정
+          const row = editRows[0] as Record<string,unknown>;
+          const patch: Record<string,unknown> = {};
+          if (newDate)     patch.schedule_date = newDate;
+          if (newTitle)    patch.title         = newTitle;
+          if (newTime)     patch.start_time    = newTime;
+          if (newLocation) patch.location      = newLocation;
+
+          const {error:upErr} = await db.from("secretary_schedules").update(patch).eq("id", row.id);
+          console.log("[schedule_edit] local update error:", upErr?.message ?? "none");
+
+          if (!upErr) {
+            saved.push({type:"schedule_edit", id:row.id as number});
+
+            // ── 구글 캘린더에도 동기화 (gcal_event_id가 있는 경우)
+            const gcalEventId = row.gcal_event_id as string|null;
+            if (gcalEventId && userJwt) {
+              try {
+                // 수정된 최신 데이터 조회
+                const {data:updRow} = await db.from("secretary_schedules")
+                  .select("*").eq("id", row.id).single();
+                if (updRow) {
+                  await fetch(`${sbUrl}/functions/v1/google-calendar-sync`, {
+                    method: "POST",
+                    headers: {"Content-Type":"application/json","Authorization":`Bearer ${userJwt}`},
+                    body: JSON.stringify({
+                      action: "update",
+                      user_id: gcalUserId,
+                      event_id: gcalEventId,
+                      event: {
+                        id:            updRow.id,
+                        title:         updRow.title,
+                        description:   updRow.description ?? null,
+                        schedule_date: updRow.schedule_date,
+                        start_time:    updRow.start_time ?? null,
+                        end_time:      updRow.end_time   ?? null,
+                        location:      updRow.location   ?? null,
+                        schedule_id:   updRow.id,
+                      },
+                    }),
+                  });
+                  console.log("[schedule_edit] gcal update sent for event:", gcalEventId);
+                }
+              } catch(e) { console.warn("[schedule_edit] gcal sync error:", e); }
+            }
+
+            await db.from("secretary_chat_logs").insert({
+              role:"assistant",
+              content:`📅 **일정 수정 완료**\n"${row.title}" → ${newDate ? `날짜: ${newDate}` : ""}${newTitle ? ` 제목: ${newTitle}` : ""}${newTime ? ` 시간: ${newTime}` : ""}`,
+              session_id:"main",
+            });
+          }
+
+        } else {
+          // ② 로컬 DB에 없음 → 구글 캘린더에서 검색 후 수정
+          console.log("[schedule_edit] not in local DB, trying Google Calendar...");
+
+          if (userJwt) {
+            try {
+              // 구글 캘린더 이벤트 목록 조회 (현재 월 기준 ±2개월)
+              const now = new Date();
+              const yr  = now.getFullYear();
+              const mo  = now.getMonth();
+              const gcalListRes = await fetch(`${sbUrl}/functions/v1/google-calendar-sync`, {
+                method: "POST",
+                headers: {"Content-Type":"application/json","Authorization":`Bearer ${userJwt}`},
+                body: JSON.stringify({ action:"list", user_id:gcalUserId, year:yr, month:mo }),
+              });
+              const gcalListData = await gcalListRes.json();
+              const gcalEvents: {id:string;summary:string;start?:{date?:string;dateTime?:string}}[] = gcalListData.events ?? [];
+
+              // 키워드로 이벤트 찾기
+              const matched = gcalEvents.filter((e:any) =>
+                (e.summary ?? "").toLowerCase().includes(kw)
+              );
+              console.log("[schedule_edit] gcal matched events:", matched.length);
+
+              if (matched.length > 0) {
+                const evt = matched[0];
+                const evtDate = evt.start?.date || evt.start?.dateTime?.slice(0,10) || "";
+
+                // ── 구글 캘린더 이벤트 수정
+                const updatedSummary = newTitle ?? evt.summary;
+                const updatedDate    = newDate  ?? evtDate;
+                await fetch(`${sbUrl}/functions/v1/google-calendar-sync`, {
+                  method: "POST",
+                  headers: {"Content-Type":"application/json","Authorization":`Bearer ${userJwt}`},
+                  body: JSON.stringify({
+                    action: "update",
+                    user_id: gcalUserId,
+                    event_id: evt.id,
+                    event: {
+                      title:         updatedSummary,
+                      schedule_date: updatedDate,
+                      start_time:    newTime    ?? null,
+                      location:      newLocation ?? null,
+                      description:   null,
+                    },
+                  }),
+                });
+
+                // ── secretary_schedules에 새로 등록 (다음번 수정을 위해)
+                const {data:newRow} = await db.from("secretary_schedules").insert({
+                  title:         updatedSummary,
+                  schedule_date: updatedDate,
+                  start_time:    newTime ?? null,
+                  location:      newLocation ?? null,
+                  category:      "meeting",
+                  gcal_event_id: evt.id,
+                }).select("id").single();
+
+                if (newRow) saved.push({type:"schedule_edit", id:newRow.id as number});
+
+                await db.from("secretary_chat_logs").insert({
+                  role:"assistant",
+                  content:`📅 **일정 수정 완료 (구글 캘린더)**\n"${evt.summary}" → ${newDate ? `날짜: ${newDate}` : ""}${newTitle ? ` 제목: ${newTitle}` : ""}${newTime ? ` 시간: ${newTime}` : ""}`,
+                  session_id:"main",
+                });
+
+                console.log("[schedule_edit] gcal event updated:", evt.id);
+              } else {
+                // ③ 어디에도 없음 → reply에 안내 메시지 주입
+                console.log("[schedule_edit] event not found anywhere for keyword:", kw);
+                parsed.reply = `"${kw}" 관련 일정을 찾지 못했습니다. 일정 탭에서 직접 등록 후 수정하시거나, 정확한 일정 제목의 일부를 다시 알려주세요.`;
+              }
+            } catch(e) {
+              console.warn("[schedule_edit] gcal search error:", e);
+              parsed.reply = `일정 검색 중 오류가 발생했습니다. 일정 탭에서 직접 수정해 주세요.`;
+            }
+          } else {
+            parsed.reply = `"${kw}" 일정을 로컬에서 찾지 못했습니다. 구글 캘린더 연동 상태를 확인하거나 일정 탭에서 직접 수정해 주세요.`;
+          }
+        }
+      }
+    }
+
     if (autoSave && parsed.actions?.length > 0) {
       for (const a of parsed.actions) {
 
@@ -316,30 +574,245 @@ serve(async (req) => {
           continue;
         }
 
+        if (a.type === "order_update") {
+          const custName   = a.customer_name as string ?? "";
+          const prodKw     = a.product_keyword as string|null;
+          const nextStatus = a.next_status as string;
+          const now        = new Date().toISOString();
+
+          // 고객명 + 상품 키워드로 진행중인 주문 검색
+          let q = db.from("tb_orders")
+            .select("id,customer_name_raw,product_type,product_spec,status,memo")
+            .ilike("customer_name_raw", `%${custName}%`)
+            .not("status", "eq", "invoiced")
+            .order("created_at", {ascending:false}).limit(10);
+
+          if (prodKw) {
+            q = db.from("tb_orders")
+              .select("id,customer_name_raw,product_type,product_spec,status,memo")
+              .ilike("customer_name_raw", `%${custName}%`)
+              .or(`product_spec.ilike.%${prodKw}%,product_type.ilike.%${prodKw}%`)
+              .not("status", "eq", "invoiced")
+              .order("created_at", {ascending:false}).limit(5);
+          }
+
+          const {data:orderRows} = await q;
+          if (orderRows && orderRows.length > 0) {
+            const row = orderRows[0] as Record<string,unknown>;
+            const patch: Record<string,unknown> = { status: nextStatus };
+
+            // 단계별 타임스탬프 자동 기록
+            if (nextStatus === "forwarded")      patch.forwarded_at      = now;
+            else if (nextStatus === "delivered")  patch.delivered_at      = now;
+            else if (nextStatus === "wheel_returned") patch.wheel_returned_at = now;
+            else if (nextStatus === "invoiced") {
+              patch.invoiced_at     = now;
+              patch.invoice_issued  = true;
+            }
+
+            // 금액 정보
+            if (a.price_to_customer != null)  patch.price_to_customer  = a.price_to_customer;
+            if (a.price_from_jinheung != null) patch.price_from_jinheung = a.price_from_jinheung;
+            if (a.margin != null)              patch.margin             = a.margin;
+            else if (a.price_to_customer && a.price_from_jinheung) {
+              patch.margin = Number(a.price_to_customer) - Number(a.price_from_jinheung);
+            }
+
+            // 메모
+            if (a.memo) {
+              const prevMemo = (row.memo as string) ?? "";
+              patch.memo = prevMemo ? `${prevMemo}\n[${now.slice(0,10)} AI] ${a.memo}` : `[${now.slice(0,10)} AI] ${a.memo}`;
+            }
+
+            await db.from("tb_orders").update(patch).eq("id", row.id);
+
+            // 계산서 발행(완료) 시 할일 완료 처리
+            if (nextStatus === "invoiced") {
+              const {data:todos} = await db.from("secretary_todos")
+                .select("id").ilike("title", `%${custName}%`).eq("is_done", false);
+              if (todos && todos.length > 0) {
+                await db.from("secretary_todos").update({is_done:true})
+                  .in("id", todos.map((t:any)=>t.id));
+              }
+            }
+
+            // 채팅 알림
+            const statusKoMap: Record<string,string> = {
+              forwarded:"(주)진흥 전달", delivered:"납품 완료",
+              wheel_returned:"휠 반납", invoiced:"계산서 발행 완료",
+            };
+            const chatMsg = [
+              `📦 **타이어 주문 상태 변경**`,
+              `**${row.customer_name_raw}** ${row.product_spec ?? row.product_type ?? ""} → **${statusKoMap[nextStatus] ?? nextStatus}**`,
+              nextStatus === "invoiced" ? "✅ 주문 완료 처리됨" : "",
+              a.memo ? `메모: ${a.memo}` : "",
+            ].filter(Boolean).join("\n");
+
+            await db.from("secretary_chat_logs").insert({
+              role:"assistant", content:chatMsg, session_id:"main",
+            });
+
+            saved.push({type:"order_update", id:row.id as string});
+          }
+        }
+
+        if (a.type === "narumi_update") {
+          const custName = a.customer_name as string ?? "";
+          const vinKw    = a.vin_keyword as string|null;
+          const stage    = a.next_stage as string;
+
+          // 후보 검색: 고객명 또는 VIN으로
+          let query = db.from("narumi_tasks")
+            .select("id,vin,vin_last6,customer_name,status,has_insurance,docs_ready,is_registered,vehicle_doc_path,sales_rep,customer_phone")
+            .eq("is_registered", false)
+            .order("created_at", {ascending:false}).limit(10);
+
+          if (vinKw) {
+            query = db.from("narumi_tasks")
+              .select("id,vin,vin_last6,customer_name,status,has_insurance,docs_ready,is_registered,vehicle_doc_path,sales_rep,customer_phone")
+              .ilike("vin", `%${vinKw}%`)
+              .order("created_at", {ascending:false}).limit(5);
+          } else if (custName) {
+            query = db.from("narumi_tasks")
+              .select("id,vin,vin_last6,customer_name,status,has_insurance,docs_ready,is_registered,vehicle_doc_path,sales_rep,customer_phone")
+              .ilike("customer_name", `%${custName}%`)
+              .order("created_at", {ascending:false}).limit(5);
+          }
+
+          const {data: narumiRows} = await query;
+          if (narumiRows && narumiRows.length > 0) {
+            const row = narumiRows[0] as Record<string,unknown>;
+            const patch: Record<string,unknown> = {};
+
+            const custDisplay = (row.customer_name ?? row.vin) as string;
+
+            if (stage === "보험")        { patch.has_insurance = true; patch.status = "insurance"; }
+            else if (stage === "등록서류") { patch.docs_ready = true;   patch.status = "docs"; }
+            else if (stage === "등록완료") { patch.is_registered = true; patch.status = "registered"; }
+            else if (stage === "완료")   { patch.status = "completed"; }
+            else if (stage === "보류") {
+              patch.on_hold = true;
+              if (a.hold_reason) patch.special_note = a.hold_reason as string;
+            }
+            else if (stage === "보류해제") { patch.on_hold = false; }
+            else if (stage === "우편발송") {
+              if (a.tracking_no) {
+                patch.postal_tracking_no = a.tracking_no as string;
+                patch.postal_mail_sent   = true;
+                patch.postal_sent_date   = new Date().toISOString().slice(0,10);
+              }
+            }
+            if (a.memo) patch.special_note = a.memo as string;
+
+            await db.from("narumi_tasks").update(patch).eq("id", row.id);
+
+            // 보류 시 일정 자동 생성
+            if (stage === "보류" && a.next_followup_date) {
+              await db.from("secretary_schedules").insert({
+                title:         `${custDisplay} 나르미 재확인`,
+                description:   `보류 사유: ${a.hold_reason ?? ""}`,
+                schedule_date: a.next_followup_date as string,
+                category:      "followup",
+                related_type:  "finance",
+              });
+              await db.from("secretary_todos").insert({
+                title:       `${custDisplay} (나르미 보류 - 재확인)`,
+                description: `보류 사유: ${a.hold_reason ?? ""}`,
+                priority:    "normal",
+                category:    "finance",
+                is_done:     false,
+              });
+            }
+
+            // SMS 알림 (보류/보류해제/우편발송도 발송)
+            const sbUrl2 = Deno.env.get("APP_SUPABASE_URL") ?? Deno.env.get("SUPABASE_URL") ?? "";
+            const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+            const smsTypeMap: Record<string,string> = {
+              "보험":"narumi_status", "등록서류":"narumi_status",
+              "등록완료":"narumi_status", "완료":"narumi_status",
+              "보류":"narumi_status", "보류해제":"narumi_status",
+              "우편발송":"narumi_postal",
+            };
+            const smsType = smsTypeMap[stage];
+            if (smsType) {
+              try {
+                await fetch(`${sbUrl2}/functions/v1/send-hyundaicm-kakao`, {
+                  method: "POST",
+                  headers: {"Content-Type":"application/json","Authorization":`Bearer ${anonKey}`},
+                  body: JSON.stringify({
+                    type:        smsType,
+                    vin:         row.vin,
+                    customerName:custDisplay,
+                    salesRep:    row.sales_rep,
+                    prevStatus:  row.status,
+                    nextStatus:  stage,
+                    trackingNo:  a.tracking_no ?? undefined,
+                    sentDate:    new Date().toISOString().slice(0,10),
+                  }),
+                });
+              } catch(e) { console.warn("[narumi sms]", e); }
+            }
+
+            // 채팅 알림
+            const chatLines = [
+              `🚛 **나르미 ${stage === "우편발송" ? "우편 발송" : stage === "보류" ? "보류 처리" : "단계 변경"}**`,
+              `**${custDisplay}** → **${stage}**`,
+              stage === "우편발송" && a.tracking_no ? `등기번호: ${a.tracking_no}` : "",
+              stage === "보류" && a.hold_reason ? `사유: ${a.hold_reason}` : "",
+              stage === "보류" && a.next_followup_date ? `재확인 일정: ${a.next_followup_date}` : "",
+            ].filter(Boolean).join("\n");
+
+            await db.from("secretary_chat_logs").insert({
+              role: "assistant", content: chatLines, session_id: "main",
+            });
+
+            saved.push({type:"narumi_update", id:row.id as number});
+          }
+        }
+
         if (a.type === "schedule_update") {
           const kw = (a.title_keyword as string ?? "").toLowerCase();
           const {data:schRows} = await db.from("secretary_schedules")
-            .select("id,title,progress_memo")
+            .select("id,title,progress_memo,category,related_type,location")
             .ilike("title", `%${kw}%`)
             .order("schedule_date", {ascending:false}).limit(5);
           if (schRows && schRows.length > 0) {
-            const today = new Date().toLocaleDateString("ko-KR",{year:"numeric",month:"2-digit",day:"2-digit"}).replace(/\. /g,"-").replace(".","");
-            const appendText = `[${today} AI비서] ${a.progress_memo}`;
+            const todayStr = new Date().toISOString().slice(0,10);
+            const appendText = `[${todayStr} AI비서] ${a.progress_memo}`;
             const best = schRows[0] as Record<string,unknown>;
             const prev = (best.progress_memo as string) ?? "";
-            const patch: Record<string,unknown> = {
-              progress_memo: prev ? `${prev}\n${appendText}` : appendText,
-            };
+            const newMemo = prev ? `${prev}\n${appendText}` : appendText;
+            const patch: Record<string,unknown> = { progress_memo: newMemo };
+
+            // 완료 처리
+            if (a.mark_done) patch.is_done = true;
+
+            // 다음 일정 등록
             if (a.next_schedule_date) {
               patch.next_schedule_date = a.next_schedule_date;
               patch.next_schedule_time = a.next_schedule_time ?? null;
+              const nextTitle = (a.next_schedule_title as string|null) ?? (best.title as string);
               await db.from("secretary_schedules").insert({
-                title: best.title,
+                title:         nextTitle,
                 schedule_date: a.next_schedule_date,
-                start_time: a.next_schedule_time ?? null,
-                description: prev ? `${prev}\n${appendText}` : appendText,
+                start_time:    a.next_schedule_time ?? null,
+                description:   newMemo,
+                category:      best.category ?? "followup",
+                related_type:  best.related_type ?? null,
+                location:      best.location ?? null,
               });
             }
+
+            // 할일 등록 (next_schedule 대신)
+            if (a.create_todo && a.todo_title) {
+              await db.from("secretary_todos").insert({
+                title:       a.todo_title as string,
+                description: newMemo,
+                priority:    "normal",
+                is_done:     false,
+              });
+            }
+
             await db.from("secretary_schedules").update(patch).eq("id", best.id);
             saved.push({type:"schedule_update", id:best.id as number});
           }
@@ -373,7 +846,28 @@ serve(async (req) => {
               detail_memo:a.detail??null, followup_needed:false,
               call_datetime:new Date().toISOString(),
             }).select("id").single();
-            if (cd) cid = cd.id;
+            if (cd) {
+              cid = cd.id;
+
+              // 타이어 상세 필드 저장 (tire_fields가 있을 때)
+              const tf = a.tire_fields as Record<string,unknown>|null;
+              if (wt === "tire_sales" && tf) {
+                const tireInsert: Record<string,unknown> = { consultation_id: cid };
+                if (tf.vehicle_info    != null) tireInsert.vehicle_info    = tf.vehicle_info;
+                if (tf.vehicle_type    != null) tireInsert.vehicle_type    = tf.vehicle_type;
+                if (tf.tire_size       != null) tireInsert.tire_size       = tf.tire_size;
+                if (tf.front_quantity  != null) tireInsert.front_quantity  = Number(tf.front_quantity);
+                if (tf.rear_quantity   != null) tireInsert.rear_quantity   = Number(tf.rear_quantity);
+                // process_status: AI가 지정하거나 기본값 "발주"
+                tireInsert.process_status = (tf.process_status as string|null) ?? "발주";
+                if (tf.region_detail   != null) tireInsert.region_detail   = tf.region_detail;
+                // quantity = front+rear 합산
+                const fq = tf.front_quantity ? Number(tf.front_quantity) : 0;
+                const rq = tf.rear_quantity  ? Number(tf.rear_quantity)  : 0;
+                if (fq + rq > 0) tireInsert.quantity = fq + rq;
+                await db.from("consultation_tire_details").insert(tireInsert);
+              }
+            }
           }
           const {data:od} = await db.from("secretary_orders").insert({
             customer_name:a.customer_name, phone:a.phone??null, channel:a.channel??"phone",

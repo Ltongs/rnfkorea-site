@@ -87,9 +87,9 @@ serve(async (req) => {
       const res = await fetch(baseUrl, { method: "POST", headers, body: JSON.stringify(body) });
       const data = await res.json();
 
-      // ins_schedules에 google_event_id 저장
+      // secretary_schedules에 gcal_event_id 저장 (AI비서 일정 동기화용)
       if (event.schedule_id && data.id) {
-        await db.from("ins_schedules").update({ google_event_id: data.id }).eq("id", event.schedule_id);
+        await db.from("secretary_schedules").update({ gcal_event_id: data.id }).eq("id", event.schedule_id);
       }
 
       // 생성된 이벤트 전체를 반환 (프론트에서 즉시 상태 반영용)
