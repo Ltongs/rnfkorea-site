@@ -1079,6 +1079,7 @@ const SecretaryPage:React.FC = () => {
     if (schedProgress.next_date) {
       patch.next_schedule_date = schedProgress.next_date;
       patch.next_schedule_time = schedProgress.next_time || null;
+      patch.is_done = true; // 다음 일정 등록 시 기존 일정 자동 완료 처리
       await supabase.from("secretary_schedules").insert({
         title: s.title,
         description: newMemo,
