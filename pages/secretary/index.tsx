@@ -125,13 +125,13 @@ function SavedCard({actions,saved,onNav}:{actions:Record<string,unknown>[];saved
               )}
             </div>
             {a.type==="order"&&s?.consultation_id&&(
-              <button className="text-xs text-emerald-600 hover:underline ml-2 flex-shrink-0" onClick={()=>onNav(`/work/call-management?id=${s.consultation_id}`)}>열기→</button>
+              <button className="text-xs text-emerald-600 hover:underline ml-2 flex-shrink-0" onClick={()=>window.open(`/work/call-management?id=${s.consultation_id}`,"_blank")}>열기→</button>
             )}
             {a.type==="consult_update"&&s?.id&&(
-              <button className="text-xs text-emerald-600 hover:underline ml-2 flex-shrink-0" onClick={()=>onNav(`/work/call-management?id=${s.id}`)}>상담내역→</button>
+              <button className="text-xs text-emerald-600 hover:underline ml-2 flex-shrink-0" onClick={()=>window.open(`/work/call-management?id=${s.id}`,"_blank")}>상담내역→</button>
             )}
             {a.type==="hyundaicm_update"&&s?.id&&(
-              <button className="text-xs text-blue-600 hover:underline ml-2 flex-shrink-0" onClick={()=>onNav(`/work/hyundaicm?id=${s.id}`)}>현대건설기계→</button>
+              <button className="text-xs text-blue-600 hover:underline ml-2 flex-shrink-0" onClick={()=>window.open(`/work/hyundaicm?id=${s.id}`,"_blank")}>현대건설기계→</button>
             )}
           </div>
         );
