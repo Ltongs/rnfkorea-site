@@ -137,12 +137,14 @@ direct_fields rules:
   - "대기" or "보류" → status: "on_hold"
   - "신규" → status: "in_progress"
 - finance_stage (consultation_finance_details.finance_stage): for finance work_type ONLY
+  - "접수" or "상담" → finance_stage: "received"
+  - "신용조회" → finance_stage: "credit_check"
   - "승인" or "승인완료" → finance_stage: "approved"
-  - "확정" or "확정완료" → finance_stage: "confirmed"
+  - "보완" → finance_stage: "supplement"
   - "부결" or "거절" → finance_stage: "rejected"
-  - "서류징구" or "서류요청" → finance_stage: "documents_requested"
-  - "견적제출" → finance_stage: "quote_submitted"
-  - "상담" or "상담중" → finance_stage: "consulting"
+  - "서류등록" or "서류징구" or "서류요청" → finance_stage: "doc_registration"
+  - "전자계약" or "전자계약발송" → finance_stage: "contract_sent"
+  - "확정" or "확정완료" → finance_stage: "confirmed"
   - ALWAYS set finance_stage when work_type is finance and status change is mentioned
 - followup: "사후관리 필요" → followup_needed: true, next_followup_date: "YYYY-MM-DD" if date mentioned
 - null for fields not mentioned
@@ -978,6 +980,48 @@ serve(async (req) => {
                 console.log("[tire_insert] error:", tireErr?.message ?? "none");
               }
 
+              // 금융 상세 필드 저장
+              if (wt === "finance") {
+                const ff = a.finance_fields as Record<string,unknown>|null ?? {};
+                const financeInsert: Record<string,unknown> = {
+                  consultation_id: cid,
+                  finance_stage: "received",
+                };
+                if (ff.finance_amount != null)        financeInsert.finance_amount        = Number(ff.finance_amount);
+                if (ff.finance_interest_rate != null) financeInsert.finance_interest_rate = Number(ff.finance_interest_rate);
+                if (ff.finance_period != null)        financeInsert.finance_period        = Number(ff.finance_period);
+                if (ff.finance_company != null)       financeInsert.finance_company       = String(ff.finance_company);
+                if (ff.finance_product != null)       financeInsert.finance_product       = String(ff.finance_product);
+                if (ff.finance_vehicle_model != null) financeInsert.finance_vehicle_model = String(ff.finance_vehicle_model);
+                if (ff.finance_incentive != null)     financeInsert.finance_incentive     = Number(ff.finance_incentive);
+                const subStr = (a.sub_type as string|null) ?? null;
+                if (subStr) financeInsert.sub_type = subStr;
+                console.log("[finance_insert] cid:", cid, "insert:", JSON.stringify(financeInsert));
+                const {error:finErr} = await db.from("consultation_finance_details").insert(financeInsert);
+                console.log("[finance_insert] error:", finErr?.message ?? "none");
+              }
+
+              // 지게차 상세 필드 저장
+              if (wt === "forklift_sales") {
+                const summary = (a.summary as string) ?? "";
+                const subStr  = (a.sub_type as string|null) ?? null; // 신차/중고/렌탈
+                const tonMatch = summary.match(/([0-9]+(?:\.[0-9]+)?)\s*톤/);
+                const brandKws = ["두산","현대","기아","대우","TCM","도요타","볼보","클라크","닛산"];
+                let brandFound = "";
+                for (const bk of brandKws) { if (summary.includes(bk)) { brandFound = bk; break; } }
+                const forkliftInsert: Record<string,unknown> = {
+                  consultation_id: cid,
+                  forklift_status: "consulting",
+                };
+                if (tonMatch)   forkliftInsert.forklift_ton      = tonMatch[1] + "톤";  // string 타입
+                if (brandFound) forkliftInsert.forklift_type     = brandFound;  // forklift_type 컬럼
+                if (subStr)     forkliftInsert.forklift_sale_method = subStr;
+                forkliftInsert.note = null;
+                console.log("[forklift_insert] cid:", cid, "insert:", JSON.stringify(forkliftInsert));
+                const {error:fklErr} = await db.from("consultation_forklift_details").insert(forkliftInsert);
+                console.log("[forklift_insert] error:", fklErr?.message ?? "none");
+              }
+
               // 배터리 상세 필드 저장
               if (wt === "battery_sales") {
                 const bf = a.battery_fields as Record<string,unknown>|null ?? {};
@@ -1046,7 +1090,7 @@ serve(async (req) => {
                 exportInsert.quantity            = ef.quantity ? Number(ef.quantity) : null;
                 exportInsert.unit_price          = ef.unit_price ? Number(ef.unit_price) : null;
                 exportInsert.incoterms           = (ef.incoterms as string|null) ?? null;
-                exportInsert.export_stage        = "inquiry";
+                exportInsert.export_stage        = "consulting";
                 const {error:expErr} = await db.from("consultation_export_details").insert(exportInsert);
                 console.log("[export_insert] error:", expErr?.message ?? "none");
               }
@@ -1182,12 +1226,14 @@ serve(async (req) => {
             else if (memoText.includes("완료"))                                        caseDirectUpdate.status = "completed";
           }
           if (!financeStageValue && wt === "finance") {
-            if (memoText.includes("확정"))                    financeStageValue = "confirmed";
-            else if (memoText.includes("승인"))               financeStageValue = "approved";
-            else if (memoText.includes("부결") || memoText.includes("거절")) financeStageValue = "rejected";
-            else if (memoText.includes("서류"))               financeStageValue = "documents_requested";
-            else if (memoText.includes("견적"))               financeStageValue = "quote_submitted";
-            else if (memoText.includes("상담"))               financeStageValue = "consulting";
+            if (memoText.includes("확정"))                                              financeStageValue = "confirmed";
+            else if (memoText.includes("전자계약"))                                     financeStageValue = "contract_sent";
+            else if (memoText.includes("서류등록") || memoText.includes("서류징구") || memoText.includes("서류요청")) financeStageValue = "doc_registration";
+            else if (memoText.includes("부결") || memoText.includes("거절"))           financeStageValue = "rejected";
+            else if (memoText.includes("보완"))                                        financeStageValue = "supplement";
+            else if (memoText.includes("승인"))                                        financeStageValue = "approved";
+            else if (memoText.includes("신용조회"))                                     financeStageValue = "credit_check";
+            else if (memoText.includes("접수") || memoText.includes("상담"))           financeStageValue = "received";
           }
           // phone 자동 추출
           if (!caseDirectUpdate.phone) {
