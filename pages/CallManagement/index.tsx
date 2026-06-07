@@ -613,8 +613,8 @@ const CallManagementPage: React.FC = () => {
 
   const isClosingByCurrentForm = () => {
     if (workType === "registration_insurance") return policyIssued;
-    if (workType === "finance") return financeStage === "confirmed";
-    if (["tire_sales","forklift_sales","battery_sales","export"].includes(workType)) return progressStage === "invoiced";
+    if (workType === "finance") return financeStage === "confirmed" || financeStage === "cancelled";
+    if (["tire_sales","forklift_sales","battery_sales","export"].includes(workType)) return progressStage === "invoiced" || progressStage === "cancelled";
     return false;
   };
 
@@ -668,6 +668,7 @@ const CallManagementPage: React.FC = () => {
     { value: "contract",   label: "계약" },
     { value: "delivery",   label: "납품" },
     { value: "invoiced",   label: "계산서발행" },
+    { value: "cancelled",  label: "취소" },
   ] as const;
   type CommonStageValue = typeof COMMON_STAGES[number]["value"];
 
@@ -2944,6 +2945,7 @@ const CallManagementPage: React.FC = () => {
                       <option value="doc_registration">서류등록</option>
                       <option value="contract_sent">전자계약발송</option>
                       <option value="confirmed">확정</option>
+                      <option value="cancelled">취소</option>
                     </select>
                   </div>
 

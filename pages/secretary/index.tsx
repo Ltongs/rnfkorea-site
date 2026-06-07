@@ -989,7 +989,7 @@ const SecretaryPage:React.FC = () => {
   const loadOrderViews = useCallback(async()=>{
     setOrdViewLoading(true);
 
-    const HCM_DONE   = ["confirmed","rejected","cancelled"];
+    const HCM_DONE   = ["confirmed","cancelled"];
     const HCM_ACTIVE_NOT = HCM_DONE;
 
     // 세 소스 병렬 조회
@@ -1370,7 +1370,7 @@ const SecretaryPage:React.FC = () => {
     if(!stage) return "text-gray-400";
     if(["invoiced","completed","confirmed","delivered"].includes(stage)) return "text-emerald-600 font-semibold";
     if(["rejected","cancelled","closed"].includes(stage)) return "text-red-400";
-    if(["contract","contract_sent","approved","confirmed"].includes(stage)) return "text-blue-600";
+    if(["contract","contract_sent","approved","확정","승인"].includes(stage)) return "text-blue-600";
     if(["quote","proposal","credit_check"].includes(stage)) return "text-indigo-500";
     return "text-orange-500";
   };
