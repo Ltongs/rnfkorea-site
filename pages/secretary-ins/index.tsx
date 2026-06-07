@@ -88,18 +88,8 @@ const CLAIM_STS_CLR:Record<string,string> = {requested:"bg-yellow-50 text-yellow
 
 // ─── 유틸 ─────────────────────────────────────────────────────────────────────
 // 한국 시간 기준 오늘 날짜 YYYY-MM-DD
-const todayStr = () => {
-  const d = new Date();
-  return d.toLocaleDateString("ko-KR",{year:"numeric",month:"2-digit",day:"2-digit",timeZone:"Asia/Seoul"})
-    .replace(/\. /g,"-").replace(".","").trim();
-};
-// n일 후 날짜 YYYY-MM-DD
-const addDays = (base:string, n:number) => {
-  const d = new Date(base+"T00:00:00");
-  d.setDate(d.getDate()+n);
-  return d.toLocaleDateString("ko-KR",{year:"numeric",month:"2-digit",day:"2-digit",timeZone:"Asia/Seoul"})
-    .replace(/\. /g,"-").replace(".","").trim();
-};
+const todayStr = () => { const d=new Date(); d.setHours(d.getHours()+9); return d.toISOString().slice(0,10); };
+const addDays = (base:string, n:number) => { const d=new Date(base+"T00:00:00"); d.setDate(d.getDate()+n); d.setHours(d.getHours()+9); return d.toISOString().slice(0,10); };
 // 이름 + 전화번호 → customer_key (예: 홍길동_1234)
 // phone 은 전체번호 저장, customer_key 는 끝4자리 기반
 const makeCustomerKey = (name:string, phone:string) => {
@@ -467,6 +457,17 @@ const SecretaryInsPage:React.FC = () => {
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const msgsRef = useRef<ChatMsg[]>([]);
+  useEffect(()=>{
+    msgsRef.current = msgs;
+    // 새 메시지 추가 시 자동 스크롤
+    if(msgs.length > 0){
+      setTimeout(()=>{
+        const c = chatContainerRef.current;
+        if(c) c.scrollTop = c.scrollHeight;
+      }, 50);
+    }
+  },[msgs]);
 
   // 계약 관리
   const [policies,setPolicies]               = useState<Policy[]>([]);
@@ -524,6 +525,13 @@ const SecretaryInsPage:React.FC = () => {
   // 토스트
   const [toast,setToast] = useState<{msg:string;type:"ok"|"err"}|null>(null);
   const showToast = (msg:string,type:"ok"|"err"="ok") => { setToast({msg,type}); setTimeout(()=>setToast(null),3500); };
+
+  // ─── PWA manifest 교체 (보험 AI 비서 전용) ────────────────────────────────────
+  useEffect(()=>{
+    const el = document.querySelector('link[rel="manifest"]');
+    if(el) el.setAttribute("href","/manifest-ins.json");
+    return ()=>{ if(el) el.setAttribute("href","/manifest.json"); };
+  },[]);
 
   // ─── 권한 체크 (모든 훅 선언 이후) ───────────────────────────────────────────
   if(!user||!isInsAI)return <Navigate to="/" replace/>;
@@ -662,20 +670,21 @@ const SecretaryInsPage:React.FC = () => {
     setStats({todaySch:a.count??0,activeTodo:b.count??0,urgentTodo:c.count??0,newOrders:d.count??0,todayFollowup:e.count??0,newConsult:f.count??0,expiringCount:g.count??0,activeClaims:h.count??0});
   },[]);
 
-  const loadChatHist = useCallback(async()=>{
-    setHistLoading(true);
-    const {data} = await supabase.from("ins_chat_logs").select("role,content,created_at").order("created_at",{ascending:true}).limit(40);
-    setMsgs((data??[]).map(r=>({
+  const loadChatHist = useCallback(async(initial=false)=>{
+    if(initial) setHistLoading(true);
+    // 최신 200개를 내림차순으로 가져온 뒤 역순 정렬 → 항상 최신 대화 포함
+    const {data} = await supabase.from("ins_chat_logs").select("role,content,created_at").order("created_at",{ascending:false}).limit(200);
+    const mapped = (data??[]).reverse().map(r=>({
       role:r.role as "user"|"assistant",
       content:r.content,
       ts:new Date(r.created_at).toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}).replace(". ","월 ").replace(". ","일 "),
-    })));
-    setHistLoading(false);
-    // 히스토리 로드 완료 후 맨 아래로 스크롤
-    setTimeout(()=>{
+    }));
+    setMsgs(mapped);
+    if(initial) setHistLoading(false);
+    [50,200,500].forEach(ms=>setTimeout(()=>{
       const c = chatContainerRef.current;
       if(c) c.scrollTop = c.scrollHeight;
-    }, 100);
+    }, ms));
   },[]);
 
   const loadSchedules = useCallback(async()=>{
@@ -736,29 +745,16 @@ const SecretaryInsPage:React.FC = () => {
     const {data:{subscription}} = supabase.auth.onAuthStateChange((event, session)=>{
       if((event==="SIGNED_IN"||event==="TOKEN_REFRESHED"||event==="INITIAL_SESSION") && session){
         void loadStats();
-        void loadChatHist();
+        void loadChatHist(true);
         void loadCalData(calViewYear, calViewMonth);
         void checkGcalConnection();
       }
     });
     return ()=>subscription.unsubscribe();
   },[loadStats, loadChatHist, loadCalData]);
-  const prevMsgLen = useRef(0);
-  useEffect(()=>{
-    if(msgs.length > 0 && msgs.length !== prevMsgLen.current){
-      if(prevMsgLen.current > 0){
-        // 채팅 컨테이너만 스크롤 (전체 페이지 스크롤 방지)
-        const c = chatContainerRef.current;
-        if(c) c.scrollTop = c.scrollHeight;
-      }
-      prevMsgLen.current = msgs.length;
-    }
-  },[msgs]);
   useEffect(()=>{
     if(tab==="schedule"){
       const today = todayStr();
-      const tomorrow = new Date(today+"T00:00:00");
-      tomorrow.setDate(tomorrow.getDate()+1);
       const tomorrowStr = addDays(today, 1);
       setSchedDate(today);
       setSchedLoading(true);
@@ -774,9 +770,11 @@ const SecretaryInsPage:React.FC = () => {
       });
     }
     if(tab==="todo") void loadTodos();
+    if(tab==="chat"){ setTimeout(()=>{ const c=chatContainerRef.current; if(c)c.scrollTop=c.scrollHeight; },100); }
   },[tab, loadTodos]);
-  useEffect(()=>{if(tab==="todo")void loadTodos();},[tab,loadTodos]);
   useEffect(()=>{if(tab==="consults"){void loadOrders();void loadConsults();}},[tab,loadOrders,loadConsults]);
+  // 달력 날짜 클릭 시 자동 갱신
+  useEffect(()=>{ if(tab==="schedule") void loadSchedules(); },[schedDate, loadSchedules]);
 
   // ─── 계약 CRUD ──────────────────────────────────────────────────────────────
   const loadPolicies = useCallback(async()=>{
@@ -1137,7 +1135,7 @@ const SecretaryInsPage:React.FC = () => {
     const text=chatInput.trim();
     if(!text||chatLoading)return;
     setChatInput("");
-    const next:ChatMsg[]=[...msgs,{role:"user",content:text,ts:nowTs()}];
+    const next:ChatMsg[]=[...msgsRef.current,{role:"user",content:text,ts:nowTs()}];
     setMsgs(next);
     setChatLoading(true);
     try{
@@ -1145,7 +1143,7 @@ const SecretaryInsPage:React.FC = () => {
       const res=await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/secretary-ai-ins`,{
         method:"POST",
         headers:{"Content-Type":"application/json",Authorization:`Bearer ${session?.access_token??""}`},
-        body:JSON.stringify({messages:next.map(m=>({role:m.role,content:m.content})),autoSave}),
+        body:JSON.stringify({messages:[{role:"user",content:text}],autoSave}),
       });
       const d=await res.json();
       const reply:string=d.reply??d.content?.[0]?.text??"응답을 받지 못했습니다.";
