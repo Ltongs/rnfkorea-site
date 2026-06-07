@@ -34,12 +34,17 @@ type PendingUpdate = {
   candidates:{id:number;customer_name:string;work_type:string;status:string;summary:string;detail_memo:string|null}[];
   bestMatch:{id:number;customer_name:string;work_type:string;status:string;summary:string;detail_memo:string|null}|null;
 };
+type PendingCustomerSelect = {
+  action:Record<string,unknown>;
+  candidates:{customer_key:string;customer_name:string;phone?:string;isNew?:boolean}[];
+};
 type ChatMsg = {
   role:"user"|"assistant"; content:string;
   ts?:string;
   saved?:{type:string;id:number;consultation_id?:number}[];
   actions?:Record<string,unknown>[];
   pendingUpdates?:PendingUpdate[];
+  pendingCustomerSelects?:PendingCustomerSelect[];
 };
 type Policy = {
   id:number; customer_key:string; customer_name:string;
@@ -208,6 +213,56 @@ function PendingCard({pu,onConfirm,onReject}:{pu:PendingUpdate[];onConfirm:(id:n
   );
 }
 
+// ─── 동명이인 고객 선택 카드 ─────────────────────────────────────────────────
+function PendingCustomerSelectCard({
+  pcs, onConfirm, onReject
+}:{
+  pcs:PendingCustomerSelect[];
+  onConfirm:(customerKey:string, action:Record<string,unknown>)=>void;
+  onReject:(i:number)=>void;
+}) {
+  if(!pcs?.length) return null;
+  return (
+    <div className="mt-2 space-y-2">
+      {pcs.map((p,idx)=>{
+        const a = p.action;
+        const actionLabel = a.type==="customer_info_update"?"고객 정보 업데이트":a.type==="policy"?"계약 등록":"작업";
+        return (
+          <div key={idx} className="border border-blue-200 rounded-xl bg-blue-50 p-3">
+            <p className="text-xs font-semibold text-blue-700 mb-2">👥 동명이인 확인 — {actionLabel}</p>
+            <div className="bg-white rounded-lg p-2 mb-2 border border-blue-100">
+              <p className="text-xs text-gray-500 mb-0.5">작업 내용</p>
+              <p className="text-sm text-gray-800">
+                {a.type==="customer_info_update"
+                  ? `전화번호: ${a.phone??"-"}`
+                  : a.type==="policy"
+                  ? `${a.product_name??"-"} 계약 등록`
+                  : JSON.stringify(a)}
+              </p>
+            </div>
+            <p className="text-xs text-gray-500 mb-2">어느 고객인지 선택해주세요:</p>
+            <div className="space-y-1.5 mb-2">
+              {p.candidates.map(c=>(
+                <button key={c.customer_key}
+                  className={`w-full text-left px-3 py-2 rounded-lg border transition-all ${c.isNew?"border-emerald-300 bg-emerald-50 hover:border-emerald-500":"border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50"}`}
+                  onClick={()=>onConfirm(c.customer_key, a)}>
+                  <div className="flex items-center gap-2">
+                    {c.isNew&&<span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500 text-white font-semibold">신규</span>}
+                    <span className="text-sm font-semibold text-[#0f172a]">{c.customer_name}</span>
+                    {c.phone&&<span className="text-xs text-gray-500">📞 {c.phone}</span>}
+                    {!c.isNew&&<span className="text-xs text-gray-300">{c.customer_key}</span>}
+                  </div>
+                </button>
+              ))}
+            </div>
+            <button className={BTG} onClick={()=>onReject(idx)}>취소</button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── 미니 캘린더 ──────────────────────────────────────────────────────────────
 type CalSch = {id:number;title:string;schedule_date:string;start_time:string|null;category:string;is_done:boolean};
 type CalTdo = {id:number;title:string;due_date:string;priority:string};
@@ -225,7 +280,9 @@ let _setPopup: ((p:PopupData|null)=>void)|null = null;
 
 function CalPopupPortal() {
   const [popup, setPopup] = useState<PopupData|null>(null);
-  useEffect(()=>{ _setPopup=setPopup; return ()=>{ _setPopup=null; }; },[]);
+  // 렌더링 중 직접 할당 (useEffect 지연 없이 즉시 사용 가능)
+  _setPopup = setPopup;
+  useEffect(()=>{ return ()=>{ _setPopup=null; }; },[]);
   const CAT_COLOR:Record<string,string> = {meeting:"#60a5fa",call:"#fb923c",followup:"#c084fc",task:"#34d399"};
   if(!popup) return null;
   // 화면 오른쪽 넘치면 왼쪽에 표시
@@ -334,7 +391,9 @@ function MiniCalendar({
     const dt = ds(d);
     const sc = schMapRef.current.get(dt)??[];
     const tc = tdoMapRef.current.get(dt)??[];
-    const gc = gcalMapRef.current.get(dt)??[];
+    // DB 일정과 제목이 같은 구글 캘린더 이벤트는 중복 제외
+    const scTitles = new Set(sc.map((s:any)=>s.title));
+    const gc = (gcalMapRef.current.get(dt)??[]).filter((g:any)=>!scTitles.has(g.title));
     if(sc.length===0 && tc.length===0 && gc.length===0) return;
     if(hideTimer.current){clearTimeout(hideTimer.current);hideTimer.current=null;}
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -373,7 +432,8 @@ function MiniCalendar({
           const dt=ds(d);
           const isT=dt===T, isSel=dt===selectedDate;
           const sc=schMapRef.current.get(dt)??[], tc=tdoMapRef.current.get(dt)??[];
-          const gc=gcalMapRef.current.get(dt)??[];
+          const _scTitles=new Set(sc.map((s:any)=>s.title));
+          const gc=(gcalMapRef.current.get(dt)??[]).filter((g:any)=>!_scTitles.has(g.title));
           const hasData=sc.length>0||tc.length>0||gc.length>0;
           const dow=(first+d-1)%7;
           const txtCls=isSel?"text-white":isT?"text-orange-500 font-bold":dow===0?"text-red-400":dow===6?"text-blue-400":"text-gray-700";
@@ -579,6 +639,7 @@ const SecretaryInsPage:React.FC = () => {
       });
       const d = await res.json();
       if(d.events){
+        // 중복 제거는 MiniCalendar 컴포넌트 내 localTitles에서 처리
         setGcalEvents(d.events.map((e:any)=>({
           id:e.id,
           title:e.summary??"(제목없음)",
@@ -752,6 +813,16 @@ const SecretaryInsPage:React.FC = () => {
     });
     return ()=>subscription.unsubscribe();
   },[loadStats, loadChatHist, loadCalData]);
+  const prevMsgLen = useRef(0);
+  useEffect(()=>{
+    if(msgs.length > 0 && msgs.length !== prevMsgLen.current){
+      if(prevMsgLen.current > 0){
+        const c = chatContainerRef.current;
+        if(c) c.scrollTop = c.scrollHeight;
+      }
+      prevMsgLen.current = msgs.length;
+    }
+  },[msgs]);
   useEffect(()=>{
     if(tab==="schedule"){
       const today = todayStr();
@@ -910,15 +981,24 @@ const SecretaryInsPage:React.FC = () => {
   const searchCustomers = useCallback(async(name:string)=>{
     if(!name.trim()){setCustResults([]);return;}
     setCustLoading(true);
-    const [pr,cr,clr] = await Promise.all([
+    const [pr,cr,clr,ir] = await Promise.all([
       supabase.from("ins_policies").select("customer_key,customer_name").ilike("customer_name",`%${name}%`),
       supabase.from("ins_consultation_cases").select("customer_key,customer_name").ilike("customer_name",`%${name}%`),
       supabase.from("ins_claims").select("customer_key,customer_name").ilike("customer_name",`%${name}%`),
+      supabase.from("ins_customer_info").select("customer_key").ilike("customer_key",`%${name}%`),
     ]);
     const map = new Map<string,string>();
     for(const row of [...(pr.data??[]),...(cr.data??[]),...(clr.data??[])]) {
       if(row.customer_key && !map.has(row.customer_key))
         map.set(row.customer_key, row.customer_name);
+    }
+    // ins_customer_info에만 있는 고객 (전화번호만 등록된 경우)
+    for(const row of (ir.data??[])) {
+      if(row.customer_key && !map.has(row.customer_key)) {
+        // customer_key에서 이름 추출 (이름_끝4자리 형식)
+        const customerName = row.customer_key.replace(/_\d{4}$/, "");
+        map.set(row.customer_key, customerName);
+      }
     }
     setCustResults(Array.from(map.entries()).map(([k,n])=>({customer_key:k,customer_name:n})));
     setCustLoading(false);
@@ -1012,6 +1092,8 @@ const SecretaryInsPage:React.FC = () => {
     setCustDetailLoading(true);
     setSelectedCust(null);
     setCustInfo(null);
+    setCustSearch("");
+    setCustResults([]);
     const [pr,cr,clr,ir] = await Promise.all([
       supabase.from("ins_policies").select("*").eq("customer_key",key).order("start_date",{ascending:false}),
       supabase.from("ins_consultation_cases").select("*").eq("customer_key",key).order("created_at",{ascending:false}),
@@ -1147,8 +1229,10 @@ const SecretaryInsPage:React.FC = () => {
       });
       const d=await res.json();
       const reply:string=d.reply??d.content?.[0]?.text??"응답을 받지 못했습니다.";
-      const saved=d.saved??[], actions=d.actions??[], pendingUpdates=d.pendingUpdates??[];
-      setMsgs(p=>[...p,{role:"assistant",content:reply,saved,actions,pendingUpdates,ts:nowTs()}]);
+      const saved=d.saved??[], actions=d.actions??[], pendingUpdates=d.pendingUpdates??[], pendingCustomerSelects=d.pendingCustomerSelects??[];
+      setMsgs(p=>[...p,{role:"assistant",content:reply,saved,actions,pendingUpdates,pendingCustomerSelects,ts:nowTs()}]);
+      // 고객 선택이 필요하면 채팅 탭으로 자동 이동
+      if(pendingCustomerSelects.length>0){ setTab("chat"); setTimeout(()=>{ const c=chatContainerRef.current; if(c)c.scrollTop=c.scrollHeight; },150); }
       if(saved.length>0){
         void loadStats();
         // 저장된 타입에 따라 해당 탭 데이터 즉시 갱신
@@ -1206,6 +1290,45 @@ const SecretaryInsPage:React.FC = () => {
   }
   function rejectUpdate(msgIdx:number,uidx:number){
     setMsgs(p=>p.map((m,i)=>i!==msgIdx?m:{...m,pendingUpdates:(m.pendingUpdates??[]).filter((_,j)=>j!==uidx)}));
+  }
+
+  async function confirmCustomerSelect(msgIdx:number, customerKey:string, action:Record<string,unknown>){
+    setChatLoading(true);
+    try{
+      const {data:{session}}=await supabase.auth.getSession();
+      const res=await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/secretary-ai-ins`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json",Authorization:`Bearer ${session?.access_token??""}`},
+        body:JSON.stringify({messages:[{role:"user",content:"confirm_customer_action"}],autoSave:false,confirmCustomerAction:{customer_key:customerKey,action}}),
+      });
+      const d=await res.json();
+      setMsgs(p=>p.map((m,i)=>i!==msgIdx?m:{...m,pendingCustomerSelects:[],saved:[...(m.saved??[]),...(d.saved??[])]}));
+      showToast("저장 완료");
+      void loadStats();
+    }catch{showToast("저장 실패","err");}
+    setChatLoading(false);
+  }
+  function rejectCustomerSelect(msgIdx:number,uidx:number){
+    setMsgs(p=>p.map((m,i)=>i!==msgIdx?m:{...m,pendingCustomerSelects:(m.pendingCustomerSelects??[]).filter((_,j)=>j!==uidx)}));
+  }
+
+  async function deleteCustomer(key:string, name:string){
+    if(!window.confirm(`"${name}" 고객의 모든 데이터를 삭제합니다.
+(계약, 상담, 청구, 고객정보 전체)
+
+정말 삭제하시겠습니까?`)) return;
+    await Promise.all([
+      supabase.from("ins_customer_info").delete().eq("customer_key",key),
+      supabase.from("ins_policies").delete().eq("customer_key",key),
+      supabase.from("ins_claims").delete().eq("customer_key",key),
+      supabase.from("ins_consultation_cases").delete().eq("customer_key",key),
+      supabase.from("ins_orders").delete().eq("customer_key",key),
+    ]);
+    setSelectedCust(null);
+    setCustInfo(null);
+    setCustSearch("");
+    setCustResults([]);
+    showToast(`"${name}" 고객 삭제 완료`);
   }
 
   // 푸터 숨기기
@@ -2033,23 +2156,28 @@ const SecretaryInsPage:React.FC = () => {
                 {!custLoading&&custResults.length===0&&custSearch.trim()&&(
                   <p className="text-sm text-gray-400 mt-3 text-center py-4">"{custSearch}" 검색 결과가 없습니다</p>
                 )}
-                {custResults.length>0&&!selectedCust&&(
+                {custResults.length>0&&(
                   <div className="mt-3">
                     <p className="text-xs text-gray-400 mb-2">{custResults.length}명 검색됨 — 고객을 선택하세요</p>
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       {custResults.map(c=>(
-                        <button key={c.customer_key}
-                          className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-white hover:border-orange-300 hover:bg-orange-50 transition-all text-left"
-                          onClick={()=>void loadCustomerProfile(c.customer_key, c.customer_name)}
-                        >
-                          <div className="w-9 h-9 rounded-full bg-[#0f172a] flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
-                            {c.customer_name.slice(0,1)}
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold text-[#0f172a]">{c.customer_name}</p>
-                            <p className="font-mono text-xs text-gray-400">{c.customer_key}</p>
-                          </div>
-                        </button>
+                        <div key={c.customer_key} className={`relative flex items-center gap-3 p-3 rounded-xl border transition-all ${selectedCust?.customer_key===c.customer_key?"border-orange-400 bg-orange-50":"border-gray-200 bg-white hover:border-orange-300 hover:bg-orange-50"}`}>
+                          <button className="flex items-center gap-3 flex-1 text-left"
+                            onClick={()=>void loadCustomerProfile(c.customer_key, c.customer_name)}
+                          >
+                            <div className="w-9 h-9 rounded-full bg-[#0f172a] flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+                              {c.customer_name.slice(0,1)}
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold text-[#0f172a]">{c.customer_name}</p>
+                              <p className="font-mono text-xs text-gray-400">{c.customer_key}</p>
+                            </div>
+                          </button>
+                          <button className="text-xs text-red-400 hover:text-red-600 px-2 py-1 rounded-lg hover:bg-red-50 transition-all flex-shrink-0"
+                            onClick={e=>{e.stopPropagation();void deleteCustomer(c.customer_key,c.customer_name);}}>
+                            삭제
+                          </button>
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -2086,7 +2214,13 @@ const SecretaryInsPage:React.FC = () => {
                         <span className="text-indigo-600">🏥 청구 {selectedCust.claims.length}건</span>
                       </div>
                     </div>
-                    <button className={BTG} onClick={()=>quickChat(`고객 "${selectedCust.customer_name}"(${selectedCust.customer_key}) 전체 현황 정리해줘`)}>AI 요약</button>
+                    <div className="flex gap-1.5 flex-shrink-0">
+                      <button className={BTG} onClick={()=>quickChat(`고객 "${selectedCust.customer_name}"(${selectedCust.customer_key}) 전체 현황 정리해줘`)}>AI 요약</button>
+                      <button className="px-3 py-1.5 rounded-xl border border-red-200 text-xs text-red-500 hover:bg-red-50 transition-all"
+                        onClick={()=>void deleteCustomer(selectedCust.customer_key, selectedCust.customer_name)}>
+                        삭제
+                      </button>
+                    </div>
                   </div>
 
                   {/* 고객 기본 정보 */}
@@ -2284,6 +2418,9 @@ const SecretaryInsPage:React.FC = () => {
                       )}
                       {m.role==="assistant"&&m.pendingUpdates&&m.pendingUpdates.length>0&&(
                         <PendingCard pu={m.pendingUpdates} onConfirm={(cid,a)=>void confirmUpdate(i,cid,a)} onReject={(ui)=>rejectUpdate(i,ui)}/>
+                      )}
+                      {m.role==="assistant"&&m.pendingCustomerSelects&&m.pendingCustomerSelects.length>0&&(
+                        <PendingCustomerSelectCard pcs={m.pendingCustomerSelects} onConfirm={(key,a)=>void confirmCustomerSelect(i,key,a)} onReject={(ui)=>rejectCustomerSelect(i,ui)}/>
                       )}
                     </div>
                   </div>

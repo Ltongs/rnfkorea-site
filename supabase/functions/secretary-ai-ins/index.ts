@@ -7,12 +7,50 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const TODAY_ISO = new Date().toISOString().slice(0,10);
-const TODAY_KR  = new Date().toLocaleDateString("ko-KR",{year:"numeric",month:"2-digit",day:"2-digit",timeZone:"Asia/Seoul"})
-  .replace(/\. /g,"-").replace(".","");
+// TODAY_ISO / TODAY_KR 은 serve() 내부에서 요청마다 계산 (모듈 캐시 방지)
 
-const SYSTEM = `You are a Korean AI secretary for an insurance consultant (보험설계사).
-Today: ${TODAY_ISO}
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+
+  // ── 요청마다 KST 기준 오늘 날짜 계산 ──────────────────────────
+  // 한국 시간 기준 오늘 날짜 계산 (UTC+9)
+  const _now = new Date();
+  const _kst = new Date(_now.getTime() + 9*60*60*1000);
+  const TODAY_ISO = _kst.toISOString().slice(0,10);
+  const _DOW_KO = ["일요일","월요일","화요일","수요일","목요일","금요일","토요일"];
+  const _DOW_EN = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  const TODAY_DOW_KO = _DOW_KO[_kst.getUTCDay()];
+  const TODAY_DOW_EN = _DOW_EN[_kst.getUTCDay()];
+  const TODAY_KR = _kst.toISOString().slice(0,10);
+  // 다음 주 해당 요일 (0=일,1=월..6=토)
+  function getNextWeekday(baseDate: string, weekday: number): string {
+    const d = new Date(baseDate);
+    const day = d.getDay(); // 0=일,1=월..6=토
+    const dayKr = day === 0 ? 7 : day;
+    const targetKr = weekday === 0 ? 7 : weekday;
+    let diff = targetKr - dayKr;
+    if (diff < 0) diff += 7;  // 이번 주 해당 요일까지
+    diff += 7;                 // 다음 주이므로 +7
+    d.setDate(d.getDate() + diff);
+    return d.toISOString().slice(0,10);
+  }
+  // 이번 주 해당 요일 (오늘 포함, 과거도 허용)
+  function getThisWeekday(baseDate: string, weekday: number): string {
+    const d = new Date(baseDate);
+    const day = d.getDay();
+    const dayKr = day === 0 ? 7 : day;
+    const targetKr = weekday === 0 ? 7 : weekday;
+    let diff = targetKr - dayKr;
+    if (diff < 0) diff += 7;
+    d.setDate(d.getDate() + diff);
+    return d.toISOString().slice(0,10);
+  }
+
+  const SYSTEM = `You are a Korean AI secretary for an insurance consultant (보험설계사).
+Today: ${TODAY_ISO} (${TODAY_DOW_EN}, ${TODAY_DOW_KO})
+Korean week starts Monday. "다음 주 월요일" = ${getNextWeekday(TODAY_ISO,1)}, "다음 주 화요일" = ${getNextWeekday(TODAY_ISO,2)}, "다음 주 수요일" = ${getNextWeekday(TODAY_ISO,3)}, "다음 주 목요일" = ${getNextWeekday(TODAY_ISO,4)}, "다음 주 금요일" = ${getNextWeekday(TODAY_ISO,5)}, "다음 주 토요일" = ${getNextWeekday(TODAY_ISO,6)}, "다음 주 일요일" = ${getNextWeekday(TODAY_ISO,0)}
+"이번 주 월요일" = ${getThisWeekday(TODAY_ISO,1)}, "이번 주 화요일" = ${getThisWeekday(TODAY_ISO,2)}, "이번 주 수요일" = ${getThisWeekday(TODAY_ISO,3)}, "이번 주 목요일" = ${getThisWeekday(TODAY_ISO,4)}, "이번 주 금요일" = ${getThisWeekday(TODAY_ISO,5)}, "이번 주 토요일" = ${getThisWeekday(TODAY_ISO,6)}, "이번 주 일요일" = ${getThisWeekday(TODAY_ISO,0)}
+Always calculate relative dates based on TODAY_ISO above. "월요일날", "이번 월요일" → 이번 주 월요일 = ${getThisWeekday(TODAY_ISO,1)}. "다음 월요일" → ${getNextWeekday(TODAY_ISO,1)}.
 
 CRITICAL: Output ONLY raw JSON. No markdown, no code blocks, no text before/after JSON.
 
@@ -31,6 +69,10 @@ claim (insurance claim request): {"type":"claim","customer_name":"string","phone
 
 consult_update (UPDATE existing customer insurance info): {"type":"consult_update","customer_name":"string","work_type":"insurance","keywords":["keyword1"],"update_memo":"string"}
 
+policy (register insurance policy/contract): {"type":"policy","customer_name":"string","phone_last4":"string|null","product_name":"string","start_date":"YYYY-MM-DD|null","expiry_date":"YYYY-MM-DD|null","memo":"string|null"}
+
+customer_info_update (update customer contact/account info): {"type":"customer_info_update","customer_name":"string","phone_last4":"string|null","phone":"string|null","bank_name":"string|null","bank_account":"string|null","card_company":"string|null","card_number":"string|null","memo":"string|null"}
+
 CLAIM TYPE RULES:
 - 치과, 내과, 외래, 통원 → "outpatient"
 - 입원 → "inpatient"
@@ -45,10 +87,9 @@ RULES:
 - Existing customer update → consult_update
 - Task/reminder → todo
 - Meeting/call schedule → schedule
+- Customer phone/bank/card info update → customer_info_update
+- Insurance policy/contract registration → policy
 - General question → actions:[]`;
-
-serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   try {
     const body = await req.json();
@@ -77,6 +118,22 @@ serve(async (req) => {
       );
     }
 
+    // ── confirmCustomerAction ────────────────────────────────────
+    const { confirmCustomerAction } = body;
+    if (confirmCustomerAction) {
+      const { customer_key, action } = confirmCustomerAction;
+      const innerSaved: {type:string;id:number}[] = [];
+      if (action.type === "customer_info_update") {
+        await saveCustomerInfo(db, customer_key, action, innerSaved);
+      } else if (action.type === "policy") {
+        await savePolicy(db, customer_key, action, TODAY_ISO, innerSaved);
+      }
+      return new Response(
+        JSON.stringify({reply:`✅ ${action.type==="policy"?"계약":"고객 정보"} 저장 완료`, actions:[], saved:innerSaved, pendingUpdates:[], pendingCustomerSelects:[]}),
+        {headers:{...CORS,"Content-Type":"application/json"}}
+      );
+    }
+
     if (!messages || !Array.isArray(messages)) throw new Error("messages 필요");
 
     // ── Claude 호출 ───────────────────────────────────────────────
@@ -98,8 +155,42 @@ serve(async (req) => {
       return new Response(JSON.stringify({reply:raw,actions:[],saved:[],pendingUpdates:[]}),{headers:{...CORS,"Content-Type":"application/json"}});
     }
 
+    // ── helper 함수 ───────────────────────────────────────────────
+    async function saveCustomerInfo(db: any, cKey: string, a: Record<string,unknown>, saved: {type:string;id:number}[]) {
+      const {data:existing} = await db.from("ins_customer_info").select("*").eq("customer_key", cKey).maybeSingle();
+      const upsertData: Record<string,unknown> = {
+        customer_key: cKey,
+        phone: a.phone ?? existing?.phone ?? "",
+        bank_name: a.bank_name ?? existing?.bank_name ?? "",
+        bank_account: a.bank_account ?? existing?.bank_account ?? "",
+        card_company: a.card_company ?? existing?.card_company ?? "",
+        card_number: a.card_number ?? existing?.card_number ?? "",
+        card_expiry: a.card_expiry ?? existing?.card_expiry ?? "",
+        memo: a.memo ?? existing?.memo ?? "",
+      };
+      if (existing?.id) {
+        const {data} = await db.from("ins_customer_info").update(upsertData).eq("id", existing.id).select("id").single();
+        if (data) saved.push({type:"customer_info_update", id:data.id});
+      } else {
+        const {data} = await db.from("ins_customer_info").insert(upsertData).select("id").single();
+        if (data) saved.push({type:"customer_info_update", id:data.id});
+      }
+    }
+    async function savePolicy(db: any, cKey: string, a: Record<string,unknown>, todayIso: string, saved: {type:string;id:number}[]) {
+      const {data,error} = await db.from("ins_policies").insert({
+        customer_key: cKey,
+        customer_name: a.customer_name,
+        product_name: a.product_name ?? "미확인",
+        start_date: a.start_date ?? todayIso,
+        expiry_date: a.expiry_date ?? null,
+        memo: a.memo ?? null,
+      }).select("id").single();
+      if (!error && data) saved.push({type:"policy", id:data.id});
+    }
+
     const saved: {type:string;id:number;consultation_id?:number}[] = [];
     const pendingUpdates: {action:Record<string,unknown>;candidates:Record<string,unknown>[];bestMatch:Record<string,unknown>|null}[] = [];
+    const pendingCustomerSelects: {action:Record<string,unknown>;candidates:{customer_key:string;customer_name:string;phone?:string}[]}[] = [];
 
     if (autoSave && parsed.actions?.length > 0) {
       for (const a of parsed.actions) {
@@ -160,6 +251,67 @@ serve(async (req) => {
           if (!error && data) saved.push({type:"claim",id:data.id});
         }
 
+        // ── 계약(policy) 등록 ─────────────────────────────────────
+        if (a.type === "policy") {
+          const last4 = String(a.phone_last4??"").replace(/[^0-9]/g,"").slice(-4);
+          const name = String(a.customer_name).trim();
+          // 항상 동명이인 검색
+          const candidateMap = new Map<string,{customer_key:string;customer_name:string;phone?:string}>();
+          const {data:caseMatches} = await db.from("ins_consultation_cases")
+            .select("customer_key,customer_name,phone").eq("customer_name", name)
+            .order("created_at",{ascending:false}).limit(20);
+          const {data:infoMatches} = await db.from("ins_customer_info")
+            .select("customer_key,phone").ilike("customer_key", `${name}_%`);
+          for(const r of (caseMatches??[])) if(!candidateMap.has(r.customer_key)) candidateMap.set(r.customer_key,{customer_key:r.customer_key,customer_name:r.customer_name,phone:r.phone});
+          for(const r of (infoMatches??[])) if(!candidateMap.has(r.customer_key)) candidateMap.set(r.customer_key,{customer_key:r.customer_key,customer_name:name,phone:r.phone});
+          const candidates = Array.from(candidateMap.values());
+          if(candidates.length === 0) {
+            const cKey = last4 ? `${name}_${last4}` : name;
+            await savePolicy(db, cKey, a, TODAY_ISO, saved);
+          } else if(last4 && candidates.some(c=>c.customer_key===`${name}_${last4}`)) {
+            await savePolicy(db, `${name}_${last4}`, a, TODAY_ISO, saved);
+          } else {
+            const newOption = last4
+              ? {customer_key:`${name}_${last4}`,customer_name:name,phone:last4,isNew:true}
+              : null;
+            const allCandidates = newOption ? [...candidates,{...newOption}] : candidates;
+            pendingCustomerSelects.push({action:a, candidates:allCandidates});
+          }
+        }
+
+        // ── 고객 정보 업데이트 ─────────────────────────────────────
+        if (a.type === "customer_info_update") {
+          const last4 = String(a.phone_last4??"").replace(/[^0-9]/g,"").slice(-4);
+          const name = String(a.customer_name).trim();
+          // 항상 동명이인 검색 (전화번호 유무 관계없이)
+          const candidateMap = new Map<string,{customer_key:string;customer_name:string;phone?:string}>();
+          const {data:infoMatches} = await db.from("ins_customer_info")
+            .select("customer_key,phone").ilike("customer_key", `${name}_%`);
+          const {data:caseMatches} = await db.from("ins_consultation_cases")
+            .select("customer_key,customer_name,phone").eq("customer_name", name)
+            .order("created_at",{ascending:false}).limit(20);
+          for(const r of (infoMatches??[])) candidateMap.set(r.customer_key,{customer_key:r.customer_key,customer_name:name,phone:r.phone});
+          for(const r of (caseMatches??[])) if(!candidateMap.has(r.customer_key)) candidateMap.set(r.customer_key,{customer_key:r.customer_key,customer_name:r.customer_name,phone:r.phone});
+          const candidates = Array.from(candidateMap.values());
+          if(candidates.length === 0) {
+            // 완전 신규 → phone_last4 있으면 이름_끝4자리, 없으면 이름만
+            const cKey = last4 ? `${name}_${last4}` : name;
+            await saveCustomerInfo(db, cKey, a, saved);
+          } else if(last4 && candidates.some(c=>c.customer_key===`${name}_${last4}`)) {
+            // 전화번호로 정확히 매칭되는 기존 고객 → 바로 저장
+            await saveCustomerInfo(db, `${name}_${last4}`, a, saved);
+          } else {
+            // 동명이인 존재 → 선택 요청 (신규 추가 옵션도 포함)
+            const newOption = last4
+              ? {customer_key:`${name}_${last4}`,customer_name:name,phone:last4,isNew:true}
+              : null;
+            const allCandidates = newOption
+              ? [...candidates,{...newOption}]
+              : candidates;
+            pendingCustomerSelects.push({action:a, candidates:allCandidates});
+          }
+        }
+
         // ── 상담 업데이트 ──────────────────────────────────────────
         if (a.type === "consult_update") {
           const kws = (a.keywords as string[]) ?? [];
@@ -192,7 +344,7 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({reply:parsed.reply, actions:parsed.actions, saved, pendingUpdates}),
+      JSON.stringify({reply:parsed.reply, actions:parsed.actions, saved, pendingUpdates, pendingCustomerSelects}),
       { headers:{...CORS,"Content-Type":"application/json"} }
     );
 
