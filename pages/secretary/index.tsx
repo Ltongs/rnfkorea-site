@@ -1617,6 +1617,23 @@ const SecretaryPage:React.FC = () => {
     };
   },[]);
 
+  // 세션 자동 갱신 — 5분마다 체크, 만료 임박 시 갱신
+  useEffect(()=>{
+    const refresh = async()=>{
+      const {data:{session}} = await supabase.auth.getSession();
+      if(!session) return;
+      const expiresAt = session.expires_at ?? 0;
+      const now = Math.floor(Date.now()/1000);
+      // 만료 10분 전이면 갱신
+      if(expiresAt - now < 600){
+        await supabase.auth.refreshSession();
+      }
+    };
+    void refresh();
+    const timer = setInterval(()=>void refresh(), 5*60*1000);
+    return ()=>clearInterval(timer);
+  },[]);
+
   // ─── 렌더 ─────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col bg-gray-50">

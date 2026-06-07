@@ -1115,9 +1115,10 @@ const SecretaryInsPage:React.FC = () => {
       setCustInfoForm(ir.data as CustomerInfo);
     } else {
       // ins_customer_info 없으면 ins_consultation_cases의 전화번호로 자동 채우기
-      const casePhone = (cr.data??[]).find((c:any)=>c.phone&&c.phone!=="미입력")?.phone ?? "";
-      const phoneFromKey = key.match(/_(\d{4})$/) ? key.match(/_(\d{4})$/)![1] : "";
-      const autoPhone = casePhone || phoneFromKey;
+      // 전체번호(10~11자리) 우선, 없으면 끝 4자리
+      const casePhoneFull = (cr.data??[]).find((c:any)=>c.phone&&c.phone.replace(/\D/g,"").length>=10)?.phone ?? "";
+      const casePhone4 = (cr.data??[]).find((c:any)=>c.phone&&c.phone!=="미입력")?.phone ?? "";
+      const autoPhone = casePhoneFull || casePhone4;
       setCustInfoForm({customer_key:key,phone:autoPhone,bank_name:"",bank_account:"",card_company:"",card_number:"",card_expiry:"",memo:""});
     }
     setCustDetailLoading(false);
@@ -1359,6 +1360,22 @@ const SecretaryInsPage:React.FC = () => {
         if(header) header.style.display='';
       }
     };
+  },[]);
+
+  // 세션 자동 갱신 — 5분마다 체크, 만료 10분 전이면 갱신
+  useEffect(()=>{
+    const refresh = async()=>{
+      const {data:{session}} = await supabase.auth.getSession();
+      if(!session) return;
+      const expiresAt = session.expires_at ?? 0;
+      const now = Math.floor(Date.now()/1000);
+      if(expiresAt - now < 600){
+        await supabase.auth.refreshSession();
+      }
+    };
+    void refresh();
+    const timer = setInterval(()=>void refresh(), 5*60*1000);
+    return ()=>clearInterval(timer);
   },[]);
 
   // ─── 렌더 ─────────────────────────────────────────────────────────────────

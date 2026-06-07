@@ -65,7 +65,7 @@ schedule: {"type":"schedule","title":"string","description":null,"schedule_date"
 
 schedule_edit (EDIT existing schedule - change title/date/time): {"type":"schedule_edit","title_keyword":"string","new_title":"string|null","new_date":"YYYY-MM-DD|null","new_time":"HH:MM|null","new_location":"string|null"}
 
-order (NEW insurance consultation): {"type":"order","customer_name":"string","phone_last4":"string|null","channel":"kakao|phone|visit|web","work_type":"insurance","summary":"string","detail":null}
+order (NEW insurance consultation): {"type":"order","customer_name":"string","phone":"string|null","phone_last4":"string|null","channel":"kakao|phone|visit|web","work_type":"insurance","summary":"string","detail":null}
 
 claim (insurance claim request): {"type":"claim","customer_name":"string","phone_last4":"string|null","product_name":"string","claim_date":"YYYY-MM-DD","claim_type":"inpatient|outpatient|surgery|death|other","memo":"string|null"}
 
@@ -82,6 +82,7 @@ CLAIM TYPE RULES:
 - 사망 → "death"
 - 기타 → "other"
 - phone_last4: extract last 4 digits from phone number (e.g. "01050549006" → "9006")
+- phone: full phone number string (e.g. "01050549006" or "010-5054-9006"), always include when available
 
 RULES:
 - Insurance claim request (보험청구, 청구요청, 청구대행) → claim
@@ -248,7 +249,7 @@ SCHEDULE_EDIT RULES:
           const cKey = last4 ? `${String(a.customer_name).trim()}_${last4}` : String(a.customer_name).trim();
           let cid: number|null = null;
           const {data:cd} = await db.from("ins_consultation_cases").insert({
-            customer_key:cKey, customer_name:a.customer_name, phone:last4||"미입력",
+            customer_key:cKey, customer_name:a.customer_name, phone:String(a.phone??"").trim()||last4||"미입력",
             work_type:"registration_insurance", status:"new",
             summary:`[AI비서(Ins) 자동접수] ${a.summary}`,
             detail_memo:a.detail??null, followup_needed:false,
@@ -262,8 +263,9 @@ SCHEDULE_EDIT RULES:
           }).select("id").single();
           if (od) saved.push({type:"order",id:od.id,consultation_id:cid??undefined});
           // ins_customer_info에 전화번호 자동 저장 (없을 때만)
-          if (a.phone || last4) {
-            const phone = String(a.phone??"").trim() || last4;
+          const fullPhone = String(a.phone??"").trim();
+          if (fullPhone || last4) {
+            const phone = fullPhone || last4;
             const {data:existingInfo} = await db.from("ins_customer_info")
               .select("id").eq("customer_key", cKey).maybeSingle();
             if (!existingInfo) {
