@@ -1841,30 +1841,30 @@ const SecretaryPage:React.FC = () => {
                       {orders.map(o=>(
                         <div key={o.id} className={`${CARD} p-4`}>
                           <div className="flex items-start gap-3">
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm flex-shrink-0 ${o.channel==="kakao"?"bg-yellow-100":"bg-gray-100"}`}>
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm flex-shrink-0 mt-0.5 ${o.channel==="kakao"?"bg-yellow-100":"bg-gray-100"}`}>
                               {{kakao:"💬",phone:"📞",visit:"🏢",web:"🌐"}[o.channel]}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
+                              <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="text-sm font-semibold text-[#0f172a]">{o.customer_name}</span>
                                 {o.work_type&&<span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600">{WL[o.work_type]}</span>}
                                 <StsBadge s={o.status}/>
-                                {o.phone&&<a href={`tel:${o.phone.replace(/-/g,"")}`} className="text-xs text-orange-500 hover:underline">{o.phone}</a>}
                                 <LinkBadge id={o.consultation_id} onClick={()=>navigate(`/work/call-management?id=${o.consultation_id}`)}/>
                               </div>
-                              <p className="text-sm text-gray-700 mt-0.5">{o.summary}</p>
+                              {o.phone&&<a href={`tel:${o.phone.replace(/-/g,"")}`} className="text-xs text-orange-500 hover:underline block mt-0.5">{o.phone}</a>}
+                              <p className="text-sm text-gray-700 mt-1 break-keep leading-snug">{o.summary}</p>
                               <p className="text-xs text-gray-400 mt-0.5">{fmtDT(o.created_at)}</p>
-                            </div>
-                            <div className="flex gap-1.5 flex-shrink-0 flex-wrap">
-                              {(o.status==="new"||o.status==="pending"||o.status==="processing")&&<>
-                                {o.status==="new"&&<button className={BTO} onClick={()=>void setOrderStatus(o.id,"processing")}>처리중</button>}
-                                <button className={BTE} onClick={()=>void setOrderStatus(o.id,"done")}>완료</button>
-                              </>}
-                              {o.status==="forwarded"&&<button className={BTE} onClick={()=>quickChat(`"${o.customer_name}" 납품 완료`)}>납품완료</button>}
-                              {o.status==="delivered"&&<button className={BTE} onClick={()=>quickChat(`"${o.customer_name}" 휠 반납 완료`)}>휠반납</button>}
-                              {o.status==="wheel_returned"&&<button className={BTE} onClick={()=>quickChat(`"${o.customer_name}" 계산서 발행 완료`)}>계산서발행</button>}
-                              <button className={BTG} onClick={()=>setExpandedOrder(expandedOrder===o.id?null:o.id)}>{expandedOrder===o.id?"접기":"상세"}</button>
-                              <button className={BTG} onClick={()=>quickChat(`"${o.customer_name}" ${WL[o.work_type??""]??""} 문의 처리: ${o.summary}`)}>AI</button>
+                              <div className="flex gap-1.5 flex-wrap mt-2">
+                                {(o.status==="new"||o.status==="pending"||o.status==="processing")&&<>
+                                  {o.status==="new"&&<button className={BTO} onClick={()=>void setOrderStatus(o.id,"processing")}>처리중</button>}
+                                  <button className={BTE} onClick={()=>void setOrderStatus(o.id,"done")}>완료</button>
+                                </>}
+                                {o.status==="forwarded"&&<button className={BTE} onClick={()=>quickChat(`"${o.customer_name}" 납품 완료`)}>납품완료</button>}
+                                {o.status==="delivered"&&<button className={BTE} onClick={()=>quickChat(`"${o.customer_name}" 휠 반납 완료`)}>휠반납</button>}
+                                {o.status==="wheel_returned"&&<button className={BTE} onClick={()=>quickChat(`"${o.customer_name}" 계산서 발행 완료`)}>계산서발행</button>}
+                                <button className={BTG} onClick={()=>setExpandedOrder(expandedOrder===o.id?null:o.id)}>{expandedOrder===o.id?"접기":"상세"}</button>
+                                <button className={BTG} onClick={()=>quickChat(`"${o.customer_name}" ${WL[o.work_type??""]??""} 문의 처리: ${o.summary}`)}>AI</button>
+                              </div>
                             </div>
                           </div>
                           {expandedOrder===o.id&&(
