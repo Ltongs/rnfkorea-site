@@ -75,6 +75,7 @@ type ChatMsg = {
 const WL:Record<string,string> = {
   insurance:"보험",tire:"타이어",finance:"금융",forklift:"지게차",battery:"배터리",
   registration_insurance:"보험",tire_sales:"타이어",forklift_sales:"지게차",battery_sales:"배터리",
+  finance_hcm:"현대CM금융",narumi:"나르미",
 };
 const CAT_LBL:Record<string,string> = {meeting:"미팅",call:"통화",task:"업무",followup:"사후관리"};
 const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행"};
@@ -984,35 +985,57 @@ const SecretaryPage:React.FC = () => {
     setOrderLoading(false);
   },[ordFilter]);
 
-  // 주문내역: consultation_cases + detail 테이블 통합 조회
+  // 주문내역: consultation_cases + hyundaicm_tasks + narumi_tasks 통합 조회
   const loadOrderViews = useCallback(async()=>{
     setOrdViewLoading(true);
-    // consultation_cases 조회 (보험 제외, 최근 100건)
-    const {data:cases} = await supabase
-      .from("consultation_cases")
-      .select("id,customer_name,work_type,status,summary,created_at,phone,sub_type")
-      .neq("work_type","registration_insurance")
-      .in("status",ordFilter==="done"
-        ? ["completed","closed"]
+
+    const HCM_DONE   = ["confirmed","rejected","cancelled"];
+    const HCM_ACTIVE_NOT = HCM_DONE;
+
+    // 세 소스 병렬 조회
+    const [casesRes, hcmRes, narumiRes] = await Promise.all([
+      // consultation_cases (보험 제외, 최근 100건)
+      supabase
+        .from("consultation_cases")
+        .select("id,customer_name,work_type,status,summary,created_at,phone,sub_type")
+        .neq("work_type","registration_insurance")
+        .in("status", ordFilter==="done"
+          ? ["completed","closed"]
+          : ordFilter==="active"
+          ? ["new","in_progress","waiting_customer","on_hold"]
+          : ["new","in_progress","waiting_customer","on_hold","completed","closed"])
+        .order("created_at",{ascending:false})
+        .limit(100),
+
+      // hyundaicm_tasks
+      (ordFilter==="done"
+        ? supabase.from("hyundaicm_tasks").select("id,customer_name,status,equipment_ton,finance_company,installment_principal,created_at").in("status", HCM_DONE)
         : ordFilter==="active"
-        ? ["new","in_progress","waiting_customer","on_hold"]
-        : ["new","in_progress","waiting_customer","on_hold","completed","closed"])
-      .order("created_at",{ascending:false})
-      .limit(100);
+        ? supabase.from("hyundaicm_tasks").select("id,customer_name,status,equipment_ton,finance_company,installment_principal,created_at").not("status","in",`(${HCM_ACTIVE_NOT.join(",")})`)
+        : supabase.from("hyundaicm_tasks").select("id,customer_name,status,equipment_ton,finance_company,installment_principal,created_at")
+      ).order("created_at",{ascending:false}).limit(100),
 
-    if(!cases){ setOrdViewLoading(false); return; }
+      // narumi_tasks
+      (ordFilter==="done"
+        ? supabase.from("narumi_tasks").select("id,customer_name,status,vehicle_model,vehicle_no,created_at").in("status",["completed","registered"])
+        : ordFilter==="active"
+        ? supabase.from("narumi_tasks").select("id,customer_name,status,vehicle_model,vehicle_no,created_at").not("status","in","(completed,registered)")
+        : supabase.from("narumi_tasks").select("id,customer_name,status,vehicle_model,vehicle_no,created_at")
+      ).order("created_at",{ascending:false}).limit(100),
+    ]);
+
+    const cases = casesRes.data ?? [];
     const ids = cases.map((c:any)=>c.id);
-    if(ids.length===0){ setOrderViews([]); setOrdViewLoading(false); return; }
 
-    // 각 detail 테이블 병렬 조회
-    const [tireR,battR,fklR,finR,expR,ordR] = await Promise.all([
+    // detail 테이블 병렬 조회 (consultation_cases ids가 있을 때만)
+    const [tireR,battR,fklR,finR,expR,ordR] = ids.length > 0 ? await Promise.all([
       supabase.from("consultation_tire_details").select("consultation_id,tire_size,vehicle_info,vehicle_type,process_status,process_stage").in("consultation_id",ids),
       supabase.from("consultation_battery_details").select("consultation_id,battery_voltage,battery_capacity_ah,battery_vehicle_type,battery_quantity,process_stage").in("consultation_id",ids),
       supabase.from("consultation_forklift_details").select("consultation_id,forklift_ton,forklift_type,forklift_status,forklift_sale_method,process_stage").in("consultation_id",ids),
       supabase.from("consultation_finance_details").select("consultation_id,finance_stage,finance_amount,finance_vehicle_model").in("consultation_id",ids),
       supabase.from("consultation_export_details").select("consultation_id,export_stage,product_name,destination_country,process_stage").in("consultation_id",ids),
       supabase.from("secretary_orders").select("id,consultation_id,status").in("consultation_id",ids),
-    ]);
+    ]) : [{data:[]},{data:[]},{data:[]},{data:[]},{data:[]},{data:[]}];
 
     // detail map 구성
     const tireMap: Record<number,any> = {};
@@ -1028,7 +1051,8 @@ const SecretaryPage:React.FC = () => {
     expR.data?.forEach((r:any)=>  { expMap[r.consultation_id]=r;  });
     ordR.data?.forEach((r:any)=>  { ordMap[r.consultation_id]=r;  });
 
-    const views: OrderView[] = cases.map((c:any)=>{
+    // consultation_cases → OrderView
+    const caseViews: OrderView[] = cases.map((c:any)=>{
       const wt = c.work_type as string;
       let progress_stage: string|null = null;
       let product_detail: string|null = null;
@@ -1055,7 +1079,54 @@ const SecretaryPage:React.FC = () => {
         secretary_order_id: ord?.id??null, secretary_order_status: ord?.status??null,
       };
     });
-    setOrderViews(views);
+
+    // hyundaicm_tasks → OrderView
+    const hcmViews: OrderView[] = (hcmRes.data ?? []).map((h:any)=>{
+      const parts = [
+        h.equipment_ton ? h.equipment_ton+"톤" : null,
+        h.finance_company ?? null,
+        h.installment_principal ? Math.round(h.installment_principal/10000).toLocaleString()+"만원" : null,
+      ].filter(Boolean);
+      return {
+        id: h.id,
+        customer_name: h.customer_name ?? "-",
+        work_type: "finance_hcm",
+        status: h.status ?? "-",
+        summary: parts.join(" / ") || "-",
+        created_at: h.created_at,
+        phone: null,
+        progress_stage: h.status ?? null,
+        product_detail: parts.join(" / ") || null,
+        sub_type: null,
+        secretary_order_id: null,
+        secretary_order_status: null,
+      };
+    });
+
+    // narumi_tasks → OrderView
+    const narumiViews: OrderView[] = (narumiRes.data ?? []).map((n:any)=>{
+      const product_detail = [n.vehicle_model, n.vehicle_no].filter(Boolean).join(" ") || null;
+      return {
+        id: n.id,
+        customer_name: n.customer_name ?? "-",
+        work_type: "narumi",
+        status: n.status ?? "-",
+        summary: product_detail || "-",
+        created_at: n.created_at,
+        phone: null,
+        progress_stage: n.status ?? null,
+        product_detail,
+        sub_type: null,
+        secretary_order_id: null,
+        secretary_order_status: null,
+      };
+    });
+
+    // 합치고 created_at 내림차순 정렬
+    const allViews = [...caseViews, ...hcmViews, ...narumiViews]
+      .sort((a,b)=> new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    setOrderViews(allViews);
     setOrdViewLoading(false);
   },[ordFilter]);
 
@@ -1279,9 +1350,12 @@ const SecretaryPage:React.FC = () => {
     // 타이어 레거시
     const TIRE:Record<string,string> = {inquiry_received:"문의접수",size_confirming:"규격확인",quote_sent:"견적",waiting_order:"발주",delivery_or_replacement:"납품",completed:"완료",hold:"보류"};
     if(TIRE[stage]) return TIRE[stage];
-    // 금융
+    // 금융 / 현대CM (동일 매핑)
     const FIN:Record<string,string> = {received:"접수",credit_check:"신용조회",approved:"승인",supplement:"보완",rejected:"거절",doc_registration:"서류등록",contract_sent:"전자계약",confirmed:"확정"};
     if(FIN[stage]) return FIN[stage];
+    // 현대CM 한글 상태값 그대로
+    const HCM:Record<string,string> = {"접수":"접수","신용조회":"신용조회","승인":"승인","보완":"보완","거절":"거절","서류등록":"서류등록","전자계약발송":"전자계약","확정":"확정","보류":"보류"};
+    if(HCM[stage]) return HCM[stage];
     // 지게차 레거시
     const FKL:Record<string,string> = {
       quote:"견적", proposal:"견적", waiting_payment:"계약", delivered:"납품", cancelled:"취소",
