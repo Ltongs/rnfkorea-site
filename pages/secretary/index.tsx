@@ -24,6 +24,23 @@ type Order = {
   summary:string; detail:string|null; status:"new"|"pending"|"processing"|"done"|"forwarded"|"delivered"|"wheel_returned"|"invoiced";
   consultation_id:number|null;
 };
+// 주문내역: consultation_cases 기반 통합 뷰
+type OrderView = {
+  id: number;                  // consultation_cases.id
+  customer_name: string;
+  work_type: string;
+  status: string;              // consultation_cases.status
+  summary: string;
+  created_at: string;
+  phone: string | null;
+  // 진행단계
+  progress_stage: string | null; // tire/forklift/battery: process_status/forklift_status/battery_status, finance: finance_stage
+  // 제품 정보 (detail 테이블에서)
+  product_detail: string | null; // 타이어규격, 배터리전압, 지게차톤수 등
+  sub_type: string | null;
+  secretary_order_id: number | null;
+  secretary_order_status: string | null;
+};
 type Consult = {
   id:number; customer_name:string; phone:string; telecom_provider:string|null;
   work_type:string; status:string; summary:string;
@@ -453,10 +470,23 @@ type PopupData = {
 
 // 전역 팝업 상태 (body에 Portal로 렌더)
 let _setPopup: ((p:PopupData|null)=>void)|null = null;
+let _popupSetterRegistered = false;
 
 function CalPopupPortal() {
   const [popup, setPopup] = useState<PopupData|null>(null);
-  useEffect(()=>{ _setPopup=setPopup; return ()=>{ _setPopup=null; }; },[]);
+  const setterRef = useRef(setPopup);
+  setterRef.current = setPopup; // 항상 최신 setter 유지
+
+  useEffect(()=>{
+    // 항상 최신 setPopup으로 업데이트 (cleanup 없이 덮어쓰기)
+    _setPopup = (p) => setterRef.current(p);
+    _popupSetterRegistered = true;
+    return ()=>{
+      // 언마운트 시에만 null 처리
+      _setPopup = null;
+      _popupSetterRegistered = false;
+    };
+  },[]);
   const CAT_COLOR:Record<string,string> = {meeting:"#60a5fa",call:"#fb923c",followup:"#c084fc",task:"#34d399"};
   if(!popup) return null;
   // 화면 오른쪽 넘치면 왼쪽에 표시
@@ -520,6 +550,9 @@ function MiniCalendar({
   const [mo,setMo] = useState(()=>new Date().getMonth());
   const hideTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
 
+  // 언마운트 시 팝업 즉시 닫기 + 타이머 정리
+  useEffect(()=>{ return ()=>{ if(hideTimer.current) clearTimeout(hideTimer.current); _setPopup?.(null); }; },[]);
+
   // 월 변경 시 부모에 알림 (useEffect 제거 → 버튼 클릭 시 직접 호출)
 
   const T = todayStr();
@@ -537,7 +570,8 @@ function MiniCalendar({
     if(!schMap.has(s.schedule_date))schMap.set(s.schedule_date,[]);
     schMap.get(s.schedule_date)!.push(s);
   }
-  schMapRef.current = schMap;
+  // calSchedules가 있을 때만 업데이트 (빈 배열로 기존 데이터 덮어쓰기 방지)
+  if(calSchedules.length > 0 || schMapRef.current.size === 0) schMapRef.current = schMap;
 
   const tdoMap = new Map<string,CalTdo[]>();
   for(const t of calTodos){
@@ -569,13 +603,16 @@ function MiniCalendar({
 
   function showPopup(d:number, e:React.MouseEvent){
     const dt = ds(d);
+    // ref와 함께 현재 렌더의 최신 map 직접 참조
     const sc = schMapRef.current.get(dt)??[];
     const tc = tdoMapRef.current.get(dt)??[];
     const gc = gcalMapRef.current.get(dt)??[];
     if(sc.length===0 && tc.length===0 && gc.length===0) return;
     if(hideTimer.current){clearTimeout(hideTimer.current);hideTimer.current=null;}
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    _setPopup?.({
+    // _setPopup이 null이면 재등록 시도
+    if(!_setPopup) return;
+    _setPopup({
       x: r.right,
       y: r.top,
       schedules: sc,
@@ -585,7 +622,8 @@ function MiniCalendar({
     });
   }
   function hidePopup(){
-    hideTimer.current = setTimeout(()=>{ _setPopup?.(null); }, 150);
+    if(hideTimer.current) clearTimeout(hideTimer.current);
+    hideTimer.current = setTimeout(()=>{ _setPopup?.(null); hideTimer.current=null; }, 150);
   }
 
   return (
@@ -656,7 +694,8 @@ const SecretaryPage:React.FC = () => {
   const navigate = useNavigate();
   if(!user||(!isAdmin&&!isSubAdmin))return <Navigate to="/" replace/>;
 
-  const [tab,setTab] = useState<TabKey>("schedule");
+  const [tab,setTab] = useState<TabKey>(()=>{ try{return (sessionStorage.getItem("sec_tab") as TabKey)||"schedule";}catch{return "schedule";} });
+  const setTabAndSave = (t:TabKey)=>{ try{sessionStorage.setItem("sec_tab",t);}catch{} setTab(t); };
 
   // 일정
   const [schedules,setSchedules]     = useState<Schedule[]>([]);
@@ -690,8 +729,11 @@ const SecretaryPage:React.FC = () => {
 
   // 주문
   const [orders,setOrders]           = useState<Order[]>([]);
+  const [orderViews,setOrderViews]   = useState<OrderView[]>([]);
+  const [ordViewLoading,setOrdViewLoading] = useState(false);
   const [orderLoading,setOrderLoading] = useState(false);
-  const [ordFilter,setOrdFilter]     = useState("active");
+  const [ordFilter,setOrdFilter]     = useState(()=>{ try{return sessionStorage.getItem("sec_ord_filter")||"active";}catch{return "active";} });
+  const setOrdFilterAndSave = (f:string)=>{ try{sessionStorage.setItem("sec_ord_filter",f);}catch{} setOrdFilter(f); };
   const [showOrderForm,setShowOrderForm] = useState(false);
   const [expandedOrder,setExpandedOrder] = useState<number|null>(null);
   const [syncConsult,setSyncConsult] = useState(true);
@@ -942,6 +984,81 @@ const SecretaryPage:React.FC = () => {
     setOrderLoading(false);
   },[ordFilter]);
 
+  // 주문내역: consultation_cases + detail 테이블 통합 조회
+  const loadOrderViews = useCallback(async()=>{
+    setOrdViewLoading(true);
+    // consultation_cases 조회 (보험 제외, 최근 100건)
+    const {data:cases} = await supabase
+      .from("consultation_cases")
+      .select("id,customer_name,work_type,status,summary,created_at,phone,sub_type")
+      .neq("work_type","registration_insurance")
+      .in("status",ordFilter==="done"
+        ? ["completed","closed"]
+        : ordFilter==="active"
+        ? ["new","in_progress","waiting_customer","on_hold"]
+        : ["new","in_progress","waiting_customer","on_hold","completed","closed"])
+      .order("created_at",{ascending:false})
+      .limit(100);
+
+    if(!cases){ setOrdViewLoading(false); return; }
+    const ids = cases.map((c:any)=>c.id);
+    if(ids.length===0){ setOrderViews([]); setOrdViewLoading(false); return; }
+
+    // 각 detail 테이블 병렬 조회
+    const [tireR,battR,fklR,finR,expR,ordR] = await Promise.all([
+      supabase.from("consultation_tire_details").select("consultation_id,tire_size,vehicle_info,vehicle_type,process_status,process_stage").in("consultation_id",ids),
+      supabase.from("consultation_battery_details").select("consultation_id,battery_voltage,battery_capacity_ah,battery_vehicle_type,battery_quantity,process_stage").in("consultation_id",ids),
+      supabase.from("consultation_forklift_details").select("consultation_id,forklift_ton,forklift_type,forklift_status,forklift_sale_method,process_stage").in("consultation_id",ids),
+      supabase.from("consultation_finance_details").select("consultation_id,finance_stage,finance_amount,finance_vehicle_model").in("consultation_id",ids),
+      supabase.from("consultation_export_details").select("consultation_id,export_stage,product_name,destination_country,process_stage").in("consultation_id",ids),
+      supabase.from("secretary_orders").select("id,consultation_id,status").in("consultation_id",ids),
+    ]);
+
+    // detail map 구성
+    const tireMap: Record<number,any> = {};
+    const battMap: Record<number,any> = {};
+    const fklMap:  Record<number,any> = {};
+    const finMap:  Record<number,any> = {};
+    const expMap:  Record<number,any> = {};
+    const ordMap:  Record<number,any> = {};
+    tireR.data?.forEach((r:any)=>{ tireMap[r.consultation_id]=r; });
+    battR.data?.forEach((r:any)=>{ battMap[r.consultation_id]=r; });
+    fklR.data?.forEach((r:any)=>  { fklMap[r.consultation_id]=r;  });
+    finR.data?.forEach((r:any)=>  { finMap[r.consultation_id]=r;  });
+    expR.data?.forEach((r:any)=>  { expMap[r.consultation_id]=r;  });
+    ordR.data?.forEach((r:any)=>  { ordMap[r.consultation_id]=r;  });
+
+    const views: OrderView[] = cases.map((c:any)=>{
+      const wt = c.work_type as string;
+      let progress_stage: string|null = null;
+      let product_detail: string|null = null;
+
+      if(wt==="tire_sales"){ const d=tireMap[c.id]; if(d){ progress_stage=d.process_stage??d.process_status; product_detail=[d.tire_size,d.vehicle_info,d.vehicle_type].filter(Boolean).join(" / "); }}
+      else if(wt==="battery_sales"){ const d=battMap[c.id]; if(d){ progress_stage=d.process_stage??null; product_detail=[d.battery_vehicle_type,d.battery_voltage?d.battery_voltage+"V":null,d.battery_capacity_ah?d.battery_capacity_ah+"Ah":null,d.battery_quantity?d.battery_quantity+"개":null].filter(Boolean).join(" / "); }}
+      else if(wt==="forklift_sales"){ const d=fklMap[c.id]; if(d){
+        progress_stage=d.process_stage??d.forklift_status;
+        const fklTypeLbl:Record<string,string>={seated:"좌승",standing:"입승",electric_seated:"전동좌승",electric_standing:"전동입승",reach:"리치",order_picker:"오더피커"};
+        const fklSaleLbl:Record<string,string>={cash:"현금",rental:"렌탈",lease:"리스",installment:"할부"};
+        product_detail=[
+          d.forklift_ton?d.forklift_ton:"",
+          d.forklift_type?(fklTypeLbl[d.forklift_type]??d.forklift_type):"",
+          d.forklift_sale_method?(fklSaleLbl[d.forklift_sale_method]??d.forklift_sale_method):"",
+        ].filter(Boolean).join(" / ");
+      }}
+      else if(wt==="finance"){ const d=finMap[c.id]; if(d){ progress_stage=d.finance_stage; product_detail=[d.finance_vehicle_model,d.finance_amount?Number(d.finance_amount).toLocaleString()+"만원":null].filter(Boolean).join(" / "); }}
+      else if(wt==="export"){ const d=expMap[c.id]; if(d){ progress_stage=d.process_stage??d.export_stage; product_detail=[d.product_name,d.destination_country].filter(Boolean).join(" / "); }}
+      const ord = ordMap[c.id];
+      return {
+        id:c.id, customer_name:c.customer_name, work_type:wt, status:c.status,
+        summary:c.summary, created_at:c.created_at, phone:c.phone??null,
+        progress_stage, product_detail, sub_type:c.sub_type??null,
+        secretary_order_id: ord?.id??null, secretary_order_status: ord?.status??null,
+      };
+    });
+    setOrderViews(views);
+    setOrdViewLoading(false);
+  },[ordFilter]);
+
   const loadStatusData = useCallback(async()=>{
     setStatusLoading(true);
     const [hr,nr,cr,fdr] = await Promise.all([
@@ -1015,7 +1132,7 @@ const SecretaryPage:React.FC = () => {
     if(tab==="status"){ void loadStatusData(); }
     if(tab==="chat"){ setTimeout(()=>{ const c=chatContainerRef.current; if(c)c.scrollTop=c.scrollHeight; },100); }
   },[tab, loadStatusData]);
-  useEffect(()=>{if(tab==="orders"){void loadOrders();void loadConsults();}},[tab,loadOrders,loadConsults]);
+  useEffect(()=>{if(tab==="orders"){void loadOrderViews();void loadConsults();}},[tab,loadOrderViews,loadConsults]);
 
   // ─── 일정 CRUD ──────────────────────────────────────────────────────────────
   async function addSchedule(){
@@ -1153,6 +1270,37 @@ const SecretaryPage:React.FC = () => {
     }
   },[msgs]);
 
+  // 진행단계 포맷 (주문내역용)
+  const fmtProgress = (wt:string, stage:string|null):string => {
+    if(!stage) return "-";
+    // 공통 단계
+    const COMMON:Record<string,string> = {consulting:"상담",quote:"견적",contract:"계약",delivery:"납품",invoiced:"계산서발행"};
+    if(COMMON[stage]) return COMMON[stage];
+    // 타이어 레거시
+    const TIRE:Record<string,string> = {inquiry_received:"문의접수",size_confirming:"규격확인",quote_sent:"견적",waiting_order:"발주",delivery_or_replacement:"납품",completed:"완료",hold:"보류"};
+    if(TIRE[stage]) return TIRE[stage];
+    // 금융
+    const FIN:Record<string,string> = {received:"접수",credit_check:"신용조회",approved:"승인",supplement:"보완",rejected:"거절",doc_registration:"서류등록",contract_sent:"전자계약",confirmed:"확정"};
+    if(FIN[stage]) return FIN[stage];
+    // 지게차 레거시
+    const FKL:Record<string,string> = {
+      quote:"견적", proposal:"견적", waiting_payment:"계약", delivered:"납품", cancelled:"취소",
+      "신차":"신차", "중고":"중고", "렌탈":"렌탈",
+    };
+    if(FKL[stage]) return FKL[stage];
+    return stage;
+  };
+
+  // 진행단계 컬러
+  const progressColor = (stage:string|null):string => {
+    if(!stage) return "text-gray-400";
+    if(["invoiced","completed","confirmed","delivered"].includes(stage)) return "text-emerald-600 font-semibold";
+    if(["rejected","cancelled","closed"].includes(stage)) return "text-red-400";
+    if(["contract","contract_sent","approved","confirmed"].includes(stage)) return "text-blue-600";
+    if(["quote","proposal","credit_check"].includes(stage)) return "text-indigo-500";
+    return "text-orange-500";
+  };
+
   // ─── 중복 일정 감지 ──────────────────────────────────────────────────────────
   async function checkDupAndSend(){
     const text = chatInput.trim();
@@ -1240,7 +1388,7 @@ const SecretaryPage:React.FC = () => {
           }
         }
         if(saved.some((s:any)=>s.type==="todo"))  { void loadTodos();  void loadCalData(calViewYear, calViewMonth); }
-        if(saved.some((s:any)=>s.type==="order"))   void loadOrders();
+        if(saved.some((s:any)=>s.type==="order"))   { void loadOrderViews(); void loadStats(); }
         if(saved.some((s:any)=>s.type==="order_update")) { void loadOrders(); void loadStats(); }
         const cc=saved.filter((s:any)=>s.consultation_id).length;
         showToast(`${saved.length}건 저장${cc>0?` + 상담관리 ${cc}건`:""}`);
@@ -1263,7 +1411,7 @@ const SecretaryPage:React.FC = () => {
     if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();e.stopPropagation();void checkDupAndSend();}
   }
 
-  function quickChat(t:string){setTab("chat");setChatInput(t);setTimeout(()=>chatInputRef.current?.focus(),80);}
+  function quickChat(t:string){setTabAndSave("chat");setChatInput(t);setTimeout(()=>chatInputRef.current?.focus(),80);}
 
   // ─── 상담 업데이트 ────────────────────────────────────────────────────────────
   async function confirmUpdate(msgIdx:number,cid:number,action:Record<string,unknown>){
@@ -1318,6 +1466,17 @@ const SecretaryPage:React.FC = () => {
   function rejectHyundaiUpdate(msgIdx:number,uidx:number){
     setMsgs(p=>p.map((m,i)=>i!==msgIdx?m:{...m,pendingHyundaiUpdates:(m.pendingHyundaiUpdates??[]).filter((_,j)=>j!==uidx)}));
   }
+
+  // 주문내역 탭 스크롤 위치 저장/복원
+  const ordScrollRef = useRef<HTMLDivElement|null>(null);
+  useEffect(()=>{
+    if(tab!=="orders") return;
+    const saved = parseInt(sessionStorage.getItem("sec_ord_scroll")||"0");
+    if(saved && ordScrollRef.current) setTimeout(()=>{ window.scrollTo({top:saved,behavior:"instant" as ScrollBehavior}); },100);
+    const onScroll = ()=>{ try{sessionStorage.setItem("sec_ord_scroll",String(window.scrollY));}catch{} };
+    window.addEventListener("scroll",onScroll,{passive:true});
+    return ()=>window.removeEventListener("scroll",onScroll);
+  },[tab]);
 
   // 헤더 높이 동적 측정
   useEffect(()=>{
@@ -1413,46 +1572,56 @@ const SecretaryPage:React.FC = () => {
       )}
 
       {schedModal&&ReactDOM.createPortal(
-        <div className="fixed inset-0 z-[99990] flex items-center justify-center bg-black/40 px-4" onClick={()=>setSchedModal(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e=>e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
+        <div className="fixed inset-0 z-[99990] flex items-end sm:items-center justify-center bg-black/40 px-0 sm:px-4" onClick={()=>setSchedModal(null)}>
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full max-w-md sm:max-w-md max-h-[90vh] flex flex-col" onClick={e=>e.stopPropagation()}>
+            {/* 헤더 */}
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 flex-shrink-0">
               <p className="text-base font-semibold text-[#0f172a]">📝 일정 경과 기록</p>
               <button className="text-gray-400 hover:text-gray-600 text-lg" onClick={()=>setSchedModal(null)}>✕</button>
             </div>
-            <div className="mb-3">
-              <p className="text-sm font-medium text-[#0f172a]">{schedModal.s.title}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{fmtDate(schedModal.s.schedule_date)} {schedModal.s.start_time?fmtTime(schedModal.s.start_time):""} · {CAT_LBL[schedModal.s.category]}</p>
-            </div>
-            {schedModal.s.progress_memo&&(
-              <div className="mb-3 bg-gray-50 rounded-xl p-3 max-h-32 overflow-y-auto">
-                <p className="text-xs text-gray-500 mb-1 font-medium">이전 경과</p>
-                {schedModal.s.progress_memo.split("\n").map((line,i)=>(
-                  <p key={i} className="text-xs text-gray-600">{line}</p>
-                ))}
+            {/* 스크롤 영역 */}
+            <div className="overflow-y-auto flex-1 px-5 pb-2">
+              <div className="mb-3">
+                <p className="text-sm font-medium text-[#0f172a]">{schedModal.s.title}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{fmtDate(schedModal.s.schedule_date)} {schedModal.s.start_time?fmtTime(schedModal.s.start_time):""} · {CAT_LBL[schedModal.s.category]}</p>
               </div>
-            )}
-            <div className="space-y-3">
-              <div>
-                <label className={LBL}>오늘 경과 메모</label>
-                <textarea className={TA2} rows={3} placeholder="미팅 결과, 협의 내용, 다음 액션 등..."
-                  value={schedProgress.memo} onChange={e=>setSchedProgress(p=>({...p,memo:e.target.value}))}/>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className={LBL}>다음 일정 날짜</label>
-                  <input type="date" className={CTRL} value={schedProgress.next_date} onChange={e=>setSchedProgress(p=>({...p,next_date:e.target.value}))}/>
+              {schedModal.s.progress_memo&&(
+                <div className="mb-3 bg-gray-50 rounded-xl p-3 max-h-24 overflow-y-auto">
+                  <p className="text-xs text-gray-500 mb-1 font-medium">이전 경과</p>
+                  {schedModal.s.progress_memo.split("\n").map((line,i)=>(
+                    <p key={i} className="text-xs text-gray-600">{line}</p>
+                  ))}
                 </div>
+              )}
+              <div className="space-y-3">
                 <div>
-                  <label className={LBL}>다음 일정 시간</label>
-                  <input type="time" className={CTRL} value={schedProgress.next_time} onChange={e=>setSchedProgress(p=>({...p,next_time:e.target.value}))}/>
+                  <label className={LBL}>오늘 경과 메모</label>
+                  <textarea className={TA2} rows={3} placeholder="미팅 결과, 협의 내용, 다음 액션 등..."
+                    value={schedProgress.memo} onChange={e=>setSchedProgress(p=>({...p,memo:e.target.value}))}/>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className={LBL}>다음 일정 날짜</label>
+                    <input type="date" className={CTRL} value={schedProgress.next_date} onChange={e=>setSchedProgress(p=>({...p,next_date:e.target.value}))}/>
+                  </div>
+                  <div>
+                    <label className={LBL}>다음 일정 시간</label>
+                    <input type="time" className={CTRL} value={schedProgress.next_time} onChange={e=>setSchedProgress(p=>({...p,next_time:e.target.value}))}/>
+                  </div>
                 </div>
               </div>
             </div>
-            <div className="flex gap-2 mt-4">
+            {/* 버튼 영역 - 항상 하단 고정 */}
+            <div className="flex gap-2 px-5 py-4 flex-shrink-0 border-t border-gray-100">
               <button className={BTP} onClick={()=>void saveSchedProgress(schedModal.s)} disabled={!schedProgress.memo&&!schedProgress.next_date}>
-                {schedProgress.next_date?"저장 + 다음 일정 등록":"경과 저장"}
+                {schedProgress.next_date?"저장 + 다음 일정":"경과 저장"}
               </button>
-              <button className={BTS} onClick={()=>{quickChat(`"${schedModal.s.title}" 일정 경과 정리해줘. 메모: ${schedProgress.memo}`);setSchedModal(null);}}>AI 정리</button>
+              <button className="flex-1 py-2 rounded-xl bg-emerald-500 text-white text-sm font-semibold hover:bg-emerald-600 transition-all"
+                onClick={async()=>{
+                  await supabase.from("secretary_schedules").update({is_done:true}).eq("id",schedModal.s.id);
+                  if(schedProgress.memo) await saveSchedProgress(schedModal.s);
+                  else { setSchedModal(null); void loadSchedules(); void loadCalData(calViewYear,calViewMonth); showToast("완료 처리됨"); }
+                }}>완료</button>
               <button className={BTS} onClick={()=>setSchedModal(null)}>닫기</button>
             </div>
           </div>
@@ -1495,7 +1664,7 @@ const SecretaryPage:React.FC = () => {
           {/* 탭 - 항상 보이도록 */}
           <div className="flex items-center gap-1.5 flex-wrap">
             {(["chat","schedule","status","orders"] as TabKey[]).map(t=>(
-              <button key={t} className={`${TB} ${tab===t?TA:TI}`} onClick={()=>setTab(t)}>
+              <button key={t} className={`${TB} ${tab===t?TA:TI}`} onClick={()=>setTabAndSave(t)}>
                 {{chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담"}[t]}
               </button>
             ))}
@@ -1513,7 +1682,7 @@ const SecretaryPage:React.FC = () => {
         {/* 사이드바 */}
         <aside className="w-56 flex-shrink-0 hidden lg:flex flex-col gap-3 self-start sticky top-4">
           <MiniCalendar
-            onDateSelect={(d)=>{setSchedDate(d);setTab("schedule");}}
+            onDateSelect={(d)=>{setSchedDate(d);setTabAndSave("schedule");}}
             selectedDate={schedDate}
             calSchedules={calSch}
             calTodos={calTdo}
@@ -1788,92 +1957,64 @@ const SecretaryPage:React.FC = () => {
                   )
                 }
               </div>
-              {/* 카카오·주문 */}
+              {/* 주문내역 */}
               <div>
                 <div className="flex items-center gap-2 flex-wrap mb-2">
-                  <p className="text-sm font-semibold text-[#0f172a]">📦 카카오·기타 주문</p>
+                  <p className="text-sm font-semibold text-[#0f172a]">📋 주문내역</p>
                   <div className="flex gap-1.5 ml-auto flex-wrap">
                     {(["active","all","done"] as const).map(f=>(
-                      <button key={f} className={`${TB} text-xs py-1 px-2.5 ${ordFilter===f?TA:TI}`} onClick={()=>setOrdFilter(f)}>{{active:"진행중",all:"전체",done:"완료"}[f]}</button>
+                      <button key={f} className={`${TB} text-xs py-1 px-2.5 ${ordFilter===f?TA:TI}`} onClick={()=>setOrdFilterAndSave(f)}>{{active:"진행중",all:"전체",done:"완료"}[f]}</button>
                     ))}
-                    <button className={BTP} onClick={()=>setShowOrderForm(v=>!v)}>{showOrderForm?"닫기":"+ 등록"}</button>
+                    <button className={BTG} onClick={()=>void loadOrderViews()}>새로고침</button>
+                    <button className={BTP} onClick={()=>navigate("/work/call-management")}>상담관리 →</button>
                   </div>
                 </div>
-                {showOrderForm&&(
-                  <div className={`${CARD} p-4 mb-3`}>
-                    <div className="flex items-center justify-between mb-3">
-                      <p className="text-sm font-semibold text-[#0f172a]">새 주문/문의 등록</p>
-                      <label className="flex items-center gap-1.5 cursor-pointer">
-                        <div className={`w-9 h-5 rounded-full transition-colors relative ${syncConsult?"bg-emerald-500":"bg-gray-300"}`} onClick={()=>setSyncConsult(v=>!v)}>
-                          <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${syncConsult?"translate-x-4":"translate-x-0.5"}`}/>
-                        </div>
-                        <span className="text-xs text-gray-600">{syncConsult?"🔗 상담관리 자동등록":"연동 OFF"}</span>
-                      </label>
-                    </div>
-                    {syncConsult&&<div className="mb-3 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-700">✅ consultation_cases에도 자동 등록됩니다</div>}
-                    <div className="grid grid-cols-2 gap-2.5 mb-3">
-                      <div><label className={LBL}>고객명 *</label><input className={CTRL} value={newOrder.customer_name} onChange={e=>setNewOrder(p=>({...p,customer_name:e.target.value}))} placeholder="고객명"/></div>
-                      <div><label className={LBL}>연락처</label><input className={CTRL} value={newOrder.phone} onChange={e=>setNewOrder(p=>({...p,phone:e.target.value}))} placeholder="010-0000-0000"/></div>
-                      <div><label className={LBL}>채널</label>
-                        <select className={CTRL} value={newOrder.channel} onChange={e=>setNewOrder(p=>({...p,channel:e.target.value as any}))}>
-                          <option value="kakao">카카오톡</option><option value="phone">전화</option><option value="visit">방문</option><option value="web">홈페이지</option>
-                        </select>
-                      </div>
-                      <div><label className={LBL}>업무 유형</label>
-                        <select className={CTRL} value={newOrder.work_type} onChange={e=>setNewOrder(p=>({...p,work_type:e.target.value}))}>
-                          <option value="">선택</option><option value="insurance">보험</option><option value="tire">타이어</option><option value="finance">금융</option><option value="forklift">지게차</option><option value="battery">배터리</option>
-                        </select>
-                      </div>
-                      {syncConsult&&<>
-                        <div><label className={LBL}>통신사</label><input className={CTRL} value={newOrder.telecom_provider} onChange={e=>setNewOrder(p=>({...p,telecom_provider:e.target.value}))} placeholder="SKT/KT/LG"/></div>
-                        <div><label className={LBL}>지역</label><input className={CTRL} value={newOrder.region} onChange={e=>setNewOrder(p=>({...p,region:e.target.value}))} placeholder="지역"/></div>
-                      </>}
-                      <div className="col-span-2"><label className={LBL}>요약 *</label><input className={CTRL} value={newOrder.summary} onChange={e=>setNewOrder(p=>({...p,summary:e.target.value}))} placeholder="문의/주문 내용 요약"/></div>
-                      <div className="col-span-2"><label className={LBL}>상세</label><textarea className={TA2} rows={2} value={newOrder.detail} onChange={e=>setNewOrder(p=>({...p,detail:e.target.value}))}/></div>
-                    </div>
-                    <div className="flex gap-2"><button className={BTP} onClick={()=>void addOrder()}>저장{syncConsult?" + 상담관리":""}</button><button className={BTS} onClick={()=>setShowOrderForm(false)}>취소</button></div>
-                  </div>
-                )}
-                {orderLoading?<p className="text-sm text-gray-400 p-4">불러오는 중...</p>
-                  :orders.length===0?<div className={`${CARD} p-6 text-center text-gray-400 text-sm`}>주문/문의가 없습니다</div>
-                  :(
+                {/* AI비서 채팅으로 입력 안내 */}
+                <div className="mb-2 p-2.5 rounded-lg bg-blue-50 border border-blue-100 text-xs text-blue-600">
+                  💡 주문 등록은 채팅탭에서 &quot;홍길동 타이어 18*7-8 두산 3톤 후륜 2개 주문&quot; 형태로 입력하시면 자동 저장됩니다
+                </div>
+                {ordViewLoading
+                  ? <p className="text-sm text-gray-400 p-4">불러오는 중...</p>
+                  : orderViews.length===0
+                  ? <div className={`${CARD} p-6 text-center text-gray-400 text-sm`}>주문 내역이 없습니다</div>
+                  : (
                     <div className="space-y-2">
-                      {orders.map(o=>(
-                        <div key={o.id} className={`${CARD} p-4`}>
-                          <div className="flex items-start gap-3">
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm flex-shrink-0 mt-0.5 ${o.channel==="kakao"?"bg-yellow-100":"bg-gray-100"}`}>
-                              {{kakao:"💬",phone:"📞",visit:"🏢",web:"🌐"}[o.channel]}
-                            </div>
+                      {orderViews.map(o=>(
+                        <div key={o.id} className={`${CARD} p-3.5 cursor-pointer hover:shadow-md transition-all`}
+                          onClick={()=>navigate(`/work/call-management?id=${o.id}`)}>
+                          <div className="flex items-start gap-2.5">
                             <div className="flex-1 min-w-0">
+                              {/* 1행: 고객명 + 업무유형 + 상태 */}
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="text-sm font-semibold text-[#0f172a]">{o.customer_name}</span>
-                                {o.work_type&&<span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600">{WL[o.work_type]}</span>}
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600">{WL[o.work_type]??o.work_type}</span>
+                                {o.sub_type&&<span className="text-xs text-gray-400">{o.sub_type}</span>}
                                 <StsBadge s={o.status}/>
-                                <LinkBadge id={o.consultation_id} onClick={()=>navigate(`/work/call-management?id=${o.consultation_id}`)}/>
                               </div>
-                              {o.phone&&<a href={`tel:${o.phone.replace(/-/g,"")}`} className="text-xs text-orange-500 hover:underline block mt-0.5">{o.phone}</a>}
-                              <p className="text-sm text-gray-700 mt-1 break-keep leading-snug">{o.summary}</p>
-                              <p className="text-xs text-gray-400 mt-0.5">{fmtDT(o.created_at)}</p>
-                              <div className="flex gap-1.5 flex-wrap mt-2">
-                                {(o.status==="new"||o.status==="pending"||o.status==="processing")&&<>
-                                  {o.status==="new"&&<button className={BTO} onClick={()=>void setOrderStatus(o.id,"processing")}>처리중</button>}
-                                  <button className={BTE} onClick={()=>void setOrderStatus(o.id,"done")}>완료</button>
-                                </>}
-                                {o.status==="forwarded"&&<button className={BTE} onClick={()=>quickChat(`"${o.customer_name}" 납품 완료`)}>납품완료</button>}
-                                {o.status==="delivered"&&<button className={BTE} onClick={()=>quickChat(`"${o.customer_name}" 휠 반납 완료`)}>휠반납</button>}
-                                {o.status==="wheel_returned"&&<button className={BTE} onClick={()=>quickChat(`"${o.customer_name}" 계산서 발행 완료`)}>계산서발행</button>}
-                                <button className={BTG} onClick={()=>setExpandedOrder(expandedOrder===o.id?null:o.id)}>{expandedOrder===o.id?"접기":"상세"}</button>
-                                <button className={BTG} onClick={()=>quickChat(`"${o.customer_name}" ${WL[o.work_type??""]??""} 문의 처리: ${o.summary}`)}>AI</button>
+                              {/* 2행: 제품명·규격 */}
+                              {o.product_detail&&(
+                                <p className="text-xs text-gray-600 mt-1 font-medium">{o.product_detail}</p>
+                              )}
+                              {/* 3행: 진행단계 + 등록일 */}
+                              <div className="flex items-center gap-3 mt-1">
+                                <span className={`text-xs font-medium ${progressColor(o.progress_stage)}`}>
+                                  ▸ {fmtProgress(o.work_type, o.progress_stage)}
+                                </span>
+                                <span className="text-xs text-gray-400">{fmtDT(o.created_at)}</span>
                               </div>
+                              {/* 4행: 요약 (접힘) */}
+                              {expandedOrder===o.id&&(
+                                <p className="text-xs text-gray-500 mt-1.5 pt-1.5 border-t border-gray-100 break-keep">{o.summary}</p>
+                              )}
+                            </div>
+                            {/* 우측 버튼 */}
+                            <div className="flex flex-col gap-1.5 flex-shrink-0" onClick={e=>e.stopPropagation()}>
+                              <button className={BTG} onClick={()=>setExpandedOrder(expandedOrder===o.id?null:o.id)}>
+                                {expandedOrder===o.id?"접기":"펼침"}
+                              </button>
+                              <button className={BTG} onClick={()=>quickChat(`"${o.customer_name}" ${WL[o.work_type]??""} 진행상황 업데이트해줘`)}>AI</button>
                             </div>
                           </div>
-                          {expandedOrder===o.id&&(
-                            <div className="mt-2.5 pt-2.5 border-t border-gray-100">
-                              {o.detail&&<p className="text-sm text-gray-600 mb-1.5">{o.detail}</p>}
-                              {o.consultation_id&&<button className="text-xs text-emerald-600 hover:underline mr-3" onClick={()=>navigate(`/work/call-management?id=${o.consultation_id}`)}>🔗 상담관리 #{o.consultation_id}</button>}
-                              <button className="text-xs text-red-400 hover:text-red-600" onClick={()=>void delOrder(o.id)}>삭제</button>
-                            </div>
-                          )}
                         </div>
                       ))}
                     </div>

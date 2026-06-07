@@ -21,6 +21,15 @@ const DTABLE: Record<string,string> = {
   export:                 "consultation_export_details",
 };
 
+// 공통 진행단계 키워드 → process_stage 값 매핑
+const COMMON_STAGE_MAP: Record<string,string> = {
+  상담:"consulting", 견적:"quote", 계약:"contract", 납품:"delivery", 계산서발행:"invoiced",
+};
+const PROCESS_STAGE_TABLES = new Set([
+  "consultation_tire_details","consultation_battery_details",
+  "consultation_forklift_details","consultation_export_details",
+]);
+
 // 현대건설기계 유효 상태값
 const HCM_STATUSES = ["접수","신용조회","승인","보완","거절","서류등록","전자계약발송","확정","보류"] as const;
 type HCMStatus = typeof HCM_STATUSES[number];
@@ -954,7 +963,7 @@ serve(async (req) => {
                   if (summary.includes(bk)) { brandFound = bk; break; }
                 }
 
-                const tireInsert: Record<string,unknown> = { consultation_id: cid };
+                const tireInsert: Record<string,unknown> = { consultation_id: cid, process_stage: "consulting" };
                 tireInsert.vehicle_info   = (tf.vehicle_info as string|null) ?? (brandFound || null);
                 tireInsert.vehicle_type   = (tf.vehicle_type   as string|null) ?? (tonMatch ? tonMatch[1]+"톤" : null);
                 tireInsert.tire_size      = (tf.tire_size      as string|null) ?? (sizeMatch ? sizeMatch[0] : null);
@@ -1012,6 +1021,7 @@ serve(async (req) => {
                 const forkliftInsert: Record<string,unknown> = {
                   consultation_id: cid,
                   forklift_status: "consulting",
+                  process_stage: "consulting",
                 };
                 if (tonMatch)   forkliftInsert.forklift_ton      = tonMatch[1] + "톤";  // string 타입
                 if (brandFound) forkliftInsert.forklift_type     = brandFound;  // forklift_type 컬럼
@@ -1050,7 +1060,7 @@ serve(async (req) => {
                   if (dd !== "00") dueDate = `${yr}-${mo}-${dd}`;
                 }
 
-                const batteryInsert: Record<string,unknown> = { consultation_id: cid };
+                const batteryInsert: Record<string,unknown> = { consultation_id: cid, process_stage: "consulting" };
                 batteryInsert.battery_vehicle_type     = vehicleType;
                 batteryInsert.battery_drive_type       = (bf.battery_drive_type as string|null) ?? null;
                 batteryInsert.battery_voltage          = bf.battery_voltage ? Number(bf.battery_voltage) : (voltageMatch ? Number(voltageMatch[1]) : null);
@@ -1091,6 +1101,7 @@ serve(async (req) => {
                 exportInsert.unit_price          = ef.unit_price ? Number(ef.unit_price) : null;
                 exportInsert.incoterms           = (ef.incoterms as string|null) ?? null;
                 exportInsert.export_stage        = "consulting";
+                exportInsert.process_stage       = "consulting";
                 const {error:expErr} = await db.from("consultation_export_details").insert(exportInsert);
                 console.log("[export_insert] error:", expErr?.message ?? "none");
               }
@@ -1195,10 +1206,18 @@ serve(async (req) => {
               if (qty && unitPrice) batteryExtra.battery_sale_price = Math.round(qty * unitPrice);
             }
 
+            // 공통 진행단계 키워드 → process_stage 자동 업데이트
+            const stageExtra: Record<string,unknown> = {};
+            if (PROCESS_STAGE_TABLES.has(dtable)) {
+              for (const [kw, stage] of Object.entries(COMMON_STAGE_MAP)) {
+                if (memoText.includes(kw)) { stageExtra.process_stage = stage; break; }
+              }
+            }
+
             if (dr) {
-              await db.from(dtable).update({note:newNote, ...financeExtra, ...batteryExtra}).eq("consultation_id", best.id);
+              await db.from(dtable).update({note:newNote, ...financeExtra, ...batteryExtra, ...stageExtra}).eq("consultation_id", best.id);
             } else {
-              await db.from(dtable).insert({consultation_id: best.id, note:newNote, ...financeExtra, ...batteryExtra});
+              await db.from(dtable).insert({consultation_id: best.id, note:newNote, ...financeExtra, ...batteryExtra, ...stageExtra});
             }
           }
 

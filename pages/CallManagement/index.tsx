@@ -50,6 +50,7 @@ type TireDetailRow = {
   inflow_channel: string | null;
   association_name: string | null;
   process_status: string | null;
+  process_stage: string | null;
   note: string | null;
 };
 
@@ -97,6 +98,7 @@ type ForkliftDetailRow = {
   forklift_status: string | null;
   forklift_option_note: string | null;
   forklift_sale_method: string | null;
+  process_stage: string | null;
   note: string | null;
 };
 
@@ -104,7 +106,6 @@ type BatteryDetailRow = {
   consultation_id: number;
   battery_vehicle_type: string | null;
   battery_drive_type: string | null;
-
   battery_voltage: number | null;
   battery_capacity_ah: number | null;
   battery_total_capacity_kwh: number | null;
@@ -117,6 +118,7 @@ type BatteryDetailRow = {
   battery_unit_sale_price: number | null;
   battery_quantity: number | null;
   battery_sale_price: number | null;
+  process_stage: string | null;
   note: string | null;
 };
 
@@ -579,6 +581,8 @@ const CallManagementPage: React.FC = () => {
     useState<ForkliftDetailRow | null>(null);
   const [expandedBatteryDetail, setExpandedBatteryDetail] =
     useState<BatteryDetailRow | null>(null);
+  const [expandedExportDetail, setExpandedExportDetail] =
+    useState<{consultation_id:number;process_stage:string|null;export_stage:string|null}|null>(null);
   const [editingCaseId, setEditingCaseId] = useState<number | null>(null);
   const [pendingOpenId, setPendingOpenId] = useState<string|null>(null);
   const [showTodoBox, setShowTodoBox] = useState(false);
@@ -1064,7 +1068,7 @@ const CallManagementPage: React.FC = () => {
       setTireRegionDetail(tireDetail?.region_detail || "");
       setTireInflowChannel(tireDetail?.inflow_channel || "");
       setTireAssociationName(tireDetail?.association_name || "");
-      setProgressStage(normalizeToCommonStage(tireDetail?.process_status));
+      setProgressStage(normalizeToCommonStage(tireDetail?.process_stage ?? tireDetail?.process_status));
       setTireNote(tireDetail?.note || "");
     }
 
@@ -1099,7 +1103,7 @@ const CallManagementPage: React.FC = () => {
       setForkliftCondition(forkliftDetail?.forklift_condition || "");
       setForkliftType(forkliftDetail?.forklift_type || "");
       setForkliftTon(forkliftDetail?.forklift_ton || "");
-      setProgressStage(normalizeToCommonStage(resolvedForkliftStatus(forkliftDetail)));
+      setProgressStage(normalizeToCommonStage(forkliftDetail?.process_stage ?? resolvedForkliftStatus(forkliftDetail)));
       setForkliftOptionNote(forkliftDetail?.forklift_option_note || "");
       setForkliftSaleMethod(forkliftDetail?.forklift_sale_method || "");
       setForkliftNote(stripStatusMeta(forkliftDetail?.note || ""));
@@ -1108,7 +1112,7 @@ const CallManagementPage: React.FC = () => {
     if (row.work_type === "battery_sales") {
       setBatteryVehicleType(batteryDetail?.battery_vehicle_type || "");
       setBatteryDriveType(batteryDetail?.battery_drive_type || "");
-      setProgressStage(normalizeToCommonStage(resolvedBatteryStatus(batteryDetail)));
+      setProgressStage(normalizeToCommonStage(batteryDetail?.process_stage ?? resolvedBatteryStatus(batteryDetail)));
       setBatteryVoltage(
         batteryDetail?.battery_voltage !== null && batteryDetail?.battery_voltage !== undefined
           ? String(batteryDetail.battery_voltage)
@@ -1151,6 +1155,10 @@ const CallManagementPage: React.FC = () => {
           : ""
       );
       setBatteryNote(stripStatusMeta(batteryDetail?.note || ""));
+    }
+
+    if (row.work_type === "export") {
+      setProgressStage(normalizeToCommonStage(expandedExportDetail?.process_stage ?? expandedExportDetail?.export_stage));
     }
 
     setTab("new");
@@ -1523,8 +1531,7 @@ const CallManagementPage: React.FC = () => {
     setExpandedFinanceDetail(null);
     setExpandedForkliftDetail(null);
     setExpandedBatteryDetail(null);
-    setExpandedForkliftDetail(null);
-    setExpandedBatteryDetail(null);
+    setExpandedExportDetail(null);
     setDetailError("");
     setListSearchName("");
     setListSearchPhone("");
@@ -1581,6 +1588,7 @@ const CallManagementPage: React.FC = () => {
         setExpandedFinanceDetail(null);
         setExpandedForkliftDetail(null);
         setExpandedBatteryDetail(null);
+        setExpandedExportDetail(null);
       }
 
       setSelectedIds([]);
@@ -1598,6 +1606,7 @@ const CallManagementPage: React.FC = () => {
       setExpandedFinanceDetail(null);
       setExpandedForkliftDetail(null);
       setExpandedBatteryDetail(null);
+      setExpandedExportDetail(null);
       setDetailError("");
       return;
     }
@@ -1608,6 +1617,7 @@ const CallManagementPage: React.FC = () => {
     setExpandedFinanceDetail(null);
     setExpandedForkliftDetail(null);
     setExpandedBatteryDetail(null);
+    setExpandedExportDetail(null);
     setDetailError("");
     setLoadingDetail(true);
 
@@ -1684,6 +1694,15 @@ const CallManagementPage: React.FC = () => {
         return;
       }
       setExpandedBatteryDetail((data || null) as BatteryDetailRow | null);
+    }
+
+    if (row.work_type === "export") {
+      const { data } = await supabase
+        .from("consultation_export_details")
+        .select("consultation_id,process_stage,export_stage")
+        .eq("consultation_id", row.id)
+        .maybeSingle();
+      setExpandedExportDetail(data ?? null);
     }
 
     setLoadingDetail(false);
@@ -2103,6 +2122,7 @@ const CallManagementPage: React.FC = () => {
             association_name:
               tireInflowChannel === "association" ? tireAssociationName || null : null,
             process_status: progressStage || "consulting",
+            process_stage: progressStage || "consulting",
               note: tireNote.trim() || null,
             },
           ],
@@ -2163,6 +2183,7 @@ const CallManagementPage: React.FC = () => {
               forklift_type: forkliftType || null,
               forklift_ton: forkliftTon.trim() || null,
               forklift_status: progressStage || "consulting",
+              process_stage: progressStage || "consulting",
               forklift_option_note: forkliftOptionNote.trim() || null,
               forklift_sale_method: forkliftSaleMethod || null,
               note: forkliftNote.trim() || null,
@@ -2201,6 +2222,7 @@ const CallManagementPage: React.FC = () => {
               battery_unit_sale_price: batteryUnitSalePrice ? Number(batteryUnitSalePrice.replace(/,/g,"")) : null,
               battery_quantity: batteryQuantity ? Number(batteryQuantity) : null,
               battery_sale_price: batterySalePrice ? Math.round(batterySalePrice) : null,
+              process_stage: progressStage || "consulting",
               note: batteryNote.trim() || null,
             },
           ],
@@ -2221,7 +2243,7 @@ const CallManagementPage: React.FC = () => {
       const { error: exportError } = await supabase
         .from("consultation_export_details")
         .upsert(
-          [{ consultation_id: savedCaseId, export_stage: progressStage || "consulting" }],
+          [{ consultation_id: savedCaseId, export_stage: progressStage || "consulting", process_stage: progressStage || "consulting" }],
           { onConflict: "consultation_id" }
         );
       if (exportError) {
@@ -3944,6 +3966,7 @@ const CallManagementPage: React.FC = () => {
                                             setExpandedFinanceDetail(null);
                                             setExpandedForkliftDetail(null);
                                             setExpandedBatteryDetail(null);
+                                            setExpandedExportDetail(null);
                                             setDetailError("");
                                           }}
                                         >
