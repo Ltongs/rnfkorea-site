@@ -1,0 +1,29 @@
+{
+  "name": "RNF 보험 AI 비서",
+  "short_name": "RNF 보험AI",
+  "description": "RNF Korea 보험 AI 업무 비서",
+  "start_url": "/work/secretary-ins",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#1a56db",
+  "icons": [
+    {
+      "src": "/icons/icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
