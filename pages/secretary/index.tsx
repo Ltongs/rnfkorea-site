@@ -700,6 +700,10 @@ function MiniCalendar({
 const SecretaryPage:React.FC = () => {
   const {user,isAdmin,isSubAdmin,logout} = useAuth() as any;
   const navigate = useNavigate();
+  // ─── PWA standalone 모드 감지 ─────────────────────────────────────────────
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+    || (window.navigator as any).standalone === true;
+
   if(!user||(!isAdmin&&!isSubAdmin))return <Navigate to="/" replace/>;
 
   const [tab,setTab] = useState<TabKey>(()=>{ try{return (sessionStorage.getItem("sec_tab") as TabKey)||"schedule";}catch{return "schedule";} });
@@ -1592,11 +1596,25 @@ const SecretaryPage:React.FC = () => {
     return ()=>ob.disconnect();
   },[]);
 
-  // 푸터 숨기기
+  // 푸터 숨기기 + standalone 모드에서 네비 숨기기
   useEffect(()=>{
     const footer = document.querySelector('footer') as HTMLElement|null;
     if(footer) footer.style.display='none';
-    return ()=>{ if(footer) footer.style.display=''; };
+    if(isStandalone){
+      const nav = document.querySelector('nav') as HTMLElement|null;
+      const header = document.querySelector('header') as HTMLElement|null;
+      if(nav) nav.style.display='none';
+      if(header) header.style.display='none';
+    }
+    return ()=>{
+      if(footer) footer.style.display='';
+      if(isStandalone){
+        const nav = document.querySelector('nav') as HTMLElement|null;
+        const header = document.querySelector('header') as HTMLElement|null;
+        if(nav) nav.style.display='';
+        if(header) header.style.display='';
+      }
+    };
   },[]);
 
   // ─── 렌더 ─────────────────────────────────────────────────────────────────
@@ -1742,14 +1760,25 @@ const SecretaryPage:React.FC = () => {
             <div className="w-8 h-8 rounded-xl bg-[#0f172a] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">AI</div>
             <div>
               <h1 className="text-sm font-bold text-[#0f172a]">AI 비서</h1>
-              <p className="text-xs text-gray-400">두서없이 말씀하시면 자동 저장 · 상담관리 연동</p>
+
             </div>
-            <button
-              onClick={()=>void logout()}
-              className="ml-2 px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-all"
-            >
-              로그아웃
-            </button>
+            {!isStandalone&&(
+              <button
+                onClick={()=>void logout()}
+                className="ml-2 px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-all"
+              >
+                로그아웃
+              </button>
+            )}
+            {isStandalone&&(
+              <button
+                onClick={()=>window.location.reload()}
+                className="ml-2 px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-500 hover:bg-gray-50 transition-all"
+                title="새로고침"
+              >
+                🔄
+              </button>
+            )}
           </div>
           {/* 통계 배지 */}
           <div className="flex items-center gap-1.5 flex-wrap text-xs">

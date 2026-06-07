@@ -63,6 +63,8 @@ todo: {"type":"todo","title":"string","description":null,"priority":"urgent|norm
 
 schedule: {"type":"schedule","title":"string","description":null,"schedule_date":"YYYY-MM-DD","start_time":"HH:MM|null","category":"meeting|call|task|followup","location":null,"related_type":"insurance"}
 
+schedule_edit (EDIT existing schedule - change title/date/time): {"type":"schedule_edit","title_keyword":"string","new_title":"string|null","new_date":"YYYY-MM-DD|null","new_time":"HH:MM|null","new_location":"string|null"}
+
 order (NEW insurance consultation): {"type":"order","customer_name":"string","phone_last4":"string|null","channel":"kakao|phone|visit|web","work_type":"insurance","summary":"string","detail":null}
 
 claim (insurance claim request): {"type":"claim","customer_name":"string","phone_last4":"string|null","product_name":"string","claim_date":"YYYY-MM-DD","claim_type":"inpatient|outpatient|surgery|death|other","memo":"string|null"}
@@ -87,9 +89,16 @@ RULES:
 - Existing customer update → consult_update
 - Task/reminder → todo
 - Meeting/call schedule → schedule
+- Schedule title/date/time/location change (수정, 변경) → schedule_edit
 - Customer phone/bank/card info update → customer_info_update
 - Insurance policy/contract registration → policy
-- General question → actions:[]`;
+- General question → actions:[]
+
+SCHEDULE_EDIT RULES:
+- "오늘 태안 미팅을 장미희 고객 태안 미팅으로 변경" → schedule_edit {title_keyword:"태안", new_title:"장미희 고객 태안 미팅"}
+- "태안 미팅 시간 15:30으로 변경" → schedule_edit {title_keyword:"태안", new_time:"15:30"}
+- title_keyword: 기존 일정에서 찾을 핵심 키워드 (짧게)
+- new_title/new_date/new_time/new_location: 변경할 내용만 입력, 나머지는 null`;
 
   try {
     const body = await req.json();
@@ -214,9 +223,28 @@ RULES:
           if (!error && data) saved.push({type:"schedule",id:data.id});
         }
 
+        // ── 일정 수정 ──────────────────────────────────────────────
+        if (a.type === "schedule_edit") {
+          const kw = (a.title_keyword as string ?? "").toLowerCase();
+          const {data:rows} = await db.from("ins_schedules")
+            .select("id,title,schedule_date,start_time")
+            .ilike("title", `%${kw}%`)
+            .order("schedule_date", {ascending:true}).limit(5);
+          if (rows && rows.length > 0) {
+            const row = rows[0] as Record<string,unknown>;
+            const patch: Record<string,unknown> = {};
+            if (a.new_date)     patch.schedule_date = a.new_date;
+            if (a.new_title)    patch.title         = a.new_title;
+            if (a.new_time)     patch.start_time    = a.new_time;
+            if (a.new_location) patch.location      = a.new_location;
+            const {error:upErr} = await db.from("ins_schedules").update(patch).eq("id", row.id);
+            if (!upErr) saved.push({type:"schedule_edit", id:row.id as number});
+          }
+        }
+
         // ── 상담 접수 ──────────────────────────────────────────────
         if (a.type === "order") {
-          const last4 = String(a.phone_last4??"").replace(/\D/g,"").slice(-4);
+          const last4 = String(a.phone_last4??"").replace(/[^0-9]/g,"").slice(-4);
           const cKey = last4 ? `${String(a.customer_name).trim()}_${last4}` : String(a.customer_name).trim();
           let cid: number|null = null;
           const {data:cd} = await db.from("ins_consultation_cases").insert({
@@ -233,6 +261,20 @@ RULES:
             status:"new", consultation_id:cid,
           }).select("id").single();
           if (od) saved.push({type:"order",id:od.id,consultation_id:cid??undefined});
+          // ins_customer_info에 전화번호 자동 저장 (없을 때만)
+          if (a.phone || last4) {
+            const phone = String(a.phone??"").trim() || last4;
+            const {data:existingInfo} = await db.from("ins_customer_info")
+              .select("id").eq("customer_key", cKey).maybeSingle();
+            if (!existingInfo) {
+              await db.from("ins_customer_info").insert({
+                customer_key: cKey,
+                phone: phone,
+                bank_name: "", bank_account: "",
+                card_company: "", card_number: "", card_expiry: "", memo: "",
+              });
+            }
+          }
         }
 
         // ── 보험금 청구 ────────────────────────────────────────────

@@ -1114,7 +1114,11 @@ const SecretaryInsPage:React.FC = () => {
       setCustInfo(ir.data as CustomerInfo);
       setCustInfoForm(ir.data as CustomerInfo);
     } else {
-      setCustInfoForm({customer_key:key,phone:"",bank_name:"",bank_account:"",card_company:"",card_number:"",card_expiry:"",memo:""});
+      // ins_customer_info 없으면 ins_consultation_cases의 전화번호로 자동 채우기
+      const casePhone = (cr.data??[]).find((c:any)=>c.phone&&c.phone!=="미입력")?.phone ?? "";
+      const phoneFromKey = key.match(/_(\d{4})$/) ? key.match(/_(\d{4})$/)![1] : "";
+      const autoPhone = casePhone || phoneFromKey;
+      setCustInfoForm({customer_key:key,phone:autoPhone,bank_name:"",bank_account:"",card_company:"",card_number:"",card_expiry:"",memo:""});
     }
     setCustDetailLoading(false);
   },[]);
@@ -1240,7 +1244,7 @@ const SecretaryInsPage:React.FC = () => {
       if(saved.length>0){
         void loadStats();
         // 저장된 타입에 따라 해당 탭 데이터 즉시 갱신
-        if(saved.some((s:any)=>s.type==="schedule")){
+        if(saved.some((s:any)=>["schedule","schedule_edit"].includes(s.type))){
           void loadSchedules();
           void loadCalData(calViewYear, calViewMonth);
           // 구글 캘린더 동기화 — 저장된 일정 ID로 DB에서 상세 조회 후 Push
@@ -1377,18 +1381,20 @@ const SecretaryInsPage:React.FC = () => {
             <div className="w-8 h-8 rounded-xl bg-[#0f172a] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">AI</div>
             <div>
               <h1 className="text-sm font-bold text-[#0f172a]">AI 비서 (Ins)</h1>
-              <p className="text-xs text-gray-400">보험 상담을 자동 기록·분류·저장합니다</p>
+
             </div>
-            <button
-              onClick={()=>void logout()}
-              className="ml-2 px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-all"
-            >
-              로그아웃
-            </button>
+            {!isStandalone&&(
+              <button
+                onClick={()=>void logout()}
+                className="ml-2 px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-all"
+              >
+                로그아웃
+              </button>
+            )}
             {isStandalone&&(
               <button
                 onClick={()=>window.location.reload()}
-                className="px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-500 hover:bg-gray-50 transition-all"
+                className="ml-2 px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-500 hover:bg-gray-50 transition-all"
                 title="새로고침"
               >
                 🔄
