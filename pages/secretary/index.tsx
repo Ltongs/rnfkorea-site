@@ -668,6 +668,11 @@ const SecretaryPage:React.FC = () => {
   const [allSchedLoading,setAllSchedLoading] = useState(false);
   const [showSchedForm,setShowSchedForm] = useState(false);
   const [schedModal,setSchedModal] = useState<{s:Schedule}|null>(null);
+  const [dupModal,setDupModal] = useState<{
+    candidates:{id:number;title:string;schedule_date:string;category:string;is_done:boolean}[];
+    pendingText:string;
+  }|null>(null);
+  const [dupSelected,setDupSelected] = useState<Set<number>>(new Set());
   const [schedProgress,setSchedProgress] = useState({memo:"",next_date:"",next_time:""});
   const [newSched,setNewSched] = useState({title:"",description:"",schedule_date:todayStr(),start_time:"",end_time:"",category:"meeting" as Schedule["category"],location:"",related_type:"",consultation_id:""});
 
@@ -1148,8 +1153,58 @@ const SecretaryPage:React.FC = () => {
     }
   },[msgs]);
 
-  async function sendChat(){
-    const text=chatInput.trim();
+  // ─── 중복 일정 감지 ──────────────────────────────────────────────────────────
+  async function checkDupAndSend(){
+    const text = chatInput.trim();
+    if(!text || chatLoading) return;
+
+    // 일정 관련 입력인지 판별
+    const schedKeywords = ["일정","미팅","방문","회의","출장","상담","확인","점검","납품","반출","등록","필요","예정"];
+    const isSchedInput = schedKeywords.some(k=>text.includes(k));
+    if(!isSchedInput){ void sendChat(); return; }
+
+    // 시간/수식어 표현 제거 후 고객/거래처명 추출
+    const timeWords = ["내일","오늘","모레","다음주","이번주","오전","오후","아침","저녁","월요일","화요일","수요일","목요일","금요일","토요일","일요일","내주","익일"];
+    let cleaned = text;
+    timeWords.forEach(w=>{ cleaned = cleaned.replace(new RegExp(w,"g"),""); });
+    cleaned = cleaned.replace(/[0-9]+월\s*[0-9]+일/g,"").replace(/[0-9]+시/g,"").trim();
+
+    // 고객/거래처명: 2글자 이상 한글/영문 단어 (조사/접속사 제외)
+    const stopWords = new Set(["은","는","이","가","을","를","의","에","도","로","와","과","또는","그리고","후","전","및","등","때","일정","미팅","방문","상담","확인","점검","납품","반출","등록","필요","예정","진행","상황","점검"]);
+    const tokens = cleaned.split(/[\s,]+/).filter(t=>t.length>=2 && !stopWords.has(t));
+    if(tokens.length === 0){ void sendChat(); return; }
+
+    // 각 토큰으로 DB 검색, 가장 많은 결과를 가져온 키워드 사용
+    const since = new Date(); since.setDate(since.getDate()-14);
+    const until = new Date(); until.setDate(until.getDate()+60);
+    let allCandidates: any[] = [];
+
+    for(const token of tokens.slice(0,3)){
+      const {data} = await supabase
+        .from("secretary_schedules")
+        .select("id,title,schedule_date,category,is_done")
+        .ilike("title", `%${token}%`)
+        .gte("schedule_date", since.toISOString().slice(0,10))
+        .lte("schedule_date", until.toISOString().slice(0,10))
+        .order("schedule_date",{ascending:true})
+        .limit(10);
+      if(data) allCandidates = [...allCandidates, ...data];
+    }
+
+    // 중복 제거
+    const seen = new Set<number>();
+    const unique = allCandidates.filter(c=>{ if(seen.has(c.id)) return false; seen.add(c.id); return true; });
+
+    if(unique.length === 0){ void sendChat(); return; }
+
+    // 중복 후보 있으면 모달 표시
+    setDupSelected(new Set());
+    setDupModal({candidates: unique, pendingText: text});
+  }
+
+  async function sendChat(overrideText?:string){
+
+    const text=(overrideText??chatInput).trim();
     if(!text||chatLoading)return;
     setChatInput("");
     const next:ChatMsg[]=[...msgsRef.current,{role:"user",content:text,ts:nowTs()}];
@@ -1205,7 +1260,7 @@ const SecretaryPage:React.FC = () => {
   }
 
   function chatKey(e:React.KeyboardEvent<HTMLTextAreaElement>){
-    if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();e.stopPropagation();void sendChat();}
+    if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();e.stopPropagation();void checkDupAndSend();}
   }
 
   function quickChat(t:string){setTab("chat");setChatInput(t);setTimeout(()=>chatInputRef.current?.focus(),80);}
@@ -1293,6 +1348,70 @@ const SecretaryPage:React.FC = () => {
       <CalPopupPortal/>
 
       {/* 일정 경과 기록 모달 */}
+      {/* ── 중복 일정 감지 모달 ── */}
+      {dupModal&&ReactDOM.createPortal(
+        <div className="fixed inset-0 z-[99995] flex items-center justify-center bg-black/50 px-4" onClick={()=>setDupModal(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6" onClick={e=>e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-base font-semibold text-[#0f172a]">🔍 유사 일정 발견</p>
+              <button className="text-gray-400 hover:text-gray-600 text-lg" onClick={()=>setDupModal(null)}>✕</button>
+            </div>
+            <p className="text-sm text-gray-500 mb-3">
+              입력과 유사한 기존 일정입니다. 삭제할 항목을 선택하거나, 그냥 계속 진행하세요.
+            </p>
+            <div className="space-y-2 max-h-64 overflow-y-auto mb-4">
+              {dupModal.candidates.map(c=>(
+                <label key={c.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${dupSelected.has(c.id)?"border-red-300 bg-red-50":"border-gray-200 bg-gray-50 hover:border-gray-300"}`}>
+                  <input type="checkbox" className="w-4 h-4 accent-red-500"
+                    checked={dupSelected.has(c.id)}
+                    onChange={e=>{
+                      setDupSelected(prev=>{
+                        const next=new Set(prev);
+                        e.target.checked?next.add(c.id):next.delete(c.id);
+                        return next;
+                      });
+                    }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium truncate ${c.is_done?"line-through text-gray-400":"text-[#0f172a]"}`}>{c.title}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{c.schedule_date} · {c.category==="meeting"?"미팅":c.category==="followup"?"사후관리":c.category==="call"?"통화":"업무"} {c.is_done?"✅완료":""}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                className="flex-1 py-2 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition-all disabled:opacity-40"
+                disabled={dupSelected.size===0}
+                onClick={async()=>{
+                  if(dupSelected.size>0){
+                    await supabase.from("secretary_schedules").delete().in("id",[...dupSelected]);
+                    void loadSchedules(); void loadCalData(calViewYear,calViewMonth);
+                    showToast(`${dupSelected.size}건 삭제됨`);
+                  }
+                  const txt=dupModal.pendingText;
+                  setDupModal(null);
+                  setTimeout(()=>void sendChat(txt),50);
+                }}
+              >{dupSelected.size>0?`${dupSelected.size}건 삭제 후 전송`:"삭제 후 전송"}</button>
+              <button
+                className="flex-1 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-all"
+                onClick={()=>{
+                  const txt=dupModal.pendingText;
+                  setDupModal(null);
+                  setTimeout(()=>void sendChat(txt),50);
+                }}
+              >그냥 전송</button>
+              <button
+                className="px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-400 hover:bg-gray-50 transition-all"
+                onClick={()=>setDupModal(null)}
+              >취소</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {schedModal&&ReactDOM.createPortal(
         <div className="fixed inset-0 z-[99990] flex items-center justify-center bg-black/40 px-4" onClick={()=>setSchedModal(null)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e=>e.stopPropagation()}>
@@ -1843,7 +1962,7 @@ const SecretaryPage:React.FC = () => {
                 <textarea ref={chatInputRef} className={`${TA2} flex-1 min-h-[38px] max-h-24`} rows={1}
                   placeholder="할일, 일정, 고객 문의... 자동 저장됩니다"
                   value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={chatKey}/>
-                <button className={`${BTP} h-9 px-4 flex-shrink-0`} onClick={()=>void sendChat()} disabled={chatLoading||!chatInput.trim()}>전송</button>
+                <button className={`${BTP} h-9 px-4 flex-shrink-0`} onClick={()=>void checkDupAndSend()} disabled={chatLoading||!chatInput.trim()}>전송</button>
               </div>
             </div>
           </div>

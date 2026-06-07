@@ -122,6 +122,7 @@ export_fields rules (only when work_type is "export"):
 
 consult_update (UPDATE existing customer info):
 {"type":"consult_update","customer_name":"string","work_type":"finance|insurance|tire|forklift|battery|null","keywords":["keyword1"],"update_memo":"string",
+"battery_fields":null_or_{"battery_quantity":"number|null","battery_unit_sale_price":"number|null","battery_voltage":"number|null","battery_capacity_ah":"number|null","battery_due_date":"YYYY-MM-DD|null","battery_vehicle_type":"string|null"},
 "direct_fields":{"phone":null,"status":null,"sub_type":null,"finance_stage":null,"followup_needed":null,"next_followup_date":null,"summary":null},
 "finance_fields":{"finance_amount":null,"finance_interest_rate":null,"finance_period":null,"finance_company":null,"finance_product":null,"finance_vehicle_model":null,"finance_incentive":null}}
 
@@ -259,6 +260,7 @@ KEY DISTINCTION — hyundaicm_update vs consult_update:
    - "확정완료", "확정 처리" for finance customers → consult_update with finance_stage: "confirmed"
    - Use direct_fields.status for status changes: 승인→"completed", 진행중→"in_progress", 대기→"pending"
    - IMPORTANT: customer names like "성수연", "정부경" without explicit hyundaicm context → consult_update
+- battery update example: "타미우스CC 수량 3개로 변경" → consult_update with work_type:"battery", battery_fields:{"battery_quantity":3}
 3. New customer inquiry → order
 4. Task → todo
 5. Meeting/schedule → schedule
@@ -1125,10 +1127,34 @@ serve(async (req) => {
               if (ff.finance_incentive != null)     financeExtra.finance_incentive = ff.finance_incentive;
             }
 
+            // 배터리 상세 필드 업데이트 (수량/단가 등)
+            const batteryExtra: Record<string,unknown> = {};
+            if (wt === "battery_sales") {
+              const bfu = a.battery_fields as Record<string,unknown>|null;
+              if (bfu) {
+                if (bfu.battery_quantity != null)        batteryExtra.battery_quantity        = Number(bfu.battery_quantity);
+                if (bfu.battery_unit_sale_price != null) batteryExtra.battery_unit_sale_price = Number(bfu.battery_unit_sale_price);
+                if (bfu.battery_voltage != null)         batteryExtra.battery_voltage         = Number(bfu.battery_voltage);
+                if (bfu.battery_capacity_ah != null)     batteryExtra.battery_capacity_ah     = Number(bfu.battery_capacity_ah);
+                if (bfu.battery_due_date != null)        batteryExtra.battery_due_date        = bfu.battery_due_date;
+                if (bfu.battery_vehicle_type != null)    batteryExtra.battery_vehicle_type    = bfu.battery_vehicle_type;
+              }
+              // update_memo에서 수량 파싱 (AI battery_fields 누락 시 보완)
+              const memoRaw = a.update_memo as string ?? "";
+              if (!batteryExtra.battery_quantity) {
+                const qm = memoRaw.match(/수량\s*[:：]?\s*(\d+)|(\d+)\s*(?:개|대)/);
+                if (qm) batteryExtra.battery_quantity = Number(qm[1]||qm[2]);
+              }
+              // 판매가격 자동 계산
+              const qty = batteryExtra.battery_quantity as number|undefined;
+              const unitPrice = batteryExtra.battery_unit_sale_price as number|undefined;
+              if (qty && unitPrice) batteryExtra.battery_sale_price = Math.round(qty * unitPrice);
+            }
+
             if (dr) {
-              await db.from(dtable).update({note:newNote, ...financeExtra}).eq("consultation_id", best.id);
+              await db.from(dtable).update({note:newNote, ...financeExtra, ...batteryExtra}).eq("consultation_id", best.id);
             } else {
-              await db.from(dtable).insert({consultation_id: best.id, note:newNote, ...financeExtra});
+              await db.from(dtable).insert({consultation_id: best.id, note:newNote, ...financeExtra, ...batteryExtra});
             }
           }
 

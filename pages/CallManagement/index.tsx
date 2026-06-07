@@ -1707,15 +1707,53 @@ const CallManagementPage: React.FC = () => {
     if (!pendingOpenId || rows.length === 0) return;
     const row = rows.find((r: any) => String(r.id) === pendingOpenId);
     if (!row) return;
-    const fd = financeDetailsMap[row.id] ?? null;
-    const id2 = insuranceDetailsMap[row.id] ?? null;
-    const td = tireDetailsMap[row.id] ?? null;
-    const fld = forkliftDetailsMap[row.id] ?? null;
-    const bd = batteryDetailsMap[row.id] ?? null;
-    setTab("new");
-    populateFormForEdit(row, id2, td, fd, fld, bd);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-    setPendingOpenId(null);
+
+    const openRow = async () => {
+      let fd = financeDetailsMap[row.id] ?? null;
+      let id2 = insuranceDetailsMap[row.id] ?? null;
+      let td = tireDetailsMap[row.id] ?? null;
+      let fld = forkliftDetailsMap[row.id] ?? null;
+      let bd = batteryDetailsMap[row.id] ?? null;
+
+      // 각 detail map에 없으면 직접 DB에서 조회 (페이지 진입 타이밍 이슈 방지)
+      if (!bd && row.work_type === "battery_sales") {
+        const { data: bdData } = await supabase
+          .from("consultation_battery_details").select("*")
+          .eq("consultation_id", row.id).maybeSingle();
+        bd = bdData as any ?? null;
+      }
+      if (!td && row.work_type === "tire_sales") {
+        const { data: tdData } = await supabase
+          .from("consultation_tire_details").select("*")
+          .eq("consultation_id", row.id).maybeSingle();
+        td = tdData as any ?? null;
+      }
+      if (!fd && row.work_type === "finance") {
+        const { data: fdData } = await supabase
+          .from("consultation_finance_details").select("*")
+          .eq("consultation_id", row.id).maybeSingle();
+        fd = fdData as any ?? null;
+      }
+      if (!fld && row.work_type === "forklift_sales") {
+        const { data: fldData } = await supabase
+          .from("consultation_forklift_details").select("*")
+          .eq("consultation_id", row.id).maybeSingle();
+        fld = fldData as any ?? null;
+      }
+      if (!id2 && row.work_type === "registration_insurance") {
+        const { data: id2Data } = await supabase
+          .from("consultation_insurance_details").select("*")
+          .eq("consultation_id", row.id).maybeSingle();
+        id2 = id2Data as any ?? null;
+      }
+
+      setTab("new");
+      populateFormForEdit(row, id2, td, fd, fld, bd);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      setPendingOpenId(null);
+    };
+
+    void openRow();
   }, [pendingOpenId, rows, financeDetailsMap, insuranceDetailsMap, tireDetailsMap, forkliftDetailsMap, batteryDetailsMap]);
 
   useEffect(() => {
