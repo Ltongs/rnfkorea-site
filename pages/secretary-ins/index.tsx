@@ -593,6 +593,10 @@ const SecretaryInsPage:React.FC = () => {
     return ()=>{ if(el) el.setAttribute("href","/manifest.json"); };
   },[]);
 
+  // ─── PWA standalone 모드 감지 ─────────────────────────────────────────────
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+    || (window.navigator as any).standalone === true;
+
   // ─── 권한 체크 (모든 훅 선언 이후) ───────────────────────────────────────────
   if(!user||!isInsAI)return <Navigate to="/" replace/>;
 
@@ -1331,11 +1335,26 @@ const SecretaryInsPage:React.FC = () => {
     showToast(`"${name}" 고객 삭제 완료`);
   }
 
-  // 푸터 숨기기
+  // 푸터 숨기기 + standalone 모드에서 네비 숨기기
   useEffect(()=>{
     const footer = document.querySelector('footer') as HTMLElement|null;
     if(footer) footer.style.display='none';
-    return ()=>{ if(footer) footer.style.display=''; };
+    // PWA standalone 모드에서 상단 네비게이션 숨기기
+    if(isStandalone){
+      const nav = document.querySelector('nav') as HTMLElement|null;
+      const header = document.querySelector('header') as HTMLElement|null;
+      if(nav) nav.style.display='none';
+      if(header) header.style.display='none';
+    }
+    return ()=>{
+      if(footer) footer.style.display='';
+      if(isStandalone){
+        const nav = document.querySelector('nav') as HTMLElement|null;
+        const header = document.querySelector('header') as HTMLElement|null;
+        if(nav) nav.style.display='';
+        if(header) header.style.display='';
+      }
+    };
   },[]);
 
   // ─── 렌더 ─────────────────────────────────────────────────────────────────
@@ -1352,7 +1371,7 @@ const SecretaryInsPage:React.FC = () => {
       )}
 
       {/* 헤더 */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3 flex-shrink-0">
+      <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-2 sm:py-3 flex-shrink-0">
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-[#0f172a] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">AI</div>
@@ -1366,6 +1385,15 @@ const SecretaryInsPage:React.FC = () => {
             >
               로그아웃
             </button>
+            {isStandalone&&(
+              <button
+                onClick={()=>window.location.reload()}
+                className="px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-500 hover:bg-gray-50 transition-all"
+                title="새로고침"
+              >
+                🔄
+              </button>
+            )}
           </div>
           {/* 통계 배지 */}
           <div className="flex items-center gap-1.5 flex-wrap text-xs">
@@ -1403,7 +1431,7 @@ const SecretaryInsPage:React.FC = () => {
       </div>
 
       {/* 바디 */}
-      <div className="flex max-w-6xl w-full mx-auto px-6 py-4 gap-5" style={{minHeight:600}}>
+      <div className="flex max-w-6xl w-full mx-auto px-3 sm:px-6 py-3 sm:py-4 gap-5 pb-32 sm:pb-6" style={{minHeight:600}}>
 
         {/* 사이드바 */}
         <aside className="w-56 flex-shrink-0 hidden lg:flex flex-col gap-3 self-start sticky top-4">
@@ -2198,28 +2226,34 @@ const SecretaryInsPage:React.FC = () => {
                 <div className="space-y-4">
 
                   {/* 고객 헤더 */}
-                  <div className={`${CARD} p-4 flex items-center gap-4`}>
-                    <div className="w-12 h-12 rounded-full bg-[#0f172a] flex items-center justify-center text-white text-lg font-bold flex-shrink-0">
-                      {selectedCust.customer_name.slice(0,1)}
-                    </div>
-                    <div className="flex-1">
-                      <h2 className="text-base font-bold text-[#0f172a]">{selectedCust.customer_name}</h2>
-                      <div className="flex items-center gap-3 mt-0.5">
-                        <p className="font-mono text-xs text-gray-400">{selectedCust.customer_key}</p>
-                        {custInfo?.phone&&<a href={`tel:${custInfo.phone.replace(/-/g,"")}`} className="text-xs text-orange-500 hover:underline">📞 {custInfo.phone}</a>}
+                  <div className={`${CARD} p-4`}>
+                    <div className="flex items-start gap-3">
+                      <div className="w-11 h-11 rounded-full bg-[#0f172a] flex items-center justify-center text-white text-base font-bold flex-shrink-0">
+                        {selectedCust.customer_name.slice(0,1)}
                       </div>
-                      <div className="flex gap-3 mt-1.5 text-xs">
-                        <span className="text-blue-600">📋 계약 {selectedCust.policies.length}건</span>
-                        <span className="text-emerald-600">🛡 상담 {selectedCust.consults.length}건</span>
-                        <span className="text-indigo-600">🏥 청구 {selectedCust.claims.length}건</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <h2 className="text-base font-bold text-[#0f172a] truncate">{selectedCust.customer_name}</h2>
+                          <div className="flex gap-1.5 flex-shrink-0">
+                            <button className={BTG} onClick={()=>quickChat(`고객 "${selectedCust.customer_name}"(${selectedCust.customer_key}) 전체 현황 정리해줘`)}>AI 요약</button>
+                            <button className="px-3 py-1.5 rounded-xl border border-red-200 text-xs text-red-500 hover:bg-red-50 transition-all"
+                              onClick={()=>void deleteCustomer(selectedCust.customer_key, selectedCust.customer_name)}>
+                              삭제
+                            </button>
+                          </div>
+                        </div>
+                        <p className="font-mono text-xs text-gray-400 mt-0.5 truncate">{selectedCust.customer_key}</p>
+                        {custInfo?.phone&&(
+                          <a href={`tel:${custInfo.phone.replace(/-/g,"")}`} className="text-xs text-orange-500 hover:underline mt-0.5 inline-block">
+                            📞 {custInfo.phone}
+                          </a>
+                        )}
+                        <div className="flex gap-3 mt-1.5 text-xs flex-wrap">
+                          <span className="text-blue-600">📋 계약 {selectedCust.policies.length}건</span>
+                          <span className="text-emerald-600">🛡 상담 {selectedCust.consults.length}건</span>
+                          <span className="text-indigo-600">🏥 청구 {selectedCust.claims.length}건</span>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex gap-1.5 flex-shrink-0">
-                      <button className={BTG} onClick={()=>quickChat(`고객 "${selectedCust.customer_name}"(${selectedCust.customer_key}) 전체 현황 정리해줘`)}>AI 요약</button>
-                      <button className="px-3 py-1.5 rounded-xl border border-red-200 text-xs text-red-500 hover:bg-red-50 transition-all"
-                        onClick={()=>void deleteCustomer(selectedCust.customer_key, selectedCust.customer_name)}>
-                        삭제
-                      </button>
                     </div>
                   </div>
 
@@ -2384,7 +2418,7 @@ const SecretaryInsPage:React.FC = () => {
 
           {/* ══ AI 채팅 ══ */}
           {tab==="chat"&&(
-            <div className={`${CARD} p-4`} style={{height:520,display:"flex",flexDirection:"column"}}>
+            <div className={`${CARD} p-4`} style={{height:"calc(100vh - 320px)",minHeight:300,display:"flex",flexDirection:"column"}}>
               {histLoading&&(
                 <div className="flex items-center justify-center h-20 gap-2 text-xs text-gray-400">
                   <span className="w-1.5 h-1.5 rounded-full bg-gray-300 animate-bounce" style={{animationDelay:"0ms"}}/>
@@ -2437,20 +2471,20 @@ const SecretaryInsPage:React.FC = () => {
             </div>
           )}
 
-          {/* ══ 입력창 (항상 하단 고정) ══ */}
-          <div className="flex-shrink-0 pt-2">
-            <div className="flex flex-wrap gap-1.5 mb-2">
+          {/* ══ 입력창 — 모바일: fixed 하단 고정 / 데스크탑: 일반 흐름 ══ */}
+          <div className="flex-shrink-0 pt-2 fixed bottom-0 left-0 right-0 bg-gray-50 border-t border-gray-200 px-3 py-2 z-50 sm:static sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:pt-2">
+            <div className="flex flex-wrap gap-1 mb-1.5 sm:gap-1.5 sm:mb-2">
               {["오늘 상담 요약","긴급 할일","오늘 사후관리","방금 보험 통화 저장","고객 미팅 메모 정리"].map(c=>(
                 <button key={c} onClick={()=>quickChat(c.includes("저장")||c.includes("정리")?c+". ":c+" 알려줘")}
-                  className="px-2.5 py-1 rounded-full border border-gray-200 text-xs text-gray-500 hover:border-blue-300 hover:text-blue-500 bg-white transition-all">
+                  className="px-2 py-0.5 rounded-full border border-gray-200 text-xs text-gray-500 hover:border-blue-300 hover:text-blue-500 bg-white transition-all sm:px-2.5 sm:py-1">
                   {c}
                 </button>
               ))}
             </div>
-            <div className={`${CARD} py-2.5 px-3`}>
-              <div className="flex items-center justify-between mb-1.5">
-                <p className="text-xs text-gray-400">보험 상담 내용을 말씀하시면 AI가 자동 분류·저장합니다</p>
-                <label className="flex items-center gap-1.5 cursor-pointer flex-shrink-0">
+            <div className={`${CARD} py-2 px-3`}>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs text-gray-400 hidden sm:block">보험 상담 내용을 말씀하시면 AI가 자동 분류·저장합니다</p>
+                <label className="flex items-center gap-1.5 cursor-pointer flex-shrink-0 ml-auto">
                   <div className={`w-8 h-4 rounded-full transition-colors relative ${autoSave?"bg-emerald-500":"bg-gray-300"}`} onClick={()=>setAutoSave(v=>!v)}>
                     <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${autoSave?"translate-x-4":"translate-x-0.5"}`}/>
                   </div>
