@@ -21,15 +21,6 @@ const DTABLE: Record<string,string> = {
   export:                 "consultation_export_details",
 };
 
-// 공통 진행단계 키워드 → process_stage 값 매핑
-const COMMON_STAGE_MAP: Record<string,string> = {
-  상담:"consulting", 견적:"quote", 계약:"contract", 납품:"delivery", 계산서발행:"invoiced",
-};
-const PROCESS_STAGE_TABLES = new Set([
-  "consultation_tire_details","consultation_battery_details",
-  "consultation_forklift_details","consultation_export_details",
-]);
-
 // 현대건설기계 유효 상태값
 const HCM_STATUSES = ["접수","신용조회","승인","보완","거절","서류등록","전자계약발송","확정","보류"] as const;
 type HCMStatus = typeof HCM_STATUSES[number];
@@ -141,7 +132,8 @@ Example: "성수연, 정부경 승인" → two separate consult_update actions, 
 direct_fields rules:
 - phone update: "전화번호 010-xxxx-xxxx" → direct_fields.phone = "010-xxxx-xxxx"
 - status update (consultation_cases.status): general status
-  - "승인" or "완료" → status: "completed"
+  - "완료" or "확정"(finance only) → status: "completed"
+  - "승인"(finance) → finance_stage: "approved" ONLY, do NOT change status
   - "진행중" or "상담중" → status: "in_progress"
   - "대기" or "보류" → status: "on_hold"
   - "신규" → status: "in_progress"
@@ -963,7 +955,7 @@ serve(async (req) => {
                   if (summary.includes(bk)) { brandFound = bk; break; }
                 }
 
-                const tireInsert: Record<string,unknown> = { consultation_id: cid, process_stage: "consulting" };
+                const tireInsert: Record<string,unknown> = { consultation_id: cid };
                 tireInsert.vehicle_info   = (tf.vehicle_info as string|null) ?? (brandFound || null);
                 tireInsert.vehicle_type   = (tf.vehicle_type   as string|null) ?? (tonMatch ? tonMatch[1]+"톤" : null);
                 tireInsert.tire_size      = (tf.tire_size      as string|null) ?? (sizeMatch ? sizeMatch[0] : null);
@@ -1021,7 +1013,6 @@ serve(async (req) => {
                 const forkliftInsert: Record<string,unknown> = {
                   consultation_id: cid,
                   forklift_status: "consulting",
-                  process_stage: "consulting",
                 };
                 if (tonMatch)   forkliftInsert.forklift_ton      = tonMatch[1] + "톤";  // string 타입
                 if (brandFound) forkliftInsert.forklift_type     = brandFound;  // forklift_type 컬럼
@@ -1060,7 +1051,7 @@ serve(async (req) => {
                   if (dd !== "00") dueDate = `${yr}-${mo}-${dd}`;
                 }
 
-                const batteryInsert: Record<string,unknown> = { consultation_id: cid, process_stage: "consulting" };
+                const batteryInsert: Record<string,unknown> = { consultation_id: cid };
                 batteryInsert.battery_vehicle_type     = vehicleType;
                 batteryInsert.battery_drive_type       = (bf.battery_drive_type as string|null) ?? null;
                 batteryInsert.battery_voltage          = bf.battery_voltage ? Number(bf.battery_voltage) : (voltageMatch ? Number(voltageMatch[1]) : null);
@@ -1101,7 +1092,6 @@ serve(async (req) => {
                 exportInsert.unit_price          = ef.unit_price ? Number(ef.unit_price) : null;
                 exportInsert.incoterms           = (ef.incoterms as string|null) ?? null;
                 exportInsert.export_stage        = "consulting";
-                exportInsert.process_stage       = "consulting";
                 const {error:expErr} = await db.from("consultation_export_details").insert(exportInsert);
                 console.log("[export_insert] error:", expErr?.message ?? "none");
               }
@@ -1206,18 +1196,10 @@ serve(async (req) => {
               if (qty && unitPrice) batteryExtra.battery_sale_price = Math.round(qty * unitPrice);
             }
 
-            // 공통 진행단계 키워드 → process_stage 자동 업데이트
-            const stageExtra: Record<string,unknown> = {};
-            if (PROCESS_STAGE_TABLES.has(dtable)) {
-              for (const [kw, stage] of Object.entries(COMMON_STAGE_MAP)) {
-                if (memoText.includes(kw)) { stageExtra.process_stage = stage; break; }
-              }
-            }
-
             if (dr) {
-              await db.from(dtable).update({note:newNote, ...financeExtra, ...batteryExtra, ...stageExtra}).eq("consultation_id", best.id);
+              await db.from(dtable).update({note:newNote, ...financeExtra, ...batteryExtra}).eq("consultation_id", best.id);
             } else {
-              await db.from(dtable).insert({consultation_id: best.id, note:newNote, ...financeExtra, ...batteryExtra, ...stageExtra});
+              await db.from(dtable).insert({consultation_id: best.id, note:newNote, ...financeExtra, ...batteryExtra});
             }
           }
 
@@ -1239,10 +1221,13 @@ serve(async (req) => {
           // update_memo에서 상태/finance_stage 자동 추출 (AI가 direct_fields 누락 시 보완)
           const memoText = (a.update_memo as string ?? "").toLowerCase();
           if (!caseDirectUpdate.status) {
-            if (memoText.includes("승인"))                                              caseDirectUpdate.status = "completed";
+            // finance는 "승인"이 finance_stage 변경이지 status 변경이 아님
+            if (memoText.includes("승인") && wt !== "finance")                         caseDirectUpdate.status = "in_progress";
             else if (memoText.includes("진행중") || memoText.includes("상담중"))        caseDirectUpdate.status = "in_progress";
             else if (memoText.includes("대기") || memoText.includes("보류"))           caseDirectUpdate.status = "on_hold";
-            else if (memoText.includes("완료"))                                        caseDirectUpdate.status = "completed";
+            else if (memoText.includes("완료") && wt !== "finance")                    caseDirectUpdate.status = "completed";
+            // finance 완료는 "확정"일 때만
+            else if (memoText.includes("확정") && wt === "finance")                    caseDirectUpdate.status = "completed";
           }
           if (!financeStageValue && wt === "finance") {
             if (memoText.includes("확정"))                                              financeStageValue = "confirmed";

@@ -50,7 +50,6 @@ type TireDetailRow = {
   inflow_channel: string | null;
   association_name: string | null;
   process_status: string | null;
-  process_stage: string | null;
   note: string | null;
 };
 
@@ -98,7 +97,6 @@ type ForkliftDetailRow = {
   forklift_status: string | null;
   forklift_option_note: string | null;
   forklift_sale_method: string | null;
-  process_stage: string | null;
   note: string | null;
 };
 
@@ -106,6 +104,7 @@ type BatteryDetailRow = {
   consultation_id: number;
   battery_vehicle_type: string | null;
   battery_drive_type: string | null;
+
   battery_voltage: number | null;
   battery_capacity_ah: number | null;
   battery_total_capacity_kwh: number | null;
@@ -118,7 +117,6 @@ type BatteryDetailRow = {
   battery_unit_sale_price: number | null;
   battery_quantity: number | null;
   battery_sale_price: number | null;
-  process_stage: string | null;
   note: string | null;
 };
 
@@ -218,21 +216,24 @@ const labelClass = "block text-sm font-medium text-navy-900 mb-2";
 const compactLabelClass = "block text-xs font-medium text-gray-600 mb-1";
 
 const thClass =
-  "px-4 py-3 text-left text-xs font-medium tracking-wide text-gray-400 uppercase border-b border-gray-100 whitespace-nowrap";
+  "px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase border-b border-gray-100 whitespace-nowrap";
 const tdClass =
-  "px-4 py-3 text-sm font-medium text-gray-700 border-b border-gray-100 align-top whitespace-nowrap";
+  "px-3 py-2.5 text-sm text-gray-700 border-b border-gray-100 align-middle whitespace-nowrap";
 
 const actionBtnClass =
   "px-3 py-1.5 rounded-2xl text-xs font-semibold border border-gray-200 text-gray-700 hover:border-gray-300 hover:shadow-sm whitespace-nowrap transition-all";
 const completeBtnClass =
   "px-3 py-1.5 rounded-2xl text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 whitespace-nowrap transition-all";
 const sectionTitleClass =
-  "text-xs font-medium tracking-[0.12em] uppercase text-orange-500";
+  "text-sm font-semibold text-orange-500 mr-3";
 
-const detailLabelClass = "text-[10px] leading-3 font-medium text-gray-400 uppercase whitespace-nowrap";
-const detailValueClass = "text-[11px] leading-3 text-gray-800 mt-0 whitespace-nowrap";
+// 인라인 항목: 라벨+값이 한 쌍으로 flex item
+const detailLabelClass = "text-[10px] text-gray-400 mr-0.5";
+const detailValueClass = "text-[12px] text-gray-800 font-semibold";
 const inlineDetailBoxClass =
-  "bg-orange-50/40 border border-orange-200 rounded-2xl p-2";
+  "bg-gray-50 border border-orange-100 rounded-lg px-3 py-2 w-full";
+// dl 행: 인라인 쌍
+const dlRowClass = "inline-flex items-baseline gap-0.5 mr-4 mb-0.5";
 
 const grid5Class = "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4";
 const dashboardGridClass = "grid grid-cols-1 xl:grid-cols-3 gap-4";
@@ -516,6 +517,8 @@ const CallManagementPage: React.FC = () => {
   const [batteryNote, setBatteryNote] = useState("");
 
   const [followupRescheduleMap, setFollowupRescheduleMap] = useState<Record<number, string>>({});
+  const [overdueRows, setOverdueRows] = useState<{id:number;customer_name:string;work_type:string|null;created_at:string}[]>([]);
+  const [showOverdueModal, setShowOverdueModal] = useState(false);
 
   const [rows, setRows] = useState<ConsultationRow[]>([]);
   const [loadingList, setLoadingList] = useState(false);
@@ -581,8 +584,6 @@ const CallManagementPage: React.FC = () => {
     useState<ForkliftDetailRow | null>(null);
   const [expandedBatteryDetail, setExpandedBatteryDetail] =
     useState<BatteryDetailRow | null>(null);
-  const [expandedExportDetail, setExpandedExportDetail] =
-    useState<{consultation_id:number;process_stage:string|null;export_stage:string|null}|null>(null);
   const [editingCaseId, setEditingCaseId] = useState<number | null>(null);
   const [pendingOpenId, setPendingOpenId] = useState<string|null>(null);
   const [showTodoBox, setShowTodoBox] = useState(false);
@@ -613,7 +614,7 @@ const CallManagementPage: React.FC = () => {
 
   const isClosingByCurrentForm = () => {
     if (workType === "registration_insurance") return policyIssued;
-    if (workType === "finance") return financeStage === "confirmed" || financeStage === "cancelled";
+    if (workType === "finance") return financeStage === "confirmed" || financeStage === "cancelled" || financeStage === "rejected";
     if (["tire_sales","forklift_sales","battery_sales","export"].includes(workType)) return progressStage === "invoiced" || progressStage === "cancelled";
     return false;
   };
@@ -1069,7 +1070,7 @@ const CallManagementPage: React.FC = () => {
       setTireRegionDetail(tireDetail?.region_detail || "");
       setTireInflowChannel(tireDetail?.inflow_channel || "");
       setTireAssociationName(tireDetail?.association_name || "");
-      setProgressStage(normalizeToCommonStage(tireDetail?.process_stage ?? tireDetail?.process_status));
+      setProgressStage(normalizeToCommonStage(tireDetail?.process_status));
       setTireNote(tireDetail?.note || "");
     }
 
@@ -1104,7 +1105,7 @@ const CallManagementPage: React.FC = () => {
       setForkliftCondition(forkliftDetail?.forklift_condition || "");
       setForkliftType(forkliftDetail?.forklift_type || "");
       setForkliftTon(forkliftDetail?.forklift_ton || "");
-      setProgressStage(normalizeToCommonStage(forkliftDetail?.process_stage ?? resolvedForkliftStatus(forkliftDetail)));
+      setProgressStage(normalizeToCommonStage(resolvedForkliftStatus(forkliftDetail)));
       setForkliftOptionNote(forkliftDetail?.forklift_option_note || "");
       setForkliftSaleMethod(forkliftDetail?.forklift_sale_method || "");
       setForkliftNote(stripStatusMeta(forkliftDetail?.note || ""));
@@ -1113,7 +1114,7 @@ const CallManagementPage: React.FC = () => {
     if (row.work_type === "battery_sales") {
       setBatteryVehicleType(batteryDetail?.battery_vehicle_type || "");
       setBatteryDriveType(batteryDetail?.battery_drive_type || "");
-      setProgressStage(normalizeToCommonStage(batteryDetail?.process_stage ?? resolvedBatteryStatus(batteryDetail)));
+      setProgressStage(normalizeToCommonStage(resolvedBatteryStatus(batteryDetail)));
       setBatteryVoltage(
         batteryDetail?.battery_voltage !== null && batteryDetail?.battery_voltage !== undefined
           ? String(batteryDetail.battery_voltage)
@@ -1156,10 +1157,6 @@ const CallManagementPage: React.FC = () => {
           : ""
       );
       setBatteryNote(stripStatusMeta(batteryDetail?.note || ""));
-    }
-
-    if (row.work_type === "export") {
-      setProgressStage(normalizeToCommonStage(expandedExportDetail?.process_stage ?? expandedExportDetail?.export_stage));
     }
 
     setTab("new");
@@ -1309,6 +1306,10 @@ const CallManagementPage: React.FC = () => {
     setRows(caseRows);
     (window as any).__consultRows = caseRows;
     setLoadingList(false);
+    // D+30일 초과 상담 체크 (최초 로드 시)
+    void checkOverdueConsultations().then(overdue => {
+      if (overdue.length > 0) { setOverdueRows(overdue as any); setShowOverdueModal(true); }
+    });
 
     const ids = caseRows.map((r) => r.id);
     if (!ids.length) {
@@ -1374,6 +1375,21 @@ const CallManagementPage: React.FC = () => {
     setFinanceDetailsMap(financeMap);
     setForkliftDetailsMap(forkliftMap);
     setBatteryDetailsMap(batteryMap);
+  };
+
+  // D+30일 초과 상담 감지 → 취소 후보 반환
+  const checkOverdueConsultations = async () => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    const { data } = await supabase
+      .from("consultation_cases")
+      .select("id, customer_name, work_type, call_datetime, created_at")
+      .in("status", ["new", "in_progress", "waiting_customer", "on_hold"])
+      .lt("created_at", cutoffStr + "T00:00:00")
+      .order("created_at", { ascending: true })
+      .limit(50);
+    return data ?? [];
   };
 
   const fetchFollowups = async () => {
@@ -1532,7 +1548,8 @@ const CallManagementPage: React.FC = () => {
     setExpandedFinanceDetail(null);
     setExpandedForkliftDetail(null);
     setExpandedBatteryDetail(null);
-    setExpandedExportDetail(null);
+    setExpandedForkliftDetail(null);
+    setExpandedBatteryDetail(null);
     setDetailError("");
     setListSearchName("");
     setListSearchPhone("");
@@ -1589,7 +1606,6 @@ const CallManagementPage: React.FC = () => {
         setExpandedFinanceDetail(null);
         setExpandedForkliftDetail(null);
         setExpandedBatteryDetail(null);
-        setExpandedExportDetail(null);
       }
 
       setSelectedIds([]);
@@ -1607,7 +1623,6 @@ const CallManagementPage: React.FC = () => {
       setExpandedFinanceDetail(null);
       setExpandedForkliftDetail(null);
       setExpandedBatteryDetail(null);
-      setExpandedExportDetail(null);
       setDetailError("");
       return;
     }
@@ -1618,7 +1633,6 @@ const CallManagementPage: React.FC = () => {
     setExpandedFinanceDetail(null);
     setExpandedForkliftDetail(null);
     setExpandedBatteryDetail(null);
-    setExpandedExportDetail(null);
     setDetailError("");
     setLoadingDetail(true);
 
@@ -1695,15 +1709,6 @@ const CallManagementPage: React.FC = () => {
         return;
       }
       setExpandedBatteryDetail((data || null) as BatteryDetailRow | null);
-    }
-
-    if (row.work_type === "export") {
-      const { data } = await supabase
-        .from("consultation_export_details")
-        .select("consultation_id,process_stage,export_stage")
-        .eq("consultation_id", row.id)
-        .maybeSingle();
-      setExpandedExportDetail(data ?? null);
     }
 
     setLoadingDetail(false);
@@ -1966,8 +1971,8 @@ const CallManagementPage: React.FC = () => {
       status: isClosing ? "closed" : editingCaseId ? status || "new" : "new",
       summary: autoSummary,
       detail_memo: detailMemoForCase,
-      followup_needed: isClosing ? false : Boolean(nextFollowupDate),
-      next_followup_date: isClosing ? null : nextFollowupDate || null,
+      followup_needed: false,
+      next_followup_date: null,
     };
 
     let savedCaseId: number | null = editingCaseId;
@@ -2123,7 +2128,6 @@ const CallManagementPage: React.FC = () => {
             association_name:
               tireInflowChannel === "association" ? tireAssociationName || null : null,
             process_status: progressStage || "consulting",
-            process_stage: progressStage || "consulting",
               note: tireNote.trim() || null,
             },
           ],
@@ -2184,7 +2188,6 @@ const CallManagementPage: React.FC = () => {
               forklift_type: forkliftType || null,
               forklift_ton: forkliftTon.trim() || null,
               forklift_status: progressStage || "consulting",
-              process_stage: progressStage || "consulting",
               forklift_option_note: forkliftOptionNote.trim() || null,
               forklift_sale_method: forkliftSaleMethod || null,
               note: forkliftNote.trim() || null,
@@ -2223,7 +2226,6 @@ const CallManagementPage: React.FC = () => {
               battery_unit_sale_price: batteryUnitSalePrice ? Number(batteryUnitSalePrice.replace(/,/g,"")) : null,
               battery_quantity: batteryQuantity ? Number(batteryQuantity) : null,
               battery_sale_price: batterySalePrice ? Math.round(batterySalePrice) : null,
-              process_stage: progressStage || "consulting",
               note: batteryNote.trim() || null,
             },
           ],
@@ -2244,7 +2246,7 @@ const CallManagementPage: React.FC = () => {
       const { error: exportError } = await supabase
         .from("consultation_export_details")
         .upsert(
-          [{ consultation_id: savedCaseId, export_stage: progressStage || "consulting", process_stage: progressStage || "consulting" }],
+          [{ consultation_id: savedCaseId, export_stage: progressStage || "consulting" }],
           { onConflict: "consultation_id" }
         );
       if (exportError) {
@@ -2348,6 +2350,63 @@ const CallManagementPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+
+      {/* D+30일 초과 상담 취소 후보 팝업 */}
+      {showOverdueModal && overdueRows.length > 0 && (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/50 px-4" onClick={()=>setShowOverdueModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6" onClick={e=>e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-base font-semibold text-[#0f172a]">⚠️ D+30일 초과 상담 ({overdueRows.length}건)</p>
+              <button className="text-gray-400 hover:text-gray-600" onClick={()=>setShowOverdueModal(false)}>✕</button>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">진전이 없는 상담입니다. 취소 처리하거나 계속 유지할 수 있습니다.</p>
+            <div className="space-y-2 max-h-64 overflow-y-auto mb-4">
+              {overdueRows.map(r=>{
+                const days = Math.floor((Date.now() - new Date(r.created_at).getTime()) / 86400000);
+                const wtLbl: Record<string,string> = {tire_sales:"타이어",finance:"금융",forklift_sales:"지게차",battery_sales:"배터리",export:"수출",registration_insurance:"보험"};
+                return (
+                  <div key={r.id} className="flex items-center justify-between p-3 rounded-xl border border-gray-200 bg-gray-50">
+                    <div>
+                      <span className="text-sm font-semibold text-[#0f172a]">{r.customer_name}</span>
+                      <span className="ml-2 text-xs text-orange-500">{wtLbl[r.work_type??'']??r.work_type}</span>
+                      <span className="ml-2 text-xs text-red-400 font-medium">D+{days}일</span>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <button
+                        className="px-3 py-1 rounded-lg bg-red-500 text-white text-xs font-semibold hover:bg-red-600"
+                        onClick={async()=>{
+                          await supabase.from("consultation_cases").update({status:"closed"}).eq("id",r.id);
+                          setOverdueRows(prev=>prev.filter(x=>x.id!==r.id));
+                          void fetchConsultations();
+                        }}
+                      >취소처리</button>
+                      <button
+                        className="px-3 py-1 rounded-lg border border-gray-300 text-xs text-gray-600 hover:bg-gray-100"
+                        onClick={()=>setOverdueRows(prev=>prev.filter(x=>x.id!==r.id))}
+                      >유지</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex gap-2">
+              <button
+                className="flex-1 py-2 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600"
+                onClick={async()=>{
+                  await Promise.all(overdueRows.map(r=>supabase.from("consultation_cases").update({status:"closed"}).eq("id",r.id)));
+                  setOverdueRows([]);
+                  setShowOverdueModal(false);
+                  void fetchConsultations();
+                }}
+              >전체 취소처리</button>
+              <button
+                className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50"
+                onClick={()=>setShowOverdueModal(false)}
+              >전체 유지</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 히어로 헤더 ── */}
       <section className="relative bg-[#0a192f] text-white overflow-hidden">
@@ -2737,19 +2796,7 @@ const CallManagementPage: React.FC = () => {
                     />
                   </div>
 
-                  <div>
-                    <label className={labelClass}>사후관리 (F/Up)</label>
-                    <input
-                      type="date"
-                      className={controlClass}
-                      style={insuranceEqualDateFieldStyle}
-                      value={nextFollowupDate}
-                      onChange={(e) => setNextFollowupDate(e.target.value)}
-                    />
-                    <div className="mt-1 text-xs font-semibold text-gray-500">
-                      {nextFollowupDate ? "대상" : "비대상"}
-                    </div>
-                  </div>
+
                 </div>
 
 
@@ -2859,8 +2906,12 @@ const CallManagementPage: React.FC = () => {
                       onChange={(e) => setFinanceCompany(e.target.value)}
                     >
                       <option value="">선택</option>
+                      <option value="KB캐피탈">KB캐피탈</option>
+                      <option value="NH캐피탈">NH캐피탈</option>
                       <option value="오릭스">오릭스</option>
                       <option value="HCI">HCI</option>
+                      <option value="BNK캐피탈">BNK캐피탈</option>
+                      <option value="메리츠캐피탈">메리츠캐피탈</option>
                       <option value="롯데오토리스">롯데오토리스</option>
                       <option value="농협">농협</option>
                       <option value="우리금융">우리금융</option>
@@ -2949,18 +3000,7 @@ const CallManagementPage: React.FC = () => {
                     </select>
                   </div>
 
-                  <div>
-                    <label className={labelClass}>사후관리 (F/Up)</label>
-                    <input
-                      type="date"
-                      className={controlClass}
-                      value={nextFollowupDate}
-                      onChange={(e) => setNextFollowupDate(e.target.value)}
-                    />
-                    <div className="mt-1 text-xs font-semibold text-gray-500">
-                      {nextFollowupDate ? "대상" : "비대상"}
-                    </div>
-                  </div>
+
                 </div>
 
                 <div>
@@ -3059,18 +3099,7 @@ const CallManagementPage: React.FC = () => {
                     />
                   </div>
 
-                  <div>
-                    <label className={labelClass}>사후관리 (F/Up)</label>
-                    <input
-                      type="date"
-                      className={controlClass}
-                      value={nextFollowupDate}
-                      onChange={(e) => setNextFollowupDate(e.target.value)}
-                    />
-                    <div className="mt-1 text-xs font-semibold text-gray-500">
-                      {nextFollowupDate ? "대상" : "비대상"}
-                    </div>
-                  </div>
+
                 </div>
 
                 <div>
@@ -3281,18 +3310,7 @@ const CallManagementPage: React.FC = () => {
 
 
 
-                  <div>
-                    <label className={labelClass}>사후관리 (F/Up)</label>
-                    <input
-                      type="date"
-                      className={controlClass}
-                      value={nextFollowupDate}
-                      onChange={(e) => setNextFollowupDate(e.target.value)}
-                    />
-                    <div className="mt-1 text-xs font-semibold text-gray-500">
-                      {nextFollowupDate ? "대상" : "비대상"}
-                    </div>
-                  </div>
+
                 </div>
 
                 <div>
@@ -3325,18 +3343,7 @@ const CallManagementPage: React.FC = () => {
                     </select>
                   </div>
 
-                  <div>
-                    <label className={labelClass}>사후관리 (F/Up)</label>
-                    <input
-                      type="date"
-                      className={controlClass}
-                      value={nextFollowupDate}
-                      onChange={(e) => setNextFollowupDate(e.target.value)}
-                    />
-                    <div className="mt-1 text-xs font-semibold text-gray-500">
-                      {nextFollowupDate ? "대상" : "비대상"}
-                    </div>
-                  </div>
+
                 </div>
               </div>
             )}
@@ -3478,18 +3485,7 @@ const CallManagementPage: React.FC = () => {
                     </select>
                   </div>
 
-                  <div>
-                    <label className={labelClass}>사후관리 (F/Up)</label>
-                    <input
-                      type="date"
-                      className={controlClass}
-                      value={nextFollowupDate}
-                      onChange={(e) => setNextFollowupDate(e.target.value)}
-                    />
-                    <div className="mt-1 text-xs font-semibold text-gray-500">
-                      {nextFollowupDate ? "대상" : "비대상"}
-                    </div>
-                  </div>
+
                 </div>
 
                 <div>
@@ -3835,7 +3831,7 @@ const CallManagementPage: React.FC = () => {
 
             {!loadingList && !listError && filteredRows.length > 0 && (
               <div className="border border-gray-200 rounded-2xl overflow-x-auto">
-                <table className=" bg-white">
+                <table className="w-full bg-white">
                   <thead>
                     <tr className="bg-gray-50">
                       <th className={thClass}>
@@ -3854,8 +3850,6 @@ const CallManagementPage: React.FC = () => {
                       <th className={thClass}>업무유형</th>
                       <th className={thClass}>자동요약</th>
                       <th className={thClass}>Closing</th>
-                      <th className={thClass}>사후관리</th>
-                      <th className={thClass}>다음 연락일</th>
                       <th className={thClass}>수정</th>
                     </tr>
                   </thead>
@@ -3895,7 +3889,7 @@ const CallManagementPage: React.FC = () => {
                             {formatWorkType(row.work_type)}
                             {row.sub_type && <span className="ml-1 text-xs text-gray-400">({row.sub_type})</span>}
                           </td>
-                          <td className={tdClass}>{row.summary}</td>
+                          <td className={tdClass} style={{maxWidth:"240px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.summary}</td>
                           <td className={tdClass}>
                             {isClosingCase(
                               row,
@@ -3906,10 +3900,6 @@ const CallManagementPage: React.FC = () => {
                               batteryDetailsMap[row.id]
                             ) ? "Y" : "N"}
                           </td>
-                          <td className={tdClass}>
-                            {row.followup_needed ? "필요" : "불필요"}
-                          </td>
-                          <td className={tdClass}>{row.next_followup_date || "-"}</td>
                           <td className={tdClass}>
                             <button
                               type="button"
@@ -3926,7 +3916,7 @@ const CallManagementPage: React.FC = () => {
 
                         {expandedRowId === row.id && (
                           <tr>
-                            <td colSpan={10} className="p-3 bg-white">
+                            <td colSpan={8} className="p-2 bg-white max-w-0">
                               <div className={inlineDetailBoxClass}>
                                 {loadingDetail && (
                                   <div className="text-sm text-gray-500">
@@ -3941,574 +3931,101 @@ const CallManagementPage: React.FC = () => {
                                 )}
 
                                 {!loadingDetail && !detailError && (
-                                  <div className="space-y-3">
-                                    <div className="flex items-center justify-between mb-1">
-                                      <div className="text-sm font-semibold text-navy-900">
-                                        {row.customer_name} 상세내역
-                                      </div>
-                                      <div className="flex items-center gap-2">
-                                        <button
-                                          type="button"
-                                          className={actionBtnClass}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleStartEdit(row);
-                                          }}
-                                        >
-                                          수정
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className={actionBtnClass}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setExpandedRowId(null);
-                                            setExpandedTireDetail(null);
-                                            setExpandedInsuranceDetail(null);
-                                            setExpandedFinanceDetail(null);
-                                            setExpandedForkliftDetail(null);
-                                            setExpandedBatteryDetail(null);
-                                            setExpandedExportDetail(null);
-                                            setDetailError("");
-                                          }}
-                                        >
-                                          닫기
-                                        </button>
+                                  <div>
+                                    {/* 헤더 */}
+                                    <div className="flex items-center justify-between mb-1.5">
+                                      <span className="text-sm font-semibold text-gray-700">{row.customer_name} 상세</span>
+                                      <div className="flex gap-1.5">
+                                        <button type="button" className={actionBtnClass} onClick={(e)=>{e.stopPropagation();handleStartEdit(row);}}>수정</button>
+                                        <button type="button" className={actionBtnClass} onClick={(e)=>{e.stopPropagation();setExpandedRowId(null);setExpandedTireDetail(null);setExpandedInsuranceDetail(null);setExpandedFinanceDetail(null);setExpandedForkliftDetail(null);setExpandedBatteryDetail(null);setDetailError("");}}>닫기</button>
                                       </div>
                                     </div>
 
-                                    <div className="space-y-3">
-                                      <div className={sectionTitleClass}>공통 정보</div>
-
-                                      <div>
-                                        <div className="grid grid-cols-8 gap-1">
-                                          <div>
-                                            <div className={detailLabelClass}>상담일자</div>
-                                            <div className={detailValueClass}>
-                                              {formatDateOnly(row.call_datetime)}
-                                            </div>
-                                          </div>
-
-                                          <div>
-                                            <div className={detailLabelClass}>고객명</div>
-                                            <div className={detailValueClass}>{row.customer_name || "-"}</div>
-                                          </div>
-
-                                          <div>
-                                            <div className={detailLabelClass}>연락처</div>
-                                            <div className={detailValueClass}>
-                                              <a
-                                                href={`tel:${onlyDigits(row.phone)}`}
-                                                className="text-orange-600 font-medium hover:underline"
-                                              >
-                                                {row.phone}
-                                              </a>
-                                            </div>
-                                          </div>
-
-                                          <div>
-                                            <div className={detailLabelClass}>통신사</div>
-                                            <div className={detailValueClass}>
-                                              {row.telecom_provider || "-"}
-                                            </div>
-                                          </div>
-
-                                          <div>
-                                            <div className={detailLabelClass}>업무유형</div>
-                                            <div className={detailValueClass}>
-                                              {formatWorkType(row.work_type)}
-                                            </div>
-                                          </div>
-
-                                          <div>
-                                            <div className={detailLabelClass}>Closing</div>
-                                            <div className={detailValueClass}>
-                                              {isClosingCase(
-                                                row,
-                                                expandedInsuranceDetail,
-                                                expandedTireDetail,
-                                                expandedFinanceDetail,
-                                                expandedForkliftDetail,
-                                                expandedBatteryDetail
-                                              ) ? "Y" : "N"}
-                                            </div>
-                                          </div>
-
-                                          <div>
-                                            <div className={detailLabelClass}>사후관리</div>
-                                            <div className={detailValueClass}>
-                                              {row.followup_needed ? "필요" : "불필요"}
-                                            </div>
-                                          </div>
-
-                                          <div>
-                                            <div className={detailLabelClass}>다음 연락일</div>
-                                            <div className={detailValueClass}>
-                                              {row.next_followup_date || "-"}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
+                                    {/* 공통 + 상세 한 줄 flex-wrap */}
+                                    <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-sm leading-6">
+                                      <span className="text-orange-400 font-semibold">기본</span>
+                                      <span><span className="text-gray-400">일자 </span><span className="font-medium text-gray-800">{formatDateOnly(row.call_datetime)}</span></span>
+                                      <span><span className="text-gray-400">고객 </span><span className="font-medium text-gray-800">{row.customer_name||"-"}</span></span>
+                                      <span><span className="text-gray-400">연락 </span><a href={`tel:${onlyDigits(row.phone)}`} className="font-medium text-orange-600 hover:underline">{row.phone||"-"}</a></span>
+                                      <span><span className="text-gray-400">업무 </span><span className="font-medium text-gray-800">{formatWorkType(row.work_type)}</span></span>
+                                      <span><span className="text-gray-400">Closing </span><span className="font-medium text-gray-800">{isClosingCase(row,expandedInsuranceDetail,expandedTireDetail,expandedFinanceDetail,expandedForkliftDetail,expandedBatteryDetail)?"✅완료":"진행중"}</span></span>
                                     </div>
 
-                                    {row.work_type === "registration_insurance" && (
-                                      <div className="space-y-3">
-                                        <div className={sectionTitleClass}>보험 상세</div>
-
-                                        {!expandedInsuranceDetail && (
-                                          <div className="text-sm text-gray-500">
-                                            저장된 보험 상세 정보가 없습니다.
-                                          </div>
-                                        )}
-
-                                        {expandedInsuranceDetail && (
-                                          <div>
-                                            <div className="grid grid-cols-12 gap-1">
-                                            <div>
-                                              <div className={detailLabelClass}>차량번호</div>
-                                              <div className={detailValueClass}>
-                                                {expandedInsuranceDetail.vehicle_no || "-"}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>차종 / 모델</div>
-                                              <div className={detailValueClass}>
-                                                {expandedInsuranceDetail.vehicle_model || "-"}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>사용용도</div>
-                                              <div className={detailValueClass}>
-                                                {expandedInsuranceDetail.vehicle_use || "-"}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>보험종류</div>
-                                              <div className={detailValueClass}>
-                                                {formatInsuranceType(
-                                                  expandedInsuranceDetail.insurance_type
-                                                )}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>직업</div>
-                                              <div className={detailValueClass}>
-                                                {expandedInsuranceDetail.job || "-"}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>가입 보험사</div>
-                                              <div className={detailValueClass}>
-                                                {expandedInsuranceDetail.insurance_company || "-"}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>가입일자</div>
-                                              <div className={detailValueClass}>
-                                                {formatDateOnly(
-                                                  expandedInsuranceDetail.insurance_start_date
-                                                )}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>만기일자</div>
-                                              <div className={detailValueClass}>
-                                                {formatDateOnly(
-                                                  expandedInsuranceDetail.insurance_end_date
-                                                )}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>사후관리</div>
-                                              <div className={detailValueClass}>
-                                                {row.next_followup_date
-                                                  ? `대상 (${row.next_followup_date})`
-                                                  : "비대상"}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>보험 요청 내용</div>
-                                              <div className={detailValueClass}>
-                                                {expandedInsuranceDetail.insurance_request || "-"}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>진행단계</div>
-                                              <div className={detailValueClass}>
-                                                {formatInsuranceProcess(expandedInsuranceDetail)}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>긴급도</div>
-                                              <div className={detailValueClass}>
-                                                {formatUrgency(expandedInsuranceDetail.urgency)}
-                                              </div>
-                                            </div>
-
-                                            
-                                            </div>
-                                          </div>
-                                        )}
-
-                                        {expandedForkliftDetail && (
-                                          <div>
-                                            <div className="grid grid-cols-10 gap-1">
-                                              <div>
-                                                <div className={detailLabelClass}>구분</div>
-                                                <div className={detailValueClass}>
-                                                  {formatForkliftCondition(expandedForkliftDetail.forklift_condition)}
-                                                </div>
-                                              </div>
-
-                                              <div>
-                                                <div className={detailLabelClass}>형식</div>
-                                                <div className={detailValueClass}>
-                                                  {formatForkliftType(expandedForkliftDetail.forklift_type)}
-                                                </div>
-                                              </div>
-
-                                              <div>
-                                                <div className={detailLabelClass}>톤수</div>
-                                                <div className={detailValueClass}>
-                                                  {expandedForkliftDetail.forklift_ton || "-"}
-                                                </div>
-                                              </div>
-
-                                              <div>
-                                                <div className={detailLabelClass}>진행단계</div>
-                                                <div className={detailValueClass}>
-                                                  {formatCommonStage(resolvedForkliftStatus(expandedForkliftDetail))}
-                                                </div>
-                                              </div>
-
-                                              <div>
-                                                <div className={detailLabelClass}>판매방식</div>
-                                                <div className={detailValueClass}>
-                                                  {formatForkliftSaleMethod(expandedForkliftDetail.forklift_sale_method)}
-                                                </div>
-                                              </div>
-
-                                              <div className="col-span-2">
-                                                <div className={detailLabelClass}>옵션사항</div>
-                                                <div className={detailValueClass}>
-                                                  {expandedForkliftDetail.forklift_option_note || "-"}
-                                                </div>
-                                              </div>
-
-                                              <div className="col-span-3">
-                                                <div className={detailLabelClass}>비고</div>
-                                                <div className={detailValueClass}>
-                                                  {stripStatusMeta(expandedForkliftDetail.note) || "-"}
-                                                </div>
-                                              </div>
-                                            </div>
-                                          </div>
-                                        )}
-
-                                        {expandedBatteryDetail && (
-                                          <div>
-                                            <div className="grid grid-cols-10 gap-1">
-                                              <div>
-                                                <div className={detailLabelClass}>차종</div>
-                                                <div className={detailValueClass}>
-                                                  {formatBatteryVehicleType(expandedBatteryDetail.battery_vehicle_type)}
-                                                </div>
-                                              </div>
-
-                                              <div>
-                                                <div className={detailLabelClass}>형식</div>
-                                                <div className={detailValueClass}>
-                                                  {formatBatteryDriveType(expandedBatteryDetail.battery_drive_type)}
-                                                </div>
-                                              </div>
-
-                                              <div>
-                                                <div className={detailLabelClass}>진행단계</div>
-                                                <div className={detailValueClass}>
-                                                  {formatCommonStage(resolvedBatteryStatus(expandedBatteryDetail))}
-                                                </div>
-                                              </div>
-
-                                              <div>
-                                                <div className={detailLabelClass}>전압</div>
-                                                <div className={detailValueClass}>
-                                                  {expandedBatteryDetail.battery_voltage ?? "-"}
-                                                </div>
-                                              </div>
-
-                                              <div>
-                                                <div className={detailLabelClass}>용량</div>
-                                                <div className={detailValueClass}>
-                                                  {expandedBatteryDetail.battery_capacity_ah ?? "-"}
-                                                </div>
-                                              </div>
-
-                                              <div>
-                                                <div className={detailLabelClass}>전체용량</div>
-                                                <div className={detailValueClass}>
-                                                  {expandedBatteryDetail.battery_total_capacity_kwh ?? "-"}
-                                                </div>
-                                              </div>
-
-                                              <div>
-                                                <div className={detailLabelClass}>규격 L</div>
-                                                <div className={detailValueClass}>
-                                                  {expandedBatteryDetail.battery_size_l ?? "-"}
-                                                </div>
-                                              </div>
-
-                                              <div>
-                                                <div className={detailLabelClass}>희망납기일</div>
-                                                <div className={detailValueClass}>
-                                                  {formatDateOnly(expandedBatteryDetail.battery_due_date)}
-                                                </div>
-                                              </div>
-
-                                              <div>
-                                                <div className={detailLabelClass}>웨이트</div>
-                                                <div className={detailValueClass}>
-                                                  {expandedBatteryDetail.battery_weight_kg ?? "-"}
-                                                </div>
-                                              </div>
-
-                                              <div>
-                                                <div className={detailLabelClass}>판매단가</div>
-                                                <div className={detailValueClass}>
-                                                  {formatAmountDisplay(expandedBatteryDetail.battery_unit_sale_price)}
-                                                </div>
-                                              </div>
-
-                                              <div>
-                                                <div className={detailLabelClass}>수량</div>
-                                                <div className={detailValueClass}>
-                                                  {expandedBatteryDetail.battery_quantity != null ? `${expandedBatteryDetail.battery_quantity}개` : "-"}
-                                                </div>
-                                              </div>
-
-                                              <div>
-                                                <div className={detailLabelClass}>판매가격</div>
-                                                <div className={detailValueClass}>
-                                                  {formatAmountDisplay(expandedBatteryDetail.battery_sale_price)}
-                                                </div>
-                                              </div>
-
-                                              <div>
-                                                <div className={detailLabelClass}>비고</div>
-                                                <div className={detailValueClass}>
-                                                  {stripStatusMeta(expandedBatteryDetail.note) || "-"}
-                                                </div>
-                                              </div>
-                                            </div>
-                                          </div>
-                                        )}
-
+                                    {/* 금융 상세 */}
+                                    {row.work_type === "finance" && expandedFinanceDetail && (
+                                      <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-sm leading-6 border-t border-gray-100 mt-1 pt-1">
+                                        <span className="text-orange-400 font-semibold">금융</span>
+                                        <span><span className="text-gray-400">종목 </span><span className="font-medium text-gray-800">{expandedFinanceDetail.finance_category||"-"}</span></span>
+                                        <span><span className="text-gray-400">차종 </span><span className="font-medium text-gray-800">{expandedFinanceDetail.finance_vehicle_model||"-"}</span></span>
+                                        <span><span className="text-gray-400">상품 </span><span className="font-medium text-gray-800">{expandedFinanceDetail.finance_product||"-"}</span></span>
+                                        <span><span className="text-gray-400">금융사 </span><span className="font-medium text-gray-800">{expandedFinanceDetail.finance_company||"-"}</span></span>
+                                        <span><span className="text-gray-400">취급액 </span><span className="font-medium text-gray-800">{formatAmountDisplay(expandedFinanceDetail.finance_amount)}</span></span>
+                                        <span><span className="text-gray-400">기간 </span><span className="font-medium text-gray-800">{expandedFinanceDetail.finance_period??"-"}개월</span></span>
+                                        <span><span className="text-gray-400">금리 </span><span className="font-medium text-gray-800">{expandedFinanceDetail.finance_interest_rate??"-"}%</span></span>
+                                        <span><span className="text-gray-400">인센티브 </span><span className="font-medium text-gray-800">{formatPercentDisplay(expandedFinanceDetail.finance_incentive)}</span></span>
+                                        <span><span className="text-gray-400">단계 </span><span className="font-medium text-orange-600">{formatFinanceStage(expandedFinanceDetail.finance_stage)}</span></span>
                                       </div>
                                     )}
 
-                                    {row.work_type === "tire_sales" && (
-                                      <div className="space-y-3">
-                                        <div className={sectionTitleClass}>타이어 상세</div>
-
-                                        {!expandedTireDetail && (
-                                          <div className="text-sm text-gray-500">
-                                            저장된 타이어 상세 정보가 없습니다.
-                                          </div>
-                                        )}
-
-                                        {expandedTireDetail && (
-                                          <div>
-                                            <div className="grid grid-cols-12 gap-1">
-                                            <div>
-                                              <div className={detailLabelClass}>보유차량 브랜드</div>
-                                              <div className={detailValueClass}>
-                                                {expandedTireDetail.vehicle_info || "-"}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>차량종류</div>
-                                              <div className={detailValueClass}>
-                                                {expandedTireDetail.vehicle_type || "-"}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>타이어 사이즈</div>
-                                              <div className={detailValueClass}>
-                                                {expandedTireDetail.tire_size || "-"}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>총 수량</div>
-                                              <div className={detailValueClass}>
-                                                {expandedTireDetail.quantity ?? "-"}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>전륜 수량</div>
-                                              <div className={detailValueClass}>
-                                                {expandedTireDetail.front_quantity ?? "-"}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>후륜 수량</div>
-                                              <div className={detailValueClass}>
-                                                {expandedTireDetail.rear_quantity ?? "-"}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>지역 상세</div>
-                                              <div className={detailValueClass}>
-                                                {expandedTireDetail.region_detail || "-"}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>유입경로</div>
-                                              <div className={detailValueClass}>
-                                                {expandedTireDetail.inflow_channel === "association"
-                                                  ? `협회${expandedTireDetail.association_name ? ` (${expandedTireDetail.association_name})` : ""}`
-                                                  : expandedTireDetail.inflow_channel === "gotruck"
-                                                    ? "고트럭"
-                                                    : expandedTireDetail.inflow_channel === "etc"
-                                                      ? "기타"
-                                                      : "-"}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>진행단계</div>
-                                              <div className={detailValueClass}>
-                                                {formatCommonStage(expandedTireDetail.process_status)}
-                                              </div>
-                                            </div>
-
-                                            
-
-                                            <div>
-                                              <div className={detailLabelClass}>사후관리</div>
-                                              <div className={detailValueClass}>
-                                                {row.next_followup_date
-                                                  ? `대상 (${row.next_followup_date})`
-                                                  : "비대상"}
-                                              </div>
-                                            </div>
-                                            </div>
-                                          </div>
-                                        )}
+                                    {/* 타이어 상세 */}
+                                    {row.work_type === "tire_sales" && expandedTireDetail && (
+                                      <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-sm leading-6 border-t border-gray-100 mt-1 pt-1">
+                                        <span className="text-orange-400 font-semibold">타이어</span>
+                                        <span><span className="text-gray-400">차량 </span><span className="font-medium text-gray-800">{expandedTireDetail.vehicle_info||"-"}</span></span>
+                                        <span><span className="text-gray-400">차종 </span><span className="font-medium text-gray-800">{expandedTireDetail.vehicle_type||"-"}</span></span>
+                                        <span><span className="text-gray-400">규격 </span><span className="font-medium text-gray-800">{expandedTireDetail.tire_size||"-"}</span></span>
+                                        <span><span className="text-gray-400">수량 </span><span className="font-medium text-gray-800">전{expandedTireDetail.front_quantity??"-"}/후{expandedTireDetail.rear_quantity??"-"}(총{expandedTireDetail.quantity??"-"})</span></span>
+                                        <span><span className="text-gray-400">지역 </span><span className="font-medium text-gray-800">{expandedTireDetail.region_detail||"-"}</span></span>
+                                        <span><span className="text-gray-400">단계 </span><span className="font-medium text-orange-600">{formatCommonStage(expandedTireDetail.process_status)}</span></span>
                                       </div>
                                     )}
 
-                                    {row.work_type === "finance" && (
-                                      <div className="space-y-3">
-                                        <div className={sectionTitleClass}>금융 상세</div>
+                                    {/* 지게차 상세 */}
+                                    {row.work_type === "forklift_sales" && expandedForkliftDetail && (
+                                      <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-sm leading-6 border-t border-gray-100 mt-1 pt-1">
+                                        <span className="text-orange-400 font-semibold">지게차</span>
+                                        <span><span className="text-gray-400">구분 </span><span className="font-medium text-gray-800">{formatForkliftCondition(expandedForkliftDetail.forklift_condition)}</span></span>
+                                        <span><span className="text-gray-400">형식 </span><span className="font-medium text-gray-800">{formatForkliftType(expandedForkliftDetail.forklift_type)}</span></span>
+                                        <span><span className="text-gray-400">톤수 </span><span className="font-medium text-gray-800">{expandedForkliftDetail.forklift_ton||"-"}</span></span>
+                                        <span><span className="text-gray-400">판매방식 </span><span className="font-medium text-gray-800">{formatForkliftSaleMethod(expandedForkliftDetail.forklift_sale_method)}</span></span>
+                                        <span><span className="text-gray-400">옵션 </span><span className="font-medium text-gray-800">{expandedForkliftDetail.forklift_option_note||"-"}</span></span>
+                                        <span><span className="text-gray-400">단계 </span><span className="font-medium text-orange-600">{formatCommonStage(resolvedForkliftStatus(expandedForkliftDetail))}</span></span>
+                                        {expandedForkliftDetail.note&&<span><span className="text-gray-400">비고 </span><span className="font-medium text-gray-800">{stripStatusMeta(expandedForkliftDetail.note)}</span></span>}
+                                      </div>
+                                    )}
 
-                                        {!expandedFinanceDetail && (
-                                          <div className="text-sm text-gray-500">
-                                            저장된 금융 상세 정보가 없습니다.
-                                          </div>
-                                        )}
+                                    {/* 배터리 상세 */}
+                                    {row.work_type === "battery_sales" && expandedBatteryDetail && (
+                                      <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-sm leading-6 border-t border-gray-100 mt-1 pt-1">
+                                        <span className="text-orange-400 font-semibold">배터리</span>
+                                        <span><span className="text-gray-400">차종 </span><span className="font-medium text-gray-800">{formatBatteryVehicleType(expandedBatteryDetail.battery_vehicle_type)}</span></span>
+                                        <span><span className="text-gray-400">전압/용량 </span><span className="font-medium text-gray-800">{expandedBatteryDetail.battery_voltage??"-"}V/{expandedBatteryDetail.battery_capacity_ah??"-"}Ah</span></span>
+                                        <span><span className="text-gray-400">납기 </span><span className="font-medium text-gray-800">{formatDateOnly(expandedBatteryDetail.battery_due_date)}</span></span>
+                                        <span><span className="text-gray-400">단가 </span><span className="font-medium text-gray-800">{formatAmountDisplay(expandedBatteryDetail.battery_unit_sale_price)}</span></span>
+                                        <span><span className="text-gray-400">수량 </span><span className="font-medium text-gray-800">{expandedBatteryDetail.battery_quantity??"-"}개</span></span>
+                                        <span><span className="text-gray-400">판매가 </span><span className="font-medium text-gray-800">{formatAmountDisplay(expandedBatteryDetail.battery_sale_price)}</span></span>
+                                        <span><span className="text-gray-400">단계 </span><span className="font-medium text-orange-600">{formatCommonStage(resolvedBatteryStatus(expandedBatteryDetail))}</span></span>
+                                      </div>
+                                    )}
 
-                                        {expandedFinanceDetail && (
-                                          <div>
-                                            <div className="grid grid-cols-10 gap-1">
-                                            <div>
-                                              <div className={detailLabelClass}>종목</div>
-                                              <div className={detailValueClass}>
-                                                {expandedFinanceDetail.finance_category || "-"}
-                                              </div>
-                                            </div>
+                                    {/* 보험 상세 */}
+                                    {row.work_type === "registration_insurance" && expandedInsuranceDetail && (
+                                      <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-sm leading-6 border-t border-gray-100 mt-1 pt-1">
+                                        <span className="text-orange-400 font-semibold">보험</span>
+                                        <span><span className="text-gray-400">차량번호 </span><span className="font-medium text-gray-800">{expandedInsuranceDetail.vehicle_no||"-"}</span></span>
+                                        <span><span className="text-gray-400">차종 </span><span className="font-medium text-gray-800">{expandedInsuranceDetail.vehicle_model||"-"}</span></span>
+                                        <span><span className="text-gray-400">용도 </span><span className="font-medium text-gray-800">{expandedInsuranceDetail.vehicle_use||"-"}</span></span>
+                                        <span><span className="text-gray-400">보험종류 </span><span className="font-medium text-gray-800">{formatInsuranceType(expandedInsuranceDetail.insurance_type)}</span></span>
+                                        <span><span className="text-gray-400">보험사 </span><span className="font-medium text-gray-800">{expandedInsuranceDetail.insurance_company||"-"}</span></span>
+                                        <span><span className="text-gray-400">가입~만기 </span><span className="font-medium text-gray-800">{formatDateOnly(expandedInsuranceDetail.insurance_start_date)}~{formatDateOnly(expandedInsuranceDetail.insurance_end_date)}</span></span>
+                                        <span><span className="text-gray-400">단계 </span><span className="font-medium text-orange-600">{formatInsuranceProcess(expandedInsuranceDetail)}</span></span>
+                                      </div>
+                                    )}
 
-                                            <div>
-                                              <div className={detailLabelClass}>차종</div>
-                                              <div className={detailValueClass}>
-                                                {expandedFinanceDetail.finance_vehicle_model || "-"}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>상품</div>
-                                              <div className={detailValueClass}>
-                                                {expandedFinanceDetail.finance_product || "-"}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>금융사</div>
-                                              <div className={detailValueClass}>
-                                                {expandedFinanceDetail.finance_company || "-"}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>취급액</div>
-                                              <div className={detailValueClass}>
-                                                {formatAmountDisplay(
-                                                  expandedFinanceDetail.finance_amount
-                                                )}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>기간</div>
-                                              <div className={detailValueClass}>
-                                                {expandedFinanceDetail.finance_period ?? "-"}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>금리</div>
-                                              <div className={detailValueClass}>
-                                                {expandedFinanceDetail.finance_interest_rate ?? "-"}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>인센티브</div>
-                                              <div className={detailValueClass}>
-                                                {formatPercentDisplay(
-                                                  expandedFinanceDetail.finance_incentive
-                                                )}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>진행단계</div>
-                                              <div className={detailValueClass}>
-                                                {formatFinanceStage(
-                                                  expandedFinanceDetail.finance_stage
-                                                )}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className={detailLabelClass}>사후관리</div>
-                                              <div className={detailValueClass}>
-                                                {row.next_followup_date
-                                                  ? `대상 (${row.next_followup_date})`
-                                                  : "비대상"}
-                                              </div>
-                                            </div>
-
-                                            
-                                            </div>
-                                          </div>
-                                        )}
+                                    {/* 메모 */}
+                                    {row.detail_memo && (
+                                      <div className="border-t border-gray-100 mt-1 pt-1 text-[11px] text-gray-500 leading-4">
+                                        {row.detail_memo.split("\n").slice(-2).join(" · ")}
                                       </div>
                                     )}
                                   </div>

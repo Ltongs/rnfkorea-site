@@ -78,7 +78,7 @@ const WL:Record<string,string> = {
   finance_hcm:"현대CM금융",narumi:"나르미",
 };
 const CAT_LBL:Record<string,string> = {meeting:"미팅",call:"통화",task:"업무",followup:"사후관리"};
-const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행"};
+const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료",closed:"완료",waiting_customer:"고객대기",on_hold:"보류",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",confirmed:"확정",approved:"승인",rejected:"거절",supplement:"보완",credit_check:"신용조회",received:"접수",doc_registration:"서류등록",contract_sent:"전자계약",cancelled:"취소"};
 const PRI_LBL:Record<string,string> = {urgent:"긴급",normal:"일반",low:"낮음"};
 const ACT_LBL:Record<string,string> = {todo:"✅ 할일",schedule:"📅 일정",order:"📦 주문",consult_update:"🔄 상담 업데이트",hyundaicm_update:"🏗 현대건설기계 변경",narumi_update:"🚛 나르미 단계 변경",schedule_update:"📅 일정 업데이트",schedule_edit:"✏️ 일정 수정",order_update:"📦 주문 상태 변경"};
 const CAT_CLR:Record<string,string> = {meeting:"#60a5fa",call:"#fb923c",followup:"#c084fc",task:"#34d399"};
@@ -112,7 +112,13 @@ const PriBadge = ({p}:{p:string}) => {
   return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${c}`}>{PRI_LBL[p]??p}</span>;
 };
 const StsBadge = ({s}:{s:string}) => {
-  const c = s==="new"?"bg-blue-50 text-blue-600":s==="pending"?"bg-amber-50 text-amber-600":s==="processing"||s==="in_progress"?"bg-orange-50 text-orange-600":"bg-emerald-50 text-emerald-600";
+  const c = s==="new"?"bg-blue-50 text-blue-600"
+    :s==="pending"||s==="on_hold"?"bg-amber-50 text-amber-600"
+    :s==="processing"||s==="in_progress"||s==="waiting_customer"?"bg-orange-50 text-orange-600"
+    :s==="completed"||s==="closed"||s==="done"||s==="invoiced"||s==="confirmed"?"bg-emerald-50 text-emerald-600"
+    :s==="rejected"||s==="cancelled"?"bg-red-50 text-red-500"
+    :s==="approved"?"bg-blue-50 text-blue-600"
+    :"bg-gray-50 text-gray-500";
   return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${c}`}>{STS_LBL[s]??s}</span>;
 };
 const CatDot = ({c}:{c:string}) => {
@@ -189,7 +195,8 @@ function StatusTabContent({
     return c.status;
   };
   const StsBadgeLocal = ({s,isFinance}:{s:string;isFinance?:boolean}) => {
-    const lbl = isFinance ? (FINANCE_STAGE_LBL[s]??s) : (STS_LBL_HCM[s]??s);
+    const ALL_LBL:Record<string,string> = {new:"신규",in_progress:"진행중",completed:"완료",closed:"완료",on_hold:"보류",waiting_customer:"고객대기",approved:"승인",confirmed:"확정",rejected:"거절",cancelled:"취소",supplement:"보완"};
+    const lbl = isFinance ? (FINANCE_STAGE_LBL[s]??ALL_LBL[s]??s) : (ALL_LBL[s]??s);
     const cls = s==="approved"?"bg-emerald-50 text-emerald-700"
       :s==="confirmed"?"bg-[#0f172a] text-white"
       :s==="rejected"||s==="부결"?"bg-red-50 text-red-600"
@@ -223,7 +230,7 @@ function StatusTabContent({
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-medium text-[#0f172a]">{c.customer_name}</span>
                   <StsBadgeLocal s={getConsultDisplayStatus(c)} isFinance={c.work_type==="finance"}/>
-                  {c.followup_needed&&<span className="text-xs px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-600 font-medium">사후관리</span>}
+
                 </div>
                 <p className="text-xs text-gray-400 mt-0.5 truncate">{c.summary}</p>
               </div>
@@ -989,23 +996,19 @@ const SecretaryPage:React.FC = () => {
   const loadOrderViews = useCallback(async()=>{
     setOrdViewLoading(true);
 
-    const HCM_DONE   = ["confirmed","cancelled"];
+    const HCM_DONE   = ["confirmed","cancelled","확정","취소","거절","rejected"];
     const HCM_ACTIVE_NOT = HCM_DONE;
 
     // 세 소스 병렬 조회
     const [casesRes, hcmRes, narumiRes] = await Promise.all([
       // consultation_cases (보험 제외, 최근 100건)
+      // finance는 finance_stage 기준이므로 status 필터 없이 전체 조회 후 클라이언트에서 분류
       supabase
         .from("consultation_cases")
         .select("id,customer_name,work_type,status,summary,created_at,phone,sub_type")
         .neq("work_type","registration_insurance")
-        .in("status", ordFilter==="done"
-          ? ["completed","closed"]
-          : ordFilter==="active"
-          ? ["new","in_progress","waiting_customer","on_hold"]
-          : ["new","in_progress","waiting_customer","on_hold","completed","closed"])
         .order("created_at",{ascending:false})
-        .limit(100),
+        .limit(200),
 
       // hyundaicm_tasks
       (ordFilter==="done"
@@ -1080,6 +1083,24 @@ const SecretaryPage:React.FC = () => {
       };
     });
 
+    // consultation_cases ordFilter 클라이언트 필터링
+    const filteredCaseViews = caseViews.filter(v=>{
+      // finance: finance_stage 기준
+      if(v.work_type==="finance"){
+        const doneStages = ["confirmed","cancelled","rejected","closed"];
+        const isDone = doneStages.includes(v.progress_stage??v.status??"");
+        if(ordFilter==="done") return isDone;
+        if(ordFilter==="active") return !isDone;
+        return true;
+      }
+      // 그 외: status 기준
+      const doneStatuses = ["completed","closed","invoiced"];
+      const isDone = doneStatuses.includes(v.status??"");
+      if(ordFilter==="done") return isDone;
+      if(ordFilter==="active") return !isDone;
+      return true;
+    });
+
     // hyundaicm_tasks → OrderView
     const hcmViews: OrderView[] = (hcmRes.data ?? []).map((h:any)=>{
       const parts = [
@@ -1123,7 +1144,7 @@ const SecretaryPage:React.FC = () => {
     });
 
     // 합치고 created_at 내림차순 정렬
-    const allViews = [...caseViews, ...hcmViews, ...narumiViews]
+    const allViews = [...filteredCaseViews, ...hcmViews, ...narumiViews]
       .sort((a,b)=> new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
     setOrderViews(allViews);
@@ -1209,7 +1230,7 @@ const SecretaryPage:React.FC = () => {
   async function addSchedule(){
     if(!newSched.title)return;
     if(newSched.category==="followup"&&newSched.consultation_id){
-      await supabase.from("consultation_cases").update({next_followup_date:newSched.schedule_date,followup_needed:true}).eq("id",Number(newSched.consultation_id));
+      // 일정 등록 시 consultation_cases followup 자동 업데이트 제거 (일정으로 통합 관리)
     }
     const {data:schedData,error}=await supabase.from("secretary_schedules").insert({
       title:newSched.title,description:newSched.description||null,schedule_date:newSched.schedule_date,
@@ -1351,8 +1372,11 @@ const SecretaryPage:React.FC = () => {
     const TIRE:Record<string,string> = {inquiry_received:"문의접수",size_confirming:"규격확인",quote_sent:"견적",waiting_order:"발주",delivery_or_replacement:"납품",completed:"완료",hold:"보류"};
     if(TIRE[stage]) return TIRE[stage];
     // 금융 / 현대CM (동일 매핑)
-    const FIN:Record<string,string> = {received:"접수",credit_check:"신용조회",approved:"승인",supplement:"보완",rejected:"거절",doc_registration:"서류등록",contract_sent:"전자계약",confirmed:"확정"};
+    const FIN:Record<string,string> = {received:"접수",credit_check:"신용조회",approved:"승인",supplement:"보완",rejected:"거절",doc_registration:"서류등록",contract_sent:"전자계약",confirmed:"확정",cancelled:"취소"};
     if(FIN[stage]) return FIN[stage];
+    // HCM 한글 status 그대로 표시 (접수/신용조회/승인/보완/거절/서류등록/전자계약발송/확정/보류/취소)
+    const HCM_KR = ["접수","신용조회","승인","보완","거절","서류등록","전자계약발송","확정","보류","취소"];
+    if(HCM_KR.includes(stage)) return stage;
     // 현대CM 한글 상태값 그대로
     const HCM:Record<string,string> = {"접수":"접수","신용조회":"신용조회","승인":"승인","보완":"보완","거절":"거절","서류등록":"서류등록","전자계약발송":"전자계약","확정":"확정","보류":"보류"};
     if(HCM[stage]) return HCM[stage];
@@ -1368,9 +1392,9 @@ const SecretaryPage:React.FC = () => {
   // 진행단계 컬러
   const progressColor = (stage:string|null):string => {
     if(!stage) return "text-gray-400";
-    if(["invoiced","completed","confirmed","delivered"].includes(stage)) return "text-emerald-600 font-semibold";
-    if(["rejected","cancelled","closed"].includes(stage)) return "text-red-400";
-    if(["contract","contract_sent","approved","확정","승인"].includes(stage)) return "text-blue-600";
+    if(["invoiced","completed","confirmed","delivered","확정"].includes(stage)) return "text-emerald-600 font-semibold";
+    if(["rejected","cancelled","closed","취소","거절"].includes(stage)) return "text-red-400";
+    if(["contract","contract_sent","approved","승인","보완","supplement"].includes(stage)) return "text-blue-600";
     if(["quote","proposal","credit_check"].includes(stage)) return "text-indigo-500";
     return "text-orange-500";
   };
@@ -1732,7 +1756,7 @@ const SecretaryPage:React.FC = () => {
             <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 font-medium">📅 {stats.todaySch}</span>
             <span className="px-2.5 py-1 rounded-full bg-orange-50 text-orange-600 font-medium">✅ {stats.activeTodo}</span>
             <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-600 font-medium">📦 {stats.newOrders}</span>
-            {stats.todayFollowup>0&&<span className="px-2.5 py-1 rounded-full bg-purple-50 text-purple-600 font-medium">📞 사후관리 {stats.todayFollowup}</span>}
+
             {stats.newConsult>0&&<span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 font-medium">💬 오늘상담 {stats.newConsult}</span>}
           </div>
           {/* 탭 - 항상 보이도록 */}
