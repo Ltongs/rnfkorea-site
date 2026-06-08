@@ -557,7 +557,7 @@ const CallManagementPage: React.FC = () => {
   const [listSearchVehicleNo, setListSearchVehicleNo] = useState("");
   const [listSearchTireSize, setListSearchTireSize] = useState("");
   const [listQuickScope, setListQuickScope] = useState<"all" | "followup">("all");
-  const [closingFilter, setClosingFilter] = useState<"all" | "Y" | "N">("all");
+  const [closingFilter, setClosingFilter] = useState<"all" | "Y" | "N">("N");
 
   const [followSearchName, setFollowSearchName] = useState("");
   const [followSearchPhone, setFollowSearchPhone] = useState("");

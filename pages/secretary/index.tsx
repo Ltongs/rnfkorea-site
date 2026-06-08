@@ -5,7 +5,11 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
-type TabKey = "chat"|"schedule"|"status"|"orders";
+type TabKey = "chat"|"schedule"|"status"|"orders"|"email";
+type EmailReport = {
+  id:number; created_at:string; report_date:string;
+  title:string; content:string; source:string; is_read:boolean;
+};
 type Schedule = {
   id:number; title:string; description:string|null; schedule_date:string;
   progress_memo:string|null; next_schedule_date:string|null; next_schedule_time:string|null;
@@ -778,6 +782,33 @@ const SecretaryPage:React.FC = () => {
   const [gcalConnected,setGcalConnected] = useState(false);
   const [gcalEvents,setGcalEvents] = useState<{id:string;title:string;start:string;color?:string}[]>([]);
 
+  // 이메일 리포트
+  const [emailReports,setEmailReports] = useState<EmailReport[]>([]);
+  const [emailLoading,setEmailLoading] = useState(false);
+  const [emailDetail,setEmailDetail] = useState<EmailReport|null>(null);
+
+  const loadEmailReports = useCallback(async()=>{
+    setEmailLoading(true);
+    const {data} = await supabase
+      .from("email_reports")
+      .select("*")
+      .order("created_at",{ascending:false})
+      .limit(50);
+    if(data) setEmailReports(data as EmailReport[]);
+    setEmailLoading(false);
+  },[]);
+
+  const markEmailRead = async(id:number)=>{
+    await supabase.from("email_reports").update({is_read:true}).eq("id",id);
+    setEmailReports(prev=>prev.map(r=>r.id===id?{...r,is_read:true}:r));
+  };
+
+  const deleteEmailReport = async(id:number)=>{
+    await supabase.from("email_reports").delete().eq("id",id);
+    setEmailReports(prev=>prev.filter(r=>r.id!==id));
+    if(emailDetail?.id===id) setEmailDetail(null);
+  };
+
   // 통계
   const [stats,setStats] = useState({todaySch:0,activeTodo:0,urgentTodo:0,newOrders:0,todayFollowup:0,newConsult:0});
 
@@ -1229,6 +1260,7 @@ const SecretaryPage:React.FC = () => {
     if(tab==="chat"){ setTimeout(()=>{ const c=chatContainerRef.current; if(c)c.scrollTop=c.scrollHeight; },100); }
   },[tab, loadStatusData]);
   useEffect(()=>{if(tab==="orders"){void loadOrderViews();void loadConsults();}},[tab,loadOrderViews,loadConsults]);
+  useEffect(()=>{if(tab==="email"){void loadEmailReports();}},[tab,loadEmailReports]);
 
   // ─── 일정 CRUD ──────────────────────────────────────────────────────────────
   async function addSchedule(){
@@ -1807,9 +1839,12 @@ const SecretaryPage:React.FC = () => {
           </div>
           {/* 탭 - 항상 보이도록 */}
           <div className="flex items-center gap-1.5 flex-wrap">
-            {(["chat","schedule","status","orders"] as TabKey[]).map(t=>(
+            {(["chat","schedule","status","orders","email"] as TabKey[]).map(t=>(
               <button key={t} className={`${TB} ${tab===t?TA:TI}`} onClick={()=>setTabAndSave(t)}>
-                {{chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담"}[t]}
+                {t==="email"
+                  ? <span className="flex items-center gap-1">📧 이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
+                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담"}[t as string]
+                }
               </button>
             ))}
           </div>
@@ -2165,6 +2200,71 @@ const SecretaryPage:React.FC = () => {
                   )
                 }
               </div>
+            </div>
+          )}
+
+          {/* ══ 이메일 리포트 ══ */}
+          {tab==="email"&&(
+            <div className="space-y-4 pb-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-[#0f172a]">📧 이메일 리포트</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Claude가 분석한 수신 이메일 업무 리포트</p>
+                </div>
+                <button className={BTG} onClick={()=>void loadEmailReports()}>새로고침</button>
+              </div>
+
+              {emailLoading?(
+                <div className="flex items-center justify-center py-12 gap-2 text-xs text-gray-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-gray-300 animate-bounce" style={{animationDelay:"0ms"}}/>
+                  <span className="w-1.5 h-1.5 rounded-full bg-gray-300 animate-bounce" style={{animationDelay:"150ms"}}/>
+                  <span className="w-1.5 h-1.5 rounded-full bg-gray-300 animate-bounce" style={{animationDelay:"300ms"}}/>
+                  <span>리포트 불러오는 중...</span>
+                </div>
+              ):emailReports.length===0?(
+                <div className={`${CARD} p-10 flex flex-col items-center gap-3 text-center`}>
+                  <span className="text-4xl">📭</span>
+                  <p className="text-sm font-medium text-gray-500">저장된 이메일 리포트가 없습니다</p>
+                  <p className="text-xs text-gray-400">Claude에서 이메일 분석 후 리포트가 여기에 자동 저장됩니다</p>
+                </div>
+              ):(
+                <div className="space-y-3">
+                  {/* 상세 뷰 */}
+                  {emailDetail&&(
+                    <div className={`${CARD} p-4`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <button className={BTG} onClick={()=>setEmailDetail(null)}>← 목록으로</button>
+                        <button className="text-xs text-red-400 hover:text-red-600 transition-all" onClick={()=>void deleteEmailReport(emailDetail.id)}>삭제</button>
+                      </div>
+                      <p className="text-base font-bold text-[#0f172a] mb-1">{emailDetail.title}</p>
+                      <p className="text-xs text-gray-400 mb-4">{fmtDT(emailDetail.created_at)}</p>
+                      <div className="prose prose-sm max-w-none text-sm text-gray-700 leading-relaxed whitespace-pre-wrap border-t border-gray-100 pt-4"
+                        dangerouslySetInnerHTML={{__html:md2html(emailDetail.content)}}/>
+                    </div>
+                  )}
+                  {/* 목록 */}
+                  {!emailDetail&&emailReports.map(r=>(
+                    <div key={r.id}
+                      className={`${CARD} p-4 cursor-pointer hover:shadow-md transition-all ${!r.is_read?"border-l-4 border-orange-400":""}`}
+                      onClick={()=>{setEmailDetail(r);if(!r.is_read)void markEmailRead(r.id);}}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            {!r.is_read&&<span className="w-2 h-2 rounded-full bg-orange-400 flex-shrink-0"/>}
+                            <span className={`text-sm font-semibold text-[#0f172a] ${!r.is_read?"":""}`}>{r.title}</span>
+                          </div>
+                          <p className="text-xs text-gray-500 line-clamp-2 break-keep">{r.content.slice(0,120).replace(/[#*_\[\]]/g,"")}...</p>
+                          <div className="flex items-center gap-3 mt-2">
+                            <span className="text-xs text-gray-400">{fmtDT(r.created_at)}</span>
+                            {!r.is_read&&<span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 font-medium">미확인</span>}
+                          </div>
+                        </div>
+                        <button className={BTG} onClick={e=>{e.stopPropagation();void deleteEmailReport(r.id);}}>삭제</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
