@@ -66,6 +66,14 @@ Format:
 
 Action types:
 
+memo: {"type":"memo","title":"string|null","content":"string","category":"meeting|call|visit|note","related_name":"string|null","memo_date":"YYYY-MM-DD"}
+- Use when user inputs a record of something that ALREADY HAPPENED (past meeting/call/visit notes)
+- content: full meeting/call content as written
+- related_name: company or customer name mentioned (e.g. "(주)라이즈리프트", "삼우")
+- category: meeting(미팅/방문동반), call(전화/통화), visit(방문), note(기타메모)
+- memo_date: date of the meeting/call (default: today ${TODAY_ISO})
+- IMPORTANT: memo action does NOT conflict with Rule -1 — Rule -1 prevents todo/schedule, but memo IS the correct action for past records
+
 todo: {"type":"todo","title":"string","description":null,"priority":"urgent|normal|low","category":"insurance|tire|finance|forklift|battery|admin|null","due_date":"YYYY-MM-DD|null"}
 
 schedule: {"type":"schedule","title":"string","description":null,"schedule_date":"YYYY-MM-DD","start_time":"HH:MM|null","category":"meeting|call|task|followup","location":null,"related_type":"insurance|tire|finance|forklift|battery|null"}
@@ -205,6 +213,15 @@ schedule_edit (EDIT existing schedule - change date/title/time):
 - Only set fields that need to change, leave others null
 - Example: "14일 뉴질랜드 박람회 일정을 24일로 수정" → title_keyword:"뉴질랜드", new_date:"2026-06-24"
 
+todo_edit (EDIT existing todo - change due_date/title):
+{"type":"todo_edit","title_keyword":"string","new_due_date":"YYYY-MM-DD|null","new_title":"string|null"}
+- Use when user says an existing todo/할 일 should be moved to a different date, or its title changed
+- title_keyword: key words from the todo title to find it
+- CRITICAL: "내일로 변경", "미뤘습니다", "XX일로 바꿔줘" about an existing TODO → ALWAYS todo_edit, NOT a new todo
+- Examples:
+  - "통신사업자 신고등록 내일로 미뤘습니다" → todo_edit {title_keyword:"통신사업자", new_due_date:"tomorrow"}
+  - "통신사업자 신고등록 화요일로 변경" → todo_edit {title_keyword:"통신사업자", new_due_date:"(next Tuesday)"}
+
 schedule_update (UPDATE existing schedule progress + optional next schedule/todo):
 {"type":"schedule_update","title_keyword":"string","progress_memo":"string","next_schedule_date":"YYYY-MM-DD|null","next_schedule_time":"HH:MM|null","next_schedule_title":"string|null","create_todo":false,"todo_title":"string|null","mark_done":false}
 - Use when user mentions progress/result of a scheduled meeting or task
@@ -236,6 +253,22 @@ Input: "형제중기 A/S는 일요일 반출후 다음 주 화요일 재장착�
 
 RULES (priority order — match the FIRST rule that fits):
 
+RULE -1 (HIGHEST PRIORITY): MEETING MEMO / PAST RECORD → memo action
+If the message is a record/summary of something that ALREADY HAPPENED (past tense narrative):
+- Do NOT create todo or schedule actions
+- DO create a memo action to save the record
+
+Signals: "미팅", "통화", "방문" + past tense descriptions of what was discussed/requested.
+
+Examples:
+- "(주)삼우 미팅, 고소작업대임대업협회에서 중고 가격 공시 요청. 중고장비 매각이 되어야 나머지 해결이 가능함. 사전한도 부여 필요. 디젤차량 구매관련 협의의 필요."
+  → actions:[{type:"memo", content:"(주)삼우 미팅, 고소작업대임대업협회에서 중고 가격 공시 요청. 중고장비 매각이 되어야 나머지 해결이 가능함. 사전한도 부여 필요. 디젤차량 구매관련 협의의 필요.", category:"meeting", related_name:"(주)삼우", memo_date:"${TODAY_ISO}", title:"삼우 미팅"}]
+- "라이즈리프트 통화, 봄 장비 수요 늘어남"
+  → actions:[{type:"memo", content:"라이즈리프트 통화, 봄 장비 수요 늘어남", category:"call", related_name:"라이즈리프트", memo_date:"${TODAY_ISO}"}]
+
+EXCEPTION: If the memo also contains EXPLICIT future action requests ("~해줘", "~잡아줘", "~등록해줘"), add those actions in addition to the memo action.
+Distinguishing test: "please do X" → todo/schedule. "FYI, here's what happened" → memo action.
+
 KEY DISTINCTION — hyundaicm_update vs consult_update:
 - hyundaicm_update: ONLY for customers in hyundaicm_tasks (건설기계 할부금융 심사 시스템)
   - Context clues: "현대건설기계", "심사", "할부", "서류등록", "전자계약", "신용조회"
@@ -243,13 +276,17 @@ KEY DISTINCTION — hyundaicm_update vs consult_update:
 - consult_update: for customers in consultation_cases (금융/보험/타이어/지게차/배터리 상담관리)
   - Context clues: "금융상담", "보험", "타이어", "상담관리", "진행단계", or no specific system mentioned
 
-0. FIRST CHECK: schedule date/title/time change → schedule_edit
-   TRIGGER WORDS: "수정", "변경해줘", "바꿔줘", "로 변경", "로 수정", "날짜 바꿔", "옮겨줘"
+0. FIRST CHECK: existing item date/title change → schedule_edit OR todo_edit
+   TRIGGER WORDS: "수정", "변경해줘", "바꿔줘", "로 변경", "로 수정", "날짜 바꿔", "옮겨줘", "미뤘습니다", "미루겠습니다"
+   - If about a SCHEDULE (일정/미팅/방문) → schedule_edit
+   - If about a TODO/할 일 (할 일, 마감일, due_date) → todo_edit
    Examples:
    - "14일 뉴질랜드 박람회를 24일로 수정" → schedule_edit {title_keyword:"뉴질랜드", new_date:"2026-06-24"}
    - "제주 출장 일정 22일로 변경" → schedule_edit {title_keyword:"제주", new_date:"2026-06-22"}
    - "홍승점 미팅 시간 오후 3시로 변경" → schedule_edit {title_keyword:"홍승점", new_time:"15:00"}
-   IMPORTANT: If message contains schedule name + new date/time + 수정/변경 → ALWAYS schedule_edit, NOT schedule_update
+   - "통신사업자 신고등록 할 일을 내일로 미뤘습니다" → todo_edit {title_keyword:"통신사업자", new_due_date:"(tomorrow)"}
+   - "OO 할 일 마감일 9일로 변경" → todo_edit {title_keyword:"OO", new_due_date:"2026-06-09"}
+   IMPORTANT: "미뤘습니다", "미루겠습니다" + existing todo name → ALWAYS todo_edit, never create a new todo
 
 1. ONLY use hyundaicm_update when message explicitly mentions 현대건설기계/심사/할부금융 context
 1-b. narumi stage change → narumi_update (나르미, 차량등록, 보험완료, 등록서류, 등록완료 언급 시)
@@ -265,9 +302,10 @@ KEY DISTINCTION — hyundaicm_update vs consult_update:
    - IMPORTANT: customer names like "성수연", "정부경" without explicit hyundaicm context → consult_update
 - battery update example: "타미우스CC 수량 3개로 변경" → consult_update with work_type:"battery", battery_fields:{"battery_quantity":3}
 3. New customer inquiry → order
-4. Task → todo
-5. Meeting/schedule → schedule
-6. General question → actions:[]`;
+4. Task → todo (ONLY when user EXPLICITLY requests task creation: "~해줘", "~해야 함", "할 일 추가", "체크해줘" — NOT for meeting notes describing what was discussed)
+5. Meeting/schedule → schedule (ONLY when user EXPLICITLY requests a schedule: "일정 잡아줘", "~예정입니다", "~방문 예정", "캘린더 등록" — NOT for past meeting records)
+6. General question → actions:[]
+7. Meeting memo / past record with no explicit action request → actions:[]`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -880,6 +918,39 @@ serve(async (req) => {
 
             await db.from("secretary_schedules").update(patch).eq("id", best.id);
             saved.push({type:"schedule_update", id:best.id as number});
+          }
+        }
+
+        if (a.type === "memo") {
+          const {data,error} = await db.from("secretary_memos").insert({
+            title:       a.title ?? null,
+            content:     a.content as string,
+            category:    a.category ?? "meeting",
+            related_name: a.related_name ?? null,
+            memo_date:   a.memo_date ?? TODAY_ISO,
+            consultation_id: a.consultation_id ?? null,
+          }).select("id").single();
+          if (!error && data) saved.push({type:"memo", id:data.id});
+        }
+
+        if (a.type === "todo_edit") {
+          // 기존 할 일 검색 (title_keyword 포함, 미완료 항목 우선)
+          const kw = (a.title_keyword as string ?? "").trim();
+          const {data:todos} = await db.from("secretary_todos")
+            .select("id,title,due_date")
+            .ilike("title", `%${kw}%`)
+            .eq("is_done", false)
+            .order("created_at", {ascending:false})
+            .limit(5);
+          if (todos && todos.length > 0) {
+            const best = todos[0];
+            const todoPatch: Record<string,unknown> = {};
+            if (a.new_due_date) todoPatch.due_date = a.new_due_date;
+            if (a.new_title)    todoPatch.title    = a.new_title;
+            if (Object.keys(todoPatch).length > 0) {
+              await db.from("secretary_todos").update(todoPatch).eq("id", best.id);
+              saved.push({type:"todo_edit", id:best.id as number});
+            }
           }
         }
 

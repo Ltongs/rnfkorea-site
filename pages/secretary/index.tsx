@@ -5,7 +5,7 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
-type TabKey = "chat"|"schedule"|"status"|"orders"|"email";
+type TabKey = "chat"|"schedule"|"status"|"orders"|"hyundaicm"|"finance"|"narumi"|"jinheung"|"email"|"memo";
 type EmailReport = {
   id:number; created_at:string; report_date:string;
   title:string; content:string; source:string; is_read:boolean;
@@ -66,6 +66,17 @@ type PendingUpdate = {
   candidates:{id:number;customer_name:string;work_type:string;status:string;summary:string;detail_memo:string|null}[];
   bestMatch:{id:number;customer_name:string;work_type:string;status:string;summary:string;detail_memo:string|null}|null;
 };
+type Memo = {
+  id: number;
+  memo_date: string;
+  title: string | null;
+  content: string;
+  category: "meeting"|"call"|"visit"|"note";
+  related_name: string | null;
+  consultation_id: number | null;
+  created_at: string;
+};
+
 type ChatMsg = {
   role:"user"|"assistant"; content:string;
   ts?:string;
@@ -84,7 +95,7 @@ const WL:Record<string,string> = {
 const CAT_LBL:Record<string,string> = {meeting:"미팅",call:"통화",task:"업무",followup:"사후관리"};
 const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료",closed:"완료",waiting_customer:"고객대기",on_hold:"보류",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",confirmed:"확정",approved:"승인",rejected:"거절",supplement:"보완",credit_check:"신용조회",received:"접수",doc_registration:"서류등록",contract_sent:"전자계약",cancelled:"취소"};
 const PRI_LBL:Record<string,string> = {urgent:"긴급",normal:"일반",low:"낮음"};
-const ACT_LBL:Record<string,string> = {todo:"✅ 할일",schedule:"📅 일정",order:"📦 주문",consult_update:"🔄 상담 업데이트",hyundaicm_update:"🏗 현대건설기계 변경",narumi_update:"🚛 나르미 단계 변경",schedule_update:"📅 일정 업데이트",schedule_edit:"✏️ 일정 수정",order_update:"📦 주문 상태 변경"};
+const ACT_LBL:Record<string,string> = {todo:"✅ 할일",schedule:"📅 일정",order:"📦 주문",consult_update:"🔄 상담 업데이트",hyundaicm_update:"🏗 현대건설기계 변경",narumi_update:"🚛 나르미 단계 변경",schedule_update:"📅 일정 업데이트",schedule_edit:"✏️ 일정 수정",order_update:"📦 주문 상태 변경",memo:"📝 메모 저장",todo_edit:"✏️ 할일 수정"};
 const CAT_CLR:Record<string,string> = {meeting:"#60a5fa",call:"#fb923c",followup:"#c084fc",task:"#34d399"};
 
 // ─── 유틸 ─────────────────────────────────────────────────────────────────────
@@ -743,6 +754,33 @@ const SecretaryPage:React.FC = () => {
   const [narumiTasks,setNarumiTasks]   = useState<NarumiTask[]>([]);
   const [statusLoading,setStatusLoading] = useState(false);
 
+  // 금융상담 탭
+  const [financeConsults,setFinanceConsults] = useState<OrderView[]>([]);
+  const [financeLoading,setFinanceLoading] = useState(false);
+  const [financeFilter,setFinanceFilter] = useState<"active"|"all"|"done">("active");
+
+  // 현대CM 탭
+  const [hcmFilter,setHcmFilter] = useState<"active"|"all"|"done">("active");
+  const [hcmExpanded,setHcmExpanded] = useState<number|null>(null);
+  const [hcmLoading,setHcmLoading] = useState(false);
+  const [hcmList,setHcmList] = useState<HyundaiTask[]>([]);
+  const [hcmConsults,setHcmConsults] = useState<OrderView[]>([]);
+  // 나르미 탭
+  const [narumiLoading2,setNarumiLoading2] = useState(false);
+  const [narumiList,setNarumiList] = useState<NarumiTask[]>([]);
+  const [narumiConsults,setNarumiConsults] = useState<OrderView[]>([]);
+  // 진흥주문 탭
+  const [jFilter,setJFilter] = useState<"active"|"all"|"done">("active");
+  const [jExpanded,setJExpanded] = useState<string|null>(null);
+  const [jLoading,setJLoading] = useState(false);
+  const [jList,setJList] = useState<any[]>([]);
+  const [jConsults,setJConsults] = useState<OrderView[]>([]);
+  const [jConsultsLoading,setJConsultsLoading] = useState(false);
+  const [jAmtModal,setJAmtModal] = useState<any|null>(null);
+  const [jAmtTo,setJAmtTo] = useState("");
+  const [jAmtFrom,setJAmtFrom] = useState("");
+  const [jSaving,setJSaving] = useState(false);
+
   // 주문
   const [orders,setOrders]           = useState<Order[]>([]);
   const [orderViews,setOrderViews]   = useState<OrderView[]>([]);
@@ -758,6 +796,15 @@ const SecretaryPage:React.FC = () => {
   // 상담
   const [followups,setFollowups]     = useState<Consult[]>([]);
   const [recentC,setRecentC]         = useState<Consult[]>([]);
+
+  // 메모
+  const [memos,setMemos]             = useState<Memo[]>([]);
+  const [memoLoading,setMemoLoading] = useState(false);
+  const [memoFilter,setMemoFilter]   = useState<"all"|"meeting"|"call"|"visit"|"note">("all");
+  const [memoSearch,setMemoSearch]   = useState("");
+  const [showMemoForm,setShowMemoForm] = useState(false);
+  const [memoDetail,setMemoDetail]   = useState<Memo|null>(null);
+  const [newMemo,setNewMemo]         = useState({title:"",content:"",category:"meeting" as Memo["category"],related_name:"",memo_date:new Date().toISOString().slice(0,10),consultation_id:""});
   const [cLoading,setCLoading]       = useState(false);
 
   // 채팅
@@ -786,6 +833,36 @@ const SecretaryPage:React.FC = () => {
   const [emailReports,setEmailReports] = useState<EmailReport[]>([]);
   const [emailLoading,setEmailLoading] = useState(false);
   const [emailDetail,setEmailDetail] = useState<EmailReport|null>(null);
+
+  const loadMemos = useCallback(async()=>{
+    setMemoLoading(true);
+    const {data} = await supabase
+      .from("secretary_memos")
+      .select("*")
+      .order("memo_date",{ascending:false})
+      .order("created_at",{ascending:false});
+    setMemos(data??[]);
+    setMemoLoading(false);
+  },[]);
+
+  const saveMemo = useCallback(async(m:typeof newMemo)=>{
+    const {error} = await supabase.from("secretary_memos").insert({
+      title: m.title||null,
+      content: m.content,
+      category: m.category,
+      related_name: m.related_name||null,
+      memo_date: m.memo_date,
+      consultation_id: m.consultation_id ? Number(m.consultation_id) : null,
+    });
+    if(!error){ void loadMemos(); return true; }
+    return false;
+  },[loadMemos]);
+
+  const deleteMemo = useCallback(async(id:number)=>{
+    await supabase.from("secretary_memos").delete().eq("id",id);
+    setMemos(prev=>prev.filter(m=>m.id!==id));
+    if(memoDetail?.id===id) setMemoDetail(null);
+  },[memoDetail]);
 
   const loadEmailReports = useCallback(async()=>{
     setEmailLoading(true);
@@ -1199,22 +1276,35 @@ const SecretaryPage:React.FC = () => {
     if(cr.data){
       const fdMap:Record<number,string|null> = {};
       if(fdr.data) fdr.data.forEach((f:any)=>{ fdMap[f.consultation_id]=f.finance_stage; });
-      setRecentC(cr.data.map((c:any)=>({
-        ...c,
-        finance_stage: fdMap[c.id] ?? null,
-      })) as Consult[]);
+      const FIN_LBL_S:Record<string,string> = {consulting:"상담중",received:"접수",credit_check:"신용조회",approved:"승인",supplement:"보완",rejected:"거절",doc_registration:"서류등록",contract_sent:"전자계약",confirmed:"확정",cancelled:"취소"};
+      setRecentC(cr.data.map((c:any)=>{
+        const fs = fdMap[c.id];
+        return {
+          ...c,
+          finance_stage: fs ?? null,
+          display_status: c.work_type==="finance" && fs ? FIN_LBL_S[fs]??fs : null,
+        };
+      }) as Consult[]);
     }
     setStatusLoading(false);
   },[]);
 
   const loadConsults = useCallback(async()=>{
     setCLoading(true);
-    const [fr,rr] = await Promise.all([
+    const [fr,rr,fdr] = await Promise.all([
       supabase.from("consultation_cases").select("id,customer_name,phone,telecom_provider,work_type,status,summary,followup_needed,next_followup_date,created_at").eq("followup_needed",true).eq("next_followup_date",todayStr()).order("created_at",{ascending:false}).limit(10),
       supabase.from("consultation_cases").select("id,customer_name,phone,telecom_provider,work_type,status,summary,followup_needed,next_followup_date,created_at").order("created_at",{ascending:false}).limit(8),
+      supabase.from("consultation_finance_details").select("consultation_id,finance_stage"),
     ]);
+    const FIN_LBL:Record<string,string> = {consulting:"상담중",received:"접수",credit_check:"신용조회",approved:"승인",supplement:"보완",rejected:"거절",doc_registration:"서류등록",contract_sent:"전자계약",confirmed:"확정",cancelled:"취소"};
+    const fdMap:Record<number,string> = {};
+    (fdr.data??[]).forEach((f:any)=>{ fdMap[f.consultation_id]=f.finance_stage; });
     if(fr.data)setFollowups(fr.data as Consult[]);
-    if(rr.data)setRecentC(rr.data as Consult[]);
+    if(rr.data)setRecentC(rr.data.map((c:any)=>({
+      ...c,
+      // 금융 상담은 finance_stage로 표시용 상태 덮어쓰기
+      display_status: c.work_type==="finance" && fdMap[c.id] ? FIN_LBL[fdMap[c.id]]??fdMap[c.id] : null,
+    })) as Consult[]);
     setCLoading(false);
   },[]);
 
@@ -1260,7 +1350,75 @@ const SecretaryPage:React.FC = () => {
     if(tab==="chat"){ setTimeout(()=>{ const c=chatContainerRef.current; if(c)c.scrollTop=c.scrollHeight; },100); }
   },[tab, loadStatusData]);
   useEffect(()=>{if(tab==="orders"){void loadOrderViews();void loadConsults();}},[tab,loadOrderViews,loadConsults]);
+
+  useEffect(()=>{
+    if(tab!=="hyundaicm") return;
+    setHcmLoading(true);
+    supabase.from("hyundaicm_tasks").select("*").order("created_at",{ascending:false}).limit(60)
+      .then(({data})=>{setHcmList((data??[]) as HyundaiTask[]);setHcmLoading(false);});
+  },[tab]);
+
+  useEffect(()=>{
+    if(tab!=="finance") return;
+    setFinanceLoading(true);
+    supabase.from("consultation_cases")
+      .select("id,customer_name,work_type,status,summary,created_at,phone,sub_type")
+      .eq("work_type","finance")
+      .order("created_at",{ascending:false}).limit(60)
+      .then(async({data})=>{
+        const cases = data??[];
+        const ids = cases.map((c:any)=>c.id);
+        let stageMap:Record<number,string> = {};
+        if(ids.length>0){
+          const {data:fd} = await supabase.from("consultation_finance_details")
+            .select("consultation_id,finance_stage,finance_amount,finance_vehicle_model")
+            .in("consultation_id",ids);
+          (fd??[]).forEach((d:any)=>{ stageMap[d.consultation_id]=d.finance_stage; });
+        }
+        const FIN_LBL:Record<string,string> = {
+          consulting:"상담중", received:"접수", credit_check:"신용조회",
+          approved:"승인", supplement:"보완", rejected:"거절",
+          doc_registration:"서류등록", contract_sent:"전자계약", confirmed:"확정", cancelled:"취소"
+        };
+        setFinanceConsults(cases.map((c:any)=>({
+          ...c,
+          progress_stage: stageMap[c.id] ?? null,
+          finance_stage_label: FIN_LBL[stageMap[c.id]] ?? stageMap[c.id] ?? null,
+          product_detail: null,
+        })));
+        setFinanceLoading(false);
+      });
+  },[tab]);
+
+  useEffect(()=>{
+    if(tab!=="narumi") return;
+    setNarumiLoading2(true);
+    Promise.all([
+      supabase.from("narumi_tasks").select("*").order("created_at",{ascending:false}).limit(60),
+      supabase.from("consultation_cases").select("id,customer_name,work_type,status,summary,created_at,phone,sub_type").eq("work_type","registration_insurance").order("created_at",{ascending:false}).limit(40),
+    ]).then(([nRes,cRes])=>{
+      setNarumiList((nRes.data??[]) as NarumiTask[]);
+      setNarumiLoading2(false);
+      setNarumiConsults((cRes.data??[]).map((c:any)=>({...c,progress_stage:null,product_detail:null})));
+    });
+  },[tab]);
+
+  useEffect(()=>{
+    if(tab!=="jinheung") return;
+    setJLoading(true);
+    setJConsultsLoading(true);
+    Promise.all([
+      supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60),
+      supabase.from("consultation_cases").select("id,customer_name,work_type,status,summary,created_at,phone,sub_type").in("work_type",["tire","tire_sales"]).order("created_at",{ascending:false}).limit(60),
+    ]).then(([ordRes,cRes])=>{
+      setJList(ordRes.data??[]);
+      setJLoading(false);
+      setJConsults((cRes.data??[]).map((c:any)=>({...c,progress_stage:null,product_detail:null})));
+      setJConsultsLoading(false);
+    });
+  },[tab]);
   useEffect(()=>{if(tab==="email"){void loadEmailReports();}},[tab,loadEmailReports]);
+  useEffect(()=>{if(tab==="memo"){void loadMemos();}},[tab,loadMemos]);
 
   // ─── 일정 CRUD ──────────────────────────────────────────────────────────────
   async function addSchedule(){
@@ -1524,6 +1682,8 @@ const SecretaryPage:React.FC = () => {
         if(saved.some((s:any)=>s.type==="todo"))  { void loadTodos();  void loadCalData(calViewYear, calViewMonth); }
         if(saved.some((s:any)=>s.type==="order"))   { void loadOrderViews(); void loadStats(); }
         if(saved.some((s:any)=>s.type==="order_update")) { void loadOrders(); void loadStats(); }
+        if(saved.some((s:any)=>s.type==="memo"))       { if(tab==="memo") void loadMemos(); }
+        if(saved.some((s:any)=>s.type==="todo_edit"))  { void loadTodos(); void loadCalData(calViewYear, calViewMonth); }
         const cc=saved.filter((s:any)=>s.consultation_id).length;
         showToast(`${saved.length}건 저장${cc>0?` + 상담관리 ${cc}건`:""}`);
       }
@@ -1839,11 +1999,11 @@ const SecretaryPage:React.FC = () => {
           </div>
           {/* 탭 - 항상 보이도록 */}
           <div className="flex items-center gap-1.5 flex-wrap">
-            {(["chat","schedule","status","orders","email"] as TabKey[]).map(t=>(
+            {(["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo"] as TabKey[]).map(t=>(
               <button key={t} className={`${TB} ${tab===t?TA:TI}`} onClick={()=>setTabAndSave(t)}>
                 {t==="email"
                   ? <span className="flex items-center gap-1">📧 이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
-                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담"}[t as string]
+                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",hyundaicm:"🏗 현대CM",finance:"🏦 금융상담",narumi:"🚛 나르미",jinheung:"🔧 진흥주문",memo:"📝 메모"}[t as string]
                 }
               </button>
             ))}
@@ -2123,7 +2283,7 @@ const SecretaryPage:React.FC = () => {
                               <td className="py-1.5 px-2 font-medium text-[#0f172a] whitespace-nowrap">{c.customer_name}</td>
                               <td className="py-1.5 px-2 whitespace-nowrap"><span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600">{WL[c.work_type]??c.work_type}</span></td>
                               <td className="py-1.5 px-2 text-gray-600 max-w-[160px] truncate">{c.summary}</td>
-                              <td className="py-1.5 px-2 whitespace-nowrap"><StsBadge s={c.status}/></td>
+                              <td className="py-1.5 px-2 whitespace-nowrap">{(c as any).display_status?<span className="text-xs px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-100 font-medium">{(c as any).display_status}</span>:<StsBadge s={c.status}/>}</td>
                               <td className="py-1.5 px-2 text-xs text-gray-400 whitespace-nowrap">{fmtDT(c.created_at)}</td>
                               <td className="py-1.5 px-2">
                                 <button className={BTG} onClick={e=>{e.stopPropagation();quickChat(`"${c.customer_name}" ${WL[c.work_type]??""} 후속 조치: ${c.summary}`);}}>AI</button>
@@ -2200,6 +2360,514 @@ const SecretaryPage:React.FC = () => {
                   )
                 }
               </div>
+            </div>
+          )}
+
+          {/* ══ 현대CM ══ */}
+          {tab==="hyundaicm"&&(
+            <div className="space-y-3 pb-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <p className="text-sm font-semibold text-[#0f172a]">🏗 현대건설기계업무</p>
+                <div className="flex gap-1.5 flex-wrap">
+                  {(["active","all","done"] as const).map(f=>(
+                    <button key={f} onClick={()=>setHcmFilter(f)}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${hcmFilter===f?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
+                      {{active:"진행중",all:"전체",done:"확정"}[f]}
+                    </button>
+                  ))}
+                  <button className={BTG} onClick={()=>{
+                    setHcmLoading(true);
+                    supabase.from("hyundaicm_tasks").select("*").order("created_at",{ascending:false}).limit(60)
+                      .then(({data})=>{setHcmList((data??[]) as HyundaiTask[]);setHcmLoading(false);});
+                  }}>새로고침</button>
+                  <button className={BTO} onClick={()=>navigate("/hyundaicm")}>전체 페이지 →</button>
+                </div>
+              </div>
+              {hcmLoading?<p className="text-sm text-gray-400 p-4 text-center">불러오는 중...</p>:(()=>{
+                const filtered=hcmList.filter((t:any)=>hcmFilter==="active"?(t.status!=="확정"&&t.status!=="거절"):hcmFilter==="done"?t.status==="확정":true);
+                return filtered.length===0?<div className={`${CARD} p-8 text-center text-gray-400 text-sm`}>해당 건이 없습니다</div>:(
+                  <div className="space-y-2">
+                    {filtered.map((t:any)=>(
+                      <div key={t.id} className={`${CARD} p-3.5`}>
+                        <div className="flex items-start gap-2.5">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-sm font-semibold text-[#0f172a]">{t.customer_name}</span>
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100">{t.customer_type}</span>
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 border border-orange-100 font-medium">{t.status}</span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-gray-500">
+                              {t.finance_company&&<span>{t.finance_company}</span>}
+                              {t.equipment_ton&&<span>{t.equipment_ton}</span>}
+                              {t.installment_principal&&<span>{Number(t.installment_principal).toLocaleString("ko-KR")}원</span>}
+                              {t.interest_rate&&<span>금리 {t.interest_rate}%</span>}
+                              <span className="ml-auto text-gray-300">{String(t.created_at||"").slice(0,10)}</span>
+                            </div>
+                            {hcmExpanded===t.id&&(
+                              <div className="mt-2 pt-2 border-t border-gray-100 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                                {t.nice_score&&<div><span className="text-gray-400">NICE </span><span>{t.nice_score}점</span></div>}
+                                {t.loan_period&&<div><span className="text-gray-400">기간 </span><span>{t.loan_period}개월</span></div>}
+                                {t.vat_deferred&&<div><span className="text-gray-400">부가세 </span><span>Y{t.vat_deferred_amount?` / ${Number(t.vat_deferred_amount).toLocaleString("ko-KR")}원`:""}</span></div>}
+                                {t.sales_rep&&<div><span className="text-gray-400">영업 </span><span>{t.sales_rep}</span></div>}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex flex-col gap-1 shrink-0">
+                            <button className={BTG} onClick={()=>setHcmExpanded(hcmExpanded===t.id?null:t.id)}>{hcmExpanded===t.id?"접기":"상세"}</button>
+                            <button className={BTO} onClick={()=>navigate("/hyundaicm")}>이동</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* ══ 금융상담 ══ */}
+          {tab==="finance"&&(
+            <div className="space-y-3 pb-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <p className="text-sm font-semibold text-[#0f172a]">🏦 금융 상담내역</p>
+                <div className="flex gap-1.5 flex-wrap">
+                  {(["active","all","done"] as const).map(f=>(
+                    <button key={f} onClick={()=>setFinanceFilter(f)}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${financeFilter===f?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
+                      {{active:"진행중",all:"전체",done:"완료"}[f]}
+                    </button>
+                  ))}
+                  <button className={BTG} onClick={()=>{
+                    setFinanceLoading(true);
+                    supabase.from("consultation_cases").select("id,customer_name,work_type,status,summary,created_at,phone,sub_type").eq("work_type","finance").order("created_at",{ascending:false}).limit(60)
+                      .then(({data})=>{setFinanceConsults((data??[]).map((c:any)=>({...c,progress_stage:null,product_detail:null})));setFinanceLoading(false);});
+                  }}>새로고침</button>
+                  <button className={BTO} onClick={()=>navigate("/work/call-management?work_type=finance")}>전체 보기 →</button>
+                </div>
+              </div>
+              {financeLoading?<p className="text-sm text-gray-400 p-4 text-center">불러오는 중...</p>:(()=>{
+                const DONE_STAGES = ["confirmed","cancelled","rejected"];
+                const filtered=financeConsults.filter((c:any)=>
+                  financeFilter==="active"?!DONE_STAGES.includes(c.progress_stage??""):
+                  financeFilter==="done"?DONE_STAGES.includes(c.progress_stage??""):true
+                );
+                if(filtered.length===0) return <div className={`${CARD} p-8 text-center text-gray-400 text-sm`}>해당 상담이 없습니다</div>;
+                return (
+                  <div className="space-y-2">
+                    {filtered.map((c:any)=>(
+                      <div key={c.id} className={`${CARD} p-3.5`}>
+                        <div className="flex items-start gap-2.5">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-sm font-semibold text-[#0f172a]">{c.customer_name}</span>
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100">{c.sub_type||"금융"}</span>
+                              {c.finance_stage_label
+                                ? <span className="text-xs px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-100 font-medium">{c.finance_stage_label}</span>
+                                : <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 border border-orange-100 font-medium">{STS_LBL[c.status]??c.status}</span>
+                              }
+                            </div>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-gray-500">
+                              {c.summary&&<span className="truncate max-w-[200px]">{c.summary}</span>}
+                              <span className="ml-auto text-gray-300">{String(c.created_at||"").slice(0,10)}</span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-1 shrink-0">
+                            <button className={BTO} onClick={()=>navigate(`/work/call-management?id=${c.id}`)}>이동</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* ══ 나르미 ══ */}
+          {tab==="narumi"&&(
+            <div className="space-y-3 pb-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <p className="text-sm font-semibold text-[#0f172a]">🚛 나르미 업무</p>
+                <div className="flex gap-1.5 flex-wrap">
+                  <button className={BTG} onClick={()=>{
+                    setNarumiLoading2(true);
+                    supabase.from("narumi_tasks").select("*").order("created_at",{ascending:false}).limit(60)
+                      .then(({data})=>{setNarumiList((data??[]) as NarumiTask[]);setNarumiLoading2(false);});
+                  }}>새로고침</button>
+                  <button className={BTO} onClick={()=>navigate("/narumi")}>전체 페이지 →</button>
+                </div>
+              </div>
+              {narumiLoading2?<p className="text-sm text-gray-400 p-4 text-center">불러오는 중...</p>:narumiList.length===0?<div className={`${CARD} p-8 text-center text-gray-400 text-sm`}>등록된 차량이 없습니다</div>:(
+                <div className="space-y-2">
+                  {narumiList.map((t:any)=>(
+                    <div key={t.id} className={`${CARD} p-3.5`}>
+                      <div className="flex items-start gap-2.5">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-sm font-semibold text-[#0f172a]">{t.customer_name||"미확인"}</span>
+                            {t.vin&&<span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100 font-mono">{t.vin}</span>}
+                            <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${
+                              t.status==="completed"?"bg-emerald-50 text-emerald-600 border-emerald-100":
+                              t.status==="registered"?"bg-blue-50 text-blue-600 border-blue-100":
+                              t.status==="docs"?"bg-purple-50 text-purple-600 border-purple-100":
+                              "bg-orange-50 text-orange-600 border-orange-100"}`}>
+                              {t.status==="completed"?"완료":t.status==="registered"?"등록완료":t.status==="docs"?"서류준비":t.status==="insurance"?"보험확인":"진행중"}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-gray-500">
+                            {t.sales_rep&&<span>영업: {t.sales_rep}</span>}
+                            {t.delivery_date&&<span>출고: {t.delivery_date}</span>}
+                            {t.special_note&&<span className="text-orange-500 truncate max-w-[140px]">{t.special_note}</span>}
+                            <span className="ml-auto text-gray-300">{String(t.created_at||"").slice(0,10)}</span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-1 shrink-0">
+                          <button className={BTO} onClick={()=>navigate("/narumi")}>이동</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {narumiConsults.length>0&&(
+                <div className={`${CARD} p-3.5`}>
+                  <p className="text-xs font-semibold text-gray-400 mb-2">📋 나르미 상담내역 ({narumiConsults.length}건)</p>
+                  <div className="space-y-2">
+                    {narumiConsults.map((c:any)=>(
+                      <div key={c.id} className={`${CARD} p-3.5`}>
+                        <div className="flex items-start gap-2.5">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-sm font-semibold text-[#0f172a]">{c.customer_name}</span>
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 border border-orange-100 font-medium">{STS_LBL[c.status]??c.status}</span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-gray-500">
+                              {c.summary&&<span className="truncate max-w-[200px]">{c.summary}</span>}
+                              <span className="ml-auto text-gray-300">{String(c.created_at||"").slice(0,10)}</span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-1 shrink-0">
+                            <button className={BTO} onClick={()=>navigate(`/work/call-management?id=${c.id}`)}>이동</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ══ 진흥주문 ══ */}
+          {tab==="jinheung"&&(
+            <div className="space-y-3 pb-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <p className="text-sm font-semibold text-[#0f172a]">🔧 진흥주문 관리</p>
+                <div className="flex gap-1.5 flex-wrap">
+                  {(["active","all","done"] as const).map(f=>(
+                    <button key={f} onClick={()=>setJFilter(f)}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${jFilter===f?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
+                      {{active:"진행중",all:"전체",done:"완료"}[f]}
+                    </button>
+                  ))}
+                  <button className={BTG} onClick={()=>{
+                    setJLoading(true);
+                    supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60)
+                      .then(({data})=>{setJList(data??[]);setJLoading(false);});
+                  }}>새로고침</button>
+                  <button className={BTO} onClick={()=>navigate("/work/orders")}>전체 페이지 →</button>
+                </div>
+              </div>
+
+              {/* 타이어 상담내역 */}
+              {jConsultsLoading?<p className="text-xs text-gray-400">상담내역 불러오는 중...</p>:jConsults.length>0&&(
+                <div className={`${CARD} p-3.5`}>
+                  <p className="text-xs font-semibold text-gray-400 mb-2">📋 타이어 상담내역 ({jConsults.length}건)</p>
+                  <div className="space-y-2">
+                    {jConsults.map((c:any)=>(
+                      <div key={c.id} className={`${CARD} p-3.5`}>
+                        <div className="flex items-start gap-2.5">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-sm font-semibold text-[#0f172a]">{c.customer_name}</span>
+                              {c.product_detail&&<span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100">{c.product_detail}</span>}
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 border border-orange-100 font-medium">{STS_LBL[c.status]??c.status}</span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-gray-500">
+                              {c.summary&&<span className="truncate max-w-[200px]">{c.summary}</span>}
+                              <span className="ml-auto text-gray-300">{String(c.created_at||"").slice(0,10)}</span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-1 shrink-0">
+                            <button className={BTO} onClick={()=>navigate(`/work/call-management?id=${c.id}`)}>이동</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 당월 통계 */}
+              {(()=>{
+                const now=new Date();
+                const tm=jList.filter((o:any)=>{const d=new Date(o.created_at);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();});
+                const rev=tm.reduce((s:number,o:any)=>s+(o.price_to_customer??0),0);
+                const cost=tm.reduce((s:number,o:any)=>s+(o.price_from_jinheung??0),0);
+                return tm.length>0?(
+                  <div className={`${CARD} p-3`}>
+                    <p className="text-xs text-gray-400 mb-2">{now.getMonth()+1}월 실적 — {tm.length}건</p>
+                    <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                      <div><p className="text-gray-400">매출</p><p className="font-bold text-orange-600">{rev?`${(rev/10000).toFixed(0)}만원`:"-"}</p></div>
+                      <div><p className="text-gray-400">매입</p><p className="font-bold text-gray-600">{cost?`${(cost/10000).toFixed(0)}만원`:"-"}</p></div>
+                      <div><p className="text-gray-400">마진</p><p className="font-bold text-emerald-600">{rev&&cost?`${((rev-cost)/10000).toFixed(0)}만원`:"-"}</p></div>
+                    </div>
+                  </div>
+                ):null;
+              })()}
+
+              {/* tb_orders 목록 */}
+              {jLoading?<p className="text-sm text-gray-400 p-4 text-center">불러오는 중...</p>:(()=>{
+                const SLBL:Record<string,string>={received:"접수",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",billed_in:"진흥청구",payment_in:"입금확인",payment_out:"송금완료"};
+                const SCLR:Record<string,string>={received:"bg-gray-100 text-gray-600",forwarded:"bg-blue-100 text-blue-700",delivered:"bg-emerald-100 text-emerald-700",wheel_returned:"bg-purple-100 text-purple-700",invoiced:"bg-orange-100 text-orange-700",billed_in:"bg-yellow-100 text-yellow-700",payment_in:"bg-teal-100 text-teal-700",payment_out:"bg-green-100 text-green-700"};
+                const NEXT:Record<string,string|null>={received:"forwarded",forwarded:"delivered",delivered:"wheel_returned",wheel_returned:"invoiced",invoiced:"billed_in",billed_in:"payment_in",payment_in:"payment_out",payment_out:null};
+                const PREV:Record<string,string|null>={received:null,forwarded:"received",delivered:"forwarded",wheel_returned:"delivered",invoiced:"wheel_returned",billed_in:"invoiced",payment_in:"billed_in",payment_out:"payment_in"};
+                const DFLD:Record<string,string>={forwarded:"forwarded_at",delivered:"delivered_at",wheel_returned:"wheel_returned_at",invoiced:"invoiced_at",billed_in:"billed_in_at",payment_in:"payment_in_at",payment_out:"payment_out_at"};
+                const filtered=jList.filter((o:any)=>jFilter==="active"?o.status!=="payment_out":jFilter==="done"?o.status==="payment_out":true);
+                const reload=()=>{setJLoading(true);supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60).then(({data})=>{setJList(data??[]);setJLoading(false);});};
+                if(filtered.length===0) return <div className={`${CARD} p-8 text-center text-gray-400 text-sm`}>주문이 없습니다</div>;
+                return (
+                  <div className="space-y-2">
+                    {filtered.map((o:any)=>{
+                      const next=NEXT[o.status]; const isExp=jExpanded===o.id;
+                      return (
+                        <div key={o.id} className={`${CARD} overflow-hidden`}>
+                          <div className="p-3.5">
+                            <div className="flex items-start gap-2.5">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-sm font-semibold text-[#0f172a]">{o.customer_name_raw||"미확인"}</span>
+                                  <span className={`text-[11px] px-2 py-0.5 rounded-full border font-medium ${SCLR[o.status]||"bg-gray-100 text-gray-600"}`}>{SLBL[o.status]||o.status}</span>
+                                </div>
+                                {o.product_spec&&<p className="text-xs text-gray-600 mt-0.5 font-medium">{o.product_spec}{o.quantity?` × ${o.quantity}개`:""}</p>}
+                                {/* 5단계 진행 바 */}
+                                {(()=>{
+                                  const STEPS=["received","forwarded","delivered","wheel_returned","invoiced"];
+                                  const STEP_LBL=["주문접수","발주","납품완료","휠반납","계산서발행"];
+                                  const curIdx=STEPS.indexOf(o.status);
+                                  const doneIdx=curIdx===-1?STEPS.length:curIdx;
+                                  return (
+                                    <div className="flex items-center gap-0.5 mt-1.5">
+                                      {STEPS.map((s,i)=>(
+                                        <div key={s} className="flex items-center gap-0.5 flex-1 min-w-0">
+                                          <div className={`h-1.5 flex-1 rounded-full transition-all ${i<=doneIdx?"bg-orange-400":"bg-gray-200"}`}/>
+                                          {i===doneIdx&&<span className="text-[10px] text-orange-500 font-semibold whitespace-nowrap ml-0.5">{STEP_LBL[i]}</span>}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  );
+                                })()}
+                                <div className="flex items-center gap-2 mt-1 flex-wrap text-xs">
+                                  {o.price_to_customer&&<span className="text-orange-600 font-medium">매출 {Number(o.price_to_customer).toLocaleString("ko-KR")}원</span>}
+                                  {o.margin!=null&&o.margin!==0&&<span className="text-emerald-600 font-medium">마진 {Number(o.margin).toLocaleString("ko-KR")}원</span>}
+                                  <span className="text-gray-400">{String(o.created_at||"").slice(0,10)}</span>
+                                </div>
+                                {isExp&&(
+                                  <div className="mt-2 pt-2 border-t border-gray-100">
+                                    <div className="grid grid-cols-3 gap-2 text-xs mb-2">
+                                      <div><p className="text-gray-400">고객청구</p><p className="font-semibold text-orange-600">{o.price_to_customer?`${Number(o.price_to_customer).toLocaleString("ko-KR")}원`:"-"}</p></div>
+                                      <div><p className="text-gray-400">진흥매입</p><p className="font-semibold text-gray-700">{o.price_from_jinheung?`${Number(o.price_from_jinheung).toLocaleString("ko-KR")}원`:"-"}</p></div>
+                                      <div><p className="text-gray-400">마진</p><p className="font-semibold text-emerald-600">{o.margin!=null?`${Number(o.margin).toLocaleString("ko-KR")}원`:"-"}</p></div>
+                                    </div>
+                                    <button className={`${BTG} text-xs`} onClick={e=>{e.stopPropagation();setJAmtModal(o);setJAmtTo(o.price_to_customer?.toLocaleString("ko-KR")??"");setJAmtFrom(o.price_from_jinheung?.toLocaleString("ko-KR")??"");}}>💰 금액 입력</button>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex flex-col gap-1 shrink-0">
+                                {next&&(
+                                  <button onClick={async()=>{
+                                    const patch:any={status:next};
+                                    if(DFLD[next]) patch[DFLD[next]]=new Date().toISOString();
+                                    await supabase.from("tb_orders").update(patch).eq("id",o.id);
+                                    try{await fetch("https://nfwtsptqloefsbpjvdyu.supabase.co/functions/v1/kakao-order-webhook",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({event:"status_change",orderId:o.id,status:next,customerName:o.customer_name_raw??"",productSpec:o.product_spec??"",quantity:o.quantity?.toString()??"",amount:String(o.price_to_customer??o.price_from_jinheung??"")})});}catch(e){console.error(e);}
+                                    reload();
+                                  }} className={BTO}>{SLBL[next]||next} →</button>
+                                )}
+                                {PREV[o.status]&&(
+                                  <button onClick={async()=>{
+                                    const prev=PREV[o.status]!;
+                                    const patch:any={status:prev};
+                                    if(DFLD[o.status]) patch[DFLD[o.status]]=null;
+                                    await supabase.from("tb_orders").update(patch).eq("id",o.id);
+                                    reload();
+                                  }} className="px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-400 hover:border-red-200 hover:text-red-400 transition-all">↩ {SLBL[PREV[o.status]!]||PREV[o.status]}</button>
+                                )}
+                                <button className={BTG} onClick={()=>setJExpanded(isExp?null:o.id)}>{isExp?"접기":"상세"}</button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* ══ 메모 ══ */}
+          {tab==="memo"&&(
+            <div className="space-y-4 pb-4">
+              {/* 헤더 */}
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-[#0f172a]">📝 미팅/통화 메모</p>
+                  <p className="text-xs text-gray-400 mt-0.5">회의·통화·방문 내용을 기록하고 검색합니다</p>
+                </div>
+                <div className="flex gap-2">
+                  <button className={BTG} onClick={()=>void loadMemos()}>새로고침</button>
+                  <button className={`${BTG} bg-orange-500 text-white border-orange-500 hover:bg-orange-600`} onClick={()=>setShowMemoForm(true)}>+ 메모 작성</button>
+                </div>
+              </div>
+
+              {/* 필터 + 검색 */}
+              <div className="flex flex-wrap gap-2 items-center">
+                {(["all","meeting","call","visit","note"] as const).map(cat=>(
+                  <button key={cat} onClick={()=>setMemoFilter(cat)}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${memoFilter===cat?"bg-orange-500 text-white border-orange-500":"bg-white text-gray-500 border-gray-200 hover:border-orange-300"}`}>
+                    {cat==="all"?"전체":cat==="meeting"?"미팅":cat==="call"?"통화":cat==="visit"?"방문":"기타"}
+                  </button>
+                ))}
+                <input
+                  type="text" placeholder="고객명·내용 검색..."
+                  className="ml-auto h-8 rounded-xl border border-gray-200 px-3 text-xs focus:outline-none focus:border-orange-400 w-48"
+                  value={memoSearch} onChange={e=>setMemoSearch(e.target.value)}
+                />
+              </div>
+
+              {/* 메모 작성 폼 */}
+              {showMemoForm&&(
+                <div className={`${CARD} p-4 border-orange-200 bg-orange-50/30`}>
+                  <p className="text-sm font-semibold text-[#0f172a] mb-3">새 메모 작성</p>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">날짜</label>
+                      <input type="date" className="w-full h-9 rounded-xl border border-gray-200 px-3 text-xs focus:outline-none focus:border-orange-400"
+                        value={newMemo.memo_date} onChange={e=>setNewMemo(p=>({...p,memo_date:e.target.value}))}/>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">구분</label>
+                      <select className="w-full h-9 rounded-xl border border-gray-200 px-3 text-xs focus:outline-none focus:border-orange-400"
+                        value={newMemo.category} onChange={e=>setNewMemo(p=>({...p,category:e.target.value as Memo["category"]}))}>
+                        <option value="meeting">미팅</option>
+                        <option value="call">통화</option>
+                        <option value="visit">방문</option>
+                        <option value="note">기타</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">제목 (선택)</label>
+                      <input type="text" placeholder="예: 라이즈리프트 봄 장비 수요 미팅"
+                        className="w-full h-9 rounded-xl border border-gray-200 px-3 text-xs focus:outline-none focus:border-orange-400"
+                        value={newMemo.title} onChange={e=>setNewMemo(p=>({...p,title:e.target.value}))}/>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">고객/거래처명 (선택)</label>
+                      <input type="text" placeholder="예: (주)라이즈리프트"
+                        className="w-full h-9 rounded-xl border border-gray-200 px-3 text-xs focus:outline-none focus:border-orange-400"
+                        value={newMemo.related_name} onChange={e=>setNewMemo(p=>({...p,related_name:e.target.value}))}/>
+                    </div>
+                  </div>
+                  <div className="mb-3">
+                    <label className="text-xs text-gray-500 mb-1 block">내용 *</label>
+                    <textarea rows={5} placeholder="미팅/통화/방문 내용을 자유롭게 기록하세요..."
+                      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-xs focus:outline-none focus:border-orange-400 resize-none"
+                      value={newMemo.content} onChange={e=>setNewMemo(p=>({...p,content:e.target.value}))}/>
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <button className={BTG} onClick={()=>{setShowMemoForm(false);setNewMemo({title:"",content:"",category:"meeting",related_name:"",memo_date:new Date().toISOString().slice(0,10),consultation_id:""});}}>취소</button>
+                    <button
+                      className={`${BTG} bg-orange-500 text-white border-orange-500 hover:bg-orange-600 disabled:opacity-40`}
+                      disabled={!newMemo.content.trim()}
+                      onClick={async()=>{
+                        const ok=await saveMemo(newMemo);
+                        if(ok){setShowMemoForm(false);setNewMemo({title:"",content:"",category:"meeting",related_name:"",memo_date:new Date().toISOString().slice(0,10),consultation_id:""});}
+                      }}>저장</button>
+                  </div>
+                </div>
+              )}
+
+              {/* 상세 뷰 */}
+              {memoDetail&&(
+                <div className={`${CARD} p-4`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <button className={BTG} onClick={()=>setMemoDetail(null)}>← 목록으로</button>
+                    <button className="text-xs text-red-400 hover:text-red-600 transition-all" onClick={()=>void deleteMemo(memoDetail.id)}>삭제</button>
+                  </div>
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 font-medium">
+                      {memoDetail.category==="meeting"?"미팅":memoDetail.category==="call"?"통화":memoDetail.category==="visit"?"방문":"기타"}
+                    </span>
+                    {memoDetail.related_name&&<span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{memoDetail.related_name}</span>}
+                    <span className="text-xs text-gray-400">{memoDetail.memo_date}</span>
+                  </div>
+                  {memoDetail.title&&<p className="text-base font-bold text-[#0f172a] mb-2">{memoDetail.title}</p>}
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed border-t border-gray-100 pt-3">{memoDetail.content}</p>
+                </div>
+              )}
+
+              {/* 목록 */}
+              {!memoDetail&&(
+                <>
+                  {memoLoading&&(
+                    <div className="flex items-center justify-center py-12 gap-2 text-xs text-gray-400">
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-300 animate-bounce" style={{animationDelay:"0ms"}}/>
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-300 animate-bounce" style={{animationDelay:"150ms"}}/>
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-300 animate-bounce" style={{animationDelay:"300ms"}}/>
+                      <span>메모 불러오는 중...</span>
+                    </div>
+                  )}
+                  {!memoLoading&&memos.filter(m=>{
+                    const catOk = memoFilter==="all"||m.category===memoFilter;
+                    const kw=memoSearch.trim().toLowerCase();
+                    const kwOk = !kw||(m.content+"|"+(m.title||"")+(m.related_name||"")).toLowerCase().includes(kw);
+                    return catOk&&kwOk;
+                  }).length===0&&(
+                    <div className={`${CARD} p-10 flex flex-col items-center gap-3 text-center`}>
+                      <span className="text-4xl">📭</span>
+                      <p className="text-sm font-medium text-gray-500">저장된 메모가 없습니다</p>
+                      <p className="text-xs text-gray-400">AI 채팅에서 미팅 내용을 입력하거나 직접 작성하세요</p>
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    {!memoLoading&&memos.filter(m=>{
+                      const catOk = memoFilter==="all"||m.category===memoFilter;
+                      const kw=memoSearch.trim().toLowerCase();
+                      const kwOk = !kw||(m.content+"|"+(m.title||"")+(m.related_name||"")).toLowerCase().includes(kw);
+                      return catOk&&kwOk;
+                    }).map(m=>(
+                      <div key={m.id}
+                        className={`${CARD} p-4 cursor-pointer hover:shadow-md transition-all`}
+                        onClick={()=>setMemoDetail(m)}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap mb-1">
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 font-medium">
+                                {m.category==="meeting"?"미팅":m.category==="call"?"통화":m.category==="visit"?"방문":"기타"}
+                              </span>
+                              {m.related_name&&<span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{m.related_name}</span>}
+                              <span className="text-xs text-gray-400">{m.memo_date}</span>
+                            </div>
+                            {m.title&&<p className="text-sm font-semibold text-[#0f172a] mb-0.5">{m.title}</p>}
+                            <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">{m.content}</p>
+                          </div>
+                          <button className={BTG} onClick={e=>{e.stopPropagation();void deleteMemo(m.id);}}>삭제</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -2354,6 +3022,42 @@ const SecretaryPage:React.FC = () => {
 
         </main>
       </div>
+
+      {jAmtModal&&(
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-sm border border-gray-200 rounded-2xl bg-white shadow-2xl p-6">
+            <h2 className="text-base font-bold text-[#0f172a] mb-1">금액 입력</h2>
+            <p className="text-sm text-gray-500 mb-4">{jAmtModal.customer_name_raw} — {jAmtModal.product_spec}</p>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">고객사 청구금액 (원)</label>
+                <input value={jAmtTo} onChange={e=>setJAmtTo(e.target.value.replace(/[^0-9]/g,"").replace(/\B(?=(\d{3})+(?!\d))/g,","))} placeholder="예: 250,000" inputMode="numeric" className="w-full h-10 rounded-xl border border-gray-200 px-3 text-sm focus:outline-none focus:border-orange-400"/>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">(주)진흥 매입금액 (원)</label>
+                <input value={jAmtFrom} onChange={e=>setJAmtFrom(e.target.value.replace(/[^0-9]/g,"").replace(/\B(?=(\d{3})+(?!\d))/g,","))} placeholder="예: 220,000" inputMode="numeric" className="w-full h-10 rounded-xl border border-gray-200 px-3 text-sm focus:outline-none focus:border-orange-400"/>
+              </div>
+              {jAmtTo&&jAmtFrom&&(
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100">
+                  <p className="text-xs text-emerald-700 font-semibold">마진: {(parseInt(jAmtTo.replace(/,/g,""))-parseInt(jAmtFrom.replace(/,/g,""))).toLocaleString("ko-KR")}원</p>
+                </div>
+              )}
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={()=>setJAmtModal(null)} className={BTG}>취소</button>
+              <button disabled={jSaving} onClick={async()=>{
+                setJSaving(true);
+                await supabase.from("tb_orders").update({
+                  price_to_customer: jAmtTo?parseInt(jAmtTo.replace(/,/g,"")):null,
+                  price_from_jinheung: jAmtFrom?parseInt(jAmtFrom.replace(/,/g,"")):null,
+                }).eq("id",jAmtModal.id);
+                setJSaving(false); setJAmtModal(null);
+                supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60).then(({data})=>setJList(data??[]));
+              }} className="px-4 py-2 rounded-xl bg-[#0f172a] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40">저장</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

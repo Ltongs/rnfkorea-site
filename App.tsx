@@ -76,6 +76,7 @@ import BatteryShopPage from "./pages/battery-shop";
 import TireRentalPage from "./pages/TireRental/index";
 import SecretaryPage from "./pages/secretary/index";
 import SecretaryInsPage from "./pages/secretary-ins/index";
+import OrdersPage from "./pages/Orders/index";
 
 /* utils / config */
 import { fetchTireRows } from "./lib/tiresCsv";
@@ -1470,6 +1471,12 @@ const AppRoutes = () => {
           <Route
             path="/work/secretary-ins"
             element={isInsAI ? <SecretaryInsPage /> : <Navigate to="/" replace />}
+          />
+
+          {/* 주문 관리 (진흥 타이어) */}
+          <Route
+            path="/work/orders"
+            element={isAdminLevel ? <OrdersPage /> : <Navigate to="/" replace />}
           />
 
           {/* legacy */}
