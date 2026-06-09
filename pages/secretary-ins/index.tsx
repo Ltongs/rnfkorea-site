@@ -809,17 +809,22 @@ const SecretaryInsPage:React.FC = () => {
 
   const loadStats = useCallback(async()=>{
     const d30str = addDays(todayStr(), 30);
-    const [a,b,c,d,e,f,g,h] = await Promise.all([
+    const [a,b,c,d,e1,e2,f1,f2,g,h] = await Promise.all([
       supabase.from("ins_schedules").select("id",{count:"exact"}).eq("schedule_date",todayStr()).eq("is_done",false),
       supabase.from("ins_todos").select("id",{count:"exact"}).eq("is_done",false),
       supabase.from("ins_todos").select("id",{count:"exact"}).eq("is_done",false).eq("priority","urgent"),
       supabase.from("ins_orders").select("id",{count:"exact"}).eq("status","new"),
+      supabase.from("ins_consultation_cases").select("id",{count:"exact"}).eq("work_type","registration_insurance").eq("followup_needed",true).eq("next_followup_date",todayStr()),
       supabase.from("consultation_cases").select("id",{count:"exact"}).eq("work_type","registration_insurance").eq("followup_needed",true).eq("next_followup_date",todayStr()),
+      supabase.from("ins_consultation_cases").select("id",{count:"exact"}).eq("work_type","registration_insurance").gte("created_at",todayStr()+"T00:00:00").lte("created_at",todayStr()+"T23:59:59"),
       supabase.from("consultation_cases").select("id",{count:"exact"}).eq("work_type","registration_insurance").gte("created_at",todayStr()+"T00:00:00").lte("created_at",todayStr()+"T23:59:59"),
       supabase.from("ins_policies").select("id",{count:"exact"}).gte("expiry_date",todayStr()).lte("expiry_date",d30str),
       supabase.from("ins_claims").select("id",{count:"exact"}).in("status",["requested","processing"]),
     ]);
-    setStats({todaySch:a.count??0,activeTodo:b.count??0,urgentTodo:c.count??0,newOrders:d.count??0,todayFollowup:e.count??0,newConsult:f.count??0,expiringCount:g.count??0,activeClaims:h.count??0});
+    setStats({todaySch:a.count??0,activeTodo:b.count??0,urgentTodo:c.count??0,newOrders:d.count??0,
+      todayFollowup:(e1.count??0)+(e2.count??0),
+      newConsult:(f1.count??0)+(f2.count??0),
+      expiringCount:g.count??0,activeClaims:h.count??0});
   },[]);
 
   const loadChatHist = useCallback(async(initial=false)=>{
@@ -875,35 +880,51 @@ const SecretaryInsPage:React.FC = () => {
 
   const loadConsults = useCallback(async()=>{
     setCLoading(true);
-    // admin@rnfkorea.co.kr 의 consultation_cases 중 보험(registration_insurance) 건만 조회
-    const [fr,rr] = await Promise.all([
+    const SEL = "id,customer_key,customer_name,phone,telecom_provider,work_type,status,summary,followup_needed,next_followup_date,created_at";
+    // 메인 테이블 + ins 테이블 동시 조회
+    const [fr1,fr2,rr1,rr2] = await Promise.all([
       supabase.from("consultation_cases")
-        .select("id,customer_name,phone,telecom_provider,work_type,status,summary,followup_needed,next_followup_date,created_at")
-        .eq("work_type","registration_insurance")
+        .select(SEL).eq("work_type","registration_insurance")
+        .eq("followup_needed",true).eq("next_followup_date",todayStr())
+        .order("created_at",{ascending:false}).limit(10),
+      supabase.from("ins_consultation_cases")
+        .select(SEL).eq("work_type","registration_insurance")
         .eq("followup_needed",true).eq("next_followup_date",todayStr())
         .order("created_at",{ascending:false}).limit(10),
       supabase.from("consultation_cases")
-        .select("id,customer_name,phone,telecom_provider,work_type,status,summary,followup_needed,next_followup_date,created_at")
-        .eq("work_type","registration_insurance")
-        .order("created_at",{ascending:false}).limit(20),
+        .select(SEL).eq("work_type","registration_insurance")
+        .order("created_at",{ascending:false}).limit(30),
+      supabase.from("ins_consultation_cases")
+        .select(SEL).eq("work_type","registration_insurance")
+        .order("created_at",{ascending:false}).limit(30),
     ]);
-    if(fr.data)setFollowups(fr.data as Consult[]);
-    if(rr.data)setRecentC(rr.data as Consult[]);
+    // 병합 후 created_at 내림차순, id 기준 중복 제거
+    const mergeUniq = (a:any[]|null, b:any[]|null) => {
+      const seen = new Set<string>();
+      return [...(a??[]),...(b??[])].filter(r=>{
+        const k = `${r.customer_name}_${r.created_at}`;
+        if(seen.has(k)) return false;
+        seen.add(k); return true;
+      }).sort((x,y)=>y.created_at.localeCompare(x.created_at));
+    };
+    setFollowups(mergeUniq(fr1.data,fr2.data).slice(0,10) as Consult[]);
+    setRecentC(mergeUniq(rr1.data,rr2.data).slice(0,30) as Consult[]);
     setCLoading(false);
   },[]);
 
   useEffect(()=>{
-    // 세션 준비 완료 후 모든 데이터 로드
+    // 세션 준비 완료 후 모든 데이터 로드 — deps [] 고정으로 재구독 루프 방지
     const {data:{subscription}} = supabase.auth.onAuthStateChange((event, session)=>{
       if((event==="SIGNED_IN"||event==="TOKEN_REFRESHED"||event==="INITIAL_SESSION") && session){
         void loadStats();
         void loadChatHist(true);
-        void loadCalData(calViewYear, calViewMonth);
+        void loadCalData(new Date().getFullYear(), new Date().getMonth());
         void checkGcalConnection();
       }
     });
     return ()=>subscription.unsubscribe();
-  },[loadStats, loadChatHist, loadCalData]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
   const prevMsgLen = useRef(0);
   useEffect(()=>{
     if(msgs.length > 0 && msgs.length !== prevMsgLen.current){
@@ -934,6 +955,81 @@ const SecretaryInsPage:React.FC = () => {
     if(tab==="todo") void loadTodos();
     if(tab==="chat"){ setTimeout(()=>{ const c=chatContainerRef.current; if(c)c.scrollTop=c.scrollHeight; },100); }
   },[tab, loadTodos]);
+  // ─── 상담 → 고객 등록 ────────────────────────────────────────────────────────
+  const [regLoading,setRegLoading] = useState<number|"all"|null>(null); // 등록 중인 consult id 또는 "all"
+
+  async function registerCustomerFromConsult(c:Consult){
+    const phone = c.phone?.replace(/\D/g,"")||"";
+    const cKey = c.customer_key || makeCustomerKey(c.customer_name, phone);
+    const {error} = await supabase.from("ins_customer_info").upsert({
+      customer_key: cKey,
+      customer_name: c.customer_name,
+      phone: phone || null,
+    },{onConflict:"customer_key"});
+    return error ? null : cKey;
+  }
+
+  async function registerOneCustomer(c:Consult){
+    setRegLoading(c.id);
+    const cKey = await registerCustomerFromConsult(c);
+    setRegLoading(null);
+    if(cKey) showToast(`👤 ${c.customer_name} 고객 등록 완료 (${cKey})`);
+    else showToast("고객 등록 실패","err");
+  }
+
+  async function registerAllCustomers(){
+    if(!recentC.length) return;
+    setRegLoading("all");
+    let ok=0, skip=0;
+    for(const c of recentC){
+      if(!c.customer_name){ skip++; continue; }
+      const cKey = await registerCustomerFromConsult(c);
+      if(cKey) ok++; else skip++;
+    }
+    setRegLoading(null);
+    showToast(`👤 고객 등록 완료 ${ok}건${skip>0?" (건너뜀 "+skip+"건)":""}`);
+    void loadRecentChanged();
+  }
+
+  // 전체 consultation_cases + ins_consultation_cases → ins_customer_info 일괄 등록
+  const [regAllLoading,setRegAllLoading] = useState(false);
+  const [regAllResult,setRegAllResult]   = useState<{ok:number;skip:number}|null>(null);
+
+  async function registerAllFromDB(){
+    if(!window.confirm("기존 상담 고객(갈미건설 등) + 보험 상담 고객 전체를 고객으로 등록합니다.\n이미 등록된 고객은 건너뜁니다. 계속하시겠습니까?")) return;
+    setRegAllLoading(true);
+    setRegAllResult(null);
+    let ok = 0, skip = 0;
+
+    for(const tbl of ["consultation_cases","ins_consultation_cases"] as const){
+      let page = 0;
+      while(true){
+        const {data} = await (supabase.from(tbl) as any)
+          .select("customer_key,customer_name,phone")
+          .order("id",{ascending:true})
+          .range(page*100, page*100+99);
+        if(!data || data.length===0) break;
+        for(const r of data){
+          if(!r.customer_name){ skip++; continue; }
+          const phone = (r.phone||"").replace(/\D/g,"");
+          const cKey = r.customer_key || makeCustomerKey(r.customer_name, phone);
+          const {error} = await supabase.from("ins_customer_info").upsert(
+            {customer_key:cKey, customer_name:r.customer_name, phone:phone||null},
+            {onConflict:"customer_key", ignoreDuplicates:true}
+          );
+          if(error) skip++; else ok++;
+        }
+        if(data.length < 100) break;
+        page++;
+      }
+    }
+
+    setRegAllLoading(false);
+    setRegAllResult({ok,skip});
+    showToast(`👤 전체 등록 완료 — 신규 ${ok}건, 건너뜀 ${skip}건`);
+    void loadRecentChanged();
+  }
+
   useEffect(()=>{if(tab==="consults"){void loadOrders();void loadConsults();}},[tab,loadOrders,loadConsults]);
   // 달력 날짜 클릭 시 자동 갱신
   useEffect(()=>{ if(tab==="schedule") void loadSchedules(); },[schedDate, loadSchedules]);
@@ -1024,7 +1120,7 @@ const SecretaryInsPage:React.FC = () => {
 
   async function saveConsult(id:number){
     if(!editingConsult)return;
-    await supabase.from("consultation_cases").update({
+    await supabase.from("ins_consultation_cases").update({
       status:editingConsult.status,
       summary:editingConsult.summary,
       followup_needed:editingConsult.followup_needed,
@@ -1072,22 +1168,29 @@ const SecretaryInsPage:React.FC = () => {
   const searchCustomers = useCallback(async(name:string)=>{
     if(!name.trim()){setCustResults([]);return;}
     setCustLoading(true);
-    const [pr,cr,clr,ir] = await Promise.all([
+    const [pr,cr,cr2,clr,ir] = await Promise.all([
       supabase.from("ins_policies").select("customer_key,customer_name").ilike("customer_name",`%${name}%`),
       supabase.from("ins_consultation_cases").select("customer_key,customer_name").ilike("customer_name",`%${name}%`),
+      // 메인 테이블 — customer_key 없는 경우 이름만으로 매핑
+      supabase.from("consultation_cases").select("customer_key,customer_name,phone").ilike("customer_name",`%${name}%`).eq("work_type","registration_insurance").limit(20),
       supabase.from("ins_claims").select("customer_key,customer_name").ilike("customer_name",`%${name}%`),
-      supabase.from("ins_customer_info").select("customer_key").ilike("customer_key",`%${name}%`),
+      supabase.from("ins_customer_info").select("customer_key,customer_name").or(`customer_name.ilike.%${name}%,customer_key.ilike.%${name}%`),
     ]);
     const map = new Map<string,string>();
     for(const row of [...(pr.data??[]),...(cr.data??[]),...(clr.data??[])]) {
       if(row.customer_key && !map.has(row.customer_key))
         map.set(row.customer_key, row.customer_name);
     }
-    // ins_customer_info에만 있는 고객 (전화번호만 등록된 경우)
+    // 메인 consultation_cases — customer_key 없으면 이름+전화번호로 생성
+    for(const row of (cr2.data??[])) {
+      const phone = (row.phone||"").replace(/\D/g,"");
+      const cKey = row.customer_key || (phone ? `${row.customer_name}_${phone.slice(-4)}` : row.customer_name);
+      if(cKey && !map.has(cKey)) map.set(cKey, row.customer_name);
+    }
+    // ins_customer_info
     for(const row of (ir.data??[])) {
       if(row.customer_key && !map.has(row.customer_key)) {
-        // customer_key에서 이름 추출 (이름_끝4자리 형식)
-        const customerName = row.customer_key.replace(/_\d{4}$/, "");
+        const customerName = row.customer_name || row.customer_key.replace(/_\d{4}$/, "");
         map.set(row.customer_key, customerName);
       }
     }
@@ -1213,26 +1316,64 @@ const SecretaryInsPage:React.FC = () => {
     setCustInfo(null);
     setCustSearch("");
     setCustResults([]);
-    const [pr,cr,clr,ir] = await Promise.all([
+    // key에서 이름 추출 (이름_끝4자리 형식) — 메인 테이블 조회용
+    const nameFromKey = key.replace(/_\d{4}$/, "");
+
+    const [pr,cr,cr2,clr,ir] = await Promise.all([
       supabase.from("ins_policies").select("*").eq("customer_key",key).order("start_date",{ascending:false}),
       supabase.from("ins_consultation_cases").select("*").eq("customer_key",key).order("created_at",{ascending:false}),
+      // 메인 테이블 — 이름으로 조회 (customer_key 없을 수 있으므로)
+      supabase.from("consultation_cases").select("*").eq("work_type","registration_insurance")
+        .or(`customer_key.eq.${key},customer_name.eq.${nameFromKey}`)
+        .order("created_at",{ascending:false}).limit(30),
       supabase.from("ins_claims").select("*").eq("customer_key",key).order("claim_date",{ascending:false}),
       supabase.from("ins_customer_info").select("*").eq("customer_key",key).maybeSingle(),
     ]);
+
+    // 메인 consultation_cases 완료건 → ins_policies 자동 등록
+    const completedCases = (cr2.data??[]).filter((c:any)=>c.status==="completed"||c.status==="done");
+    for(const c of completedCases){
+      // 이미 ins_policies에 같은 날짜로 등록된 건 있는지 확인
+      const completedAt = c.completed_at || c.updated_at || c.created_at;
+      const startDate = completedAt?.slice(0,10) ?? todayStr();
+      const existing = (pr.data??[]).find((p:any)=>
+        p.start_date===startDate && p.product_name===( c.work_type==="registration_insurance"?"보험":c.work_type)
+      );
+      if(!existing){
+        await supabase.from("ins_policies").upsert({
+          customer_key: key,
+          customer_name: name,
+          product_name: c.summary?.slice(0,50) || "보험",
+          start_date: startDate,
+          expiry_date: null,
+          memo: `[자동등록] ${c.summary||""}`.slice(0,200),
+        },{onConflict:"customer_key,start_date,product_name",ignoreDuplicates:true});
+      }
+    }
+
+    // ins_policies 갱신 후 다시 조회
+    const {data:prRefresh} = await supabase.from("ins_policies").select("*").eq("customer_key",key).order("start_date",{ascending:false});
+
+    // 상담이력: ins + 메인 병합, created_at 중복 제거
+    const seen = new Set<string>();
+    const mergedConsults = [...(cr.data??[]),...(cr2.data??[])].filter(r=>{
+      const k = `${r.customer_name}_${r.created_at}`;
+      if(seen.has(k)) return false;
+      seen.add(k); return true;
+    }).sort((a:any,b:any)=>b.created_at.localeCompare(a.created_at));
+
     setSelectedCust({
       customer_key:key, customer_name:name,
-      policies:(pr.data??[]) as Policy[],
-      consults:(cr.data??[]) as Consult[],
+      policies:(prRefresh??pr.data??[]) as Policy[],
+      consults:mergedConsults as Consult[],
       claims:(clr.data??[]) as Claim[],
     });
     if(ir.data){
       setCustInfo(ir.data as CustomerInfo);
       setCustInfoForm(ir.data as CustomerInfo);
     } else {
-      // ins_customer_info 없으면 ins_consultation_cases의 전화번호로 자동 채우기
-      // 전체번호(10~11자리) 우선, 없으면 끝 4자리
-      const casePhoneFull = (cr.data??[]).find((c:any)=>c.phone&&c.phone.replace(/\D/g,"").length>=10)?.phone ?? "";
-      const casePhone4 = (cr.data??[]).find((c:any)=>c.phone&&c.phone!=="미입력")?.phone ?? "";
+      const casePhoneFull = mergedConsults.find((c:any)=>c.phone&&c.phone.replace(/\D/g,"").length>=10)?.phone ?? "";
+      const casePhone4 = mergedConsults.find((c:any)=>c.phone&&c.phone!=="미입력")?.phone ?? "";
       const autoPhone = casePhoneFull || casePhone4;
       setCustInfoForm({customer_key:key,phone:autoPhone,bank_name:"",bank_account:"",card_company:"",card_number:"",card_expiry:"",memo:""});
     }
@@ -1952,12 +2093,78 @@ const SecretaryInsPage:React.FC = () => {
                   </div>
                 </div>
               )}
+              {/* 전체 DB 고객등록 + 만기 30일 관리 */}
+              <div className={`${CARD} p-4`}>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-semibold text-[#0f172a]">👤 고객 일괄 등록</p>
+                  <button
+                    className="px-3 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition-all disabled:opacity-40 flex items-center gap-1.5"
+                    disabled={regAllLoading}
+                    onClick={()=>void registerAllFromDB()}>
+                    {regAllLoading
+                      ? <><span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"/>등록 중...</>
+                      : "📥 전체 상담고객 → 고객등록"}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mb-2">ins_consultation_cases 의 모든 고객을 ins_customer_info에 등록합니다. 이미 등록된 고객은 건너뜁니다.</p>
+                {regAllResult&&(
+                  <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-xs">
+                    <span className="text-emerald-700 font-semibold">✅ 신규 등록 {regAllResult.ok}건</span>
+                    {regAllResult.skip>0&&<span className="text-gray-400">건너뜀 {regAllResult.skip}건</span>}
+                  </div>
+                )}
+              </div>
+
+              {/* 만기 30일 이내 고객 */}
+              {expiringPolicies.length>0&&(
+                <div className={`${CARD} p-4`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-semibold text-[#0f172a] flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-red-500 inline-block animate-pulse"/>
+                      ⚠️ 만기 30일 이내 — {expiringPolicies.length}건
+                    </p>
+                    <button className={BTG} onClick={()=>setTab("policies")}>계약 탭 →</button>
+                  </div>
+                  <div className="space-y-2">
+                    {expiringPolicies.map(p=>{
+                      const days = Math.ceil((new Date(p.expiry_date!).getTime()-Date.now())/(1000*60*60*24));
+                      return (
+                        <div key={p.id} className="flex items-center gap-3 p-3 rounded-xl bg-red-50 border border-red-100">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-semibold text-[#0f172a]">{p.customer_name}</span>
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">{p.product_name}</span>
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold">D-{days}</span>
+                            </div>
+                            <p className="text-xs text-gray-400 mt-0.5">만기 {p.expiry_date}</p>
+                          </div>
+                          <div className="flex gap-1.5 flex-shrink-0">
+                            <button className={BTO} onClick={()=>quickChat(`"${p.customer_name}" ${p.product_name} 만기 ${days}일 전 갱신 안내 메시지 작성해줘`)}>AI문자초안</button>
+                            <button className={BTG} onClick={()=>{setCustSearch(p.customer_name);setTab("customers");void searchCustomers(p.customer_name);}}>고객조회</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* 최근 상담 */}
               <div className={`${CARD} p-4`}>
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-sm font-semibold text-[#0f172a]">💬 최근 상담</p>
                   <div className="flex gap-2">
                     <button className={BTG} onClick={()=>void loadConsults()}>새로고침</button>
+                    {recentC.length>0&&(
+                      <button
+                        className={`${BTP} text-xs`}
+                        disabled={regLoading==="all"}
+                        onClick={()=>void registerAllCustomers()}>
+                        {regLoading==="all"
+                          ? <span className="flex items-center gap-1"><span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"/>등록 중...</span>
+                          : `👤 화면고객 등록 (${recentC.length}건)`}
+                      </button>
+                    )}
                   </div>
                 </div>
                 {cLoading?<p className="text-xs text-gray-400">불러오는 중...</p>
@@ -2011,6 +2218,14 @@ const SecretaryInsPage:React.FC = () => {
                                 <button className={BTP} onClick={()=>void saveConsult(c.id)}>저장</button>
                                 <button className={BTS} onClick={()=>{setExpandedConsult(null);setEditingConsult(null);}}>취소</button>
                                 <button className={BTG} onClick={()=>quickChat(`"${c.customer_name}" ${WL[c.work_type]??""} 후속 조치: ${c.summary}`)}>AI</button>
+                                <button
+                                  className="ml-auto px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50 text-blue-600 text-xs font-semibold hover:bg-blue-100 transition-all disabled:opacity-40"
+                                  disabled={regLoading===c.id}
+                                  onClick={()=>void registerOneCustomer(c)}>
+                                  {regLoading===c.id
+                                    ? <span className="flex items-center gap-1"><span className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"/>등록 중</span>
+                                    : "👤 고객등록"}
+                                </button>
                               </div>
                             </div>
                           )}
