@@ -1599,8 +1599,12 @@ const SecretaryPage:React.FC = () => {
     if(!text || chatLoading) return;
 
     // 일정 관련 입력인지 판별
-    const schedKeywords = ["일정","미팅","방문","회의","출장","상담","확인","점검","납품","반출","등록","필요","예정"];
-    const isSchedInput = schedKeywords.some(k=>text.includes(k));
+    // 날짜/시간 표현이 함께 있을 때만 일정으로 판단
+    const dateTimePattern = /(\d+월\s*\d+일|\d+일|\d+시|\d+:\d+|오늘|내일|모레|다음주|이번주|월요일|화요일|수요일|목요일|금요일|토요일|일요일|내주|익일|오전|오후|아침|저녁)/;
+    const schedKeywords = ["일정","미팅","방문","회의","출장","상담","점검","납품","반출"];
+    const hasDateTime = dateTimePattern.test(text);
+    const hasSchedKeyword = schedKeywords.some(k=>text.includes(k));
+    const isSchedInput = hasDateTime && hasSchedKeyword;
     if(!isSchedInput){ void sendChat(); return; }
 
     // 시간/수식어 표현 제거 후 고객/거래처명 추출

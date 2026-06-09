@@ -38,6 +38,15 @@ type PendingCustomerSelect = {
   action:Record<string,unknown>;
   candidates:{customer_key:string;customer_name:string;phone?:string;isNew?:boolean}[];
 };
+// 일정 등록 후 고객 상담이력 기록 전 확인용
+type PendingScheduleConsult = {
+  schedTitle:string;
+  schedDate:string;
+  startTime:string|null;
+  location:string|null;
+  schedId:number;
+  candidates:{customer_key:string;customer_name:string;phone?:string}[];
+};
 type ChatMsg = {
   role:"user"|"assistant"; content:string;
   ts?:string;
@@ -45,6 +54,7 @@ type ChatMsg = {
   actions?:Record<string,unknown>[];
   pendingUpdates?:PendingUpdate[];
   pendingCustomerSelects?:PendingCustomerSelect[];
+  pendingScheduleConsults?:PendingScheduleConsult[];
 };
 type Policy = {
   id:number; customer_key:string; customer_name:string;
@@ -259,6 +269,79 @@ function PendingCustomerSelectCard({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ─── 일정→고객 상담이력 확인 카드 ──────────────────────────────────────────────
+function ScheduleConsultConfirmCard({
+  psc, onConfirm, onReject
+}:{
+  psc:PendingScheduleConsult[];
+  onConfirm:(idx:number, customerKey:string)=>void;
+  onReject:(idx:number)=>void;
+}) {
+  if(!psc?.length) return null;
+  return (
+    <div className="mt-2 space-y-2">
+      {psc.map((p,idx)=>(
+        <div key={idx} className="border border-blue-200 rounded-xl bg-blue-50 p-3">
+          <p className="text-xs font-semibold text-blue-700 mb-2">👤 상담이력 고객 확인</p>
+          <div className="bg-white rounded-lg p-2 mb-2 border border-blue-100">
+            <p className="text-xs text-gray-500 mb-0.5">등록할 일정</p>
+            <p className="text-sm font-medium text-[#0f172a]">{p.schedTitle}</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {p.schedDate}{p.startTime?" "+p.startTime.slice(0,5):""}{p.location?" · "+p.location:""}
+            </p>
+          </div>
+          {p.candidates.length===1 ? (
+            <>
+              <p className="text-xs text-gray-600 mb-2">
+                아래 고객의 상담이력에 기록할까요?
+              </p>
+              <div className="bg-white rounded-lg px-3 py-2 border border-gray-200 mb-3 flex items-center gap-2">
+                <span className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-600 flex-shrink-0">
+                  {p.candidates[0].customer_name.slice(0,1)}
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-[#0f172a]">{p.candidates[0].customer_name}</p>
+                  <p className="text-xs text-gray-400">{p.candidates[0].customer_key}{p.candidates[0].phone?" · "+p.candidates[0].phone:""}</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-all"
+                  onClick={()=>onConfirm(idx, p.candidates[0].customer_key)}>✅ 맞습니다</button>
+                <button className="px-3 py-1.5 rounded-xl border border-orange-300 text-xs text-orange-600 hover:bg-orange-50 transition-all"
+                  onClick={()=>onReject(idx)}>아닙니다 (신규 등록)</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-gray-600 mb-2">
+                동명이인이 {p.candidates.length}명 있습니다. 해당 고객을 선택해주세요:
+              </p>
+              <div className="space-y-1.5 mb-2">
+                {p.candidates.map(c=>(
+                  <button key={c.customer_key}
+                    className="w-full text-left px-3 py-2 rounded-lg border border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 transition-all"
+                    onClick={()=>onConfirm(idx, c.customer_key)}>
+                    <div className="flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-600 flex-shrink-0">
+                        {c.customer_name.slice(0,1)}
+                      </span>
+                      <span className="text-sm font-semibold text-[#0f172a]">{c.customer_name}</span>
+                      {c.phone&&<span className="text-xs text-gray-400">📞 {c.phone}</span>}
+                      <span className="text-xs text-gray-300 ml-auto">{c.customer_key}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <button className="px-3 py-1.5 rounded-xl border border-orange-300 text-xs text-orange-600 hover:bg-orange-50 transition-all"
+                onClick={()=>onReject(idx)}>목록에 없음 (신규 등록)</button>
+            </>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -563,6 +646,10 @@ const SecretaryInsPage:React.FC = () => {
   const [custInfo,setCustInfo]               = useState<CustomerInfo|null>(null);
   const [editingCustInfo,setEditingCustInfo] = useState(false);
   const [custInfoForm,setCustInfoForm]       = useState<CustomerInfo>({customer_key:"",phone:"",bank_name:"",bank_account:"",card_company:"",card_number:"",card_expiry:"",memo:""});
+  // 최근 변경 고객 (DB 기반, 상담·계약·청구 최신순 5명)
+  const [recentChanged,setRecentChanged]     = useState<{customer_key:string;customer_name:string;changed_at:string;change_type:"상담"|"계약"|"청구"}[]>([]);
+  const [recentChangedLoading,setRecentChangedLoading] = useState(false);
+
   // 엑셀 업로드
   const [showUpload,setShowUpload]           = useState(false);
   const [uploadLoading,setUploadLoading]     = useState(false);
@@ -1092,6 +1179,34 @@ const SecretaryInsPage:React.FC = () => {
     if(uploadRef.current) uploadRef.current.value="";
   }
 
+  // ─── 최근 변경 고객 로드 ────────────────────────────────────────────────────
+  const loadRecentChanged = useCallback(async()=>{
+    setRecentChangedLoading(true);
+    const [cr,pr,clr] = await Promise.all([
+      supabase.from("ins_consultation_cases").select("customer_key,customer_name,created_at").order("created_at",{ascending:false}).limit(20),
+      supabase.from("ins_policies").select("customer_key,customer_name,created_at").order("created_at",{ascending:false}).limit(20),
+      supabase.from("ins_claims").select("customer_key,customer_name,created_at").order("created_at",{ascending:false}).limit(20),
+    ]);
+    type Row = {customer_key:string;customer_name:string;created_at:string;change_type:"상담"|"계약"|"청구"};
+    const rows:Row[] = [
+      ...(cr.data??[]).map((r:any)=>({...r,change_type:"상담" as const})),
+      ...(pr.data??[]).map((r:any)=>({...r,change_type:"계약" as const})),
+      ...(clr.data??[]).map((r:any)=>({...r,change_type:"청구" as const})),
+    ];
+    rows.sort((a,b)=>b.created_at.localeCompare(a.created_at));
+    const seen = new Set<string>();
+    const deduped:{customer_key:string;customer_name:string;changed_at:string;change_type:"상담"|"계약"|"청구"}[] = [];
+    for(const r of rows){
+      if(!r.customer_key||seen.has(r.customer_key)) continue;
+      seen.add(r.customer_key);
+      deduped.push({customer_key:r.customer_key,customer_name:r.customer_name,changed_at:r.created_at,change_type:r.change_type});
+      if(deduped.length>=10) break;
+    }
+    setRecentChanged(deduped);
+    setRecentChangedLoading(false);
+  },[]);
+  useEffect(()=>{if(tab==="customers"){void loadRecentChanged();}},[tab,loadRecentChanged]);
+
   const loadCustomerProfile = useCallback(async(key:string, name:string)=>{
     setCustDetailLoading(true);
     setSelectedCust(null);
@@ -1221,6 +1336,116 @@ const SecretaryInsPage:React.FC = () => {
     setOrders(p=>p.filter(o=>o.id!==id)); void loadStats();
   }
 
+  // ─── 일정 저장 후 고객 상담이력 자동 기록 ──────────────────────────────────
+  // 1) 고객 검색 → 확인 카드를 채팅 메시지로 삽입 (직접 저장하지 않음)
+  // 2) 사용자가 "맞습니다" 확인 후에 ins_consultation_cases 에 insert
+  async function addConsultFromSchedule(schedTitle:string, schedDate:string, startTime:string|null, location:string|null, schedId:number){
+    const summary = `[일정등록] ${schedTitle}`;
+    const logTs = new Date().toISOString();
+
+    // 제목에서 고객명 후보 추출 (가장 첫 번째 한글 단어)
+    const firstWord = schedTitle.trim().split(/[\s,·]/)[0].replace(/[^가-힣]/g,"");
+    if(!firstWord || firstWord.length < 2) return;
+
+    // DB에서 해당 이름 고객 검색
+    const [pr,cr] = await Promise.all([
+      supabase.from("ins_consultation_cases").select("customer_key,customer_name,phone").ilike("customer_name",`%${firstWord}%`).limit(5),
+      supabase.from("ins_policies").select("customer_key,customer_name").ilike("customer_name",`%${firstWord}%`).limit(5),
+    ]);
+    const map = new Map<string,{customer_key:string;customer_name:string;phone?:string}>();
+    for(const r of [...(pr.data??[]),...(cr.data??[])]) {
+      if(r.customer_key && !map.has(r.customer_key)) map.set(r.customer_key, r);
+    }
+    const candidates = Array.from(map.values());
+
+    if(candidates.length === 0){
+      // 고객 없음 → 연락처 요청
+      const promptMsg = `"${firstWord}" 고객 정보가 없습니다. 고객 등록을 위해 연락처를 알려주세요. (예: 장미희 010-1234-5678)`;
+      setMsgs(p=>[...p,{role:"assistant",content:promptMsg,ts:nowTs()}]);
+      setTab("chat");
+      await supabase.from("ins_chat_logs").insert([{role:"assistant",content:promptMsg,session_id:"main"}]);
+      return;
+    }
+
+    // 후보가 1명이든 여러 명이든 → 확인 카드를 채팅에 삽입
+    const confirmMsg:ChatMsg = {
+      role:"assistant",
+      content: candidates.length===1
+        ? `📋 "${firstWord}" 고객의 상담이력에 이번 일정을 기록하겠습니다. 아래 고객이 맞는지 확인해주세요.`
+        : `📋 "${firstWord}" 동명이인이 ${candidates.length}명 있습니다. 상담이력을 기록할 고객을 선택해주세요.`,
+      ts: nowTs(),
+      pendingScheduleConsults:[{
+        schedTitle, schedDate, startTime, location, schedId,
+        candidates,
+      }],
+      // summary/logTs 는 확인 후 insert 시 사용하기 위해 별도 클로저로 처리
+    };
+    setMsgs(p=>[...p, confirmMsg]);
+    setTab("chat");
+    await supabase.from("ins_chat_logs").insert([{role:"assistant",content:confirmMsg.content,session_id:"main"}]);
+
+    // summary/logTs 를 클로저에 담아 pendingScheduleConsults 에 첨부 (타입 확장 대신 WeakMap 사용)
+    _pendingConsultMeta.set(confirmMsg, {summary, logTs});
+  }
+
+  // 일정→상담이력 메타 저장소 (WeakMap: confirmMsg 객체가 GC되면 자동 해제)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const _pendingConsultMetaRef = useRef(new WeakMap<any,{summary:string;logTs:string}>());
+  const _pendingConsultMeta = _pendingConsultMetaRef.current;
+
+  async function confirmScheduleConsult(msgIdx:number, pscIdx:number, customerKey:string){
+    const msg = msgsRef.current[msgIdx];
+    const psc = msg.pendingScheduleConsults?.[pscIdx];
+    if(!psc) return;
+    const meta = _pendingConsultMeta.get(msg) ?? {
+      summary:`[일정등록] ${psc.schedTitle}`,
+      logTs: new Date().toISOString(),
+    };
+    const candidate = psc.candidates.find(c=>c.customer_key===customerKey);
+    if(!candidate) return;
+
+    const {error} = await supabase.from("ins_consultation_cases").insert({
+      customer_key: candidate.customer_key,
+      customer_name: candidate.customer_name,
+      phone: candidate.phone ?? "미입력",
+      work_type: "registration_insurance",
+      status: "in_progress",
+      summary: meta.summary,
+      detail_memo: `📅 일정: ${psc.schedDate}${psc.startTime?" "+psc.startTime.slice(0,5):""}${psc.location?" / "+psc.location:""}\n🔗 일정ID: ins_schedule#${psc.schedId}\n📝 등록일시: ${new Date(meta.logTs).toLocaleString("ko-KR")}`,
+      followup_needed: false,
+      call_datetime: meta.logTs,
+    });
+    if(error){ showToast("상담이력 저장 실패","err"); return; }
+
+    // 확인 카드 제거 + 완료 메시지 삽입
+    setMsgs(p=>p.map((m,i)=>{
+      if(i!==msgIdx) return m;
+      const remaining = (m.pendingScheduleConsults??[]).filter((_,j)=>j!==pscIdx);
+      return {...m, pendingScheduleConsults:remaining};
+    }));
+    const doneMsg = `✅ ${candidate.customer_name}(${candidate.customer_key}) 상담이력 기록 완료`;
+    setMsgs(p=>[...p,{role:"assistant",content:doneMsg,ts:nowTs()}]);
+    showToast(`📋 ${candidate.customer_name} 상담이력 저장`);
+    await supabase.from("ins_chat_logs").insert([{role:"assistant",content:doneMsg,session_id:"main"}]);
+  }
+
+  async function rejectScheduleConsult(msgIdx:number, pscIdx:number){
+    const msg = msgsRef.current[msgIdx];
+    const psc = msg.pendingScheduleConsults?.[pscIdx];
+    // 확인 카드 제거
+    setMsgs(p=>p.map((m,i)=>{
+      if(i!==msgIdx) return m;
+      const remaining = (m.pendingScheduleConsults??[]).filter((_,j)=>j!==pscIdx);
+      return {...m, pendingScheduleConsults:remaining};
+    }));
+    // 신규 고객 등록을 위한 연락처 요청 메시지 삽입
+    const custName = psc?.schedTitle.trim().split(/[\s,·]/)[0].replace(/[^가-힣]/g,"") ?? "고객";
+    const promptMsg = `"${custName}" 신규 고객으로 등록하겠습니다. 연락처를 알려주세요.\n(예: ${custName} 010-1234-5678)`;
+    setMsgs(p=>[...p,{role:"assistant",content:promptMsg,ts:nowTs()}]);
+    setTab("chat");
+    await supabase.from("ins_chat_logs").insert([{role:"assistant",content:promptMsg,session_id:"main"}]);
+  }
+
   // ─── AI 채팅 ────────────────────────────────────────────────────────────────
   async function sendChat(){
     const text=chatInput.trim();
@@ -1258,6 +1483,14 @@ const SecretaryInsPage:React.FC = () => {
                 schedule_date:sd.schedule_date, start_time:sd.start_time??null,
                 end_time:sd.end_time??null, location:sd.location??null,
               });
+            }
+          }
+          // 일정 저장 후 고객 상담이력 자동 기록
+          {
+            const newScheds = saved.filter((s:any)=>s.type==="schedule");
+            for(const ns of newScheds){
+              const {data:sd} = await supabase.from("ins_schedules").select("*").eq("id",ns.id).single();
+              if(sd) void addConsultFromSchedule(sd.title, sd.schedule_date, sd.start_time??null, sd.location??null, sd.id);
             }
           }
         }
@@ -2207,6 +2440,49 @@ const SecretaryInsPage:React.FC = () => {
                 {!custLoading&&custResults.length===0&&custSearch.trim()&&(
                   <p className="text-sm text-gray-400 mt-3 text-center py-4">"{custSearch}" 검색 결과가 없습니다</p>
                 )}
+
+                {/* 최근 변경 고객 — 검색어 없을 때 항상 표시 */}
+                {!custSearch.trim()&&custResults.length===0&&(
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">🔔 최근 변경 고객</p>
+                      <button onClick={()=>void loadRecentChanged()} className="text-[10px] text-gray-400 hover:text-blue-500 transition-all">새로고침</button>
+                    </div>
+                    {recentChangedLoading
+                      ? <p className="text-xs text-gray-300 py-2">불러오는 중...</p>
+                      : recentChanged.length===0
+                        ? <p className="text-xs text-gray-300 py-2">변경 이력이 없습니다</p>
+                        : <div className="flex items-center gap-2 overflow-hidden">
+                          {recentChanged.slice(0,10).map((r,i,arr)=>{
+                            const typeClr = r.change_type==="상담"?"bg-blue-50 text-blue-600 border-blue-200":r.change_type==="계약"?"bg-emerald-50 text-emerald-600 border-emerald-200":"bg-indigo-50 text-indigo-600 border-indigo-200";
+                            const ago = (()=>{
+                              const diff = Date.now() - new Date(r.changed_at).getTime();
+                              const m = Math.floor(diff/60000);
+                              if(m<60) return `${m}분 전`;
+                              const h = Math.floor(m/60);
+                              if(h<24) return `${h}시간 전`;
+                              return `${Math.floor(h/24)}일 전`;
+                            })();
+                            // 마지막 배지는 flex-shrink 허용하되 min-w-0 + truncate
+                            const isLast = i===arr.length-1;
+                            return (
+                              <button key={r.customer_key}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-all hover:shadow-sm hover:scale-105 flex-shrink-0 whitespace-nowrap ${typeClr}`}
+                                style={isLast?{minWidth:0,flexShrink:1}:{}}
+                                onClick={()=>void loadCustomerProfile(r.customer_key, r.customer_name)}>
+                                <span className={`font-semibold${isLast?" truncate max-w-[60px]":""}`}>{r.customer_name}</span>
+                                <span className="opacity-60 text-[10px] flex-shrink-0">{ago}</span>
+                              </button>
+                            );
+                          })}
+                          {recentChanged.length>10&&(
+                            <span className="text-xs text-gray-400 flex-shrink-0">...</span>
+                          )}
+                        </div>
+                    }
+                  </div>
+                )}
+
                 {custResults.length>0&&(
                   <div className="mt-3">
                     <p className="text-xs text-gray-400 mb-2">{custResults.length}명 검색됨 — 고객을 선택하세요</p>
@@ -2478,6 +2754,13 @@ const SecretaryInsPage:React.FC = () => {
                       )}
                       {m.role==="assistant"&&m.pendingCustomerSelects&&m.pendingCustomerSelects.length>0&&(
                         <PendingCustomerSelectCard pcs={m.pendingCustomerSelects} onConfirm={(key,a)=>void confirmCustomerSelect(i,key,a)} onReject={(ui)=>rejectCustomerSelect(i,ui)}/>
+                      )}
+                      {m.role==="assistant"&&m.pendingScheduleConsults&&m.pendingScheduleConsults.length>0&&(
+                        <ScheduleConsultConfirmCard
+                          psc={m.pendingScheduleConsults}
+                          onConfirm={(pscIdx,key)=>void confirmScheduleConsult(i,pscIdx,key)}
+                          onReject={(pscIdx)=>rejectScheduleConsult(i,pscIdx)}
+                        />
                       )}
                     </div>
                   </div>
