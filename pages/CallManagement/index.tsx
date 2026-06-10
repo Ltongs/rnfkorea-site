@@ -2188,7 +2188,7 @@ const CallManagementPage: React.FC = () => {
               forklift_condition: forkliftCondition || null,
               forklift_type: forkliftType || null,
               forklift_ton: forkliftTon.trim() || null,
-              forklift_status: progressStage || "consulting",
+              forklift_status: progressStage || "contract",
               forklift_option_note: forkliftOptionNote.trim() || null,
               forklift_sale_method: forkliftSaleMethod || null,
               note: forkliftNote.trim() || null,
@@ -2247,7 +2247,7 @@ const CallManagementPage: React.FC = () => {
       const { error: exportError } = await supabase
         .from("consultation_export_details")
         .upsert(
-          [{ consultation_id: savedCaseId, export_stage: progressStage || "consulting" }],
+          [{ consultation_id: savedCaseId, export_stage: progressStage || "contract" }],
           { onConflict: "consultation_id" }
         );
       if (exportError) {

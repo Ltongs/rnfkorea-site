@@ -364,22 +364,27 @@ serve(async (req) => {
                 "#{품목}":     body.productSpec  ?? "-",
                 "#{수량}":     body.quantity     ?? "-",
                 "#{전달시간}": new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }),
-                "#{물품발송URL}": body.deliveredUrl ?? "",
               },
-              buttons: body.deliveredUrl ? [
-                {
+              buttons: [
+                ...(body.deliveredUrl ? [{
                   buttonType: "WL",
-                  buttonName: "물품발송",
+                  buttonName: "물품발송 확인",
                   linkMo:     body.deliveredUrl,
                   linkPc:     body.deliveredUrl,
-                },
+                }] : []),
+                ...(body.wheelReturnedUrl ? [{
+                  buttonType: "WL",
+                  buttonName: "휠반납 확인",
+                  linkMo:     body.wheelReturnedUrl,
+                  linkPc:     body.wheelReturnedUrl,
+                }] : []),
                 {
                   buttonType: "WL",
-                  buttonName: "업무 페이지 열기",
+                  buttonName: "업무 페이지",
                   linkMo:     "https://rnfkorea.co.kr/work/secretary",
                   linkPc:     "https://rnfkorea.co.kr/work/secretary",
                 },
-              ] : undefined,
+              ],
             },
           },
         }),

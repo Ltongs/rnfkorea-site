@@ -1213,17 +1213,18 @@ serve(async (req) => {
               const orderId = (tbOrder as Record<string,unknown>).id as string;
               console.log("[진흥 알림톡 발송 시작]:", orderId);
               try {
+                const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
                 const kakaoRes = await fetch(KAKAO_EDGE_URL, {
                   method: "POST",
-                  headers: { "Content-Type": "application/json" },
+                  headers: { "Content-Type": "application/json", "Authorization": `Bearer ${anonKey}` },
                   body: JSON.stringify({
                     type:         "order_forwarded",
                     orderNo:      orderId.slice(-8).toUpperCase(),
                     customerName: a.customer_name as string ?? "확인필요",
                     productSpec:  productSpec ?? "확인필요",
                     quantity:     qty != null ? String(qty) : "확인필요",
-                    deliveredUrl:     encodeURI(`https://rnfkorea.co.kr/order/confirm?id=${orderId}&action=delivered`),
-                    wheelReturnedUrl: encodeURI(`https://rnfkorea.co.kr/order/confirm?id=${orderId}&action=completed_order`),
+                    deliveredUrl:     `https://rnfkorea.co.kr/order/confirm?id=${orderId}&action=delivered`,
+                    wheelReturnedUrl: `https://rnfkorea.co.kr/order/confirm?id=${orderId}&action=completed_order`,
                   }),
                 });
                 const kakaoBody = await kakaoRes.text();
