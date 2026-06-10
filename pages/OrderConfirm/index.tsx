@@ -27,10 +27,10 @@ const AUTO_CLOSE_SEC = 3;
 
 export default function OrderConfirmPage() {
   const [params]  = useSearchParams();
-  const routeParams = useParams<{ action?: string }>();
-  const id        = params.get("id") ?? "";
-  // URL path 방식: /order/confirm/delivered?id=...
+  const routeParams = useParams<{ action?: string; id?: string }>();
+  // URL path 방식: /order/confirm/delivered/UUID
   // URL query 방식: /order/confirm?id=...&action=... (레거시)
+  const id        = routeParams.id ?? params.get("id") ?? "";
   const action    = routeParams.action ?? params.get("action") ?? "";
   const [status, setStatus]       = useState<Status>("loading");
   const [orderInfo, setOrderInfo] = useState<{
