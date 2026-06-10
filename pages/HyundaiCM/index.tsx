@@ -881,7 +881,7 @@ export default function HyundaiCMPage() {
         row.finance_company ? `금융사: ${row.finance_company}` : null,
         row.sales_rep       ? `영업: ${row.sales_rep}`        : null,
       ].filter(Boolean).join(" / ");
-      await Promise.all([
+      const [hcmTodoRes, hcmSchedRes] = await Promise.all([
         supabase.from("secretary_todos").insert({
           title:       hcmTitle,
           description: hcmDesc,
@@ -900,6 +900,8 @@ export default function HyundaiCMPage() {
           work_type:      "finance_hcm",
         }),
       ]);
+      if (hcmTodoRes.error) console.error("[hcm] todo insert 실패:", hcmTodoRes.error.message);
+      if (hcmSchedRes.error) console.error("[hcm] schedule insert 실패:", hcmSchedRes.error.message);
     }
   };
 
@@ -949,7 +951,7 @@ export default function HyundaiCMPage() {
         confirmModal.finance_company ? `금융사: ${confirmModal.finance_company}` : null,
         confirmModal.sales_rep       ? `영업: ${confirmModal.sales_rep}`         : null,
       ].filter(Boolean).join(" / ");
-      await Promise.all([
+      const [confirmTodoRes, confirmSchedRes] = await Promise.all([
         supabase.from("secretary_todos").insert({
           title:       hcmConfirmTitle,
           description: hcmConfirmDesc,
@@ -968,6 +970,8 @@ export default function HyundaiCMPage() {
           work_type:      "finance_hcm",
         }),
       ]);
+      if (confirmTodoRes.error) console.error("[hcm confirm] todo insert 실패:", confirmTodoRes.error.message);
+      if (confirmSchedRes.error) console.error("[hcm confirm] schedule insert 실패:", confirmSchedRes.error.message);
 
       setConfirmModal(null);
     } catch (e: any) { alert(e?.message || "저장 실패"); }

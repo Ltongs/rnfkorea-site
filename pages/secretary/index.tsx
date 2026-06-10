@@ -2030,7 +2030,7 @@ const SecretaryPage:React.FC = () => {
       )}
 
       {/* 헤더 - PageHeader(64px) 바로 아래 sticky */}
-      <div ref={headerBarRef} className="bg-white border-b border-gray-200 px-6 py-3 flex-shrink-0 fixed top-16 md:top-20 left-0 right-0 z-[200] shadow-sm">
+      <div ref={headerBarRef} className={`bg-white border-b border-gray-200 px-6 py-3 flex-shrink-0 fixed left-0 right-0 z-[200] shadow-sm ${isStandalone ? "top-0" : "top-16"}`}>
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-[#0f172a] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">AI</div>
@@ -2249,31 +2249,45 @@ const SecretaryPage:React.FC = () => {
                   </div>
                 ))
               )}
-              {/* 당일 마감 할일 */}
+              {/* 당일 마감 할일 — 오늘/내일 구분 */}
               {(()=>{
                 const tomorrow2 = (()=>{const d=new Date(schedDate);d.setDate(d.getDate()+1);return d.toISOString().slice(0,10);})();
-                const dueTodos = todos.filter(t=>(t.due_date===schedDate||t.due_date===tomorrow2)&&!t.is_done);
-                if(dueTodos.length===0) return null;
-                return (
-                  <div>
-                    <p className="text-xs font-semibold text-blue-500 px-1 mb-2 mt-1">✅ 오늘·내일 마감 할일 — {dueTodos.length}건</p>
-                    {dueTodos.map(t=>(
-                      <div key={t.id} className={`${CARD} p-3.5 flex items-center gap-3 border-l-4 border-blue-400`}>
-                        <button className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${t.is_done?"bg-emerald-500 border-emerald-500":"border-gray-300 hover:border-blue-400"}`}
-                          onClick={()=>void toggleTodo(t.id,t.is_done)}>
-                          {t.is_done&&<span className="text-white text-[10px]">✓</span>}
-                        </button>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-[#0f172a]">{t.title}</span>
-                            {t.priority==="urgent"&&<span className="text-xs px-1.5 py-0.5 rounded-full bg-red-50 text-red-600 font-medium">긴급</span>}
-                            {t.category&&<span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">{WL[t.category]??t.category}</span>}
-                          </div>
-                          {t.description&&<p className="text-xs text-gray-400 mt-0.5">{t.description}</p>}
-                        </div>
-                        <button className="text-xs text-red-400 hover:text-red-600 flex-shrink-0" onClick={()=>void delTodo(t.id)}>삭제</button>
+                const todayTodos    = todos.filter(t=>t.due_date===schedDate&&!t.is_done);
+                const tomorrowTodos = todos.filter(t=>t.due_date===tomorrow2&&!t.is_done);
+                if(todayTodos.length===0&&tomorrowTodos.length===0) return null;
+
+                const TodoItem = ({t}:{t:Todo}) => (
+                  <div key={t.id} className={`${CARD} p-3.5 flex items-center gap-3 border-l-4 ${t.due_date===schedDate?"border-orange-400":"border-blue-300"}`}>
+                    <button className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${t.is_done?"bg-emerald-500 border-emerald-500":"border-gray-300 hover:border-blue-400"}`}
+                      onClick={()=>void toggleTodo(t.id,t.is_done)}>
+                      {t.is_done&&<span className="text-white text-[10px]">✓</span>}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium text-[#0f172a]">{t.title}</span>
+                        {t.priority==="urgent"&&<span className="text-xs px-1.5 py-0.5 rounded-full bg-red-50 text-red-600 font-medium">긴급</span>}
+                        {t.category&&<span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">{WL[t.category]??t.category}</span>}
                       </div>
-                    ))}
+                      {t.description&&<p className="text-xs text-gray-400 mt-0.5">{t.description}</p>}
+                    </div>
+                    <button className="text-xs text-red-400 hover:text-red-600 flex-shrink-0" onClick={()=>void delTodo(t.id)}>삭제</button>
+                  </div>
+                );
+
+                return (
+                  <div className="space-y-3">
+                    {todayTodos.length>0&&(
+                      <div>
+                        <p className="text-xs font-semibold text-orange-500 px-1 mb-2">🔥 오늘 마감 할일 — {todayTodos.length}건</p>
+                        {todayTodos.map(t=><TodoItem key={t.id} t={t}/>)}
+                      </div>
+                    )}
+                    {tomorrowTodos.length>0&&(
+                      <div>
+                        <p className="text-xs font-semibold text-blue-500 px-1 mb-2">📋 내일 마감 할일 — {tomorrowTodos.length}건</p>
+                        {tomorrowTodos.map(t=><TodoItem key={t.id} t={t}/>)}
+                      </div>
+                    )}
                   </div>
                 );
               })()}

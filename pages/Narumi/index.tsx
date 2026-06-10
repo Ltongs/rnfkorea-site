@@ -683,33 +683,34 @@ export default function NarumiPage() {
         specialNote:  specialNote.trim() || undefined,
       });
 
-      // 다음 날 할 일 + 일정 자동 등록
-      const tomorrow = (() => {
-        const d = new Date();
-        d.setDate(d.getDate() + 1);
-        return d.toISOString().slice(0, 10);
-      })();
+      // 다음 날 할 일 + 일정 자동 등록 (KST 기준)
+      const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
+      const tomorrow = new Date(kstNow);
+      tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+      const tomorrowStr = tomorrow.toISOString().slice(0, 10);
       const narumiNewTitle = `${nameTrim} (나르미 - 신규접수 확인)`;
       const narumiNewDesc  = `VIN: ${vinTrim} / 출고: ${dtTrim} / 영업: ${salesRepTrim}`;
-      await Promise.all([
+      const [todoRes, schedRes] = await Promise.all([
         supabase.from("secretary_todos").insert({
           title:       narumiNewTitle,
           description: narumiNewDesc,
           priority:    "normal",
           category:    "finance",
-          due_date:    tomorrow,
+          due_date:    tomorrowStr,
           is_done:     false,
         }),
         supabase.from("secretary_schedules").insert({
           title:          narumiNewTitle,
           description:    narumiNewDesc,
-          schedule_date:  tomorrow,
+          schedule_date:  tomorrowStr,
           category:       "followup",
           related_type:   "finance",
           progress_stage: "신규접수",
           work_type:      "narumi",
         }),
       ]);
+      if (todoRes.error) console.error("[narumi] todo insert 실패:", todoRes.error.message);
+      if (schedRes.error) console.error("[narumi] schedule insert 실패:", schedRes.error.message);
 
       onReset();
       await fetchRows();
