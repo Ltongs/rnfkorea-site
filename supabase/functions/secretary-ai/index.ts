@@ -1222,7 +1222,7 @@ serve(async (req) => {
                     customerName: a.customer_name as string ?? "확인필요",
                     productSpec:  productSpec ?? "확인필요",
                     quantity:     qty != null ? String(qty) : "확인필요",
-                    deliveredUrl: `https://rnfkorea.co.kr/order/confirm?id=${orderId}&action=delivered`,
+                    deliveredUrl: encodeURI(`https://rnfkorea.co.kr/order/confirm?id=${orderId}&action=delivered`),
                   }),
                 });
                 const kakaoBody = await kakaoRes.text();
