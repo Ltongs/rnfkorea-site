@@ -1174,6 +1174,79 @@ serve(async (req) => {
             status:"new", consultation_id:cid,
           }).select("id").single();
           if (od) saved.push({type:"order",id:od.id,consultation_id:cid??undefined});
+
+          // ── 타이어/배터리 주문 시 tb_orders 저장 + 진흥 알림톡 ──
+          if (a.work_type === "tire" || a.work_type === "battery") {
+            const tf  = (a.tire_fields    as Record<string,unknown>|null) ?? {};
+            const bf  = (a.battery_fields as Record<string,unknown>|null) ?? {};
+            const now = new Date().toISOString();
+
+            // 품목 규격
+            const productSpec = a.work_type === "tire"
+              ? (tf.tire_size as string|null) ?? null
+              : `${bf.battery_voltage ?? ""}V ${bf.battery_capacity_ah ?? ""}Ah`.trim() || null;
+
+            // 수량
+            const qty = a.work_type === "tire"
+              ? ((tf.front_quantity as number|null ?? 0) + (tf.rear_quantity as number|null ?? 0)) || null
+              : (bf.battery_quantity as number|null) ?? null;
+
+            // tb_orders 저장
+            const productType = a.work_type === "tire" ? "tire" : "battery";
+            console.log("[tb_orders insert]", JSON.stringify({ customer_name_raw: a.customer_name, product_type: productType, product_spec: productSpec, quantity: qty }));
+            const { data: tbOrder, error: tbErr } = await db.from("tb_orders").insert({
+              customer_name_raw: a.customer_name,
+              inbound_channel:   a.channel ?? "phone",
+              raw_message:       a.summary,
+              product_type:      productType,
+              product_spec:      productSpec,
+              quantity:          qty,
+              status:            "forwarded",
+              parsed_confidence: "high",
+              forwarded_at:      now,
+            }).select("id").single();
+            if (tbErr) console.error("[tb_orders insert 오류]:", tbErr.message);
+            console.log("[tb_orders insert 결과]:", tbOrder ? `id=${(tbOrder as Record<string,unknown>).id}` : "null");
+
+            // 진흥 알림톡 발송
+            if (tbOrder) {
+              const orderId = (tbOrder as Record<string,unknown>).id as string;
+              console.log("[진흥 알림톡 발송 시작]:", orderId);
+              try {
+                const kakaoRes = await fetch(KAKAO_EDGE_URL, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    type:         "order_forwarded",
+                    orderNo:      orderId.slice(-8).toUpperCase(),
+                    customerName: a.customer_name as string ?? "확인필요",
+                    productSpec:  productSpec ?? "확인필요",
+                    quantity:     qty != null ? String(qty) : "확인필요",
+                    deliveredUrl: `https://rnfkorea.co.kr/order/confirm?id=${orderId}&action=delivered`,
+                  }),
+                });
+                const kakaoBody = await kakaoRes.text();
+                console.log("[진흥 알림톡 결과]:", kakaoRes.status, kakaoBody.slice(0, 200));
+              } catch(kakaoErr) {
+                console.error("[진흥 알림톡 오류]:", kakaoErr);
+              }
+
+              // AI 비서 채팅 알림
+              const kstNow = new Date(new Date().getTime() + 9*60*60*1000);
+              const chatMsg = [
+                `📦 **타이어/배터리 발주 등록**`,
+                ``,
+                `**${a.customer_name}** ${productSpec ?? ""} ${qty ? qty+"개" : ""}`,
+                `주문번호: ${orderId.slice(-8).toUpperCase()}`,
+                `✅ (주)진흥에 알림톡 발송 완료`,
+              ].filter(Boolean).join("\n");
+              await db.from("secretary_chat_logs").insert({
+                role: "assistant", content: chatMsg, session_id: "main",
+              });
+
+              saved.push({ type: "tb_order", id: orderId });
+            }
+          }
         }
 
         if (a.type === "consult_update") {

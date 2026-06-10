@@ -68,6 +68,21 @@ type Claim = {
   status:"requested"|"processing"|"completed";
   memo:string|null; created_at:string;
 };
+type InsuranceDetail = {
+  id:number; consultation_id:number;
+  vehicle_no:string|null; vehicle_model:string|null; vehicle_use:string|null;
+  insurance_type:string|null; insurance_request:string|null;
+  insurer_name:string|null; insurance_company:string|null;
+  insurance_start_date:string|null; insurance_end_date:string|null;
+  design_requested:boolean; application_issued:boolean;
+  payment_completed:boolean; policy_issued:boolean;
+  finance_product:string|null; finance_company:string|null;
+  finance_amount:number|null; finance_period:number|null;
+  finance_interest_rate:number|null; finance_stage:string|null;
+  finance_aftercare:boolean;
+  job_title:string|null; job:string|null; note:string|null;
+  urgency:string|null; process_status:string|null;
+};
 // 고객 조회용 — customer_key 기준 통합 프로필
 type CustomerProfile = {
   customer_key: string;
@@ -75,6 +90,7 @@ type CustomerProfile = {
   policies: Policy[];
   consults: Consult[];
   claims: Claim[];
+  insuranceDetails: InsuranceDetail[];
 };
 type CustomerInfo = {
   id?: number;
@@ -93,7 +109,7 @@ const WL:Record<string,string> = {
   insurance:"보험",registration_insurance:"보험",
 };
 const CAT_LBL:Record<string,string> = {meeting:"미팅",call:"통화",task:"업무",followup:"사후관리"};
-const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료"};
+const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료",closed:"종결",waiting_customer:"고객대기",on_hold:"보류",forwarded:"진흥전달",invoiced:"계산서발행",confirmed:"확정",approved:"승인",rejected:"거절",cancelled:"취소"};
 const PRI_LBL:Record<string,string> = {urgent:"긴급",normal:"일반",low:"낮음"};
 const ACT_LBL:Record<string,string> = {todo:"✅ 할일",schedule:"📅 일정",order:"💬 상담접수",claim:"🏥 청구접수",consult_update:"🔄 상담 업데이트"};
 const CAT_CLR:Record<string,string> = {meeting:"#60a5fa",call:"#fb923c",followup:"#c084fc",task:"#34d399"};
@@ -642,6 +658,10 @@ const SecretaryInsPage:React.FC = () => {
   const [custLoading,setCustLoading]         = useState(false);
   const [selectedCust,setSelectedCust]       = useState<CustomerProfile|null>(null);
   const [custDetailLoading,setCustDetailLoading] = useState(false);
+  // 전체 고객 목록
+  const [allCusts,setAllCusts]               = useState<{customer_key:string;customer_name:string}[]>([]);
+  const [allCustsLoading,setAllCustsLoading] = useState(false);
+  const [showAllCusts,setShowAllCusts]       = useState(false);
   // 고객 정보 (계좌/카드/메모)
   const [custInfo,setCustInfo]               = useState<CustomerInfo|null>(null);
   const [editingCustInfo,setEditingCustInfo] = useState(false);
@@ -809,22 +829,17 @@ const SecretaryInsPage:React.FC = () => {
 
   const loadStats = useCallback(async()=>{
     const d30str = addDays(todayStr(), 30);
-    const [a,b,c,d,e1,e2,f1,f2,g,h] = await Promise.all([
+    const [a,b,c,d,e,f,g,h] = await Promise.all([
       supabase.from("ins_schedules").select("id",{count:"exact"}).eq("schedule_date",todayStr()).eq("is_done",false),
       supabase.from("ins_todos").select("id",{count:"exact"}).eq("is_done",false),
       supabase.from("ins_todos").select("id",{count:"exact"}).eq("is_done",false).eq("priority","urgent"),
       supabase.from("ins_orders").select("id",{count:"exact"}).eq("status","new"),
       supabase.from("ins_consultation_cases").select("id",{count:"exact"}).eq("work_type","registration_insurance").eq("followup_needed",true).eq("next_followup_date",todayStr()),
-      supabase.from("consultation_cases").select("id",{count:"exact"}).eq("work_type","registration_insurance").eq("followup_needed",true).eq("next_followup_date",todayStr()),
       supabase.from("ins_consultation_cases").select("id",{count:"exact"}).eq("work_type","registration_insurance").gte("created_at",todayStr()+"T00:00:00").lte("created_at",todayStr()+"T23:59:59"),
-      supabase.from("consultation_cases").select("id",{count:"exact"}).eq("work_type","registration_insurance").gte("created_at",todayStr()+"T00:00:00").lte("created_at",todayStr()+"T23:59:59"),
       supabase.from("ins_policies").select("id",{count:"exact"}).gte("expiry_date",todayStr()).lte("expiry_date",d30str),
       supabase.from("ins_claims").select("id",{count:"exact"}).in("status",["requested","processing"]),
     ]);
-    setStats({todaySch:a.count??0,activeTodo:b.count??0,urgentTodo:c.count??0,newOrders:d.count??0,
-      todayFollowup:(e1.count??0)+(e2.count??0),
-      newConsult:(f1.count??0)+(f2.count??0),
-      expiringCount:g.count??0,activeClaims:h.count??0});
+    setStats({todaySch:a.count??0,activeTodo:b.count??0,urgentTodo:c.count??0,newOrders:d.count??0,todayFollowup:e.count??0,newConsult:f.count??0,expiringCount:g.count??0,activeClaims:h.count??0});
   },[]);
 
   const loadChatHist = useCallback(async(initial=false)=>{
@@ -880,46 +895,31 @@ const SecretaryInsPage:React.FC = () => {
 
   const loadConsults = useCallback(async()=>{
     setCLoading(true);
-    const SEL = "id,customer_key,customer_name,phone,telecom_provider,work_type,status,summary,followup_needed,next_followup_date,created_at";
-    // 메인 테이블 + ins 테이블 동시 조회
-    const [fr1,fr2,rr1,rr2] = await Promise.all([
-      supabase.from("consultation_cases")
-        .select(SEL).eq("work_type","registration_insurance")
+    const [fr,rr] = await Promise.all([
+      supabase.from("ins_consultation_cases")
+        .select("id,customer_key,customer_name,phone,telecom_provider,work_type,status,summary,followup_needed,next_followup_date,created_at")
+        .eq("work_type","registration_insurance")
         .eq("followup_needed",true).eq("next_followup_date",todayStr())
         .order("created_at",{ascending:false}).limit(10),
       supabase.from("ins_consultation_cases")
-        .select(SEL).eq("work_type","registration_insurance")
-        .eq("followup_needed",true).eq("next_followup_date",todayStr())
-        .order("created_at",{ascending:false}).limit(10),
-      supabase.from("consultation_cases")
-        .select(SEL).eq("work_type","registration_insurance")
-        .order("created_at",{ascending:false}).limit(30),
-      supabase.from("ins_consultation_cases")
-        .select(SEL).eq("work_type","registration_insurance")
-        .order("created_at",{ascending:false}).limit(30),
+        .select("id,customer_key,customer_name,phone,telecom_provider,work_type,status,summary,followup_needed,next_followup_date,created_at")
+        .eq("work_type","registration_insurance")
+        .order("created_at",{ascending:false}).limit(20),
     ]);
-    // 병합 후 created_at 내림차순, id 기준 중복 제거
-    const mergeUniq = (a:any[]|null, b:any[]|null) => {
-      const seen = new Set<string>();
-      return [...(a??[]),...(b??[])].filter(r=>{
-        const k = `${r.customer_name}_${r.created_at}`;
-        if(seen.has(k)) return false;
-        seen.add(k); return true;
-      }).sort((x,y)=>y.created_at.localeCompare(x.created_at));
-    };
-    setFollowups(mergeUniq(fr1.data,fr2.data).slice(0,10) as Consult[]);
-    setRecentC(mergeUniq(rr1.data,rr2.data).slice(0,30) as Consult[]);
+    if(fr.data)setFollowups(fr.data as Consult[]);
+    if(rr.data)setRecentC(rr.data as Consult[]);
     setCLoading(false);
   },[]);
 
   useEffect(()=>{
-    // 세션 준비 완료 후 모든 데이터 로드 — deps [] 고정으로 재구독 루프 방지
+    // 세션 준비 완료 후 모든 데이터 로드
     const {data:{subscription}} = supabase.auth.onAuthStateChange((event, session)=>{
       if((event==="SIGNED_IN"||event==="TOKEN_REFRESHED"||event==="INITIAL_SESSION") && session){
         void loadStats();
         void loadChatHist(true);
-        void loadCalData(new Date().getFullYear(), new Date().getMonth());
+        void loadCalData(calViewYear, calViewMonth);
         void checkGcalConnection();
+        void syncExpiryTodos();
       }
     });
     return ()=>subscription.unsubscribe();
@@ -1030,7 +1030,53 @@ const SecretaryInsPage:React.FC = () => {
     void loadRecentChanged();
   }
 
-  useEffect(()=>{if(tab==="consults"){void loadOrders();void loadConsults();}},[tab,loadOrders,loadConsults]);
+  useEffect(()=>{if(tab==="consults"){void loadOrders();void loadConsults();void syncExpiryTodos();}},[tab,loadOrders,loadConsults]);
+
+  // ─── 만기일 할일 일괄 동기화 ─────────────────────────────────────────────────
+  // 앱 초기화 시 + 상담 탭 진입 시 자동 실행
+  // consultation_insurance_details 전체에서 만기일 있는 건 → ins_todos 자동 등록
+  async function syncExpiryTodos(){
+    // consultation_insurance_details에서 만기일 있는 건 전체 조회
+    const {data:details} = await supabase
+      .from("consultation_insurance_details")
+      .select("id,consultation_id,insurance_type,insurance_company,insurance_end_date,vehicle_no")
+      .not("insurance_end_date","is",null);
+    if(!details||details.length===0) return;
+
+    // consultation_id → customer_name 매핑
+    const consultIds = details.map(d=>d.consultation_id).filter(Boolean);
+    const {data:cases} = await supabase
+      .from("consultation_cases")
+      .select("id,customer_name")
+      .in("id",consultIds);
+    const nameMap = new Map((cases??[]).map((c:any)=>[c.id, c.customer_name]));
+
+    let added = 0;
+    for(const d of details){
+      if(!d.insurance_end_date) continue;
+      const custName = nameMap.get(d.consultation_id) || "고객";
+      const insType = d.insurance_type==="automobile"?"자동차보험":d.insurance_type||"보험";
+      const todoTitle = `[만기임박] ${custName} ${insType} 만기 ${d.insurance_end_date}`;
+      const {data:exist} = await supabase.from("ins_todos")
+        .select("id").eq("title",todoTitle).maybeSingle();
+      if(!exist){
+        await supabase.from("ins_todos").insert({
+          title: todoTitle,
+          description: `${custName} 고객의 ${insType} 만기일: ${d.insurance_end_date}${d.vehicle_no?"\n차량번호: "+d.vehicle_no:""}\n만기 30일 전 갱신 안내 필요`,
+          priority: "urgent",
+          category: "보험만기",
+          due_date: d.insurance_end_date,
+        });
+        added++;
+      }
+    }
+    if(added>0){
+      void loadTodos();
+      void loadStats();
+      void loadCalData(calViewYear, calViewMonth);
+      showToast(`📅 만기일 할일 ${added}건 자동 등록`);
+    }
+  }
   // 달력 날짜 클릭 시 자동 갱신
   useEffect(()=>{ if(tab==="schedule") void loadSchedules(); },[schedDate, loadSchedules]);
 
@@ -1171,8 +1217,8 @@ const SecretaryInsPage:React.FC = () => {
     const [pr,cr,cr2,clr,ir] = await Promise.all([
       supabase.from("ins_policies").select("customer_key,customer_name").ilike("customer_name",`%${name}%`),
       supabase.from("ins_consultation_cases").select("customer_key,customer_name").ilike("customer_name",`%${name}%`),
-      // 메인 테이블 — customer_key 없는 경우 이름만으로 매핑
-      supabase.from("consultation_cases").select("customer_key,customer_name,phone").ilike("customer_name",`%${name}%`).eq("work_type","registration_insurance").limit(20),
+      // consultation_cases — customer_key 없으므로 id,name,phone 조회 후 직접 생성
+      supabase.from("consultation_cases").select("id,customer_name,phone").ilike("customer_name",`%${name}%`).limit(20),
       supabase.from("ins_claims").select("customer_key,customer_name").ilike("customer_name",`%${name}%`),
       supabase.from("ins_customer_info").select("customer_key,customer_name").or(`customer_name.ilike.%${name}%,customer_key.ilike.%${name}%`),
     ]);
@@ -1181,11 +1227,12 @@ const SecretaryInsPage:React.FC = () => {
       if(row.customer_key && !map.has(row.customer_key))
         map.set(row.customer_key, row.customer_name);
     }
-    // 메인 consultation_cases — customer_key 없으면 이름+전화번호로 생성
+    // consultation_cases — phone으로 customer_key 생성
     for(const row of (cr2.data??[])) {
+      if(!row.customer_name) continue;
       const phone = (row.phone||"").replace(/\D/g,"");
-      const cKey = row.customer_key || (phone ? `${row.customer_name}_${phone.slice(-4)}` : row.customer_name);
-      if(cKey && !map.has(cKey)) map.set(cKey, row.customer_name);
+      const cKey = phone ? `${row.customer_name}_${phone.slice(-4)}` : row.customer_name;
+      if(!map.has(cKey)) map.set(cKey, row.customer_name);
     }
     // ins_customer_info
     for(const row of (ir.data??[])) {
@@ -1310,51 +1357,115 @@ const SecretaryInsPage:React.FC = () => {
   },[]);
   useEffect(()=>{if(tab==="customers"){void loadRecentChanged();}},[tab,loadRecentChanged]);
 
+  // 전체 고객 로드 — ins_customer_info 전체 + consultation_cases 이름 목록 병합
+  const loadAllCustomers = useCallback(async()=>{
+    setAllCustsLoading(true);
+    const [ir, cr] = await Promise.all([
+      supabase.from("ins_customer_info").select("customer_key,customer_name").order("customer_name"),
+      supabase.from("consultation_cases").select("customer_name,phone").eq("work_type","registration_insurance").order("customer_name"),
+    ]);
+    const map = new Map<string,string>();
+    for(const r of (ir.data??[])){
+      if(r.customer_key) map.set(r.customer_key, r.customer_name||r.customer_key.replace(/_\d{4}$/,""));
+    }
+    for(const r of (cr.data??[])){
+      if(!r.customer_name) continue;
+      const phone = (r.phone||"").replace(/\D/g,"");
+      const cKey = phone ? `${r.customer_name}_${phone.slice(-4)}` : r.customer_name;
+      if(!map.has(cKey)) map.set(cKey, r.customer_name);
+    }
+    const sorted = Array.from(map.entries())
+      .map(([k,n])=>({customer_key:k,customer_name:n}))
+      .sort((a,b)=>a.customer_name.localeCompare(b.customer_name,"ko"));
+    setAllCusts(sorted);
+    setAllCustsLoading(false);
+  },[]);
+
   const loadCustomerProfile = useCallback(async(key:string, name:string)=>{
     setCustDetailLoading(true);
     setSelectedCust(null);
     setCustInfo(null);
     setCustSearch("");
     setCustResults([]);
-    // key에서 이름 추출 (이름_끝4자리 형식) — 메인 테이블 조회용
     const nameFromKey = key.replace(/_\d{4}$/, "");
 
     const [pr,cr,cr2,clr,ir] = await Promise.all([
       supabase.from("ins_policies").select("*").eq("customer_key",key).order("start_date",{ascending:false}),
       supabase.from("ins_consultation_cases").select("*").eq("customer_key",key).order("created_at",{ascending:false}),
-      // 메인 테이블 — 이름으로 조회 (customer_key 없을 수 있으므로)
-      supabase.from("consultation_cases").select("*").eq("work_type","registration_insurance")
-        .or(`customer_key.eq.${key},customer_name.eq.${nameFromKey}`)
+      // consultation_cases — customer_key 컬럼 없으므로 이름으로만 조회, work_type 무관
+      supabase.from("consultation_cases").select("*")
+        .ilike("customer_name", nameFromKey)
         .order("created_at",{ascending:false}).limit(30),
       supabase.from("ins_claims").select("*").eq("customer_key",key).order("claim_date",{ascending:false}),
       supabase.from("ins_customer_info").select("*").eq("customer_key",key).maybeSingle(),
     ]);
 
-    // 메인 consultation_cases 완료건 → ins_policies 자동 등록
-    const completedCases = (cr2.data??[]).filter((c:any)=>c.status==="completed"||c.status==="done");
+    // consultation_insurance_details — consultation_cases id 목록으로 조회
+    const consultIds = (cr2.data??[]).map((c:any)=>c.id).filter(Boolean);
+    const {data:insDetailsRaw} = consultIds.length > 0
+      ? await supabase.from("consultation_insurance_details").select("*").in("consultation_id", consultIds)
+      : {data:[]};
+    const insDetails = (insDetailsRaw??[]) as InsuranceDetail[];
+
+    // 메인 consultation_cases 완료건 → ins_policies 자동 upsert
+    const completedCases = (cr2.data??[]).filter((c:any)=>c.status==="completed"||c.status==="done"||c.status==="closed");
     for(const c of completedCases){
-      // 이미 ins_policies에 같은 날짜로 등록된 건 있는지 확인
-      const completedAt = c.completed_at || c.updated_at || c.created_at;
-      const startDate = completedAt?.slice(0,10) ?? todayStr();
-      const existing = (pr.data??[]).find((p:any)=>
-        p.start_date===startDate && p.product_name===( c.work_type==="registration_insurance"?"보험":c.work_type)
-      );
-      if(!existing){
-        await supabase.from("ins_policies").upsert({
-          customer_key: key,
-          customer_name: name,
-          product_name: c.summary?.slice(0,50) || "보험",
-          start_date: startDate,
-          expiry_date: null,
-          memo: `[자동등록] ${c.summary||""}`.slice(0,200),
-        },{onConflict:"customer_key,start_date,product_name",ignoreDuplicates:true});
+      const detail = insDetails.find(d=>d.consultation_id===c.id);
+      const startDate = detail?.insurance_start_date || c.completed_at?.slice(0,10) || c.updated_at?.slice(0,10) || c.created_at?.slice(0,10) || todayStr();
+      const endDate = detail?.insurance_end_date || null;
+      const insType = detail?.insurance_type==="automobile"?"자동차보험":detail?.insurance_type||null;
+      const productName = insType || detail?.insurance_company || detail?.insurer_name || c.summary?.slice(0,50) || "보험";
+      await supabase.from("ins_policies").upsert({
+        customer_key: key, customer_name: name,
+        product_name: productName,
+        start_date: startDate,
+        expiry_date: endDate,
+        memo: `[자동등록] ${c.summary||""}`.slice(0,200),
+      },{onConflict:"customer_key,start_date,product_name",ignoreDuplicates:true});
+
+      // 만기일 → ins_todos 자동 등록 (만기일 당일을 due_date로, 중복 방지)
+      if(endDate){
+        const todoTitle = `[만기임박] ${name} ${productName} 만기 ${endDate}`;
+        const {data:existTodo} = await supabase.from("ins_todos")
+          .select("id").eq("title",todoTitle).maybeSingle();
+        if(!existTodo){
+          await supabase.from("ins_todos").insert({
+            title: todoTitle,
+            description: `${name} 고객의 ${productName} 만기일: ${endDate}\n만기 30일 전 갱신 안내 필요`,
+            priority: "urgent",
+            category: "보험만기",
+            due_date: endDate, // 만기일 당일 → 해당 월 캘린더에 표시
+          });
+        }
       }
     }
 
-    // ins_policies 갱신 후 다시 조회
+    // consultation_insurance_details 만기일도 todos 등록
+    for(const d of insDetails){
+      if(!d.insurance_end_date) continue;
+      const insType = d.insurance_type==="automobile"?"자동차보험":d.insurance_type||"보험";
+      const todoTitle = `[만기임박] ${name} ${insType} 만기 ${d.insurance_end_date}`;
+      const {data:existTodo} = await supabase.from("ins_todos")
+        .select("id").eq("title",todoTitle).maybeSingle();
+      if(!existTodo){
+        await supabase.from("ins_todos").insert({
+          title: todoTitle,
+          description: `${name} 고객의 ${insType} 만기일: ${d.insurance_end_date}${d.vehicle_no?"\n차량번호: "+d.vehicle_no:""}\n만기 30일 전 갱신 안내 필요`,
+          priority: "urgent",
+          category: "보험만기",
+          due_date: d.insurance_end_date, // 만기일 당일 → 해당 월 캘린더에 표시
+        });
+      }
+    }
+
+    // 할일 등록 후 캘린더·할일 갱신
+    void loadTodos();
+    void loadStats();
+    void loadCalData(calViewYear, calViewMonth);
+
     const {data:prRefresh} = await supabase.from("ins_policies").select("*").eq("customer_key",key).order("start_date",{ascending:false});
 
-    // 상담이력: ins + 메인 병합, created_at 중복 제거
+    // 상담이력 병합
     const seen = new Set<string>();
     const mergedConsults = [...(cr.data??[]),...(cr2.data??[])].filter(r=>{
       const k = `${r.customer_name}_${r.created_at}`;
@@ -1367,6 +1478,7 @@ const SecretaryInsPage:React.FC = () => {
       policies:(prRefresh??pr.data??[]) as Policy[],
       consults:mergedConsults as Consult[],
       claims:(clr.data??[]) as Claim[],
+      insuranceDetails: insDetails,
     });
     if(ir.data){
       setCustInfo(ir.data as CustomerInfo);
@@ -1378,7 +1490,7 @@ const SecretaryInsPage:React.FC = () => {
       setCustInfoForm({customer_key:key,phone:autoPhone,bank_name:"",bank_account:"",card_company:"",card_number:"",card_expiry:"",memo:""});
     }
     setCustDetailLoading(false);
-  },[]);
+  },[loadTodos, loadStats, loadCalData, calViewYear, calViewMonth]);
 
   // ─── 일정 CRUD ──────────────────────────────────────────────────────────────
   async function addSchedule(){
@@ -2647,8 +2759,41 @@ const SecretaryInsPage:React.FC = () => {
                     onKeyDown={e=>{if(e.key==="Enter") void searchCustomers(custSearch);}}
                   />
                   <button className={BTP} onClick={()=>void searchCustomers(custSearch)}>검색</button>
-                  {selectedCust&&<button className={BTS} onClick={()=>{setSelectedCust(null);setCustSearch("");setCustResults([]);}}>초기화</button>}
+                  <button className={BTS} onClick={()=>{
+                    setShowAllCusts(v=>{
+                      if(!v) void loadAllCustomers();
+                      return !v;
+                    });
+                    setCustSearch(""); setCustResults([]);
+                  }}>{showAllCusts?"목록 닫기":"전체 고객"}</button>
+                  {selectedCust&&<button className={BTS} onClick={()=>{setSelectedCust(null);setCustSearch("");setCustResults([]);setShowAllCusts(false);}}>초기화</button>}
                 </div>
+
+                {/* 전체 고객 목록 */}
+                {showAllCusts&&(
+                  <div className="mt-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs text-gray-400">
+                        {allCustsLoading?"불러오는 중...":`전체 ${allCusts.length}명`}
+                      </p>
+                      <button onClick={()=>void loadAllCustomers()} className="text-[10px] text-gray-400 hover:text-blue-500">새로고침</button>
+                    </div>
+                    {!allCustsLoading&&(
+                      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 max-h-64 overflow-y-auto pr-1">
+                        {allCusts.map(c=>(
+                          <button key={c.customer_key}
+                            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-100 bg-white hover:border-orange-300 hover:bg-orange-50 transition-all text-left"
+                            onClick={()=>{setShowAllCusts(false); void loadCustomerProfile(c.customer_key,c.customer_name);}}>
+                            <span className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500 flex-shrink-0">
+                              {c.customer_name.slice(0,1)}
+                            </span>
+                            <span className="text-xs font-medium text-[#0f172a] truncate">{c.customer_name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* 검색 결과 — 고객 카드 목록 */}
                 {custLoading&&<p className="text-xs text-gray-400 mt-3">검색 중...</p>}
@@ -2844,32 +2989,53 @@ const SecretaryInsPage:React.FC = () => {
                     )}
                   </div>
 
-                  {/* 계약 목록 */}
+                  {/* 계약 목록 — ins_policies + consultation_insurance_details 통합 */}
                   <div className={`${CARD} p-4`}>
                     <p className="text-sm font-semibold text-[#0f172a] mb-3">📋 가입 계약</p>
-                    {selectedCust.policies.length===0
-                      ?<p className="text-xs text-gray-400 text-center py-3">계약 없음</p>
-                      :<div className="space-y-2">
-                        {selectedCust.policies.map(p=>{
-                          const days=daysUntilExpiry(p.expiry_date);
-                          const isExpiring=days!==null&&days<=30&&days>=0;
-                          return(
-                            <div key={p.id} className={`flex items-center gap-3 p-3 rounded-xl border ${isExpiring?"border-red-200 bg-red-50":"border-gray-100 bg-gray-50"}`}>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
+                    {selectedCust.policies.length===0 && selectedCust.insuranceDetails.length===0
+                      ? <p className="text-xs text-gray-400 text-center py-3">계약 없음</p>
+                      : <div className="space-y-3">
+                          {/* ins_policies */}
+                          {selectedCust.policies.map(p=>{
+                            const days=daysUntilExpiry(p.expiry_date);
+                            const isExpiring=days!==null&&days<=30&&days>=0;
+                            return(
+                              <div key={p.id} className={`p-3 rounded-xl border ${isExpiring?"border-red-200 bg-red-50":"border-gray-100 bg-gray-50"}`}>
+                                <div className="flex items-center gap-2 flex-wrap mb-1">
                                   <span className="text-xs font-semibold text-blue-600 px-2 py-0.5 rounded-full bg-blue-50">{p.product_name}</span>
                                   {isExpiring&&<span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold">D-{days}</span>}
                                 </div>
-                                <div className="flex gap-3 mt-1 text-xs text-gray-500">
+                                <div className="flex flex-wrap gap-x-4 text-xs text-gray-500">
                                   <span>가입 {fmtDate(p.start_date)}</span>
-                                  {p.expiry_date&&<span className={isExpiring?"text-red-500 font-medium":""}> 만기 {fmtDate(p.expiry_date)}</span>}
-                                  {p.memo&&<span className="text-gray-400 truncate max-w-[150px]">{p.memo}</span>}
+                                  {p.expiry_date&&<span className={isExpiring?"text-red-500 font-semibold":""}>만기 {fmtDate(p.expiry_date)}</span>}
                                 </div>
+                                {p.memo&&!p.memo.startsWith("[자동등록]")&&<p className="text-xs text-gray-400 mt-0.5 truncate">{p.memo}</p>}
                               </div>
+                            );
+                          })}
+                          {/* consultation_insurance_details (나르미 상세) */}
+                          {selectedCust.insuranceDetails.map(d=>(
+                            <div key={d.id} className="p-3 rounded-xl border border-gray-100 bg-gray-50 space-y-1.5">
+                              <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-700">
+                                {d.insurance_type&&<span>🛡 <strong>{d.insurance_type==="automobile"?"자동차보험":d.insurance_type}</strong></span>}
+                                {d.insurance_company&&<span>보험사: <strong>{d.insurance_company}</strong></span>}
+                                {d.insurer_name&&<span>가입자: {d.insurer_name}</span>}
+                              </div>
+                              <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-600">
+                                {d.insurance_start_date&&<span>가입일: <strong className="text-blue-600">{d.insurance_start_date}</strong></span>}
+                                {d.insurance_end_date&&<span>만기일: <strong className="text-red-500">{d.insurance_end_date}</strong></span>}
+                              </div>
+                              {(d.vehicle_no||d.vehicle_model)&&(
+                                <div className="flex flex-wrap gap-x-4 text-xs text-gray-500">
+                                  {d.vehicle_no&&<span>🚘 {d.vehicle_no}</span>}
+                                  {d.vehicle_model&&<span>{d.vehicle_model}</span>}
+                                  {d.vehicle_use&&<span>{d.vehicle_use}</span>}
+                                </div>
+                              )}
+                              {d.note&&<p className="text-xs text-gray-400">📝 {d.note}</p>}
                             </div>
-                          );
-                        })}
-                      </div>
+                          ))}
+                        </div>
                     }
                   </div>
 
@@ -2929,8 +3095,6 @@ const SecretaryInsPage:React.FC = () => {
               )}
             </div>
           )}
-
-          {/* ══ AI 채팅 ══ */}
           {tab==="chat"&&(
             <div className={`${CARD} p-4`} style={{height:"calc(100vh - 320px)",minHeight:300,display:"flex",flexDirection:"column"}}>
               {histLoading&&(

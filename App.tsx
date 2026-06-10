@@ -77,6 +77,7 @@ import TireRentalPage from "./pages/TireRental/index";
 import SecretaryPage from "./pages/secretary/index";
 import SecretaryInsPage from "./pages/secretary-ins/index";
 import OrdersPage from "./pages/Orders/index";
+import OrderConfirmPage from "./pages/OrderConfirm/index";
 
 /* utils / config */
 import { fetchTireRows } from "./lib/tiresCsv";
@@ -1478,6 +1479,9 @@ const AppRoutes = () => {
             path="/work/orders"
             element={isAdminLevel ? <OrdersPage /> : <Navigate to="/" replace />}
           />
+
+          {/* 물품발송/휠반납 확인 페이지 (진흥 전용, 인증 불필요) */}
+          <Route path="/order/confirm" element={<OrderConfirmPage />} />
 
           {/* legacy */}
           <Route path="/Narumi" element={<Navigate to="/narumi" replace />} />

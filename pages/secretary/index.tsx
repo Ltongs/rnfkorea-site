@@ -93,7 +93,7 @@ const WL:Record<string,string> = {
   finance_hcm:"현대CM금융",narumi:"나르미",
 };
 const CAT_LBL:Record<string,string> = {meeting:"미팅",call:"통화",task:"업무",followup:"사후관리"};
-const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료",closed:"완료",waiting_customer:"고객대기",on_hold:"보류",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",confirmed:"확정",approved:"승인",rejected:"거절",supplement:"보완",credit_check:"신용조회",received:"접수",doc_registration:"서류등록",contract_sent:"전자계약",cancelled:"취소"};
+const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료",closed:"종결",waiting_customer:"고객대기",on_hold:"보류",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",confirmed:"확정",approved:"승인",rejected:"거절",supplement:"보완",credit_check:"신용조회",received:"접수",doc_registration:"서류등록",contract_sent:"전자계약",cancelled:"취소"};
 const PRI_LBL:Record<string,string> = {urgent:"긴급",normal:"일반",low:"낮음"};
 const ACT_LBL:Record<string,string> = {todo:"✅ 할일",schedule:"📅 일정",order:"📦 주문",consult_update:"🔄 상담 업데이트",hyundaicm_update:"🏗 현대건설기계 변경",narumi_update:"🚛 나르미 단계 변경",schedule_update:"📅 일정 업데이트",schedule_edit:"✏️ 일정 수정",order_update:"📦 주문 상태 변경",memo:"📝 메모 저장",todo_edit:"✏️ 할일 수정"};
 const CAT_CLR:Record<string,string> = {meeting:"#60a5fa",call:"#fb923c",followup:"#c084fc",task:"#34d399"};
@@ -1205,8 +1205,16 @@ const SecretaryPage:React.FC = () => {
         if(ordFilter==="active") return !isDone;
         return true;
       }
-      // 그 외: status 기준
-      const doneStatuses = ["completed","closed","invoiced"];
+      // 타이어/지게차/배터리: progress_stage(process_status) 기준 — 나르미와 동일
+      if(["tire_sales","forklift_sales","battery_sales","tire"].includes(v.work_type??"")){
+        const doneStages = ["invoiced","cancelled"];
+        const isDone = doneStages.includes(v.progress_stage??"") || ["completed","closed","invoiced"].includes(v.status??"");
+        if(ordFilter==="done") return isDone;
+        if(ordFilter==="active") return !isDone;
+        return true;
+      }
+      // 그 외: status 기준 (cancelled 추가)
+      const doneStatuses = ["completed","closed","invoiced","cancelled"];
       const isDone = doneStatuses.includes(v.status??"");
       if(ordFilter==="done") return isDone;
       if(ordFilter==="active") return !isDone;
@@ -1410,10 +1418,22 @@ const SecretaryPage:React.FC = () => {
     Promise.all([
       supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60),
       supabase.from("consultation_cases").select("id,customer_name,work_type,status,summary,created_at,phone,sub_type").in("work_type",["tire","tire_sales"]).order("created_at",{ascending:false}).limit(60),
-    ]).then(([ordRes,cRes])=>{
+    ]).then(async([ordRes,cRes])=>{
       setJList(ordRes.data??[]);
       setJLoading(false);
-      setJConsults((cRes.data??[]).map((c:any)=>({...c,progress_stage:null,product_detail:null})));
+      const cases = cRes.data??[];
+      // tire details에서 process_status 조회
+      const ids = cases.map((c:any)=>c.id);
+      let tireMap:Record<number,string> = {};
+      if(ids.length>0){
+        const {data:tds} = await supabase.from("consultation_tire_details")
+          .select("consultation_id,process_status,process_stage,tire_size,vehicle_info,vehicle_type")
+          .in("consultation_id",ids);
+        (tds??[]).forEach((d:any)=>{
+          tireMap[d.consultation_id] = d.process_stage ?? d.process_status;
+        });
+      }
+      setJConsults(cases.map((c:any)=>({...c, progress_stage: tireMap[c.id]??null, product_detail:null})));
       setJConsultsLoading(false);
     });
   },[tab]);
@@ -1560,26 +1580,28 @@ const SecretaryPage:React.FC = () => {
   const fmtProgress = (wt:string, stage:string|null):string => {
     if(!stage) return "-";
     // 공통 단계
-    const COMMON:Record<string,string> = {consulting:"상담",quote:"견적",contract:"계약",delivery:"납품",invoiced:"계산서발행"};
+    const COMMON:Record<string,string> = {consulting:"상담",quote:"견적",contract:"계약",delivery:"납품",invoiced:"계산서발행",cancelled:"취소"};
     if(COMMON[stage]) return COMMON[stage];
-    // 타이어 레거시
-    const TIRE:Record<string,string> = {inquiry_received:"문의접수",size_confirming:"규격확인",quote_sent:"견적",waiting_order:"발주",delivery_or_replacement:"납품",completed:"완료",hold:"보류"};
+    // 타이어 레거시 — 나르미 formatCommonStage와 동일하게 맞춤
+    const TIRE:Record<string,string> = {
+      inquiry_received:"상담",   // 나르미: "상담"
+      size_confirming:"상담",    // 나르미: "상담"
+      quote_sent:"견적",          // 나르미: "견적"
+      proposal:"견적",
+      waiting_order:"계약",       // 나르미: "계약"
+      waiting_payment:"계약",
+      delivery_or_replacement:"납품",
+      delivered:"납품",
+      completed:"계산서발행",     // 나르미: "계산서발행"
+      hold:"보류",
+    };
     if(TIRE[stage]) return TIRE[stage];
-    // 금융 / 현대CM (동일 매핑)
-    const FIN:Record<string,string> = {received:"접수",credit_check:"신용조회",approved:"승인",supplement:"보완",rejected:"거절",doc_registration:"서류등록",contract_sent:"전자계약",confirmed:"확정",cancelled:"취소"};
+    // 금융 / 현대CM
+    const FIN:Record<string,string> = {received:"접수",credit_check:"신용조회",approved:"승인",supplement:"보완",rejected:"거절",doc_registration:"서류등록",contract_sent:"전자계약",confirmed:"확정"};
     if(FIN[stage]) return FIN[stage];
-    // HCM 한글 status 그대로 표시 (접수/신용조회/승인/보완/거절/서류등록/전자계약발송/확정/보류/취소)
+    // HCM 한글 status 그대로
     const HCM_KR = ["접수","신용조회","승인","보완","거절","서류등록","전자계약발송","확정","보류","취소"];
     if(HCM_KR.includes(stage)) return stage;
-    // 현대CM 한글 상태값 그대로
-    const HCM:Record<string,string> = {"접수":"접수","신용조회":"신용조회","승인":"승인","보완":"보완","거절":"거절","서류등록":"서류등록","전자계약발송":"전자계약","확정":"확정","보류":"보류"};
-    if(HCM[stage]) return HCM[stage];
-    // 지게차 레거시
-    const FKL:Record<string,string> = {
-      quote:"견적", proposal:"견적", waiting_payment:"계약", delivered:"납품", cancelled:"취소",
-      "신차":"신차", "중고":"중고", "렌탈":"렌탈",
-    };
-    if(FKL[stage]) return FKL[stage];
     return stage;
   };
 
@@ -1587,7 +1609,8 @@ const SecretaryPage:React.FC = () => {
   const progressColor = (stage:string|null):string => {
     if(!stage) return "text-gray-400";
     if(["invoiced","completed","confirmed","delivered","확정"].includes(stage)) return "text-emerald-600 font-semibold";
-    if(["rejected","cancelled","closed","취소","거절"].includes(stage)) return "text-red-400";
+    if(["cancelled","rejected","취소","거절"].includes(stage)) return "text-red-400";
+    if(["closed"].includes(stage)) return "text-gray-500"; // 종결 — 회색
     if(["contract","contract_sent","approved","승인","보완","supplement"].includes(stage)) return "text-blue-600";
     if(["quote","proposal","credit_check"].includes(stage)) return "text-indigo-500";
     return "text-orange-500";
@@ -2137,7 +2160,7 @@ const SecretaryPage:React.FC = () => {
                   {/* 날짜별 그룹핑 */}
                   {Array.from(new Set(allSchedules.map(s=>s.schedule_date))).map(date=>(
                     <div key={date}>
-                      <p className="text-xs font-semibold text-gray-400 px-1 py-1 mt-2">{fmtDate(date)} ({["일","월","화","수","목","금","토"][new Date(date+"T00:00:00").getDay()]})</p>
+                      <p className="text-xs font-semibold text-gray-400 px-1 py-1 mt-2">{fmtDate(date as string)} ({["일","월","화","수","목","금","토"][new Date((date as string)+"T00:00:00").getDay()]})</p>
                       {allSchedules.filter(s=>s.schedule_date===date).map(s=>(
                         <div key={s.id} className={`${CARD} p-3.5 flex items-start gap-3 cursor-pointer hover:bg-blue-50 transition-all mb-1.5 ${s.is_done?"opacity-50":""}`}
                           onClick={()=>{setSchedModal({s});setSchedProgress({memo:"",next_date:"",next_time:""});}}>
@@ -2595,7 +2618,13 @@ const SecretaryPage:React.FC = () => {
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="text-sm font-semibold text-[#0f172a]">{c.customer_name}</span>
                               {c.product_detail&&<span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100">{c.product_detail}</span>}
-                              <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 border border-orange-100 font-medium">{STS_LBL[c.status]??c.status}</span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${
+                                c.progress_stage
+                                  ? `${progressColor(c.progress_stage)} bg-orange-50 border-orange-100`
+                                  : "bg-orange-50 text-orange-600 border-orange-100"
+                              }`}>
+                                {c.progress_stage ? fmtProgress(c.work_type, c.progress_stage) : (STS_LBL[c.status]??c.status)}
+                              </span>
                             </div>
                             <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-gray-500">
                               {c.summary&&<span className="truncate max-w-[200px]">{c.summary}</span>}
