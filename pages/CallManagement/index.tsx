@@ -432,7 +432,7 @@ const CallManagementPage: React.FC = () => {
   const [tireRegionDetail, setTireRegionDetail] = useState("");
   const [tireInflowChannel, setTireInflowChannel] = useState("");
   const [tireAssociationName, setTireAssociationName] = useState("");
-  const [progressStage, setProgressStage] = useState<string>("consulting");
+  const [progressStage, setProgressStage] = useState<string>("contract");
   const [tireNote, setTireNote] = useState("");
 
   const [insuranceVehicleNo, setInsuranceVehicleNo] = useState("");
@@ -632,7 +632,7 @@ const CallManagementPage: React.FC = () => {
       const s = row.work_type === "tire_sales" ? tireDetail?.process_status
                : row.work_type === "forklift_sales" ? resolvedForkliftStatus(forkliftDetail)
                : resolvedBatteryStatus(batteryDetail);
-      return s === "invoiced" || s === "completed";
+      return s === "invoiced" || s === "completed" || s === "completed_order";
     }
     if (row.work_type === "finance") return financeDetail?.finance_stage === "confirmed";
     return false;
@@ -664,12 +664,11 @@ const CallManagementPage: React.FC = () => {
 
   // ── 공통 진행단계 (타이어/지게차/배터리/수출)
   const COMMON_STAGES = [
-    { value: "consulting", label: "상담" },
-    { value: "quote",      label: "견적" },
-    { value: "contract",   label: "계약" },
-    { value: "delivery",   label: "납품" },
-    { value: "invoiced",   label: "계산서발행" },
-    { value: "cancelled",  label: "취소" },
+    { value: "contract",        label: "계약" },
+    { value: "delivery",        label: "납품" },
+    { value: "completed_order", label: "완결" },
+    { value: "invoiced",        label: "계산서발행" },
+    { value: "cancelled",       label: "취소" },
   ] as const;
   type CommonStageValue = typeof COMMON_STAGES[number]["value"];
 
@@ -677,24 +676,26 @@ const CallManagementPage: React.FC = () => {
     const found = COMMON_STAGES.find(s => s.value === value);
     if (found) return found.label;
     // 레거시 값 호환
-    if (value === "inquiry_received" || value === "size_confirming") return "상담";
-    if (value === "quote_sent" || value === "proposal")               return "견적";
+    if (value === "inquiry_received" || value === "size_confirming") return "계약";
+    if (value === "quote_sent" || value === "proposal")               return "계약";
+    if (value === "consulting" || value === "quote")                   return "계약";
     if (value === "waiting_order" || value === "waiting_payment")     return "계약";
     if (value === "delivery_or_replacement" || value === "delivered") return "납품";
-    if (value === "completed")                                        return "계산서발행";
-    if (value === "hold" || value === "cancelled")                    return "보류";
+    if (value === "completed")                                        return "완결";
+    if (value === "invoiced")                                         return "계산서발행";
+    if (value === "hold" || value === "cancelled")                    return "취소";
     return value || "-";
   };
 
   // 레거시 값 → 새 공통 단계값으로 정규화
   const normalizeToCommonStage = (value: string | null | undefined): CommonStageValue => {
-    if (!value) return "consulting";
-    if (["consulting"].includes(value))                               return "consulting";
-    if (["quote", "inquiry_received", "size_confirming", "quote_sent", "proposal"].includes(value)) return "quote";
-    if (["contract", "waiting_order", "waiting_payment"].includes(value)) return "contract";
+    if (!value) return "contract";
+    if (["consulting", "quote", "contract", "inquiry_received", "size_confirming", "quote_sent", "proposal", "waiting_order", "waiting_payment"].includes(value)) return "contract";
     if (["delivery", "delivery_or_replacement", "delivered"].includes(value)) return "delivery";
-    if (["invoiced", "completed"].includes(value))                    return "invoiced";
-    return "consulting";
+    if (["completed_order", "completed", "wheel_returned"].includes(value))   return "completed_order";
+    if (["invoiced"].includes(value))                                          return "invoiced";
+    if (["cancelled"].includes(value))                                         return "cancelled";
+    return "contract";
   };
 
   const formatForkliftStatus = (value: string | null) => formatCommonStage(value);
@@ -1183,7 +1184,7 @@ const CallManagementPage: React.FC = () => {
     setTireRegionDetail("");
     setTireInflowChannel("");
     setTireAssociationName("");
-    setProgressStage("consulting");
+    setProgressStage("contract");
     setTireNote("");
   };
 
@@ -1221,7 +1222,7 @@ const CallManagementPage: React.FC = () => {
     setForkliftCondition("");
     setForkliftType("");
     setForkliftTon("");
-    setProgressStage("consulting");
+    setProgressStage("contract");
     setForkliftOptionNote("");
     setForkliftSaleMethod("");
     setForkliftNote("");
@@ -1230,7 +1231,7 @@ const CallManagementPage: React.FC = () => {
   const resetBatteryFields = () => {
     setBatteryVehicleType("");
     setBatteryDriveType("");
-    setProgressStage("consulting");
+    setProgressStage("contract");
     setBatteryVoltage("");
     setBatteryCapacityAh("");
     setBatterySizeL("");
@@ -2127,7 +2128,7 @@ const CallManagementPage: React.FC = () => {
             inflow_channel: tireInflowChannel || null,
             association_name:
               tireInflowChannel === "association" ? tireAssociationName || null : null,
-            process_status: progressStage || "consulting",
+            process_status: progressStage || "contract",
               note: tireNote.trim() || null,
             },
           ],

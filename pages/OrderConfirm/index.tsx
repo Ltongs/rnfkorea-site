@@ -13,10 +13,10 @@ type Status = "loading" | "success" | "already_done" | "error";
 const ACTION_MAP: Record<string, { label: string; next: string; nextLabel: string }> = {
   delivered: {
     label:     "물품발송",
-    next:      "wheel_returned",
+    next:      "completed_order",
     nextLabel: "휠반납완료",
   },
-  wheel_returned: {
+  completed_order: {
     label:     "휠반납완료",
     next:      "invoiced",
     nextLabel: "계산서발행",
@@ -86,7 +86,7 @@ export default function OrderConfirmPage() {
       });
 
       // 이미 처리된 경우
-      const doneStatuses = ["delivered", "wheel_returned", "invoiced", "payment_in", "payment_out"];
+      const doneStatuses = ["delivered", "completed_order", "wheel_returned", "invoiced", "payment_in", "payment_out"];
       if (doneStatuses.includes(order.status) && order.status !== "forwarded") {
         setStatus("already_done");
         return;
@@ -95,8 +95,8 @@ export default function OrderConfirmPage() {
       // 상태 업데이트
       const now = new Date().toISOString();
       const patch: Record<string, unknown> = { status: action };
-      if (action === "delivered")      patch.delivered_at      = now;
-      if (action === "wheel_returned") patch.wheel_returned_at = now;
+      if (action === "delivered")        patch.delivered_at      = now;
+      if (action === "completed_order")  patch.wheel_returned_at = now;
 
       const { error: updateErr } = await supabase
         .from("tb_orders")
