@@ -16,8 +16,8 @@ type Schedule = {
   start_time:string|null; end_time:string|null;
   category:"meeting"|"call"|"task"|"followup";
   location:string|null; related_type:string|null; is_done:boolean; consultation_id:number|null;
-  progress_stage?:string|null; // consultation 진행단계 (로컬 보강)
-  work_type?:string|null;      // consultation work_type (로컬 보강)
+  progress_stage?:string|null; // consultation 진행단계 (로컬 보강) + secretary_schedules DB 컬럼
+  work_type?:string|null;      // consultation work_type (로컬 보강) + secretary_schedules DB 컬럼
 };
 type Todo = {
   id:number; title:string; description:string|null;
@@ -912,7 +912,7 @@ const SecretaryPage:React.FC = () => {
     }
     if(!token) return;
     const [sr,tr] = await Promise.all([
-      supabase.from("secretary_schedules").select("id,title,schedule_date,start_time,category,is_done").gte("schedule_date",from).lte("schedule_date",to),
+      supabase.from("secretary_schedules").select("id,title,schedule_date,start_time,category,is_done,progress_stage,work_type").gte("schedule_date",from).lte("schedule_date",to),
       supabase.from("secretary_todos").select("id,title,due_date,priority,is_done").gte("due_date",from).lte("due_date",to).eq("is_done",false),
     ]);
     if(sr.data) setCalSch(sr.data as CalSch[]);

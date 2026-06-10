@@ -396,6 +396,35 @@ serve(async (req) => {
         });
       } catch (e) { console.warn("[kakao] 발송 실패:", e); }
 
+      // ── 현대CM 상태 변경 시 당일 할 일 + 일정 자동 등록
+      const hcmTodoTitle = `${customerName} (현대CM - ${next_status})`;
+      const hcmDesc = [
+        `케이스번호: ${caseNo}`,
+        equipmentTon ? `장비: ${equipmentTon}` : null,
+        financeCompany ? `금융사: ${financeCompany}` : null,
+        salesRep ? `영업: ${salesRep}` : null,
+      ].filter(Boolean).join(" / ");
+
+      await db.from("secretary_todos").insert({
+        title:       hcmTodoTitle,
+        description: hcmDesc,
+        priority:    ["전자계약발송","확정"].includes(next_status) ? "urgent" : "normal",
+        category:    "finance",
+        due_date:    TODAY_ISO,
+        is_done:     false,
+      });
+
+      // 일정도 당일 등록 (진행단계 배지 포함)
+      await db.from("secretary_schedules").insert({
+        title:          hcmTodoTitle,
+        description:    hcmDesc,
+        schedule_date:  TODAY_ISO,
+        category:       "followup",
+        related_type:   "finance",
+        progress_stage: next_status,   // 현대CM 한글 상태 (전자계약발송 등)
+        work_type:      "finance_hcm", // 현대CM 구분용
+      });
+
       return new Response(
         JSON.stringify({
           reply: `✅ **${customerName}** 건 → **${next_status}** 상태 변경 완료. 카카오 알림 발송됨.`,
@@ -812,11 +841,13 @@ serve(async (req) => {
             // 보류 시 일정 자동 생성
             if (stage === "보류" && a.next_followup_date) {
               await db.from("secretary_schedules").insert({
-                title:         `${custDisplay} 나르미 재확인`,
-                description:   `보류 사유: ${a.hold_reason ?? ""}`,
-                schedule_date: a.next_followup_date as string,
-                category:      "followup",
-                related_type:  "finance",
+                title:          `${custDisplay} 나르미 재확인`,
+                description:    `보류 사유: ${a.hold_reason ?? ""}`,
+                schedule_date:  a.next_followup_date as string,
+                category:       "followup",
+                related_type:   "finance",
+                progress_stage: "보류",
+                work_type:      "narumi",
               });
               await db.from("secretary_todos").insert({
                 title:       `${custDisplay} (나르미 보류 - 재확인)`,
@@ -824,6 +855,43 @@ serve(async (req) => {
                 priority:    "normal",
                 category:    "finance",
                 is_done:     false,
+              });
+            }
+
+            // ── 나르미 단계 변경 시 다음 날 할 일 자동 등록
+            const tomorrow = (() => {
+              const d = new Date(TODAY_ISO);
+              d.setDate(d.getDate() + 1);
+              return d.toISOString().slice(0, 10);
+            })();
+            const narumiStageLabel: Record<string, string> = {
+              "보험": "보험 완료 확인",
+              "등록서류": "등록 서류 접수 확인",
+              "등록완료": "등록 완료 처리",
+              "완료": "완료 처리 확인",
+              "우편발송": "우편 발송 추적",
+              "보류": "보류 재확인",
+              "보류해제": "보류 해제 확인",
+            };
+            if (!["보류"].includes(stage)) { // 보류는 위에서 이미 todo/schedule 생성
+              const narumiTitle = `${custDisplay} (나르미 - ${narumiStageLabel[stage] ?? stage})`;
+              const narumiDesc  = `단계: ${stage}${a.memo ? " / " + a.memo : ""}`;
+              await db.from("secretary_todos").insert({
+                title:       narumiTitle,
+                description: narumiDesc,
+                priority:    "normal",
+                category:    "finance",
+                due_date:    tomorrow,
+                is_done:     false,
+              });
+              await db.from("secretary_schedules").insert({
+                title:          narumiTitle,
+                description:    narumiDesc,
+                schedule_date:  tomorrow,
+                category:       "followup",
+                related_type:   "finance",
+                progress_stage: stage,
+                work_type:      "narumi",
               });
             }
 
