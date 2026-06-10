@@ -21,7 +21,7 @@ const SEO_OG_IMAGE = "https://www.rnfkorea.co.kr/og-image.jpg";
 const JSON_LD_SERVICE = {
   "@context": "https://schema.org",
   "@type": "Service",
-  name: "노후 디젤 지게차 해외 수출 서비스",
+  name: "노후 디젤 지게차 해외 수출",
   alternateName: "Used Forklift Export",
   description:
     "국내 노후 디젤 지게차 매입 후 정비·등급화(A/B/C)하여 신흥국 산업 현장에 수출. 정비 완료 + 부품 패키지 포함 납품 구조.",
