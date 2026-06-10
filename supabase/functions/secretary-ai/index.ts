@@ -79,7 +79,7 @@ todo: {"type":"todo","title":"string","description":null,"priority":"urgent|norm
 schedule: {"type":"schedule","title":"string","description":null,"schedule_date":"YYYY-MM-DD","start_time":"HH:MM|null","category":"meeting|call|task|followup","location":null,"related_type":"insurance|tire|finance|forklift|battery|null"}
 
 order (NEW customer): {"type":"order","customer_name":"string","phone":null,"channel":"kakao|phone|visit|web","work_type":"insurance|tire|finance|forklift|battery|export|null","sub_type":"string|null","summary":"string","detail":null,
-"tire_fields":{"vehicle_info":"string|null","vehicle_type":"string|null","tire_size":"string|null","front_quantity":"number|null","rear_quantity":"number|null","process_status":"발주","region_detail":"string|null"},
+"tire_fields":{"vehicle_info":"string|null","vehicle_type":"string|null","tire_size":"string|null","front_quantity":"number|null","rear_quantity":"number|null","process_status":"contract","region_detail":"string|null"},
 "battery_fields":{"battery_vehicle_type":"지게차|고소작업대|골프카트|기타|null","battery_drive_type":"seated|standing|special|null","battery_voltage":"number|null","battery_capacity_ah":"number|null","battery_size_l":"number|null","battery_due_date":"YYYY-MM-DD|null","battery_weight_kg":"number|null","battery_unit_price_per_kwh":"number|null","battery_unit_sale_price":"number|null","battery_quantity":"number|null"},
 "export_fields":{"export_type":"string|null","destination_country":"string|null","product_name":"string|null","quantity":"number|null","unit_price":"number|null","incoterms":"string|null"}}
 
@@ -98,10 +98,10 @@ CRITICAL tire_fields rules — MUST FILL when work_type is "tire":
 - tire_size: 메시지에서 타이어 규격 추출 — "18*7-8"→"18*7-8", "250-15"→"250-15", "28*9-15"→"28*9-15"
 - front_quantity: 전륜 수량 숫자 (없으면 null)
 - rear_quantity: 후륜 수량 숫자 — "후륜 2개"→2, "2개"→2 (전/후 구분 없으면 rear에)
-- process_status: 항상 "발주" (고정값, 절대 null 금지)
+- process_status: 항상 "contract" (고정값, 절대 null 금지)
 - MANDATORY EXAMPLE:
   Input: "형제중기 지게차 18*7-8 두산 3톤 후륜 2개 주문"
-  Output: work_type:"tire", sub_type:"지게차", tire_fields:{"vehicle_info":"두산","vehicle_type":"3톤","tire_size":"18*7-8","front_quantity":null,"rear_quantity":2,"process_status":"발주","region_detail":null}
+  Output: work_type:"tire", sub_type:"지게차", tire_fields:{"vehicle_info":"두산","vehicle_type":"3톤","tire_size":"18*7-8","front_quantity":null,"rear_quantity":2,"process_status":"contract","region_detail":null}
 
 battery_fields rules — MUST FILL when work_type is "battery":
 - ALWAYS include battery_fields object when work_type is "battery"
@@ -1213,18 +1213,17 @@ serve(async (req) => {
               const orderId = (tbOrder as Record<string,unknown>).id as string;
               console.log("[진흥 알림톡 발송 시작]:", orderId);
               try {
-                const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
                 const kakaoRes = await fetch(KAKAO_EDGE_URL, {
                   method: "POST",
-                  headers: { "Content-Type": "application/json", "Authorization": `Bearer ${anonKey}` },
+                  headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
                     type:         "order_forwarded",
                     orderNo:      orderId.slice(-8).toUpperCase(),
                     customerName: a.customer_name as string ?? "확인필요",
                     productSpec:  productSpec ?? "확인필요",
                     quantity:     qty != null ? String(qty) : "확인필요",
-                    deliveredUrl:     `https://rnfkorea.co.kr/order/confirm?id=${orderId}&action=delivered`,
-                    wheelReturnedUrl: `https://rnfkorea.co.kr/order/confirm?id=${orderId}&action=completed_order`,
+                    deliveredUrl:     `https://rnfkorea.co.kr/order/confirm/delivered?id=${orderId}`,
+                    wheelReturnedUrl: `https://rnfkorea.co.kr/order/confirm/completed_order?id=${orderId}`,
                   }),
                 });
                 const kakaoBody = await kakaoRes.text();

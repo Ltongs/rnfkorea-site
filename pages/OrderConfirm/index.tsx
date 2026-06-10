@@ -1,6 +1,6 @@
 // pages/OrderConfirm/index.tsx
 import React, { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useParams } from "react-router-dom";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -27,8 +27,11 @@ const AUTO_CLOSE_SEC = 3;
 
 export default function OrderConfirmPage() {
   const [params]  = useSearchParams();
-  const id        = params.get("id")     ?? "";
-  const action    = params.get("action") ?? "";
+  const routeParams = useParams<{ action?: string }>();
+  const id        = params.get("id") ?? "";
+  // URL path 방식: /order/confirm/delivered?id=...
+  // URL query 방식: /order/confirm?id=...&action=... (레거시)
+  const action    = routeParams.action ?? params.get("action") ?? "";
   const [status, setStatus]       = useState<Status>("loading");
   const [orderInfo, setOrderInfo] = useState<{
     customer_name_raw: string;
