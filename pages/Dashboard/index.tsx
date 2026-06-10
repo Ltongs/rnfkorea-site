@@ -83,6 +83,20 @@ type TireDetailRow = {
   note: string | null;
 };
 
+type TbOrder = {
+  id: string;
+  created_at: string;
+  customer_name_raw: string | null;
+  product_spec: string | null;
+  quantity: number | null;
+  status: string;
+  price_to_customer: number | null;
+  price_from_jinheung: number | null;
+  margin: number | null;
+  delivered_at: string | null;
+  wheel_returned_at: string | null;
+};
+
 type Metric = {
   month: number;
   ytd: number;
@@ -224,6 +238,7 @@ const DashboardPage: React.FC = () => {
   const [financeDetails, setFinanceDetails] = useState<FinanceDetailRow[]>([]);
   const [tireDetails, setTireDetails] = useState<TireDetailRow[]>([]);
   const [narumiTasks, setNarumiTasks] = useState<NarumiTask[]>([]);
+  const [tbOrders, setTbOrders] = useState<TbOrder[]>([]);
 
   useEffect(() => {
     let alive = true;
@@ -242,6 +257,7 @@ const DashboardPage: React.FC = () => {
           financeRes,
           tireRes,
           narumiRes,
+          tbOrdersRes,
         ] = await Promise.all([
           supabase
             .from("consultation_cases")
@@ -274,6 +290,11 @@ const DashboardPage: React.FC = () => {
             .gte("created_at", yearStart)
             .lte("created_at", yearEnd)
             .order("created_at", { ascending: false }),
+          supabase
+            .from("tb_orders")
+            .select("id, created_at, customer_name_raw, product_spec, quantity, status, price_to_customer, price_from_jinheung, margin, delivered_at, wheel_returned_at")
+            .order("created_at", { ascending: false })
+            .limit(50),
         ]);
 
         const firstError =
@@ -281,7 +302,8 @@ const DashboardPage: React.FC = () => {
           insuranceRes.error ||
           financeRes.error ||
           tireRes.error ||
-          narumiRes.error;
+          narumiRes.error ||
+          tbOrdersRes.error;
 
         if (firstError) throw firstError;
         if (!alive) return;
@@ -905,6 +927,117 @@ const DashboardPage: React.FC = () => {
                 </div>
               </section>
             </div>
+
+            {/* ── 진흥 주문 현황 ── */}
+            {(() => {
+              const now = new Date();
+              const monthOrders = tbOrders.filter(o => {
+                const d = new Date(o.created_at);
+                return d.getFullYear() === selectedYear && d.getMonth() + 1 === selectedMonth;
+              });
+              const stageMap: Record<string, { label: string; color: string }> = {
+                received:       { label: "접수",       color: "bg-gray-100 text-gray-600" },
+                forwarded:      { label: "진흥전달",   color: "bg-blue-100 text-blue-700" },
+                delivered:      { label: "납품완료",   color: "bg-emerald-100 text-emerald-700" },
+                completed_order:{ label: "완결",       color: "bg-purple-100 text-purple-700" },
+                invoiced:       { label: "계산서",     color: "bg-orange-100 text-orange-700" },
+                billed_in:      { label: "진흥청구",   color: "bg-yellow-100 text-yellow-700" },
+                payment_in:     { label: "입금확인",   color: "bg-teal-100 text-teal-700" },
+                payment_out:    { label: "송금완료",   color: "bg-green-100 text-green-700" },
+              };
+              const stageCounts = Object.keys(stageMap).map(key => ({
+                key,
+                ...stageMap[key],
+                count: tbOrders.filter(o => o.status === key).length,
+              }));
+              // 휠반납 미결 = delivered 상태 (납품완료됐으나 아직 완결 안 된 것)
+              const wheelPending = tbOrders.filter(o => o.status === "delivered");
+              const totalRevenue = monthOrders.reduce((s, o) => s + (o.price_to_customer ?? 0), 0);
+              const totalMargin  = monthOrders.reduce((s, o) => s + (o.margin ?? 0), 0);
+              const recentOrders = tbOrders.slice(0, 8);
+
+              return (
+                <section className={`${cardClass} p-6 space-y-5`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className={sectionTitleClass}>Jinheung Orders</p>
+                      <h2 className="mt-1 text-lg font-semibold text-navy-900 flex items-center gap-2">
+                        <Truck className="w-5 h-5 text-orange-500" />
+                        진흥 타이어 주문 현황
+                      </h2>
+                    </div>
+                    <a href="/work/orders" className="text-xs font-medium text-orange-500 hover:underline">전체보기 →</a>
+                  </div>
+
+                  {/* 월 KPI */}
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { label: `${selectedMonth}월 주문`, value: `${monthOrders.length}건`, color: "text-navy-900" },
+                      { label: `${selectedMonth}월 매출`, value: totalRevenue ? formatCurrency(totalRevenue) : "-", color: "text-orange-600" },
+                      { label: `${selectedMonth}월 마진`, value: totalMargin ? formatCurrency(totalMargin) : "-", color: "text-emerald-600" },
+                    ].map(({ label, value, color }) => (
+                      <div key={label} className={subCardClass}>
+                        <p className={labelClass}>{label}</p>
+                        <p className={`${valueClass} text-xl ${color}`}>{value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* 단계별 현황 */}
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 mb-2">단계별 전체 현황</p>
+                    <div className="flex flex-wrap gap-2">
+                      {stageCounts.filter(s => s.count > 0).map(s => (
+                        <span key={s.key} className={`text-xs px-2.5 py-1 rounded-full font-medium ${s.color}`}>
+                          {s.label} {s.count}건
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 휠반납 미결 */}
+                  {wheelPending.length > 0 && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                      <p className="text-xs font-semibold text-amber-700 mb-2">⚠️ 휠반납 미결 {wheelPending.length}건</p>
+                      <div className="space-y-1.5">
+                        {wheelPending.map(o => (
+                          <div key={o.id} className="flex items-center justify-between text-xs">
+                            <span className="font-medium text-gray-700">{o.customer_name_raw ?? "-"}</span>
+                            <span className="text-gray-500">{o.product_spec ?? "-"}</span>
+                            <span className="text-gray-400">{o.delivered_at ? new Date(o.delivered_at).toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" }) : "-"} 납품</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 최근 주문 목록 */}
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 mb-2">최근 주문</p>
+                    <div className="space-y-2">
+                      {recentOrders.map(o => {
+                        const s = stageMap[o.status] ?? { label: o.status, color: "bg-gray-100 text-gray-600" };
+                        return (
+                          <div key={o.id} className={`${subCardClass} flex items-center justify-between gap-2`}>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-navy-900 truncate">{o.customer_name_raw ?? "-"}</p>
+                              <p className="text-xs text-gray-500 mt-0.5">{o.product_spec ?? "-"}{o.quantity ? ` × ${o.quantity}개` : ""}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${s.color}`}>{s.label}</span>
+                              <p className="text-xs text-gray-400 mt-0.5">{new Date(o.created_at).toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" })}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {recentOrders.length === 0 && (
+                        <div className={`${subCardClass} text-sm text-gray-400`}>주문 데이터가 없습니다.</div>
+                      )}
+                    </div>
+                  </div>
+                </section>
+              );
+            })()}
           </>
         )}
       </div>
