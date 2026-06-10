@@ -77,7 +77,7 @@ import TireRentalPage from "./pages/TireRental/index";
 import SecretaryPage from "./pages/secretary/index";
 import SecretaryInsPage from "./pages/secretary-ins/index";
 import OrdersPage from "./pages/Orders/index";
-import OrderConfirmPage from "./pages/OrderConfirm/index";
+import OrderConfirmPage from "./pages/OrderConfirm";
 
 /* utils / config */
 import { fetchTireRows } from "./lib/tiresCsv";
