@@ -683,6 +683,34 @@ export default function NarumiPage() {
         specialNote:  specialNote.trim() || undefined,
       });
 
+      // 다음 날 할 일 + 일정 자동 등록
+      const tomorrow = (() => {
+        const d = new Date();
+        d.setDate(d.getDate() + 1);
+        return d.toISOString().slice(0, 10);
+      })();
+      const narumiNewTitle = `${nameTrim} (나르미 - 신규접수 확인)`;
+      const narumiNewDesc  = `VIN: ${vinTrim} / 출고: ${dtTrim} / 영업: ${salesRepTrim}`;
+      await Promise.all([
+        supabase.from("secretary_todos").insert({
+          title:       narumiNewTitle,
+          description: narumiNewDesc,
+          priority:    "normal",
+          category:    "finance",
+          due_date:    tomorrow,
+          is_done:     false,
+        }),
+        supabase.from("secretary_schedules").insert({
+          title:          narumiNewTitle,
+          description:    narumiNewDesc,
+          schedule_date:  tomorrow,
+          category:       "followup",
+          related_type:   "finance",
+          progress_stage: "신규접수",
+          work_type:      "narumi",
+        }),
+      ]);
+
       onReset();
       await fetchRows();
     } catch (e: any) {

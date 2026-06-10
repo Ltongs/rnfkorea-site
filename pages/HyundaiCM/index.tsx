@@ -871,6 +871,35 @@ export default function HyundaiCMPage() {
         nextStatus:           next,
       };
       sendKakaoNotify(kakaoPayload);
+
+      // 당일 할 일 + 일정 자동 등록
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const hcmTitle = `${row.customer_name} (현대CM - ${next})`;
+      const hcmDesc  = [
+        `케이스: ${caseNoMap[String(row.id)] ?? String(row.id)}`,
+        row.equipment_ton  ? `장비: ${row.equipment_ton}`   : null,
+        row.finance_company ? `금융사: ${row.finance_company}` : null,
+        row.sales_rep       ? `영업: ${row.sales_rep}`        : null,
+      ].filter(Boolean).join(" / ");
+      await Promise.all([
+        supabase.from("secretary_todos").insert({
+          title:       hcmTitle,
+          description: hcmDesc,
+          priority:    ["전자계약발송","확정"].includes(next) ? "urgent" : "normal",
+          category:    "finance",
+          due_date:    todayStr,
+          is_done:     false,
+        }),
+        supabase.from("secretary_schedules").insert({
+          title:          hcmTitle,
+          description:    hcmDesc,
+          schedule_date:  todayStr,
+          category:       "followup",
+          related_type:   "finance",
+          progress_stage: next,
+          work_type:      "finance_hcm",
+        }),
+      ]);
     }
   };
 
@@ -910,6 +939,35 @@ export default function HyundaiCMPage() {
         vatDeferredAmount:    patch.vat_deferred_amount,
         loanPeriod:           patch.loan_period,
       });
+
+      // 확정 시 당일 할 일 + 일정 자동 등록
+      const todayStr2 = new Date().toISOString().slice(0, 10);
+      const hcmConfirmTitle = `${confirmModal.customer_name} (현대CM - 확정)`;
+      const hcmConfirmDesc  = [
+        `케이스: ${caseNoMap[String(confirmModal.id)] ?? String(confirmModal.id)}`,
+        confirmModal.equipment_ton   ? `장비: ${confirmModal.equipment_ton}`    : null,
+        confirmModal.finance_company ? `금융사: ${confirmModal.finance_company}` : null,
+        confirmModal.sales_rep       ? `영업: ${confirmModal.sales_rep}`         : null,
+      ].filter(Boolean).join(" / ");
+      await Promise.all([
+        supabase.from("secretary_todos").insert({
+          title:       hcmConfirmTitle,
+          description: hcmConfirmDesc,
+          priority:    "urgent",
+          category:    "finance",
+          due_date:    todayStr2,
+          is_done:     false,
+        }),
+        supabase.from("secretary_schedules").insert({
+          title:          hcmConfirmTitle,
+          description:    hcmConfirmDesc,
+          schedule_date:  todayStr2,
+          category:       "followup",
+          related_type:   "finance",
+          progress_stage: "확정",
+          work_type:      "finance_hcm",
+        }),
+      ]);
 
       setConfirmModal(null);
     } catch (e: any) { alert(e?.message || "저장 실패"); }
