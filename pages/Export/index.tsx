@@ -38,7 +38,7 @@ const JSON_LD_SERVICE = {
   serviceType: "중고 산업장비 해외 수출",
   offers: {
     "@type": "Offer",
-    description: "연식 7~15년, 디젤, 2.5~7톤 지게차. A/B/C 등급 정비 패키지 포함 수출.",
+    description: "연식 7~15년, 디젤, 2.5~8톤 지게차. A/B/C 등급 정비 패키지 포함 수출.",
   },
 };
 
