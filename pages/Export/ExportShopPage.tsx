@@ -1,8 +1,10 @@
 // pages/Export/ExportShopPage.tsx
-import React, { useEffect, useMemo, useState, createContext, useContext } from "react";
-import { Link } from "react-router-dom";
+import React, { useCallback, useEffect, useMemo, useState, createContext, useContext } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import { Loader2 } from "lucide-react";
+import { Loader2, Plus, Settings } from "lucide-react";
+import { supabase } from "../../lib/supabase";
+import { useAuth } from "../../lib/auth";
 
 // ── Supabase Storage CDN 베이스 URL ──────────────────────────
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
@@ -83,7 +85,24 @@ const JSON_LD_BREADCRUMB = {
 // ====================================================
 // 타입 정의
 // ====================================================
-type EquipmentType = "forklift" | "excavator";
+type EquipmentType = "forklift" | "mini_excavator" | "excavator";
+
+type DbListing = {
+  id: string;
+  category: "excavator";
+  brand: string;
+  model: string | null;
+  year: number | null;
+  tonnage: number | null;
+  engine_type: string | null;
+  condition_grade: string | null;
+  price_usd: number | null;
+  price_negotiable: boolean;
+  stock_qty: number;
+  description_en: string | null;
+  images: string[];
+  status: string;
+};
 
 type SpecRow = {
   key?: string;
@@ -101,7 +120,7 @@ type PageHeroProps = {
 
 type InventoryCsvRow = {
   id: string;
-  type: "forklift" | "excavator";
+  type: "forklift" | "mini_excavator" | "excavator";
   title: string;
   year?: string;
   brand?: string;
@@ -164,7 +183,9 @@ async function fetchInventoryRows(csvUrl: string): Promise<InventoryCsvRow[]> {
     .map((r) => {
       const id = (r[0] ?? "").trim();
       const typeRaw = (r[1] ?? "forklift").trim().toLowerCase();
-      const type: "forklift" | "excavator" = typeRaw === "excavator" ? "excavator" : "forklift";
+      const type: "forklift" | "mini_excavator" | "excavator" = 
+        typeRaw === "excavator" ? "excavator" :
+        typeRaw === "mini_excavator" ? "mini_excavator" : "forklift";
       const imgCountNum = Number((r[10] ?? "").trim());
       const imgCount = Number.isFinite(imgCountNum) && imgCountNum > 0 ? imgCountNum : 5;
 
@@ -442,7 +463,7 @@ const InventoryCard: React.FC<{ item: InventoryItem }> = ({ item }) => {
   }, [displayImages.length, heroIndex]);
 
   const heroSrc = displayImages[heroIndex] ?? displayImages[0];
-  const typeLabel = item.type === "forklift" ? "지게차 (Forklift)" : "굴삭기 (Excavator)";
+  const typeLabel = item.type === "forklift" ? "지게차 (Forklift)" : item.type === "mini_excavator" ? "미니굴삭기 (Mini Excavator)" : "굴삭기 (Excavator)";
 
   return (
     // ✅ article + itemScope — 장비 상품 단위 시맨틱 마크업
@@ -474,7 +495,7 @@ const InventoryCard: React.FC<{ item: InventoryItem }> = ({ item }) => {
             </h3>
           </div>
           <span className="text-[11px] font-semibold tracking-[0.12em] uppercase bg-orange-50 text-orange-600 border border-orange-200 px-2.5 py-1 rounded-full">
-            {item.type === "forklift" ? "FORKLIFT" : "EXCAVATOR"}
+            {item.type === "forklift" ? "FORKLIFT" : item.type === "mini_excavator" ? "MINI EXC." : "EXCAVATOR"}
           </span>
         </div>
 
@@ -550,19 +571,163 @@ const InventoryCard: React.FC<{ item: InventoryItem }> = ({ item }) => {
 };
 
 // ====================================================
+// DbExcavatorCard — Supabase DB 굴삭기 카드
+// ====================================================
+const DbExcavatorCard: React.FC<{ item: DbListing }> = ({ item }) => {
+  const [imgIdx, setImgIdx] = useState(0);
+  const [lbOpen, setLbOpen] = useState(false);
+  const hasImages = item.images.length > 0;
+  const { openAt } = useLightbox();
+
+  const imageUrls = item.images.map(dbImgUrl);
+
+  return (
+    <article className="border border-gray-200 rounded-2xl overflow-hidden bg-white shadow-sm hover:shadow-md transition-all">
+      {/* 이미지 */}
+      <div
+        className="relative w-full h-56 bg-gray-100 cursor-pointer overflow-hidden"
+        onClick={() => hasImages && openAt(
+          `${item.brand} ${item.model ?? ""}`,
+          imageUrls,
+          imgIdx
+        )}
+      >
+        {hasImages ? (
+          <img
+            src={imageUrls[imgIdx]}
+            alt={`${item.brand} ${item.model ?? ""}`}
+            className="w-full h-full object-cover hover:scale-105 transition-transform"
+            loading="lazy"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-gray-300 text-sm">
+            Image unavailable
+          </div>
+        )}
+        {item.condition_grade && (
+          <span className={`absolute top-2 left-2 text-xs font-bold px-2 py-0.5 rounded-full border ${GRADE_COLOR[item.condition_grade] ?? "bg-gray-100 text-gray-600"}`}>
+            Grade {item.condition_grade}
+          </span>
+        )}
+        {item.status === "sold" && (
+          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+            <span className="text-white font-bold text-xl tracking-widest">SOLD</span>
+          </div>
+        )}
+      </div>
+
+      {/* 썸네일 */}
+      {imageUrls.length > 1 && (
+        <div className="flex gap-2 px-4 pt-3">
+          {imageUrls.slice(0, 6).map((src, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => setImgIdx(i)}
+              className={`w-14 h-14 rounded-md border overflow-hidden transition-all ${i === imgIdx ? "border-orange-500" : "border-gray-200 hover:border-orange-300"}`}
+            >
+              <img src={src} alt="" className="w-full h-full object-cover" loading="lazy" />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* 정보 */}
+      <div className="p-4 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm text-gray-500">굴삭기 (Excavator)</p>
+            <h3 className="text-lg md:text-xl font-semibold text-navy-900 break-keep">
+              {item.brand}{item.model ? ` ${item.model}` : ""}
+              {item.year ? ` (${item.year})` : ""}
+            </h3>
+          </div>
+          <span className="text-[11px] font-semibold tracking-[0.12em] uppercase bg-orange-50 text-orange-600 border border-orange-200 px-2.5 py-1 rounded-full">
+            EXCAVATOR
+          </span>
+        </div>
+
+        {/* 스펙 */}
+        <dl className="border-t pt-3 space-y-1">
+          {item.tonnage && (
+            <div className="flex justify-between text-sm py-1 border-b">
+              <dt className="text-gray-500 w-24">Tonnage</dt>
+              <dd className="text-navy-900 font-medium">{item.tonnage}T</dd>
+            </div>
+          )}
+          {item.engine_type && (
+            <div className="flex justify-between text-sm py-1 border-b">
+              <dt className="text-gray-500 w-24">Engine</dt>
+              <dd className="text-navy-900 font-medium capitalize">{item.engine_type}</dd>
+            </div>
+          )}
+          {item.stock_qty > 1 && (
+            <div className="flex justify-between text-sm py-1 border-b">
+              <dt className="text-gray-500 w-24">Quantity</dt>
+              <dd className="text-navy-900 font-medium">{item.stock_qty}대</dd>
+            </div>
+          )}
+          {item.price_usd && (
+            <div className="flex justify-between text-sm py-1 border-b">
+              <dt className="text-gray-500 w-24">Price</dt>
+              <dd className="text-navy-900 font-medium">
+                USD {item.price_usd.toLocaleString()}{item.price_negotiable ? " (협의)" : ""}
+              </dd>
+            </div>
+          )}
+          {!item.price_usd && (
+            <div className="flex justify-between text-sm py-1 border-b">
+              <dt className="text-gray-500 w-24">Price</dt>
+              <dd className="text-navy-900 font-medium">가격 문의</dd>
+            </div>
+          )}
+          {item.description_en && (
+            <div className="py-2 text-sm text-gray-600 leading-relaxed line-clamp-3">
+              {item.description_en}
+            </div>
+          )}
+        </dl>
+      </div>
+    </article>
+  );
+};
+
+// ====================================================
 // 상수
 // ====================================================
 const CSV_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vStUJkHotLlVECjJPyaxIWnYTl45_0Fw9IAtgIUzkRjScPYWE_lYJfk2_38Uqn9Y40kP-5pv3UXeRJf/pub?gid=0&single=true&output=csv";
 
+const LISTINGS_STORAGE_BASE = `${SUPABASE_URL}/storage/v1/object/public/export-listings`;
+
+function dbImgUrl(path: string) {
+  if (!path) return "";
+  if (path.startsWith("http")) return path;
+  return `${LISTINGS_STORAGE_BASE}/${path}`;
+}
+
+const GRADE_COLOR: Record<string, string> = {
+  A: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  B: "bg-blue-100 text-blue-700 border-blue-200",
+  C: "bg-amber-100 text-amber-700 border-amber-200",
+};
+
 // ====================================================
 // 메인 페이지 컴포넌트
 // ====================================================
 const ExportShopPage: React.FC = () => {
+  const { isHyundaiCM, isAdmin, isSubAdmin } = useAuth();
+  const navigate = useNavigate();
+  const canManage = isHyundaiCM || isAdmin || isSubAdmin;
+
   const [filter, setFilter] = useState<Filter>("all");
   const [rows, setRows] = useState<InventoryCsvRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [errMsg, setErrMsg] = useState<string>("");
+
+  // DB 굴삭기 매물
+  const [dbListings, setDbListings] = useState<DbListing[]>([]);
+  const [dbLoading, setDbLoading] = useState(false);
 
   useEffect(() => {
     // prerender 환경(Node.js SSG)에서는 외부 fetch 생략 — 무한 대기 방지
@@ -583,6 +748,27 @@ const ExportShopPage: React.FC = () => {
         if (!alive) return;
         setLoading(false);
       }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // DB 굴삭기 매물 fetch
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let alive = true;
+    (async () => {
+      setDbLoading(true);
+      try {
+        const { data } = await supabase
+          .from("export_listings")
+          .select("*")
+          .eq("category", "excavator")
+          .eq("status", "active")
+          .order("created_at", { ascending: false });
+        if (!alive) return;
+        setDbListings((data as DbListing[]) ?? []);
+      } catch (_) {}
+      finally { if (alive) setDbLoading(false); }
     })();
     return () => { alive = false; };
   }, []);
@@ -610,10 +796,16 @@ const ExportShopPage: React.FC = () => {
     });
   }, [rows]);
 
-  const totalCount     = inventory.length;
-  const forkliftCount  = inventory.filter((x) => x.type === "forklift").length;
-  const excavatorCount = inventory.filter((x) => x.type === "excavator").length;
-  const filtered       = filter === "all" ? inventory : inventory.filter((x) => x.type === filter);
+  const forkliftCount     = inventory.filter((x) => x.type === "forklift").length;
+  const miniExcavatorCount = inventory.filter((x) => x.type === "mini_excavator").length;
+  const excavatorCount    = dbListings.length;
+  const totalCount        = inventory.length + dbListings.length;
+
+  const filtered = useMemo(() => {
+    if (filter === "excavator") return [];          // DB로 처리
+    if (filter === "all") return inventory.filter((x) => x.type !== "excavator"); // excavator는 DB로
+    return inventory.filter((x) => x.type === filter);
+  }, [filter, inventory]);
 
   const pillBase = "px-4 py-2 rounded-full text-sm font-semibold border transition-all duration-200";
   const pillOn   = "bg-orange-500 text-white border-orange-500 shadow-sm";
@@ -659,9 +851,12 @@ const ExportShopPage: React.FC = () => {
             Hero
             ======================================================== */}
         <PageHero
-          eyebrow="Export Shop"
-          title="수출용 쇼핑몰"
-          description="수출용 매물을 확인하고, 필요 시 스펙·가격·선적 조건을 요청하실 수 있습니다."
+          eyebrow={filter === "excavator" ? "Export Shop" : "Export Shop"}
+          title={filter === "excavator" ? "Used Excavators for Export" : "수출용 쇼핑몰"}
+          description={filter === "excavator"
+            ? "Grade-certified (A/B/C), PDI-complete used excavators from Hyundai Construction Equipment. Ready to ship worldwide."
+            : "수출용 매물을 확인하고, 필요 시 스펙·가격·선적 조건을 요청하실 수 있습니다."
+          }
         />
 
         {/* ========================================================
@@ -671,76 +866,97 @@ const ExportShopPage: React.FC = () => {
           <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-8">
 
             {/* 파트너 박스 */}
-            <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm space-y-4">
+            {filter !== "excavator" && (
+              <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* 크린어스 */}
+                  <a
+                    href="http://www.cleanearth.kr/"
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="group rounded-2xl border border-gray-200 bg-white px-5 py-4 hover:border-orange-300 hover:shadow-sm transition-all min-h-[110px] flex flex-col justify-center"
+                    title="(주)크린어스 홈페이지로 이동"
+                    aria-label="파트너사 (주)크린어스 홈페이지 (새 탭)"
+                  >
+                    <div className="flex items-center">
+                      <img
+                        src="/logo/cleanearth.png"
+                        alt="(주)크린어스 로고"
+                        className="h-10 md:h-9 w-auto object-contain"
+                        loading="lazy"
+                      />
+                    </div>
+                    <p className="mt-3 text-sm font-semibold text-navy-900 leading-snug">
+                      이 사업은 지구를 깨끗하게 크린어스(CleanEarth)
+                      <br />(주)크린어스와 함께합니다.
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-navy-900">www.cleanearth.kr</p>
+                  </a>
 
-              {/* ✅ 파트너사 링크 — 텍스트로 크롤링 가능하도록 p태그 처리 */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* 크린어스 */}
-                <a
-                  href="http://www.cleanearth.kr/"
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="group rounded-2xl border border-gray-200 bg-white px-5 py-4 hover:border-orange-300 hover:shadow-sm transition-all min-h-[110px] flex flex-col justify-center"
-                  title="(주)크린어스 홈페이지로 이동"
-                  aria-label="파트너사 (주)크린어스 홈페이지 (새 탭)"
-                >
-                  <div className="flex items-center">
-                    <img
-                      src="/logo/cleanearth.png"
-                      alt="(주)크린어스 로고"
-                      className="h-10 md:h-9 w-auto object-contain"
-                      loading="lazy"
-                    />
-                  </div>
-                  <p className="mt-3 text-sm font-semibold text-navy-900 leading-snug">
-                    이 사업은 지구를 깨끗하게 크린어스(CleanEarth)
-                    <br />(주)크린어스와 함께합니다.
-                  </p>
-                  <p className="mt-1 text-xs font-semibold text-navy-900">www.cleanearth.kr</p>
-                </a>
+                  {/* 형제중기 */}
+                  <a
+                    href="http://www.brotherlift.com"
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="group rounded-2xl border border-gray-200 bg-white px-5 py-4 hover:border-orange-300 hover:shadow-sm transition-all min-h-[110px] flex flex-col justify-center"
+                    title="현대지게차 경기북부판매 – 웹사이트 바로가기"
+                    aria-label="파트너사 현대지게차 경기북부판매(형제중기) 홈페이지 (새 탭)"
+                  >
+                    <div className="flex items-center">
+                      <img
+                        src="/logo/brotherlift.png"
+                        alt="현대지게차 경기북부판매(형제중기) 로고"
+                        className="h-12 md:h-10 w-auto object-contain"
+                        loading="lazy"
+                      />
+                    </div>
+                    <p className="mt-3 text-sm font-semibold text-navy-900 leading-snug">
+                      아래 차량들은 국내 최고의 지게차 정비업체
+                      <br />현대지게차 경기북부판매(형제중기)에서 관리합니다.
+                    </p>
+                    <p className="text-xs font-medium text-gray-600 mt-1">
+                      📞{" "}
+                      <span onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+                        <a href="tel:1899-1373" className="hover:text-orange-600 transition-colors">
+                          1899-1373
+                        </a>
+                      </span>
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-navy-900">www.brotherlift.com</p>
+                  </a>
+                </div>
 
-                {/* 형제중기 */}
-                <a
-                  href="http://www.brotherlift.com"
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="group rounded-2xl border border-gray-200 bg-white px-5 py-4 hover:border-orange-300 hover:shadow-sm transition-all min-h-[110px] flex flex-col justify-center"
-                  title="현대지게차 경기북부판매 – 웹사이트 바로가기"
-                  aria-label="파트너사 현대지게차 경기북부판매(형제중기) 홈페이지 (새 탭)"
-                >
-                  <div className="flex items-center">
-                    <img
-                      src="/logo/brotherlift.png"
-                      alt="현대지게차 경기북부판매(형제중기) 로고"
-                      className="h-12 md:h-10 w-auto object-contain"
-                      loading="lazy"
-                    />
-                  </div>
-                  <p className="mt-3 text-sm font-semibold text-navy-900 leading-snug">
-                    아래 차량들은 국내 최고의 지게차 정비업체
-                    <br />현대지게차 경기북부판매(형제중기)에서 관리합니다.
+                {/* 로딩 / 에러 */}
+                {loading && (
+                  <p className="text-sm text-gray-500 mt-2 flex items-center gap-2" aria-live="polite">
+                    <Loader2 className="animate-spin h-4 w-4" aria-hidden="true" />
+                    상품 정보를 불러오는 중입니다...
                   </p>
-                  <p className="text-xs font-medium text-gray-600 mt-1">
-                    📞{" "}
-                    <span onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
-                      <a href="tel:1899-1373" className="hover:text-orange-600 transition-colors">
-                        1899-1373
-                      </a>
-                    </span>
-                  </p>
-                  <p className="mt-1 text-xs font-semibold text-navy-900">www.brotherlift.com</p>
-                </a>
+                )}
+                {!!errMsg && <p className="text-sm text-red-600 mt-2" role="alert">{errMsg}</p>}
               </div>
+            )}
 
-              {/* 로딩 / 에러 */}
-              {loading && (
-                <p className="text-sm text-gray-500 mt-2 flex items-center gap-2" aria-live="polite">
-                  <Loader2 className="animate-spin h-4 w-4" aria-hidden="true" />
-                  상품 정보를 불러오는 중입니다...
-                </p>
-              )}
-              {!!errMsg && <p className="text-sm text-red-600 mt-2" role="alert">{errMsg}</p>}
-            </div>
+            {/* 굴삭기 탭 - 영문 파트너 박스 */}
+            {filter === "excavator" && (
+              <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm">
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <p className="text-xs font-semibold tracking-wider text-orange-500 uppercase mb-1">Supplier</p>
+                    <p className="font-bold text-slate-900">Hyundai Construction Equipment — Busan/Gyeongnam</p>
+                    <p className="text-sm text-slate-500 mt-1">
+                      Grade-certified used excavators. PDI complete. Parts package available.
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-xs text-slate-400">Contact</p>
+                    <a href="tel:15511873" className="text-sm font-bold text-slate-800 hover:text-orange-500 transition-colors">
+                      +82-1551-1873
+                    </a>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* ✅ 필터 — role="group" + aria-label + aria-pressed */}
             <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-sm space-y-5">
@@ -767,12 +983,40 @@ const ExportShopPage: React.FC = () => {
                 </button>
                 <button
                   type="button"
+                  className={`${pillBase} ${filter === "mini_excavator" ? pillOn : pillOff}`}
+                  onClick={() => setFilter("mini_excavator")}
+                  aria-pressed={filter === "mini_excavator"}
+                >
+                  미니굴삭기 ({miniExcavatorCount})
+                </button>
+                <button
+                  type="button"
                   className={`${pillBase} ${filter === "excavator" ? pillOn : pillOff}`}
                   onClick={() => setFilter("excavator")}
                   aria-pressed={filter === "excavator"}
                 >
                   굴삭기 ({excavatorCount})
                 </button>
+                {canManage && (
+                  <div className="ml-auto flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => navigate("/export-shop/listing/new")}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 transition-all"
+                    >
+                      <Plus size={13} />
+                      굴삭기 등록
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/export-shop/listing/manage")}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-300 text-gray-600 text-xs font-semibold hover:bg-gray-50 transition-all"
+                    >
+                      <Settings size={13} />
+                      관리
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* ✅ 스크린리더에 결과 수 알림 */}
@@ -792,6 +1036,50 @@ const ExportShopPage: React.FC = () => {
                   </li>
                 ))}
               </ul>
+
+              {/* ── DB 굴삭기 섹션 (현대건설기계 부산/경남) ── */}
+              {(filter === "all" || filter === "excavator") && (
+                <div className="mt-6 space-y-4">
+                  {(filter === "all") && (
+                    <div className="flex items-center gap-3">
+                      <div className="h-px flex-1 bg-gray-200" />
+                      <p className="text-xs font-semibold text-gray-400 tracking-wider uppercase">굴삭기 (현대건설기계 부산/경남)</p>
+                      <div className="h-px flex-1 bg-gray-200" />
+                    </div>
+                  )}
+
+                  {dbLoading && (
+                    <p className="text-sm text-gray-400 flex items-center gap-2">
+                      <Loader2 className="animate-spin h-4 w-4" />
+                      굴삭기 매물을 불러오는 중...
+                    </p>
+                  )}
+
+                  {!dbLoading && dbListings.length === 0 && (
+                    <div className="text-center py-10 text-gray-400 text-sm">
+                      등록된 굴삭기 매물이 없습니다.
+                      {canManage && (
+                        <button
+                          onClick={() => navigate("/export-shop/listing/new")}
+                          className="ml-2 text-orange-500 underline"
+                        >
+                          첫 매물 등록하기
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {!dbLoading && dbListings.length > 0 && (
+                    <ul className="grid grid-cols-1 md:grid-cols-3 gap-6 list-none p-0">
+                      {dbListings.map((item) => (
+                        <li key={item.id}>
+                          <DbExcavatorCard item={item} />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
 
           </div>
@@ -803,12 +1091,18 @@ const ExportShopPage: React.FC = () => {
             style={{ backgroundImage: "repeating-linear-gradient(45deg, white 0, white 1px, transparent 0, transparent 50%)", backgroundSize: "24px 24px" }} />
           <div className="relative px-6 md:px-10 py-10 md:py-14 flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="space-y-2">
-              <p className="text-sm font-semibold tracking-[0.12em] uppercase text-orange-400">견적 문의</p>
+              <p className="text-sm font-semibold tracking-[0.12em] uppercase text-orange-400">
+                {filter === "excavator" ? "Can't find what you need?" : "견적 문의"}
+              </p>
               <h2 className="text-2xl md:text-3xl font-semibold break-keep">
-                원하시는 장비를 찾지 못하셨나요?
+                {filter === "excavator"
+                  ? "Tell us your requirements"
+                  : "원하시는 장비를 찾지 못하셨나요?"}
               </h2>
               <p className="text-white/70 text-sm leading-relaxed break-keep">
-                수량·기종·예산을 알려주시면 맞춤 견적을 빠르게 안내해 드립니다.
+                {filter === "excavator"
+                  ? "Share your specs, quantity and budget — we'll find the right excavator for you."
+                  : "수량·기종·예산을 알려주시면 맞춤 견적을 빠르게 안내해 드립니다."}
               </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-3 shrink-0">
@@ -816,13 +1110,13 @@ const ExportShopPage: React.FC = () => {
                 to="/export-shop/inquiry"
                 className="inline-flex items-center justify-center px-6 py-3 rounded-2xl bg-orange-500 text-white font-semibold hover:bg-orange-600 transition-all"
               >
-                상담 / 견적 요청
+                {filter === "excavator" ? "Request a Quote" : "상담 / 견적 요청"}
               </Link>
               <a
                 href="tel:15511873"
                 className="inline-flex items-center justify-center px-6 py-3 rounded-2xl border border-white/30 text-white font-semibold hover:bg-white/10 transition-all"
               >
-                ☎ 1551-1873
+                {filter === "excavator" ? "☎ +82-1551-1873" : "☎ 1551-1873"}
               </a>
             </div>
           </div>

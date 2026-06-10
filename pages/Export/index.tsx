@@ -1,603 +1,495 @@
-import React from "react";
-import { Link } from "react-router-dom";
+// pages/Export/ExportShopPage.tsx
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import { Phone, Truck, Check } from "lucide-react";
-
-// ====================================================
-// SEO 설정
-// ====================================================
-const SEO_TITLE = "노후 지게차 수출 | 중고 디젤 지게차 해외 수출 전문 | RNF KOREA";
-const SEO_DESC =
-  "국내 노후 디젤 지게차를 매입·정비·등급화(A/B/C)해 신흥국에 안정적으로 수출합니다. 롯데렌탈·현대캐피탈 등 대형 렌탈사 직수출 파트너. 톤수·연식·수량 상담 1551-1873.";
-const SEO_CANONICAL = "https://www.rnfkorea.co.kr/export";
-const SEO_KEYWORDS =
-  "노후지게차수출,중고지게차수출,디젤지게차수출,used forklift export,지게차해외수출,중고장비수출,지게차매입,노후장비수출,신흥국지게차,지게차수출한국";
-const SEO_OG_IMAGE = "https://www.rnfkorea.co.kr/og-image.jpg";
-
-/**
- * ✅ JSON-LD: Service — 수출 서비스 구조화 데이터
- * 구글 리치결과, 네이버 스마트블록에 서비스로 노출
- */
-const JSON_LD_SERVICE = {
-  "@context": "https://schema.org",
-  "@type": "Service",
-  name: "노후 디젤 지게차 해외 수출",
-  alternateName: "Used Forklift Export",
-  description:
-    "국내 노후 디젤 지게차 매입 후 정비·등급화(A/B/C)하여 신흥국 산업 현장에 수출. 정비 완료 + 부품 패키지 포함 납품 구조.",
-  provider: {
-    "@type": "Organization",
-    name: "(주)알앤에프코리아",
-    url: "https://www.rnfkorea.co.kr",
-    telephone: "1551-1873",
-  },
-  areaServed: [
-    { "@type": "Country", name: "Korea" },
-    { "@type": "Place", name: "신흥국 (동남아·중앙아시아·아프리카)" },
-  ],
-  serviceType: "중고 산업장비 해외 수출",
-  offers: {
-    "@type": "Offer",
-    description: "연식 7~15년, 디젤, 2.5~8톤 지게차. A/B/C 등급 정비 패키지 포함 수출.",
-  },
-};
-
-/**
- * ✅ JSON-LD: BreadcrumbList
- */
-const JSON_LD_BREADCRUMB = {
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  itemListElement: [
-    { "@type": "ListItem", position: 1, name: "홈",            item: "https://www.rnfkorea.co.kr/" },
-    { "@type": "ListItem", position: 2, name: "중고장비 수출", item: "https://www.rnfkorea.co.kr/export" },
-  ],
-};
+import {
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  Phone,
+  Plus,
+  Settings,
+  X,
+} from "lucide-react";
+import { supabase } from "../../lib/supabase";
+import { useAuth } from "../../lib/auth";
 
 // ====================================================
 // 타입 정의
 // ====================================================
-type PageHeroProps = {
-  eyebrow?: string;
-  title: string;
-  description?: string;
-  right?: React.ReactNode;
-};
+type Category = "all" | "forklift" | "mini_excavator" | "excavator";
+type ConditionGrade = "A" | "B" | "C";
+type Status = "active" | "sold" | "draft";
 
-type SectionHeaderProps = {
-  eyebrow?: string;
-  title: string;
-  description?: string;
+type Listing = {
+  id: string;
+  category: "forklift" | "mini_excavator" | "excavator";
+  brand: string;
+  model: string | null;
+  year: number | null;
+  tonnage: number | null;
+  engine_type: string | null;
+  condition_grade: ConditionGrade | null;
+  price_usd: number | null;
+  price_negotiable: boolean;
+  stock_qty: number;
+  available_date: string | null;
+  description_en: string | null;
+  images: string[];
+  status: Status;
+  created_at: string;
 };
 
 // ====================================================
-// 공통 컴포넌트
+// 상수
 // ====================================================
-function PageHero({ eyebrow, title, description, right }: PageHeroProps) {
+const CATEGORY_LABELS: Record<string, string> = {
+  all: "All Equipment",
+  forklift: "Forklift",
+  mini_excavator: "Mini Excavator",
+  excavator: "Excavator",
+};
+
+const GRADE_COLOR: Record<ConditionGrade, string> = {
+  A: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  B: "bg-blue-100 text-blue-700 border-blue-200",
+  C: "bg-amber-100 text-amber-700 border-amber-200",
+};
+
+const GRADE_DESC: Record<ConditionGrade, string> = {
+  A: "Excellent — fully reconditioned",
+  B: "Good — PDI complete",
+  C: "Fair — functional, minor wear",
+};
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const STORAGE_BASE = `${SUPABASE_URL}/storage/v1/object/public/export-listings`;
+
+// ====================================================
+// 유틸
+// ====================================================
+function imgUrl(path: string) {
+  if (!path) return "/placeholder-equipment.jpg";
+  if (path.startsWith("http")) return path;
+  return `${STORAGE_BASE}/${path}`;
+}
+
+function fmtPrice(usd: number | null, negotiable: boolean) {
+  if (!usd) return negotiable ? "Price on Request" : "—";
+  return `USD ${usd.toLocaleString()}${negotiable ? " (Negotiable)" : ""}`;
+}
+
+function fmtTonnage(t: number | null) {
+  if (!t) return null;
+  return `${t}T`;
+}
+
+// ====================================================
+// 이미지 라이트박스
+// ====================================================
+function Lightbox({
+  images,
+  index,
+  onClose,
+}: {
+  images: string[];
+  index: number;
+  onClose: () => void;
+}) {
+  const [cur, setCur] = useState(index);
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowRight") setCur((c) => (c + 1) % images.length);
+      if (e.key === "ArrowLeft") setCur((c) => (c - 1 + images.length) % images.length);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [images.length, onClose]);
+
   return (
-    <section
-      className="relative bg-[#0a192f] text-white overflow-hidden"
-      aria-label="페이지 헤더"
+    <div
+      className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
+      onClick={onClose}
     >
-      {/* 배경 패턴 */}
-      <div className="absolute inset-0 opacity-[0.04]" aria-hidden="true">
-        <div className="absolute inset-0" style={{
-          backgroundImage: "repeating-linear-gradient(45deg, white 0, white 1px, transparent 0, transparent 50%)",
-          backgroundSize: "24px 24px",
-        }} />
-      </div>
+      <button
+        className="absolute top-4 right-4 text-white/70 hover:text-white"
+        onClick={onClose}
+      >
+        <X size={28} />
+      </button>
+      <button
+        className="absolute left-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white"
+        onClick={(e) => { e.stopPropagation(); setCur((c) => (c - 1 + images.length) % images.length); }}
+      >
+        <ChevronLeft size={36} />
+      </button>
+      <img
+        src={imgUrl(images[cur])}
+        alt={`Photo ${cur + 1}`}
+        className="max-h-[85vh] max-w-[90vw] object-contain rounded-xl"
+        onClick={(e) => e.stopPropagation()}
+      />
+      <button
+        className="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white"
+        onClick={(e) => { e.stopPropagation(); setCur((c) => (c + 1) % images.length); }}
+      >
+        <ChevronRight size={36} />
+      </button>
+      <p className="absolute bottom-4 text-white/50 text-sm">
+        {cur + 1} / {images.length}
+      </p>
+    </div>
+  );
+}
 
-      <div className="relative max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-12 md:py-16">
-        <div className="grid lg:grid-cols-12 gap-8 lg:gap-6 items-start">
-          <div className="lg:col-span-7">
+// ====================================================
+// 매물 카드
+// ====================================================
+function ListingCard({ item }: { item: Listing }) {
+  const [lbIdx, setLbIdx] = useState<number | null>(null);
+  const [imgIdx, setImgIdx] = useState(0);
+  const hasImages = item.images.length > 0;
 
-            {/* ✅ Breadcrumb — 검색결과 경로 표시 */}
-            <nav aria-label="breadcrumb">
-              <ol
-                className="flex items-center text-sm text-white/60"
-                itemScope
-                itemType="https://schema.org/BreadcrumbList"
-              >
-                <li
-                  itemProp="itemListElement"
-                  itemScope
-                  itemType="https://schema.org/ListItem"
-                >
-                  <Link to="/" className="hover:text-white transition-colors" itemProp="item">
-                    <span itemProp="name">Home</span>
-                  </Link>
-                  <meta itemProp="position" content="1" />
-                </li>
-                <li aria-hidden="true" className="mx-2">/</li>
-                <li
-                  className="text-white/90 font-semibold"
-                  itemProp="itemListElement"
-                  itemScope
-                  itemType="https://schema.org/ListItem"
-                  aria-current="page"
-                >
-                  <span itemProp="name">중고장비 수출사업</span>
-                  <meta itemProp="position" content="2" />
-                </li>
-              </ol>
-            </nav>
+  return (
+    <>
+      {lbIdx !== null && (
+        <Lightbox
+          images={item.images}
+          index={lbIdx}
+          onClose={() => setLbIdx(null)}
+        />
+      )}
 
-            {eyebrow && (
-              <p className="mt-4 text-sm font-medium tracking-[0.12em] uppercase text-orange-400">
-                {eyebrow}
-              </p>
-            )}
+      <article className="rounded-2xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col">
+        {/* 이미지 */}
+        <div
+          className="relative aspect-[4/3] bg-gray-100 cursor-pointer overflow-hidden"
+          onClick={() => hasImages && setLbIdx(imgIdx)}
+        >
+          {hasImages ? (
+            <img
+              src={imgUrl(item.images[imgIdx])}
+              alt={`${item.brand} ${item.model ?? ""}`}
+              className="w-full h-full object-cover transition-transform hover:scale-105"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-gray-300 text-sm">
+              No photo
+            </div>
+          )}
 
-            {/* ✅ h1: 핵심 키워드 포함 */}
-            <h1 className="mt-4 text-3xl md:text-4xl lg:text-5xl font-semibold leading-[1.15] text-white break-keep">
-              {title}
-            </h1>
+          {/* 이미지 썸네일 내비 */}
+          {item.images.length > 1 && (
+            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
+              {item.images.slice(0, 6).map((_, i) => (
+                <button
+                  key={i}
+                  onClick={(e) => { e.stopPropagation(); setImgIdx(i); }}
+                  className={`w-2 h-2 rounded-full transition-all ${i === imgIdx ? "bg-white scale-125" : "bg-white/50"}`}
+                />
+              ))}
+            </div>
+          )}
 
-            {description && (
-              <p className="mt-4 text-base md:text-lg leading-7 text-white/75 max-w-3xl break-keep">
-                {description}
-              </p>
-            )}
-          </div>
+          {/* SOLD 뱃지 */}
+          {item.status === "sold" && (
+            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+              <span className="text-white font-bold text-xl tracking-widest">SOLD</span>
+            </div>
+          )}
 
-          {right && (
-            <aside className="lg:col-span-5" aria-label="수출 쇼핑몰 및 파트너 안내">
-              {right}
-            </aside>
+          {/* 등급 뱃지 */}
+          {item.condition_grade && (
+            <span className={`absolute top-2 left-2 text-xs font-bold px-2 py-0.5 rounded-full border ${GRADE_COLOR[item.condition_grade]}`}>
+              Grade {item.condition_grade}
+            </span>
           )}
         </div>
-      </div>
-    </section>
+
+        {/* 정보 */}
+        <div className="p-5 flex flex-col flex-1 gap-3">
+          {/* 카테고리 */}
+          <p className="text-xs font-semibold tracking-wider text-orange-500 uppercase">
+            {CATEGORY_LABELS[item.category]}
+          </p>
+
+          {/* 브랜드/모델 */}
+          <h3 className="text-base font-bold text-slate-900 leading-snug">
+            {item.brand}{item.model ? ` ${item.model}` : ""}
+            {item.year ? ` (${item.year})` : ""}
+          </h3>
+
+          {/* 스펙 칩 */}
+          <div className="flex flex-wrap gap-2">
+            {fmtTonnage(item.tonnage) && (
+              <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-lg font-medium">
+                {fmtTonnage(item.tonnage)}
+              </span>
+            )}
+            {item.engine_type && (
+              <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-lg font-medium capitalize">
+                {item.engine_type}
+              </span>
+            )}
+            {item.stock_qty > 1 && (
+              <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-lg font-medium">
+                Qty: {item.stock_qty}
+              </span>
+            )}
+          </div>
+
+          {/* 등급 설명 */}
+          {item.condition_grade && (
+            <p className="text-xs text-slate-500">{GRADE_DESC[item.condition_grade]}</p>
+          )}
+
+          {/* 설명 */}
+          {item.description_en && (
+            <p className="text-sm text-slate-600 leading-relaxed line-clamp-3">
+              {item.description_en}
+            </p>
+          )}
+
+          {/* 가격 */}
+          <div className="mt-auto pt-3 border-t border-gray-100">
+            <p className="text-base font-bold text-slate-900">
+              {fmtPrice(item.price_usd, item.price_negotiable)}
+            </p>
+            {item.available_date && (
+              <p className="text-xs text-slate-400 mt-1">
+                Available from: {item.available_date}
+              </p>
+            )}
+          </div>
+
+          {/* CTA */}
+          <Link
+            to={`/export-shop/inquiry?ref=${item.id}&model=${encodeURIComponent(`${item.brand} ${item.model ?? ""}`.trim())}`}
+            className="mt-2 inline-flex items-center justify-center w-full px-4 py-2.5 rounded-xl bg-orange-500 text-white font-semibold text-sm hover:bg-orange-600 transition-all"
+          >
+            Request Quote →
+          </Link>
+        </div>
+      </article>
+    </>
   );
 }
 
-function SectionHeader({ eyebrow, title, description }: SectionHeaderProps) {
+// ====================================================
+// 메인 페이지
+// ====================================================
+const ExportShopPage: React.FC = () => {
+  const { isHyundaiCM, isAdmin, isSubAdmin } = useAuth();
+  const navigate = useNavigate();
+  const canManage = isHyundaiCM || isAdmin || isSubAdmin;
+
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Category>("all");
+
+  const fetchListings = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data, error: err } = await supabase
+        .from("export_listings")
+        .select("*")
+        .in("status", ["active", "sold"])
+        .order("created_at", { ascending: false });
+
+      if (err) throw err;
+      setListings((data as Listing[]) ?? []);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to load listings.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchListings(); }, [fetchListings]);
+
+  const filtered = useMemo(() => {
+    if (filter === "all") return listings;
+    return listings.filter((l) => l.category === filter);
+  }, [listings, filter]);
+
+  const counts = useMemo(() => ({
+    all: listings.length,
+    forklift: listings.filter((l) => l.category === "forklift").length,
+    mini_excavator: listings.filter((l) => l.category === "mini_excavator").length,
+    excavator: listings.filter((l) => l.category === "excavator").length,
+  }), [listings]);
+
   return (
-    <div className="max-w-3xl">
-      {eyebrow && (
-        <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">
-          {eyebrow}
-        </p>
-      )}
-      {/* ✅ h2: 섹션 계층 명확화 */}
-      <h2 className="mt-3 text-2xl md:text-3xl font-semibold leading-[1.2] text-navy-900 break-keep">
-        {title}
-      </h2>
-      {description && (
-        <p className="mt-3 text-base leading-7 text-neutral-600 break-keep">
-          {description}
-        </p>
-      )}
-    </div>
-  );
-}
-
-// ====================================================
-// 스타일 상수
-// ====================================================
-const card =
-  "border border-gray-200 rounded-2xl bg-white p-6 " +
-  "shadow-[0_10px_30px_rgba(15,23,42,0.06)]";
-
-// ====================================================
-// 메인 페이지 컴포넌트
-// ====================================================
-const ExportOverviewPage: React.FC = () => {
-  return (
-    <div className="bg-white text-navy-900">
-
-      {/* ========================================================
-          ✅ SEO HEAD
-          ======================================================== */}
+    <div className="min-h-screen bg-white">
       <Helmet>
-        <title>{SEO_TITLE}</title>
-        <meta name="description" content={SEO_DESC} />
-        <meta name="keywords" content={SEO_KEYWORDS} />
-        <link rel="canonical" href={SEO_CANONICAL} />
-        <meta name="robots" content="index, follow" />
-
-        {/* Open Graph */}
-        <meta property="og:type" content="website" />
-        <meta property="og:site_name" content="(주)알앤에프코리아" />
-        <meta property="og:title" content={SEO_TITLE} />
-        <meta property="og:description" content={SEO_DESC} />
-        <meta property="og:url" content={SEO_CANONICAL} />
-        <meta property="og:image" content={SEO_OG_IMAGE} />
-        <meta property="og:image:width" content="1200" />
-        <meta property="og:image:height" content="630" />
-        <meta property="og:locale" content="ko_KR" />
-
-        {/* Twitter Card */}
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content={SEO_TITLE} />
-        <meta name="twitter:description" content={SEO_DESC} />
-        <meta name="twitter:image" content={SEO_OG_IMAGE} />
-
-        {/* JSON-LD */}
-        <script type="application/ld+json">{JSON.stringify(JSON_LD_SERVICE)}</script>
-        <script type="application/ld+json">{JSON.stringify(JSON_LD_BREADCRUMB)}</script>
+        <title>Used Forklift & Excavator for Export | RNF KOREA</title>
+        <meta
+          name="description"
+          content="Browse RNF KOREA's export-ready used forklifts and excavators. Grade A/B/C certified, PDI complete, parts package available. Contact us for pricing."
+        />
       </Helmet>
 
-      {/* ========================================================
-          PAGE HEADER
-          ======================================================== */}
-      <PageHero
-        eyebrow="Export Business"
-        title="중고장비 수출사업"
-        description={'한국에서 중고 디젤 지게차를 매입하고, 정비·등급화(A/B/C)한 뒤 신흥국 산업 현장에 안정적으로 공급합니다. "정비 완료 + 부품 패키지"로 품질 불균형 시장을 정면 공략합니다.'}
-        right={
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* 수출 쇼핑몰 카드 */}
-            <Link
-              to="/export-shop"
-              className="rounded-3xl bg-white/10 border border-white/20 backdrop-blur-sm p-4 md:p-5 hover:bg-white/20 transition-all sm:aspect-square"
-              aria-label="수출용 쇼핑몰(매물) 보기"
+      {/* ── Hero ── */}
+      <section className="relative bg-[#0a192f] text-white overflow-hidden">
+        <div
+          className="absolute inset-0 opacity-[0.04]"
+          style={{
+            backgroundImage: "repeating-linear-gradient(45deg,white 0,white 1px,transparent 0,transparent 50%)",
+            backgroundSize: "24px 24px",
+          }}
+        />
+        <div className="relative max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-12 md:py-16">
+          <nav className="flex items-center gap-2 text-sm text-white/50 mb-6">
+            <Link to="/" className="hover:text-white transition-colors">Home</Link>
+            <span>/</span>
+            <Link to="/export" className="hover:text-white transition-colors">Export</Link>
+            <span>/</span>
+            <span className="text-white/90">Equipment Shop</span>
+          </nav>
+
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
+            <div>
+              <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-400 mb-3">
+                Export Shop
+              </p>
+              <h1 className="text-3xl md:text-4xl lg:text-5xl font-semibold leading-[1.15] break-keep">
+                Used Equipment
+                <br />for Export
+              </h1>
+              <p className="mt-4 text-white/70 text-base leading-7 max-w-xl break-keep">
+                Grade-certified (A/B/C), PDI-complete used forklifts and excavators.
+                Ready to ship worldwide.
+              </p>
+            </div>
+
+            {/* 관리자 버튼 */}
+            {canManage && (
+              <div className="flex gap-3 shrink-0">
+                <button
+                  onClick={() => navigate("/export-shop/listing/new")}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-orange-500 text-white font-semibold text-sm hover:bg-orange-600 transition-all"
+                >
+                  <Plus size={16} />
+                  Add Listing
+                </button>
+                <button
+                  onClick={() => navigate("/export-shop/listing/manage")}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 border border-white/20 text-white font-semibold text-sm hover:bg-white/20 transition-all"
+                >
+                  <Settings size={16} />
+                  Manage
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* ── 본문 ── */}
+      <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-10 space-y-8">
+
+        {/* 필터 탭 */}
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Equipment category filter">
+          {(["all", "forklift", "mini_excavator", "excavator"] as Category[]).map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setFilter(cat)}
+              aria-pressed={filter === cat}
+              className={[
+                "px-4 py-2 rounded-xl text-sm font-semibold transition-all border",
+                filter === cat
+                  ? "bg-slate-900 text-white border-slate-900"
+                  : "bg-white text-slate-600 border-slate-200 hover:border-slate-300",
+              ].join(" ")}
             >
-              <div className="h-full flex flex-col">
-                <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-400">
-                  Export Shop
-                </p>
-                <p className="mt-3 text-lg md:text-xl font-semibold leading-[1.2] text-white break-keep">
-                  수출용 쇼핑몰 보기
-                </p>
-                <p className="mt-3 text-sm leading-6 text-white/70 break-keep">
-                  정비·등급화된 매물을 바로 확인할 수 있습니다.
-                </p>
-                <div className="mt-auto pt-4">
-                  <div className="inline-flex items-center justify-center px-4 py-2 rounded-2xl bg-orange-500 text-white font-semibold text-sm whitespace-nowrap">
-                    쇼핑몰 바로가기 →
-                  </div>
-                </div>
-              </div>
-            </Link>
+              {CATEGORY_LABELS[cat]}
+              <span className={`ml-1.5 text-xs ${filter === cat ? "text-white/70" : "text-slate-400"}`}>
+                ({counts[cat]})
+              </span>
+            </button>
+          ))}
+        </div>
 
-            {/* 파트너 카드 */}
-            <div className="rounded-3xl bg-white/10 border border-white/20 backdrop-blur-sm p-4 md:p-5 sm:aspect-square">
-              <div className="h-full flex flex-col">
-                <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-400">
-                  Partner Network
-                </p>
-                <p className="mt-3 text-lg md:text-xl font-semibold leading-6 text-white break-keep">
-                  이 사업은 (주)크린어스와 함께합니다
-                </p>
-                <div className="mt-auto pt-4 space-y-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <img
-                      src="/logo/cleanearth.png"
-                      alt="(주)크린어스 로고"
-                      className="h-8 w-auto object-contain brightness-0 invert"
-                      loading="lazy"
-                    />
-                  </div>
-                  <a
-                    href="http://www.cleanearth.kr/"
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-orange-500 text-white font-semibold text-sm hover:bg-orange-400 transition-all w-full whitespace-nowrap"
-                    title="(주)크린어스 홈페이지로 이동"
-                    aria-label="파트너사 (주)크린어스 홈페이지 (새 탭)"
-                  >
-                    파트너사 홈페이지 →
-                  </a>
-                </div>
-              </div>
-            </div>
+        {/* 로딩 / 에러 */}
+        {loading && (
+          <div className="flex items-center justify-center py-20 text-slate-400 gap-2">
+            <Loader2 className="animate-spin" size={20} />
+            <span>Loading listings...</span>
           </div>
-        }
-      />
+        )}
 
-      <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-10 space-y-4">
+        {!loading && error && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-red-700 text-sm">
+            {error}
+          </div>
+        )}
 
-        {/* ========================================================
-            시장 개요
-            ======================================================== */}
-        <section className="space-y-6" aria-labelledby="market-heading">
-          <SectionHeader
-            eyebrow="Market Overview"
-            title="시장 개요"
-            description="국내는 환경규제 강화로 노후 디젤 장비 교체가 가속화되고, 신흥국은 제조·물류 인프라 확대로 지게차 수요가 증가합니다."
-          />
+        {/* 매물 없음 */}
+        {!loading && !error && filtered.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
+            <p className="text-lg font-semibold">No listings available</p>
+            <p className="text-sm">Please check back soon or contact us directly.</p>
+            {canManage && (
+              <button
+                onClick={() => navigate("/export-shop/listing/new")}
+                className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-orange-500 text-white font-semibold text-sm hover:bg-orange-600 transition-all"
+              >
+                <Plus size={16} />
+                Add First Listing
+              </button>
+            )}
+          </div>
+        )}
 
-          <ul className="grid md:grid-cols-3 gap-6 list-none p-0" role="list">
-            {/* STEP 1 */}
-            <li className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md transition-all">
-              <p className="text-xs font-semibold tracking-wider text-blue-600 mb-3">
-                STEP 1 · 국내 공급
-              </p>
-              <h3 className="text-lg font-semibold text-navy-900 mb-3">
-                연간 약 1만 대 폐차 대상 발생
-              </h3>
-              <p className="text-gray-600 leading-relaxed text-sm">
-                국내에서 매년 약 1만 대 이상의 중고 장비가 교체 또는 폐차 대상으로 분류됩니다.
-                단순 폐기 시 자원 손실과 비용 부담이 발생합니다.
-              </p>
-            </li>
-
-            {/* STEP 2 */}
-            <li className="rounded-2xl border-2 border-orange-400 bg-orange-50 p-6 shadow-md hover:shadow-lg transition-all">
-              <p className="text-xs font-semibold tracking-wider text-orange-600 mb-3">
-                STEP 2 · RNF 재상품화
-              </p>
-              <h3 className="text-lg font-semibold text-navy-900 mb-3">
-                정비 · 등급화 · 수출 표준화
-              </h3>
-              <p className="text-gray-700 leading-relaxed text-sm">
-                전문 정비(PDI) 및 등급화를 통해 수출 가능한 상품으로 재탄생시킵니다.
-                가격 경쟁력과 품질 신뢰를 동시에 확보합니다.
-              </p>
-            </li>
-
-            {/* STEP 3 */}
-            <li className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md transition-all">
-              <p className="text-xs font-semibold tracking-wider text-green-600 mb-3">
-                STEP 3 · 해외 수요
-              </p>
-              <h3 className="text-lg font-semibold text-navy-900 mb-3">
-                신흥국 산업·물류 인프라 확대
-              </h3>
-              <p className="text-gray-600 leading-relaxed text-sm">
-                제조 및 물류 인프라가 빠르게 성장하는 신흥국 시장에 재공급함으로써
-                자원 재생·순환 경제에 기여하는 수출 모델을 구축합니다.
-              </p>
-              <p className="mt-5 flex items-center gap-2 text-green-600 text-sm font-semibold">
-                <span aria-hidden="true">♻</span>
-                자원 재생 · 순환 경제 기여
-              </p>
-            </li>
+        {/* 매물 그리드 */}
+        {!loading && !error && filtered.length > 0 && (
+          <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 list-none p-0">
+            {filtered.map((item) => (
+              <li key={item.id}>
+                <ListingCard item={item} />
+              </li>
+            ))}
           </ul>
-        </section>
+        )}
 
-        {/* ========================================================
-            수출 대상 장비
-            ======================================================== */}
-        <section className="space-y-6" aria-labelledby="scope-heading">
-          <SectionHeader
-            eyebrow="Export Scope"
-            title="수출 대상 장비"
-            description="국내 사용/유통이 제한된 장비에 새로운 생명력을 부여합니다."
+        {/* CTA 섹션 */}
+        <section className="rounded-3xl bg-[#0a192f] text-white overflow-hidden relative mt-8">
+          <div
+            className="absolute inset-0 opacity-[0.04]"
+            style={{
+              backgroundImage: "repeating-linear-gradient(45deg,white 0,white 1px,transparent 0,transparent 50%)",
+              backgroundSize: "24px 24px",
+            }}
           />
-
-          {/* ✅ dl/dt/dd — 스펙 정보를 검색엔진이 key-value로 인식 */}
-          <dl className="grid md:grid-cols-4 gap-4">
-            {[
-              { label: "연식",   value: "8년~15년" },
-              { label: "엔진",   value: "디젤/전동" },
-              { label: "톤수",   value: "2.5~7톤" },
-              { label: "브랜드", value: "국내 유통 전 브랜드" },
-            ].map(({ label, value }) => (
-              <div key={label} className="rounded-2xl border border-gray-200 bg-white p-5">
-                <dt className="text-xs font-semibold text-gray-500">{label}</dt>
-                <dd className="mt-2 text-lg font-semibold text-navy-900">{value}</dd>
-              </div>
-            ))}
-          </dl>
-
-          <div className="rounded-2xl border border-gray-200 bg-white p-6">
-            <h3 className="text-sm font-semibold text-navy-900">등급 체계</h3>
-            <p className="mt-2 text-sm text-gray-600 leading-relaxed">
-              A/B/C 등급으로 상태를 표준화하고, 정비 리포트/부품 패키지로 "품질 불균형" 문제를 줄입니다.
-            </p>
-          </div>
-        </section>
-
-        {/* ========================================================
-            정비 / 부품 패키지
-            ======================================================== */}
-        <section className="space-y-6" aria-labelledby="package-heading">
-          <SectionHeader
-            eyebrow="Service Package"
-            title="정비 패키지 & 부품 패키지"
-            description={'"장비만"이 아니라, 운영 가능 상태로 납품하는 구조입니다.'}
-          />
-
-          <div className="grid md:grid-cols-2 gap-6">
-            <div className={card}>
-              <h3 className="text-lg font-semibold text-navy-900">정비 패키지(예시)</h3>
-              <ul className="mt-4 space-y-2 text-sm text-gray-700 list-none p-0">
-                <li>• Basic: 엔진/미션/누유 기본 점검</li>
-                <li>• Standard: 유압·브레이크·마스트·전장 (+$700)</li>
-                <li>• Premium: 도장·오버홀 (+$1,500)</li>
-              </ul>
+          <div className="relative px-6 md:px-10 py-10 md:py-14 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="space-y-2">
+              <p className="text-sm font-semibold tracking-[0.12em] uppercase text-orange-400">
+                Can't find what you need?
+              </p>
+              <h2 className="text-2xl md:text-3xl font-semibold break-keep">
+                Tell us your requirements
+              </h2>
+              <p className="text-white/70 text-sm leading-relaxed">
+                Share your specs, quantity and budget — we'll find the right equipment for you.
+              </p>
             </div>
-
-            <div className={card}>
-              <h3 className="text-lg font-semibold text-navy-900">부품 패키지(예시)</h3>
-              <ul className="mt-4 space-y-2 text-sm text-gray-700 list-none p-0">
-                <li>• 소모품 패키지 (+$1,000)</li>
-                <li>• 타이어 패키지 (+$600)</li>
-              </ul>
-            </div>
-          </div>
-        </section>
-
-        {/* ========================================================
-            밸류체인 (운영 구조)
-            ======================================================== */}
-        <section className="space-y-6" aria-labelledby="valuechain-heading">
-          <SectionHeader
-            eyebrow="Value Chain"
-            title="운영 구조(밸류체인)"
-            description="매입 → 정비/상품화 → 수출/계약/물류를 하나의 파이프라인으로 묶어 리드타임과 품질 리스크를 줄입니다."
-          />
-
-          <div className="rounded-3xl border border-gray-200 bg-white p-6 md:p-8 shadow-sm">
-            {/* Desktop 연결선 */}
-            <div className="relative hidden md:block mb-6" aria-hidden="true">
-              <div className="absolute left-1/3 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-2">
-                <div className="h-[2px] w-16 bg-gray-200" />
-                <div className="h-2 w-2 rounded-full bg-gray-300" />
-                <div className="h-2 w-2 rounded-full bg-gray-300" />
-                <div className="h-2 w-2 rounded-full bg-gray-300" />
-                <div className="h-[2px] w-16 bg-gray-200" />
-              </div>
-              <div className="absolute left-2/3 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-2">
-                <div className="h-[2px] w-16 bg-gray-200" />
-                <div className="h-2 w-2 rounded-full bg-gray-300" />
-                <div className="h-2 w-2 rounded-full bg-gray-300" />
-                <div className="h-2 w-2 rounded-full bg-gray-300" />
-                <div className="h-[2px] w-16 bg-gray-200" />
-              </div>
-            </div>
-
-            {/* ✅ ol/li — 순서 있는 프로세스로 마크업 */}
-            <ol className="grid md:grid-cols-3 gap-4 items-stretch list-none p-0">
-              {/* STEP 1 */}
-              <li className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md transition-all h-full flex flex-col">
-                <div className="flex items-center gap-3">
-                  <div className="h-11 w-11 rounded-2xl border border-gray-200 flex items-center justify-center shadow-sm" aria-hidden="true">
-                    <span className="text-xl">🧲</span>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-gray-500">STEP 1</p>
-                    <h3 className="text-lg font-semibold text-navy-900">매입</h3>
-                  </div>
-                </div>
-                <p className="mt-5 text-base font-semibold text-navy-900">(주)크린어스</p>
-                <ul className="mt-4 text-sm text-gray-600 space-y-2 leading-relaxed list-none p-0">
-                  <li>• 수출 가능 물량 선별</li>
-                  <li>• 매입 및 인수 절차 관리</li>
-                  <li>• 입고 스케줄 통합 관리</li>
-                </ul>
-                <p className="mt-auto pt-6 border-t border-gray-100 text-xs text-gray-500 font-medium">
-                  국내 공급 파트너
-                </p>
-              </li>
-
-              {/* STEP 2 */}
-              <li className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md transition-all h-full flex flex-col">
-                <div className="flex items-center gap-3">
-                  <div className="h-11 w-11 rounded-2xl border border-gray-200 flex items-center justify-center shadow-sm" aria-hidden="true">
-                    <span className="text-xl">🛠️</span>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-gray-500">STEP 2</p>
-                    <h3 className="text-lg font-semibold text-navy-900">정비 / 상품화</h3>
-                  </div>
-                </div>
-                <p className="mt-5 text-base font-semibold text-navy-900">
-                  현대지게차경기북부판매 (형제중기)
-                </p>
-                <ul className="mt-4 text-sm text-gray-600 space-y-2 leading-relaxed list-none p-0">
-                  <li>• A/B/C 등급 구분</li>
-                  <li>• PDI 및 리컨디션</li>
-                  <li>• 품질 리포트 및 부품 패키지 구성</li>
-                </ul>
-                <p className="mt-auto pt-6 border-t border-gray-100 text-xs text-gray-500 font-medium">
-                  정비 및 품질 관리 파트너
-                </p>
-              </li>
-
-              {/* STEP 3 */}
-              <li className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md transition-all h-full flex flex-col">
-                <div className="flex items-center gap-3">
-                  <div className="h-11 w-11 rounded-2xl border border-gray-200 flex items-center justify-center shadow-sm" aria-hidden="true">
-                    <span className="text-xl">🚢</span>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-gray-500">STEP 3</p>
-                    <h3 className="text-lg font-semibold text-navy-900">수출 / 계약 / 물류</h3>
-                  </div>
-                </div>
-                <p className="mt-5 text-base font-semibold text-navy-900">RNF KOREA</p>
-                <ul className="mt-4 text-sm text-gray-600 space-y-2 leading-relaxed list-none p-0">
-                  <li>• 해외 바이어 개발</li>
-                  <li>• 계약 및 수출 서류 관리</li>
-                  <li>• 선적 및 클레임 대응</li>
-                </ul>
-                <p className="mt-auto pt-6 border-t border-gray-100 text-xs text-gray-500 font-medium">
-                  수출 총괄 운영
-                </p>
-              </li>
-            </ol>
-
-            {/* Mobile 연결선 */}
-            <div className="md:hidden mt-6 flex flex-col items-center gap-4" aria-hidden="true">
-              <div className="w-[2px] h-8 bg-gray-200" />
-              <div className="flex gap-2">
-                <div className="h-2 w-2 rounded-full bg-gray-300" />
-                <div className="h-2 w-2 rounded-full bg-gray-300" />
-                <div className="h-2 w-2 rounded-full bg-gray-300" />
-              </div>
-              <div className="w-[2px] h-8 bg-gray-200" />
-            </div>
-
-            {/* ✅ KPI 스트립 — dl/dt/dd로 key-value 마크업 */}
-            <dl className="mt-8 grid md:grid-cols-3 gap-4">
-              {[
-                { k: "리드타임", v: "입고 → 선적", d: "프로세스 표준화" },
-                { k: "품질",     v: "A/B/C 등급 판정 및 상품화", d: "정비 리포트 제공" },
-                { k: "신뢰",     v: "부품 패키지 포함", d: "운영 가능 상태 납품" },
-              ].map(({ k, v, d }) => (
-                <div key={k} className="rounded-2xl border border-gray-200 bg-gray-50 p-4 h-full">
-                  <dt className="text-xs font-semibold text-gray-500">{k}</dt>
-                  <dd className="mt-1 text-sm font-semibold text-navy-900">{v}</dd>
-                  <p className="mt-1 text-xs text-gray-600">{d}</p>
-                </div>
-              ))}
-            </dl>
-          </div>
-        </section>
-
-        {/* ========================================================
-            3개년 로드맵
-            ======================================================== */}
-        <section className="space-y-6" aria-labelledby="roadmap-heading">
-          <SectionHeader
-            eyebrow="Roadmap"
-            title="3개년 확장 로드맵"
-          />
-
-          <ol className="grid md:grid-cols-3 gap-6 list-none p-0">
-            {[
-              { year: "[1년차]", target: "150대/y", desc: "표준화/레퍼런스 확보, 핵심 거래선 구축" },
-              { year: "[2년차]", target: "300대/y", desc: "현지 파트너십 확장, 운영 효율화" },
-              { year: "[3년차]", target: "800대/y", desc: "수출국 확대/거점센터, 품목 확장" },
-            ].map(({ year, target, desc }) => (
-              <li key={year} className={card}>
-                <p className="text-sm font-semibold text-gray-500">{year}</p>
-                <p className="mt-2 text-lg md:text-2xl font-semibold text-navy-900">{target}</p>
-                <p className="mt-3 text-sm text-gray-600 leading-relaxed">{desc}</p>
-              </li>
-            ))}
-          </ol>
-        </section>
-
-        {/* ========================================================
-            문의 안내 CTA
-            ======================================================== */}
-        <section className="border-t border-gray-200 pt-10" aria-labelledby="contact-heading">
-          <div className="rounded-2xl border border-gray-200 bg-white p-6">
-            <div className="flex items-start gap-3">
-              <div className="mt-1 h-5 w-1.5 rounded bg-orange-500" aria-hidden="true" />
-              <div className="space-y-2">
-                <h2 id="contact-heading" className="text-sm font-semibold text-navy-900">
-                  문의 안내
-                </h2>
-                <p className="text-sm text-gray-600 leading-relaxed">
-                  수출 대상 장비(톤수/연식/수량)와 희망 선적 조건을 알려주시면,
-                  정비 등급/부품 패키지 포함 견적과 리드타임을 함께 제안드립니다.
-                </p>
-                <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const el = document.getElementById("catalog-form");
-                      el?.scrollIntoView({ behavior: "smooth" });
-                    }}
-                    className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-orange-500 text-white font-semibold hover:bg-orange-600 transition-all"
-                  >
-                    상담/견적 폼으로 이동 →
-                  </button>
-                  <a
-                    href="tel:1551-1873"
-                    className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl border border-gray-300 bg-white text-navy-900 font-semibold hover:bg-gray-50 transition-all gap-2"
-                    aria-label="전화 상담 1551-1873"
-                  >
-                    <Phone size={15} aria-hidden="true" />
-                    1551-1873
-                  </a>
-                </div>
-              </div>
+            <div className="flex flex-col sm:flex-row gap-3 shrink-0">
+              <Link
+                to="/export-shop/inquiry"
+                className="inline-flex items-center justify-center px-6 py-3 rounded-2xl bg-orange-500 text-white font-semibold hover:bg-orange-600 transition-all"
+              >
+                Request a Quote
+              </Link>
+              <a
+                href="tel:15511873"
+                className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl border border-white/30 text-white font-semibold hover:bg-white/10 transition-all"
+              >
+                <Phone size={16} />
+                1551-1873
+              </a>
             </div>
           </div>
         </section>
@@ -607,4 +499,4 @@ const ExportOverviewPage: React.FC = () => {
   );
 };
 
-export default ExportOverviewPage;
+export default ExportShopPage;

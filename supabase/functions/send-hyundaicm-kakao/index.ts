@@ -1,5 +1,5 @@
 // supabase/functions/send-hyundaicm-kakao/index.ts
-// 발송 방식: 솔라피 SMS
+// 발송 방식: 솔라피 카카오 알림톡 (HCM) + SMS fallback / 나르미 SMS 유지
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -15,6 +15,22 @@ const RECIPIENTS     = RECIPIENTS_RAW.split(",").map((n) => n.replace(/\D/g, "")
 // 나르미 전용 수신자
 const NARUMI_RECIPIENTS_RAW = Deno.env.get("NARUMI_SMS_RECIPIENTS") ?? "01050549006,01020793025";
 const NARUMI_RECIPIENTS     = NARUMI_RECIPIENTS_RAW.split(",").map((n) => n.replace(/\D/g, ""));
+
+// ─── HCM 카카오 알림톡 설정 ──────────────────────────────────
+const HCM_PF_ID = "KA01PF2606081346516718bsSRTnA56x";
+
+const HCM_TEMPLATES: Record<string, string> = {
+  hcm_new:           "KA01TP260609091445221AOdtfTbbsGO",
+  hcm_status_change: "KA01TP260609091600912cEbCHAjsgUP",
+  hcm_approved:      "KA01TP260609091806000Fwiohd73qph",
+  hcm_supplement:    "KA01TP260609092113814wrSSmhagB3C",
+  hcm_rejected:      "KA01TP2606090922333040QHg4njNmPe",
+  hcm_confirmed:     "KA01TP2606090923441649N77jcSG6M5",
+  hcm_edit:          "KA01TP260609092454633U0Fz7Y3y3w3",
+  hcm_hold:          "KA01TP260609092613418qpVKMtVrWVU",
+};
+
+const HCM_PAGE_URL = "https://rnfkorea.co.kr/hyundaicm";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin":  "*",
@@ -48,14 +64,66 @@ async function sendSms(text: string, recipients: string[] = RECIPIENTS): Promise
   });
   if (!res.ok) {
     const err = await res.text();
-    console.error("솔라피 오류:", err);
+    console.error("솔라피 SMS 오류:", err);
     throw new Error(`SMS 발송 실패: ${err}`);
   }
-  console.log("솔라피 결과:", JSON.stringify(await res.json()));
+  console.log("솔라피 SMS 결과:", JSON.stringify(await res.json()));
+}
+
+// ─── HCM 알림톡 단건 발송 ────────────────────────────────────
+async function sendHcmAlimtalk(
+  to: string,
+  templateId: string,
+  variables: Record<string, string>,
+  fallbackText: string,
+): Promise<void> {
+  const authHeader = await getSolapiAuthHeader();
+  const res = await fetch("https://api.solapi.com/messages/v4/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: authHeader },
+    body: JSON.stringify({
+      message: {
+        to,
+        from: SENDER_PHONE,
+        kakaoOptions: {
+          pfId:       HCM_PF_ID,
+          templateId,
+          variables,
+          disableSms: false,
+          buttons: [{
+            buttonType: "WL",
+            buttonName: "업무 페이지 열기",
+            linkMo:     HCM_PAGE_URL,
+            linkPc:     HCM_PAGE_URL,
+          }],
+        },
+        text: fallbackText,
+      },
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    console.error(`HCM 알림톡 오류 (${to}):`, err);
+    throw new Error(`알림톡 발송 실패: ${err}`);
+  }
+  console.log(`HCM 알림톡 발송 성공 (${to}):`, templateId);
+}
+
+// ─── HCM 알림톡 전체 수신자 발송 ─────────────────────────────
+async function sendHcmAlimtalkToAll(
+  templateKey: string,
+  variables: Record<string, string>,
+  fallbackText: string,
+): Promise<void> {
+  const templateId = HCM_TEMPLATES[templateKey];
+  if (!templateId) throw new Error(`HCM 템플릿 키 없음: ${templateKey}`);
+  await Promise.all(
+    RECIPIENTS.map((to) => sendHcmAlimtalk(to, templateId, variables, fallbackText))
+  );
 }
 
 // ─────────────────────────────────────────────
-// 메시지 포맷 빌더
+// SMS fallback 메시지 빌더
 // ─────────────────────────────────────────────
 function buildMessage(body: Record<string, string>): string {
   const {
@@ -69,14 +137,12 @@ function buildMessage(body: Record<string, string>): string {
 
   if (type === "new") {
     return [
-      "[HD현대(부산/경남) 할부 신규 접수]",
-      "",
+      "[HD현대(부산/경남) 할부 신규 접수]", "",
       `번호: ${caseNo ?? "-"}`,
       `고객: ${customerName} (${customerType})`,
       `장비: ${equipmentTon ?? "-"}`,
       `금융사: ${financeCompany ?? "-"}`,
-      installmentPrincipal
-        ? `할부원금: ${Number(installmentPrincipal).toLocaleString("ko-KR")}원` : "",
+      installmentPrincipal ? `할부원금: ${Number(installmentPrincipal).toLocaleString("ko-KR")}원` : "",
       `영업: ${salesRep ?? "-"}`,
       `시간: ${now}`,
     ].filter(Boolean).join("\n");
@@ -88,8 +154,7 @@ function buildMessage(body: Record<string, string>): string {
     const downRate  = (purchase && principal)
       ? `${(((purchase - principal) / purchase) * 100).toFixed(1)}%` : null;
     return [
-      "[HD현대(부산/경남) 할부 확정]",
-      "",
+      "[HD현대(부산/경남) 할부 확정]", "",
       `번호: ${caseNo ?? "-"}`,
       `고객: ${customerName} (${customerType})`,
       `장비: ${equipmentTon ?? "-"}`,
@@ -109,8 +174,7 @@ function buildMessage(body: Record<string, string>): string {
   if (type === "status_change") {
     const isCreditStatus = ["승인", "보완", "거절"].includes(nextStatus);
     return [
-      "[HD현대(부산/경남) 할부 진행 알림]",
-      "",
+      "[HD현대(부산/경남) 할부 진행 알림]", "",
       `번호: ${caseNo ?? "-"}`,
       `고객: ${customerName} (${customerType})`,
       `장비: ${equipmentTon ?? "-"}`,
@@ -118,23 +182,19 @@ function buildMessage(body: Record<string, string>): string {
       installmentPrincipal ? `할부원금: ${Number(installmentPrincipal).toLocaleString("ko-KR")}원` : "",
       `상태: ${prevStatus} → ${nextStatus}`,
       ...(isCreditStatus ? [
-        // 승인/보완 공통
         ...(nextStatus !== "거절" ? [
           body.bizHistory      ? `업력: ${body.bizHistory}`               : "",
           body.niceScore       ? `NICE 점수: ${body.niceScore}점`         : "",
           body.creditRate      ? `적용금리: ${body.creditRate}%`          : "",
           body.creditIncentive ? `적용인센티브: ${body.creditIncentive}%` : "",
         ] : []),
-        // 승인 전용
         ...(nextStatus === "승인" ? [
-          body.loanLimit ? `대출한도: ${Number(body.loanLimit).toLocaleString("ko-KR")}원` : "",
+          body.loanLimit  ? `대출한도: ${Number(body.loanLimit).toLocaleString("ko-KR")}원` : "",
           body.creditNote ? `특이사항: ${body.creditNote}` : "",
         ] : []),
-        // 보완 전용
         ...(nextStatus === "보완" ? [
           body.creditNote ? `보완사항: ${body.creditNote}` : "",
         ] : []),
-        // 거절 전용
         ...(nextStatus === "거절" ? [
           body.creditNote ? `거절사유: ${body.creditNote}` : "",
         ] : []),
@@ -146,30 +206,25 @@ function buildMessage(body: Record<string, string>): string {
 
   if (type === "edit") {
     return [
-      "[HD현대(부산/경남) 할부 정보 수정]",
-      "",
+      "[HD현대(부산/경남) 할부 정보 수정]", "",
       `번호: ${caseNo ?? "-"}`,
       `고객: ${customerName} (${customerType})`,
       `현재단계: ${prevStatus ?? "-"}`,
-      `영업: ${salesRep ?? "-"}`,
-      "",
+      `영업: ${salesRep ?? "-"}`, "",
       "── 변경사항 ──",
-      body.changedSummary ?? "변경사항 없음",
-      "",
+      body.changedSummary ?? "변경사항 없음", "",
       `시간: ${now}`,
     ].filter(Boolean).join("\n");
   }
 
   if (type === "vehicle_reg_upload") {
     return [
-      "[HD현대(부산/경남) 차량등록증 업로드]",
-      "",
+      "[HD현대(부산/경남) 차량등록증 업로드]", "",
       `번호: ${caseNo ?? "-"}`,
       `고객: ${customerName} (${customerType})`,
       `장비: ${equipmentTon ?? "-"}`,
       financeCompany ? `금융사: ${financeCompany}` : "",
-      `영업: ${salesRep ?? "-"}`,
-      "",
+      `영업: ${salesRep ?? "-"}`, "",
       "차량(굴삭기) 등록이 완료되었습니다.",
       `시간: ${now}`,
     ].filter(Boolean).join("\n");
@@ -177,14 +232,12 @@ function buildMessage(body: Record<string, string>): string {
 
   if (type === "tax_invoice_upload") {
     return [
-      "[HD현대(부산/경남) 세금계산서 업로드]",
-      "",
+      "[HD현대(부산/경남) 세금계산서 업로드]", "",
       `번호: ${caseNo ?? "-"}`,
       `고객: ${customerName} (${customerType})`,
       `장비: ${equipmentTon ?? "-"}`,
       financeCompany ? `금융사: ${financeCompany}` : "",
-      `영업: ${salesRep ?? "-"}`,
-      "",
+      `영업: ${salesRep ?? "-"}`, "",
       "세금계산서가 업로드되었습니다.",
       `시간: ${now}`,
     ].filter(Boolean).join("\n");
@@ -192,14 +245,12 @@ function buildMessage(body: Record<string, string>): string {
 
   if (type === "incentive_paid") {
     return [
-      "[HD현대(부산/경남) 인센티브 지급]",
-      "",
+      "[HD현대(부산/경남) 인센티브 지급]", "",
       `번호: ${caseNo ?? "-"}`,
       `고객: ${customerName} (${customerType})`,
       `장비: ${equipmentTon ?? "-"}`,
       financeCompany ? `금융사: ${financeCompany}` : "",
-      `영업: ${salesRep ?? "-"}`,
-      "",
+      `영업: ${salesRep ?? "-"}`, "",
       "✅ 인센티브 지급 완료",
       `시간: ${now}`,
     ].filter(Boolean).join("\n");
@@ -225,11 +276,11 @@ function buildMessage(body: Record<string, string>): string {
   if (type === "narumi_new") {
     return [
       "[나르미 신규 등록]", "",
-      body.vin          ? `VIN: ${body.vin}`                    : "",
-      customerName      ? `고객: ${customerName}`               : "",
-      salesRep          ? `영업: ${salesRep}`                   : "",
-      body.deliveryDate ? `출고일: ${body.deliveryDate}`        : "",
-      body.specialNote  ? `특이사항: ${body.specialNote}`       : "",
+      body.vin          ? `VIN: ${body.vin}`             : "",
+      customerName      ? `고객: ${customerName}`        : "",
+      salesRep          ? `영업: ${salesRep}`            : "",
+      body.deliveryDate ? `출고일: ${body.deliveryDate}` : "",
+      body.specialNote  ? `특이사항: ${body.specialNote}`: "",
       `시간: ${now}`,
     ].filter(Boolean).join("\n");
   }
@@ -240,11 +291,11 @@ function buildMessage(body: Record<string, string>): string {
     const header   = isHold ? "[나르미 보류]" : isUnhold ? "[나르미 보류해제]" : "[나르미 단계 변경]";
     return [
       header, "",
-      body.vin     ? `VIN: ${body.vin}`           : "",
-      customerName ? `고객: ${customerName}`       : "",
-      salesRep     ? `영업: ${salesRep}`           : "",
+      body.vin     ? `VIN: ${body.vin}`     : "",
+      customerName ? `고객: ${customerName}`: "",
+      salesRep     ? `영업: ${salesRep}`    : "",
       !isHold && !isUnhold ? `상태: ${statusKo[body.prevStatus] ?? body.prevStatus ?? "-"} → ${statusKo[body.nextStatus] ?? body.nextStatus ?? "-"}` : "",
-      isHold && body.holdReason ? `사유: ${body.holdReason}` : "",
+      isHold && body.holdReason       ? `사유: ${body.holdReason}`         : "",
       isHold && body.nextFollowupDate ? `재확인: ${body.nextFollowupDate}` : "",
       `시간: ${now}`,
     ].filter(Boolean).join("\n");
@@ -253,14 +304,13 @@ function buildMessage(body: Record<string, string>): string {
   if (type === "narumi_vehicle_doc") {
     return [
       "[나르미 차량등록증 업로드]", "",
-      body.vin     ? `VIN: ${body.vin}`   : "",
+      body.vin     ? `VIN: ${body.vin}`      : "",
       customerName ? `고객: ${customerName}` : "",
       salesRep     ? `영업: ${salesRep}`     : "",
       "", "차량등록증이 업로드되었습니다.",
       `시간: ${now}`,
     ].filter(Boolean).join("\n");
   }
-
 
   // ── 나르미 등록완료 ─────────────────────────────────────
   if (type === "narumi_status" && (body.nextStatus === "registered" || body.nextStatus === "등록완료")) {
@@ -288,40 +338,195 @@ function buildMessage(body: Record<string, string>): string {
     ].filter(Boolean).join("\n");
   }
 
-  // edit 타입 (변경사항 상세 포함)
-  if (type === "edit") {
-    return [
-      "[HD현대(부산/경남) 할부 정보 수정]", "",
-      `번호: ${caseNo ?? "-"}`,
-      `고객: ${customerName} (${customerType})`,
-      `현재단계: ${prevStatus ?? "-"}`,
-      `영업: ${salesRep ?? "-"}`,
-      "",
-      "── 변경사항 ──",
-      body.changedSummary ?? "변경사항 없음",
-      "",
-      `시간: ${now}`,
-    ].filter(Boolean).join("\n");
-  }
-
-  // ── 타이어/배터리 발주 전달 (진흥 알림톡) ──────────────────
+  // edit 타입 중복 방지용 (buildMessage 하단 도달 시)
   if (type === "order_forwarded") {
     return [
       "[담당자님, 사내 업무용 메시지]",
-      "RNF 타이어 발주 전달 안내",
-      "",
+      "RNF 타이어 발주 전달 안내", "",
       `주문번호: ${body.orderNo ?? "-"}`,
       `고객사: ${body.customerName ?? "-"}`,
       `품목: ${body.productSpec ?? "-"}`,
       `수량: ${body.quantity ?? "-"}`,
-      `전달시간: ${now}`,
-      "",
+      `전달시간: ${now}`, "",
       "담당자가 (주)진흥으로 발주 전달 시",
       "자동 발송되는 사내 업무 알림입니다.",
     ].filter(Boolean).join("\n");
   }
 
-  throw new Error("type은 'new' 또는 'status_change' 이어야 합니다.");
+  throw new Error(`알 수 없는 type: ${type}`);
+}
+
+// ─────────────────────────────────────────────
+// HCM 알림톡 변수 빌더
+// ─────────────────────────────────────────────
+function buildHcmVariables(body: Record<string, string>): { templateKey: string; variables: Record<string, string> } {
+  const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+  const {
+    type, caseNo, customerName, customerType, equipmentTon,
+    financeCompany, salesRep, installmentPrincipal,
+    purchaseAmount, interestRate, incentive,
+    vatDeferredAmount, loanPeriod, prevStatus, nextStatus,
+  } = body;
+
+  if (type === "new") {
+    return {
+      templateKey: "hcm_new",
+      variables: {
+        "#{케이스번호}": caseNo         ?? "-",
+        "#{고객명}":     customerName   ?? "-",
+        "#{고객유형}":   customerType   ?? "-",
+        "#{장비톤수}":   equipmentTon   ?? "-",
+        "#{금융사}":     financeCompany ?? "-",
+        "#{할부원금}":   installmentPrincipal
+          ? `${Number(installmentPrincipal).toLocaleString("ko-KR")}원` : "-",
+        "#{영업사원}":   salesRep ?? "-",
+        "#{시간}":       now,
+      },
+    };
+  }
+
+  if (type === "status_change" && nextStatus === "확정") {
+    const purchase  = purchaseAmount       ? Number(purchaseAmount)       : null;
+    const principal = installmentPrincipal ? Number(installmentPrincipal) : null;
+    const downRate  = (purchase && principal)
+      ? `${(((purchase - principal) / purchase) * 100).toFixed(1)}%` : "-";
+    return {
+      templateKey: "hcm_confirmed",
+      variables: {
+        "#{케이스번호}": caseNo         ?? "-",
+        "#{고객명}":     customerName   ?? "-",
+        "#{고객유형}":   customerType   ?? "-",
+        "#{장비톤수}":   equipmentTon   ?? "-",
+        "#{금융사}":     financeCompany ?? "-",
+        "#{차량가격}":   purchase  ? purchase.toLocaleString("ko-KR")  : "-",
+        "#{할부원금}":   principal ? principal.toLocaleString("ko-KR") : "-",
+        "#{선수율}":     downRate,
+        "#{금리}":       interestRate ?? "-",
+        "#{인센티브}":   incentive    ?? "-",
+        "#{부가세후불}": vatDeferredAmount
+          ? Number(vatDeferredAmount).toLocaleString("ko-KR") : "-",
+        "#{대출기간}":   loanPeriod   ?? "-",
+        "#{영업사원}":   salesRep     ?? "-",
+        "#{시간}":       now,
+      },
+    };
+  }
+
+  if (type === "status_change" && nextStatus === "승인") {
+    return {
+      templateKey: "hcm_approved",
+      variables: {
+        "#{케이스번호}":   caseNo         ?? "-",
+        "#{고객명}":       customerName   ?? "-",
+        "#{고객유형}":     customerType   ?? "-",
+        "#{장비톤수}":     equipmentTon   ?? "-",
+        "#{업력}":         body.bizHistory      ?? "-",
+        "#{NICE점수}":     body.niceScore        ?? "-",
+        "#{적용금리}":     body.creditRate        ?? "-",
+        "#{적용인센티브}": body.creditIncentive   ?? "-",
+        "#{대출한도}":     body.loanLimit
+          ? Number(body.loanLimit).toLocaleString("ko-KR") : "-",
+        "#{특이사항}":     body.creditNote  ?? "-",
+        "#{영업사원}":     salesRep         ?? "-",
+        "#{시간}":         now,
+      },
+    };
+  }
+
+  if (type === "status_change" && nextStatus === "보완") {
+    return {
+      templateKey: "hcm_supplement",
+      variables: {
+        "#{케이스번호}": caseNo         ?? "-",
+        "#{고객명}":     customerName   ?? "-",
+        "#{고객유형}":   customerType   ?? "-",
+        "#{장비톤수}":   equipmentTon   ?? "-",
+        "#{업력}":       body.bizHistory  ?? "-",
+        "#{NICE점수}":   body.niceScore    ?? "-",
+        "#{적용금리}":   body.creditRate    ?? "-",
+        "#{보완사항}":   body.creditNote    ?? "-",
+        "#{영업사원}":   salesRep           ?? "-",
+        "#{시간}":       now,
+      },
+    };
+  }
+
+  if (type === "status_change" && nextStatus === "거절") {
+    return {
+      templateKey: "hcm_rejected",
+      variables: {
+        "#{케이스번호}": caseNo       ?? "-",
+        "#{고객명}":     customerName ?? "-",
+        "#{고객유형}":   customerType ?? "-",
+        "#{장비톤수}":   equipmentTon ?? "-",
+        "#{거절사유}":   body.creditNote ?? "-",
+        "#{영업사원}":   salesRep        ?? "-",
+        "#{시간}":       now,
+      },
+    };
+  }
+
+  if (type === "status_change") {
+    // 신용조회, 서류등록, 전자계약발송, 보류 등 일반 단계변경
+    return {
+      templateKey: "hcm_status_change",
+      variables: {
+        "#{케이스번호}": caseNo         ?? "-",
+        "#{고객명}":     customerName   ?? "-",
+        "#{고객유형}":   customerType   ?? "-",
+        "#{장비톤수}":   equipmentTon   ?? "-",
+        "#{금융사}":     financeCompany ?? "-",
+        "#{할부원금}":   installmentPrincipal
+          ? `${Number(installmentPrincipal).toLocaleString("ko-KR")}원` : "-",
+        "#{이전단계}":   prevStatus ?? "-",
+        "#{현재단계}":   nextStatus ?? "-",
+        "#{영업사원}":   salesRep   ?? "-",
+        "#{시간}":       now,
+      },
+    };
+  }
+
+  if (type === "edit") {
+    return {
+      templateKey: "hcm_edit",
+      variables: {
+        "#{케이스번호}": caseNo       ?? "-",
+        "#{고객명}":     customerName ?? "-",
+        "#{고객유형}":   customerType ?? "-",
+        "#{현재단계}":   prevStatus   ?? "-",
+        "#{영업사원}":   salesRep     ?? "-",
+        "#{변경사항}":   body.changedSummary ?? "변경사항 없음",
+        "#{시간}":       now,
+      },
+    };
+  }
+
+  // vehicle_reg_upload / tax_invoice_upload / incentive_paid → hcm_status_change 재활용
+  const typeLabel: Record<string, string> = {
+    vehicle_reg_upload: "차량등록증 업로드",
+    tax_invoice_upload: "세금계산서 업로드",
+    incentive_paid:     "인센티브 지급",
+  };
+  if (typeLabel[type]) {
+    return {
+      templateKey: "hcm_status_change",
+      variables: {
+        "#{케이스번호}": caseNo         ?? "-",
+        "#{고객명}":     customerName   ?? "-",
+        "#{고객유형}":   customerType   ?? "-",
+        "#{장비톤수}":   equipmentTon   ?? "-",
+        "#{금융사}":     financeCompany ?? "-",
+        "#{할부원금}":   installmentPrincipal
+          ? `${Number(installmentPrincipal).toLocaleString("ko-KR")}원` : "-",
+        "#{이전단계}":   prevStatus      ?? "-",
+        "#{현재단계}":   typeLabel[type],
+        "#{영업사원}":   salesRep        ?? "-",
+        "#{시간}":       now,
+      },
+    };
+  }
+
+  throw new Error(`HCM 알림톡 변수 빌더: 알 수 없는 type: ${type}`);
 }
 
 // ─────────────────────────────────────────────
@@ -333,13 +538,13 @@ serve(async (req) => {
   }
 
   try {
-    const body    = await req.json() as Record<string, string>;
+    const body = await req.json() as Record<string, string>;
 
     // ── 타이어/배터리 발주 알림톡 (진흥 전용) ─────────────────
     if (body.type === "order_forwarded") {
       const JINHEUNG_PHONE = (Deno.env.get("JINHEUNG_PHONE") ?? "").replace(/\D/g, "");
-      const PF_ID          = Deno.env.get("SOLAPI_PF_ID") ?? "";
-      const TEMPLATE_ID    = Deno.env.get("SOLAPI_TEMPLATE_ID_ORDER") ?? "";
+      const PF_ID       = Deno.env.get("SOLAPI_PF_ID") ?? "";
+      const TEMPLATE_ID = Deno.env.get("SOLAPI_TEMPLATE_ID_ORDER") ?? "";
 
       if (!JINHEUNG_PHONE) {
         return new Response(JSON.stringify({ error: "JINHEUNG_PHONE 미설정" }), {
@@ -392,12 +597,11 @@ serve(async (req) => {
 
       if (!alimRes.ok) {
         const err = await alimRes.text();
-        console.error("알림톡 발송 오류:", err);
-        // 알림톡 실패 시 SMS로 폴백
+        console.error("진흥 알림톡 오류:", err);
         const smsText = buildMessage(body);
         await sendSms(smsText, [JINHEUNG_PHONE]);
       } else {
-        console.log("알림톡 발송 성공:", body.orderNo);
+        console.log("진흥 알림톡 발송 성공:", body.orderNo);
       }
 
       return new Response(
@@ -406,12 +610,21 @@ serve(async (req) => {
       );
     }
 
-    const message = buildMessage(body);
-    console.log("[SMS 발송]:", message.slice(0, 80));
-
-    // 나르미 타입은 나르미 전용 수신자로 발송
     const isNarumi = typeof body.type === "string" && body.type.startsWith("narumi");
-    await sendSms(message, isNarumi ? NARUMI_RECIPIENTS : RECIPIENTS);
+
+    // ── 나르미: SMS 유지 ──────────────────────────────────────
+    if (isNarumi) {
+      const smsText = buildMessage(body);
+      console.log("[나르미 SMS 발송]:", smsText.slice(0, 80));
+      await sendSms(smsText, NARUMI_RECIPIENTS);
+    }
+    // ── HCM: 알림톡 발송 ─────────────────────────────────────
+    else {
+      const { templateKey, variables } = buildHcmVariables(body);
+      const fallbackText = buildMessage(body);
+      console.log("[HCM 알림톡 발송]:", templateKey);
+      await sendHcmAlimtalkToAll(templateKey, variables, fallbackText);
+    }
 
     // ── 신규 접수 시 자동 등록 ─────────────────────────────
     if (body.type === "new") {
@@ -420,10 +633,8 @@ serve(async (req) => {
         const sbKey = Deno.env.get("APP_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
         const db = createClient(sbUrl, sbKey);
 
-        const today = new Date();
+        const today    = new Date();
         const todayIso = today.toISOString().slice(0, 10);
-
-        // 내일 날짜 계산 (팔로업 기본 D+1)
         const tomorrow = new Date(today);
         tomorrow.setDate(tomorrow.getDate() + 1);
         const tomorrowIso = tomorrow.toISOString().slice(0, 10);
@@ -438,7 +649,6 @@ serve(async (req) => {
           `영업: ${body.salesRep ?? "-"}`,
         ].filter(Boolean).join(" / ");
 
-        // 1. secretary_schedules에 팔로업 일정 생성
         await db.from("secretary_schedules").insert({
           title:         schedTitle,
           description:   schedDesc,
@@ -448,7 +658,6 @@ serve(async (req) => {
           related_type:  "finance",
         });
 
-        // 1-2. secretary_todos에 할일 자동 생성
         await db.from("secretary_todos").insert({
           title:       `${body.customerName} (신규접수)`,
           description: schedDesc,
@@ -457,28 +666,22 @@ serve(async (req) => {
           is_done:     false,
         });
 
-        // 2. secretary_chat_logs에 알림 메시지 추가
         const chatMsg = [
-          `🏗 **현대건설기계 신규 접수 알림**`,
-          ``,
+          `🏗 **현대건설기계 신규 접수 알림**`, ``,
           `**${body.customerName}** (${body.customerType ?? "-"}) 고객이 신규 접수되었습니다.`,
           `케이스번호: ${body.caseNo ?? "-"}`,
           `장비: ${body.equipmentTon ?? "-"} / 금융사: ${body.financeCompany ?? "-"}`,
           body.installmentPrincipal ? `할부원금: ${Number(body.installmentPrincipal).toLocaleString("ko-KR")}원` : "",
-          ``,
-          `📅 내일(${tomorrowIso}) 팔로업 일정이 자동 등록되었습니다.`,
+          ``, `📅 내일(${tomorrowIso}) 팔로업 일정이 자동 등록되었습니다.`,
         ].filter(Boolean).join("\n");
 
         await db.from("secretary_chat_logs").insert({
-          role:       "assistant",
-          content:    chatMsg,
-          session_id: "main",
+          role: "assistant", content: chatMsg, session_id: "main",
         });
 
         console.log("[자동등록] 팔로업 일정 + 채팅 알림 등록 완료:", body.customerName);
       } catch (autoErr) {
         console.error("[자동등록 오류]:", autoErr);
-        // 자동 등록 실패해도 SMS 발송은 성공 처리
       }
     }
 
@@ -491,22 +694,21 @@ serve(async (req) => {
 
         const todoTitle = `${body.customerName ?? body.vin} (나르미 신규등록)`;
         const desc = [
-          body.vin          ? `VIN: ${body.vin}`              : "",
-          body.customerName ? `고객: ${body.customerName}`     : "",
-          body.salesRep     ? `영업: ${body.salesRep}`         : "",
-          body.deliveryDate ? `출고일: ${body.deliveryDate}`   : "",
-          body.specialNote  ? `특이사항: ${body.specialNote}`  : "",
+          body.vin          ? `VIN: ${body.vin}`             : "",
+          body.customerName ? `고객: ${body.customerName}`   : "",
+          body.salesRep     ? `영업: ${body.salesRep}`       : "",
+          body.deliveryDate ? `출고일: ${body.deliveryDate}` : "",
+          body.specialNote  ? `특이사항: ${body.specialNote}`: "",
         ].filter(Boolean).join(" / ");
 
         await db.from("secretary_todos").insert({
-          title:    todoTitle,
+          title:       todoTitle,
           description: desc,
-          priority: "normal",
-          category: "finance",
-          is_done:  false,
+          priority:    "normal",
+          category:    "finance",
+          is_done:     false,
         });
 
-        // 채팅 알림
         await db.from("secretary_chat_logs").insert({
           role: "assistant",
           content: `🚛 **나르미 신규 등록**\n\n**${body.customerName ?? body.vin}** 신규 등록되었습니다.\nVIN: ${body.vin}\n할일이 자동 등록되었습니다.`,
@@ -526,18 +728,15 @@ serve(async (req) => {
         const sbKey = Deno.env.get("APP_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
         const db = createClient(sbUrl, sbKey);
 
-        const custName = body.customerName ?? body.vin ?? "";
-        const nextSt   = body.nextStatus ?? "";
-
-        // 단계 한글 매핑
-        const stageKo: Record<string,string> = {
+        const custName   = body.customerName ?? body.vin ?? "";
+        const nextSt     = body.nextStatus ?? "";
+        const stageKo: Record<string, string> = {
           todo: "신규등록", insurance: "보험완료", docs: "등록서류",
           registered: "등록완료", completed: "차량등록증 완료",
         };
         const stageLabel = stageKo[nextSt] ?? nextSt;
         const newTitle   = `${custName} (나르미 ${stageLabel})`;
 
-        // 기존 할일 찾기
         const { data: existing } = await db.from("secretary_todos")
           .select("id")
           .ilike("title", `%${custName}%나르미%`)
@@ -546,7 +745,6 @@ serve(async (req) => {
           .limit(1);
 
         if (existing && existing.length > 0) {
-          // 완료 단계면 할일 완료 처리, 아니면 제목 업데이트
           const isDone = nextSt === "completed";
           await db.from("secretary_todos").update({
             title:   newTitle,
@@ -568,10 +766,8 @@ serve(async (req) => {
         const db = createClient(sbUrl, sbKey);
 
         const { nextStatus, customerName, caseNo } = body;
-        const today = new Date();
 
         if (nextStatus === "인센티브지급") {
-          // 기존 할일 완료 처리
           const { data: existingTodos } = await db.from("secretary_todos")
             .select("id").ilike("title", `%${customerName}%`).eq("is_done", false);
           if (existingTodos && existingTodos.length > 0) {
@@ -580,36 +776,32 @@ serve(async (req) => {
               .in("id", existingTodos.map((t: any) => t.id));
           }
         } else {
-          // 단계별 할일 제목/우선순위/마감일 정의
           const stageMap: Record<string, { title: string; priority: string }> = {
-            "신용조회":    { title: "신용조회 중",           priority: "normal"  },
-            "보완":        { title: "보완서류 징구",          priority: "urgent"  },
-            "승인":        { title: "승인 - 서류등록 진행",   priority: "urgent"  },
-            "보류":        { title: "보류 - 재통화 예약",     priority: "normal"  },
-            "거절":        { title: "거절 - 고객 안내",       priority: "normal"  },
-            "서류등록":    { title: "서류등록 완료 확인",     priority: "normal"  },
-            "전자계약발송":{ title: "전자계약 발송 완료",     priority: "normal"  },
-            "확정":        { title: "확정완료",               priority: "normal"  },
+            "신용조회":     { title: "신용조회 중",          priority: "normal" },
+            "보완":         { title: "보완서류 징구",         priority: "urgent" },
+            "승인":         { title: "승인 - 서류등록 진행",  priority: "urgent" },
+            "보류":         { title: "보류 - 재통화 예약",    priority: "normal" },
+            "거절":         { title: "거절 - 고객 안내",      priority: "normal" },
+            "서류등록":     { title: "서류등록 완료 확인",    priority: "normal" },
+            "전자계약발송": { title: "전자계약 발송 완료",    priority: "normal" },
+            "확정":         { title: "확정완료",              priority: "normal" },
           };
           const stage = stageMap[nextStatus];
           if (stage) {
             const newTitle = `${customerName} (${nextStatus})`;
-            const desc = `케이스: ${caseNo ?? "-"} / ${customerName} → ${nextStatus}`;
+            const desc     = `케이스: ${caseNo ?? "-"} / ${customerName} → ${nextStatus}`;
 
-            // 기존 할일 찾기
             const { data: existing } = await db.from("secretary_todos")
               .select("id").ilike("title", `%${customerName}%`)
               .eq("is_done", false).order("created_at", { ascending: false }).limit(1);
 
             if (existing && existing.length > 0) {
-              // 기존 할일 업데이트
               await db.from("secretary_todos").update({
                 title:       newTitle,
                 description: desc,
                 priority:    stage.priority,
               }).eq("id", existing[0].id);
             } else {
-              // 없으면 신규 생성
               await db.from("secretary_todos").insert({
                 title:       newTitle,
                 description: desc,
@@ -619,7 +811,6 @@ serve(async (req) => {
               });
             }
 
-            // secretary_chat_logs에 알림
             const chatMsg = `🏗 **현대건설기계 단계 변경**\n\n**${customerName}** (${caseNo ?? "-"}) → **${nextStatus}**\n할일 업데이트: ${newTitle}`;
             await db.from("secretary_chat_logs").insert({
               role: "assistant", content: chatMsg, session_id: "main",
@@ -639,7 +830,7 @@ serve(async (req) => {
 
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "알 수 없는 오류";
-    console.error("[SMS 오류]:", msg);
+    console.error("[오류]:", msg);
     return new Response(
       JSON.stringify({ error: msg }),
       { status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }

@@ -16,6 +16,8 @@ type Schedule = {
   start_time:string|null; end_time:string|null;
   category:"meeting"|"call"|"task"|"followup";
   location:string|null; related_type:string|null; is_done:boolean; consultation_id:number|null;
+  progress_stage?:string|null; // consultation 진행단계 (로컬 보강)
+  work_type?:string|null;      // consultation work_type (로컬 보강)
 };
 type Todo = {
   id:number; title:string; description:string|null;
@@ -1053,7 +1055,32 @@ const SecretaryPage:React.FC = () => {
     // 중복 제거 후 고정 항목 위에 표시
     const ids = new Set(regular.map(s=>s.id));
     const merged = [...pinned.filter(s=>!ids.has(s.id)), ...regular];
-    setSchedules(merged);
+
+    // consultation_id가 있는 일정의 진행단계 조회
+    const cids = [...new Set(merged.filter(s=>s.consultation_id).map(s=>s.consultation_id as number))];
+    if(cids.length > 0){
+      const [caseR, finR, tireR, fklR, battR] = await Promise.all([
+        supabase.from("consultation_cases").select("id,work_type").in("id",cids),
+        supabase.from("consultation_finance_details").select("consultation_id,finance_stage").in("consultation_id",cids),
+        supabase.from("consultation_tire_details").select("consultation_id,process_stage,process_status").in("consultation_id",cids),
+        supabase.from("consultation_forklift_details").select("consultation_id,process_stage,forklift_status").in("consultation_id",cids),
+        supabase.from("consultation_battery_details").select("consultation_id,process_stage").in("consultation_id",cids),
+      ]);
+      const wtMap:Record<number,string>={};
+      (caseR.data??[]).forEach((c:any)=>{ wtMap[c.id]=c.work_type; });
+      const stageMap:Record<number,string>={};
+      (finR.data??[]).forEach((r:any)=>{ if(r.finance_stage) stageMap[r.consultation_id]=r.finance_stage; });
+      (tireR.data??[]).forEach((r:any)=>{ const s=r.process_stage??r.process_status; if(s) stageMap[r.consultation_id]=s; });
+      (fklR.data??[]).forEach((r:any)=>{ const s=r.process_stage??r.forklift_status; if(s) stageMap[r.consultation_id]=s; });
+      (battR.data??[]).forEach((r:any)=>{ if(r.process_stage) stageMap[r.consultation_id]=r.process_stage; });
+      const enriched = merged.map(s=>s.consultation_id
+        ? {...s, progress_stage: stageMap[s.consultation_id]??null, work_type: wtMap[s.consultation_id]??null}
+        : s
+      );
+      setSchedules(enriched);
+    } else {
+      setSchedules(merged);
+    }
     setSchedLoading(false);
   },[schedDate]);
 
@@ -1691,6 +1718,19 @@ const SecretaryPage:React.FC = () => {
       if(saved.length>0){
         void loadStats();
         if(saved.some((s:any)=>["schedule","schedule_edit","schedule_update"].includes(s.type))){
+          // 당일 접수 사후관리 일정 → schedule_date가 내일 이후면 오늘로 보정
+          const today = todayStr();
+          const newSchedIds = saved.filter((s:any)=>s.type==="schedule").map((s:any)=>s.id);
+          if(newSchedIds.length > 0){
+            const {data:newScheds} = await supabase.from("secretary_schedules")
+              .select("id,schedule_date,category").in("id",newSchedIds);
+            const toFix = (newScheds??[]).filter((s:any)=>
+              s.category==="followup" && s.schedule_date > today
+            );
+            for(const s of toFix){
+              await supabase.from("secretary_schedules").update({schedule_date:today}).eq("id",s.id);
+            }
+          }
           void loadSchedules();
           void loadCalData(calViewYear, calViewMonth);
           if(gcalConnected){
@@ -2197,6 +2237,7 @@ const SecretaryPage:React.FC = () => {
                         <span className={`text-sm font-semibold text-[#0f172a] ${s.is_done?"line-through":""}`}>{s.title}</span>
                         <span className="text-xs text-gray-400">{CAT_LBL[s.category]}</span>
                         {s.related_type&&<span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600">{WL[s.related_type]??s.related_type}</span>}
+                        {s.progress_stage&&<span className={`text-xs px-2 py-0.5 rounded-full border font-medium bg-white ${progressColor(s.progress_stage)} border-current/20`}>{fmtProgress(s.work_type??"", s.progress_stage)}</span>}
                         <span onClick={e=>e.stopPropagation()}><LinkBadge id={s.consultation_id} onClick={()=>navigate(`/work/call-management?id=${s.consultation_id}`)}/></span>
                         {s.next_schedule_date&&<span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">다음: {fmtDate(s.next_schedule_date)}</span>}
                       </div>
@@ -2623,7 +2664,7 @@ const SecretaryPage:React.FC = () => {
                                   ? `${progressColor(c.progress_stage)} bg-orange-50 border-orange-100`
                                   : "bg-orange-50 text-orange-600 border-orange-100"
                               }`}>
-                                {c.progress_stage ? fmtProgress(c.work_type, c.progress_stage) : (STS_LBL[c.status]??c.status)}
+                                {c.progress_stage ? fmtProgress(c.work_type, c.progress_stage) : "납품"}
                               </span>
                             </div>
                             <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-gray-500">

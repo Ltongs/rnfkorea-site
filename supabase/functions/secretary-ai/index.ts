@@ -1218,7 +1218,7 @@ serve(async (req) => {
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
                     type:         "order_forwarded",
-                    orderNo:      orderId.slice(-8).toUpperCase(),
+                    orderNo:      orderId,
                     customerName: a.customer_name as string ?? "확인필요",
                     productSpec:  productSpec ?? "확인필요",
                     quantity:     qty != null ? String(qty) : "확인필요",
