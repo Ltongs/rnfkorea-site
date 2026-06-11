@@ -723,15 +723,9 @@ serve(async (req) => {
               buttons: [
                 ...(body.deliveredUrl ? [{
                   buttonType: "WL",
-                  buttonName: "물품발송 확인",
+                  buttonName: "배송완료",
                   linkMo:     body.deliveredUrl,
                   linkPc:     body.deliveredUrl,
-                }] : []),
-                ...(body.wheelReturnedUrl ? [{
-                  buttonType: "WL",
-                  buttonName: "휠반납 확인",
-                  linkMo:     body.wheelReturnedUrl,
-                  linkPc:     body.wheelReturnedUrl,
                 }] : []),
                 {
                   buttonType: "WL",
@@ -756,6 +750,79 @@ serve(async (req) => {
 
       return new Response(
         JSON.stringify({ success: true, type: "order_forwarded" }),
+        { headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+      );
+    }
+
+    // ── 휠반납 요청 알림톡 (배송완료 후 자동 발송) ───────────────
+    if (body.type === "wheel_return_request") {
+      const JINHEUNG_PHONE = (Deno.env.get("JINHEUNG_PHONE") ?? "").replace(/\D/g, "");
+      const PF_ID       = Deno.env.get("SOLAPI_PF_ID") ?? "";
+      const TEMPLATE_ID = Deno.env.get("SOLAPI_TEMPLATE_ID_ORDER") ?? "";
+
+      if (!JINHEUNG_PHONE) {
+        return new Response(JSON.stringify({ error: "JINHEUNG_PHONE 미설정" }), {
+          status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      const authHeader = await getSolapiAuthHeader();
+      const alimRes = await fetch("https://api.solapi.com/messages/v4/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: authHeader },
+        body: JSON.stringify({
+          message: {
+            to:   JINHEUNG_PHONE,
+            from: SENDER_PHONE,
+            kakaoOptions: {
+              pfId:       PF_ID,
+              templateId: TEMPLATE_ID,
+              variables: {
+                "#{주문번호}": body.orderNo      ?? "-",
+                "#{고객사}":   body.customerName ?? "-",
+                "#{품목}":     body.productSpec  ?? "-",
+                "#{수량}":     body.quantity     ?? "-",
+                "#{전달시간}": new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }),
+              },
+              buttons: [
+                ...(body.wheelReturnedUrl ? [{
+                  buttonType: "WL",
+                  buttonName: "휠반납 확인",
+                  linkMo:     body.wheelReturnedUrl,
+                  linkPc:     body.wheelReturnedUrl,
+                }] : []),
+                {
+                  buttonType: "WL",
+                  buttonName: "업무 페이지",
+                  linkMo:     "https://rnfkorea.co.kr/work/secretary",
+                  linkPc:     "https://rnfkorea.co.kr/work/secretary",
+                },
+              ],
+            },
+          },
+        }),
+      });
+
+      if (!alimRes.ok) {
+        const err = await alimRes.text();
+        console.error("휠반납 알림톡 오류:", err);
+        // SMS fallback
+        const smsText = [
+          "[담당자님, 사내 업무용 메시지]",
+          "RNF 타이어 휠반납 요청 안내", "",
+          `주문번호: ${body.orderNo ?? "-"}`,
+          `고객사: ${body.customerName ?? "-"}`,
+          `품목: ${body.productSpec ?? "-"}`,
+          `수량: ${body.quantity ?? "-"}`,
+          `시간: ${new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}`,
+        ].join("\n");
+        await sendSms(smsText, [JINHEUNG_PHONE]);
+      } else {
+        console.log("휠반납 알림톡 발송 성공:", body.orderNo);
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, type: "wheel_return_request" }),
         { headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
       );
     }

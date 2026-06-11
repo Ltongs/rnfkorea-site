@@ -8,6 +8,9 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
+const KAKAO_EDGE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-hyundaicm-kakao`;
+const SITE_URL = "https://www.rnfkorea.co.kr";
+
 type Status = "loading" | "success" | "already_done" | "error";
 
 const ACTION_MAP: Record<string, { label: string; next: string; nextLabel: string }> = {
@@ -111,6 +114,28 @@ export default function OrderConfirmPage() {
         return;
       }
 
+      // ── delivered 완료 시 휠반납 알림톡 자동 발송 ──
+      if (action === "delivered") {
+        try {
+          const wheelReturnedUrl = `${SITE_URL}/order/confirm/completed_order/${id}`;
+          await fetch(KAKAO_EDGE_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type:            "wheel_return_request",
+              orderNo:         id,
+              customerName:    order.customer_name_raw ?? "확인필요",
+              productSpec:     order.product_spec      ?? "확인필요",
+              quantity:        order.quantity != null ? String(order.quantity) : "확인필요",
+              wheelReturnedUrl,
+            }),
+          });
+        } catch (e) {
+          console.warn("[휠반납 알림톡 발송 실패]", e);
+          // 알림톡 실패해도 페이지 처리는 계속
+        }
+      }
+
       // AI 비서 채팅 알림
       const actionLabelKo = actionMeta.label;
       await supabase.from("secretary_chat_logs").insert({
@@ -193,6 +218,9 @@ export default function OrderConfirmPage() {
           </div>
         )}
         <p className="text-xs text-gray-400 mt-4">RNF Korea에 자동으로 알림이 전송되었습니다.</p>
+        {action === "delivered" && (
+          <p className="text-xs text-orange-500 mt-1">휠반납 요청 알림톡이 (주)진흥으로 발송되었습니다.</p>
+        )}
         <p className="text-xs text-gray-400 mt-1">{countdown}초 후 자동으로 닫힙니다</p>
       </div>
     </div>
