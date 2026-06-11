@@ -772,16 +772,22 @@ export default function NarumiPage() {
       );
       alert(error.message);
     } else {
-      // 등록서류 수령 완료 시 SMS 발송
-      if (key === "docs_ready" && nextVal === true) {
+      // 단계 변경 시 카카오 알림톡 발송
+      const keyToStatus: Record<string, { prev: string; next: string }> = {
+        docs_ready:    { prev: "보험완료", next: "등록서류" },
+        is_registered: { prev: "등록서류", next: "등록완료" },
+      };
+      const stageChange = keyToStatus[key];
+      if (stageChange && nextVal === true) {
         sendNarumiKakao({
-          type:         "narumi_docs_ready",
-          vin:          target.vin,
+          type:       "narumi_status",
+          vin:        target.vin,
           customerName: target.customer_name,
-          salesRep:     target.sales_rep,
+          salesRep:   target.sales_rep,
+          prevStatus: stageChange.prev,
+          nextStatus: stageChange.next,
         });
       }
-      // 등록완료(is_registered) 단계는 SMS 미발송
     }
   };
 

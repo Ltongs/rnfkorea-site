@@ -1,5 +1,5 @@
 // supabase/functions/send-hyundaicm-kakao/index.ts
-// 발송 방식: 솔라피 카카오 알림톡 (HCM) + SMS fallback / 나르미 SMS 유지
+// 발송 방식: 솔라피 카카오 알림톡 (HCM + 나르미) + SMS fallback
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -31,6 +31,18 @@ const HCM_TEMPLATES: Record<string, string> = {
 };
 
 const HCM_PAGE_URL = "https://rnfkorea.co.kr/hyundaicm";
+
+// ─── 나르미 카카오 알림톡 설정 ────────────────────────────────
+const NARUMI_PF_ID = "KA01PF2606081346516718bsSRTnA56x"; // HCM과 동일 채널
+
+const NARUMI_TEMPLATES: Record<string, string> = {
+  narumi_new:         "KA01TP260610065002744WoXoJO3vP35",
+  narumi_status:      "KA01TP260610070601887WFMBHMT7oV5",
+  narumi_hold:        "KA01TP260610070700598AHO1bQh0PWS",
+  narumi_vehicle_doc: "KA01TP260610070803879LDAIVfOpMcs",
+};
+
+const NARUMI_PAGE_URL = "https://rnfkorea.co.kr/narumi";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin":  "*",
@@ -120,6 +132,144 @@ async function sendHcmAlimtalkToAll(
   await Promise.all(
     RECIPIENTS.map((to) => sendHcmAlimtalk(to, templateId, variables, fallbackText))
   );
+}
+
+// ─── 나르미 알림톡 단건 발송 ───────────────────────────────────
+async function sendNarumiAlimtalk(
+  to: string,
+  templateId: string,
+  variables: Record<string, string>,
+  fallbackText: string,
+): Promise<void> {
+  const authHeader = await getSolapiAuthHeader();
+  const res = await fetch("https://api.solapi.com/messages/v4/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: authHeader },
+    body: JSON.stringify({
+      message: {
+        to,
+        from: SENDER_PHONE,
+        kakaoOptions: {
+          pfId:       NARUMI_PF_ID,
+          templateId,
+          variables,
+          disableSms: false,
+          buttons: [{
+            buttonType: "WL",
+            buttonName: "업무 페이지 열기",
+            linkMo:     NARUMI_PAGE_URL,
+            linkPc:     NARUMI_PAGE_URL,
+          }],
+        },
+        text: fallbackText,
+      },
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    console.error(`나르미 알림톡 오류 (${to}):`, err);
+    throw new Error(`나르미 알림톡 발송 실패: ${err}`);
+  }
+  console.log(`나르미 알림톡 발송 성공 (${to}):`, templateId);
+}
+
+// ─── 나르미 알림톡 전체 수신자 발송 ──────────────────────────
+async function sendNarumiAlimtalkToAll(
+  templateKey: string,
+  variables: Record<string, string>,
+  fallbackText: string,
+): Promise<void> {
+  const templateId = NARUMI_TEMPLATES[templateKey];
+  if (!templateId) throw new Error(`나르미 템플릿 키 없음: ${templateKey}`);
+  await Promise.all(
+    NARUMI_RECIPIENTS.map((to) => sendNarumiAlimtalk(to, templateId, variables, fallbackText))
+  );
+}
+
+// ─────────────────────────────────────────────
+// 나르미 알림톡 변수 빌더
+// ─────────────────────────────────────────────
+function buildNarumiVariables(body: Record<string, string>): { templateKey: string; variables: Record<string, string> } {
+  const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+  const { type, customerName, salesRep } = body;
+
+  if (type === "narumi_new") {
+    return {
+      templateKey: "narumi_new",
+      variables: {
+        "#{VIN}":      body.vin          ?? "-",
+        "#{고객명}":   customerName      ?? "-",
+        "#{영업사원}": salesRep          ?? "-",
+        "#{출고일}":   body.deliveryDate ?? "-",
+        "#{특이사항}": body.specialNote  ?? "-",
+        "#{시간}":     now,
+      },
+    };
+  }
+
+  if (type === "narumi_status") {
+    const isHold   = body.nextStatus === "보류";
+    const isUnhold = body.nextStatus === "보류해제";
+    const statusKo: Record<string, string> = {
+      todo: "보류", insurance: "보험", docs: "등록서류",
+      registered: "등록완료", completed: "차량등록증 완료",
+    };
+
+    if (isHold) {
+      return {
+        templateKey: "narumi_hold",
+        variables: {
+          "#{VIN}":      body.vin            ?? "-",
+          "#{고객명}":   customerName        ?? "-",
+          "#{보류사유}": body.holdReason     ?? "-",
+          "#{재확인일}": body.nextFollowupDate ?? "-",
+          "#{영업사원}": salesRep            ?? "-",
+          "#{시간}":     now,
+        },
+      };
+    }
+
+    return {
+      templateKey: "narumi_status",
+      variables: {
+        "#{VIN}":      body.vin ?? "-",
+        "#{고객명}":   customerName ?? "-",
+        "#{이전단계}": statusKo[body.prevStatus] ?? body.prevStatus ?? "-",
+        "#{현재단계}": isUnhold ? "보류해제" : (statusKo[body.nextStatus] ?? body.nextStatus ?? "-"),
+        "#{영업사원}": salesRep ?? "-",
+        "#{시간}":     now,
+      },
+    };
+  }
+
+  if (type === "narumi_vehicle_doc") {
+    return {
+      templateKey: "narumi_vehicle_doc",
+      variables: {
+        "#{VIN}":      body.vin      ?? "-",
+        "#{고객명}":   customerName  ?? "-",
+        "#{영업사원}": salesRep      ?? "-",
+        "#{시간}":     now,
+      },
+    };
+  }
+
+  // narumi_insurance_confirmed, narumi_postal → narumi_status 템플릿 재활용
+  if (type === "narumi_insurance_confirmed") {
+    return {
+      templateKey: "narumi_status",
+      variables: {
+        "#{VIN}":      body.vin     ?? "-",
+        "#{고객명}":   customerName ?? "-",
+        "#{이전단계}": "-",
+        "#{현재단계}": "보험확인완료",
+        "#{영업사원}": salesRep ?? "-",
+        "#{시간}":     now,
+      },
+    };
+  }
+
+  throw new Error(`나르미 알림톡 변수 빌더: 알 수 없는 type: ${type}`);
 }
 
 // ─────────────────────────────────────────────
@@ -612,11 +762,26 @@ serve(async (req) => {
 
     const isNarumi = typeof body.type === "string" && body.type.startsWith("narumi");
 
-    // ── 나르미: SMS 유지 ──────────────────────────────────────
+    // ── 나르미: 알림톡 발송 ──────────────────────────────────────
     if (isNarumi) {
-      const smsText = buildMessage(body);
-      console.log("[나르미 SMS 발송]:", smsText.slice(0, 80));
-      await sendSms(smsText, NARUMI_RECIPIENTS);
+      // narumi_postal은 템플릿 없으므로 SMS 유지
+      if (body.type === "narumi_postal") {
+        const smsText = buildMessage(body);
+        console.log("[나르미 우편발송 SMS]:", smsText.slice(0, 80));
+        await sendSms(smsText, NARUMI_RECIPIENTS);
+      } else {
+        try {
+          const { templateKey, variables } = buildNarumiVariables(body);
+          const fallbackText = buildMessage(body);
+          console.log("[나르미 알림톡 발송]:", templateKey);
+          await sendNarumiAlimtalkToAll(templateKey, variables, fallbackText);
+        } catch (e) {
+          // 템플릿 없는 타입은 SMS 폴백
+          console.warn("[나르미 알림톡 폴백 SMS]:", (e as Error).message);
+          const smsText = buildMessage(body);
+          await sendSms(smsText, NARUMI_RECIPIENTS);
+        }
+      }
     }
     // ── HCM: 알림톡 발송 ─────────────────────────────────────
     else {

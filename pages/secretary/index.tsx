@@ -1045,16 +1045,9 @@ const SecretaryPage:React.FC = () => {
     setSchedLoading(true);
     const d = new Date(schedDate); d.setDate(d.getDate()+1);
     const nextDay = d.toISOString().slice(0,10);
-    // 선택 날짜 기준 일정 + 현대건설기계 미완료 팔로업(날짜 지나도 고정)
-    const [r1, r2] = await Promise.all([
-      supabase.from("secretary_schedules").select("*").gte("schedule_date",schedDate).lte("schedule_date",nextDay).eq("is_done",false).order("schedule_date",{ascending:true}).order("start_time",{ascending:true}),
-      supabase.from("secretary_schedules").select("*").eq("category","followup").eq("related_type","finance").eq("is_done",false).lt("schedule_date",schedDate),
-    ]);
-    const pinned = (r2.data ?? []) as Schedule[];
-    const regular = (r1.data ?? []) as Schedule[];
-    // 중복 제거 후 고정 항목 위에 표시
-    const ids = new Set(regular.map(s=>s.id));
-    const merged = [...pinned.filter(s=>!ids.has(s.id)), ...regular];
+    // 선택 날짜 기준 일정만 조회 (기한초과 항목 제외)
+    const r1 = await supabase.from("secretary_schedules").select("*").gte("schedule_date",schedDate).lte("schedule_date",nextDay).eq("is_done",false).order("schedule_date",{ascending:true}).order("start_time",{ascending:true});
+    const merged = (r1.data ?? []) as Schedule[];
 
     // consultation_id가 있는 일정의 진행단계 조회
     const cids = [...new Set(merged.filter(s=>s.consultation_id).map(s=>s.consultation_id as number))];
@@ -1371,19 +1364,14 @@ const SecretaryPage:React.FC = () => {
       const today = todayStr();
       setSchedDate(today);
       setSchedViewMode("day");
-      setSchedLoading(true);
-      Promise.all([
-        supabase.from("secretary_schedules").select("*").gte("schedule_date",today).lte("schedule_date",(()=>{const d=new Date(today);d.setDate(d.getDate()+1);return d.toISOString().slice(0,10);})()).eq("is_done",false).order("schedule_date",{ascending:true}).order("start_time",{ascending:true}),
-        supabase.from("secretary_todos").select("*").eq("is_done",false).order("priority").order("created_at",{ascending:false}),
-      ]).then(([sr,tr])=>{
-        if(sr.data) setSchedules(sr.data as Schedule[]);
-        if(tr.data) setTodos(tr.data as Todo[]);
-        setSchedLoading(false);
-      });
+      void loadSchedules();
+      void loadTodos();
     }
     if(tab==="status"){ void loadStatusData(); }
     if(tab==="chat"){ setTimeout(()=>{ const c=chatContainerRef.current; if(c)c.scrollTop=c.scrollHeight; },100); }
   },[tab, loadStatusData]);
+  // 캘린더 날짜 클릭 시 해당 날짜 일정 재조회
+  useEffect(()=>{ if(tab==="schedule") void loadSchedules(); },[schedDate]);
   useEffect(()=>{if(tab==="orders"){void loadOrderViews();void loadConsults();}},[tab,loadOrderViews,loadConsults]);
 
   useEffect(()=>{
@@ -2232,7 +2220,6 @@ const SecretaryPage:React.FC = () => {
                     <CatDot c={s.category}/>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        {s.schedule_date<schedDate&&<span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-500 font-medium flex-shrink-0">📌 기한초과</span>}
                         {s.schedule_date>schedDate&&<span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium flex-shrink-0">내일</span>}
                         <span className={`text-sm font-semibold text-[#0f172a] ${s.is_done?"line-through":""}`}>{s.title}</span>
                         <span className="text-xs text-gray-400">{CAT_LBL[s.category]}</span>
