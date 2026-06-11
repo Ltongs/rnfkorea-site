@@ -22,4 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-public/asset/samwoo_original/
+public/asset/samwoo_original/.env
+.env.local
+.env.production
