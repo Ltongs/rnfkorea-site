@@ -1485,6 +1485,7 @@ const AppRoutes = () => {
           />
 
           {/* 물품발송/휠반납 확인 페이지 (진흥 전용, 인증 불필요) */}
+          <Route path="/order/confirm/:action/:id" element={<OrderConfirmPage />} />
           <Route path="/order/confirm" element={<OrderConfirmPage />} />
 
           {/* legacy */}

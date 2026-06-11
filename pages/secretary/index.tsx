@@ -1526,7 +1526,17 @@ const SecretaryPage:React.FC = () => {
       category:newTodo.category||null,due_date:newTodo.due_date||null,
       consultation_id:newTodo.consultation_id?Number(newTodo.consultation_id):null,
     });
-    if(!error){showToast("할일 저장 완료");setShowTodoForm(false);setNewTodo({title:"",description:"",priority:"normal",category:"",due_date:"",consultation_id:""});void loadTodos();void loadStats();void loadCalData(calViewYear, calViewMonth);}
+    if(!error){
+      showToast("할일 저장 완료");
+      setShowTodoForm(false);
+      setNewTodo({title:"",description:"",priority:"normal",category:"",due_date:"",consultation_id:""});
+      void loadTodos(); void loadStats(); void loadCalData(calViewYear, calViewMonth);
+      // due_date 있으면 구글 캘린더 등록
+      if(gcalConnected && newTodo.due_date){
+        const {data:td} = await supabase.from("secretary_todos").select("id,title,due_date").eq("title",newTodo.title).order("created_at",{ascending:false}).limit(1).maybeSingle();
+        if(td) void syncToGcal({id:td.id,title:`✅ ${td.title}`,description:newTodo.description||null,schedule_date:td.due_date,start_time:null,end_time:null,location:null});
+      }
+    }
   }
   async function toggleTodo(id:number,done:boolean){
     await supabase.from("secretary_todos").update({is_done:!done,done_at:!done?new Date().toISOString():null}).eq("id",id);
@@ -1734,7 +1744,17 @@ const SecretaryPage:React.FC = () => {
             }
           }
         }
-        if(saved.some((s:any)=>s.type==="todo"))  { void loadTodos();  void loadCalData(calViewYear, calViewMonth); }
+        if(saved.some((s:any)=>s.type==="todo")){
+          void loadTodos(); void loadCalData(calViewYear, calViewMonth);
+          // due_date 있는 todo는 구글 캘린더 등록
+          if(gcalConnected){
+            const todoItems = saved.filter((s:any)=>s.type==="todo" && s.id);
+            for(const t of todoItems){
+              const {data:td} = await supabase.from("secretary_todos").select("id,title,due_date,description").eq("id",t.id).maybeSingle();
+              if(td?.due_date) void syncToGcal({id:td.id,title:`✅ ${td.title}`,description:td.description??null,schedule_date:td.due_date,start_time:null,end_time:null,location:null});
+            }
+          }
+        }
         if(saved.some((s:any)=>s.type==="order"))   { void loadOrderViews(); void loadStats(); }
         if(saved.some((s:any)=>s.type==="order_update")) { void loadOrders(); void loadStats(); }
         if(saved.some((s:any)=>s.type==="memo"))       { if(tab==="memo") void loadMemos(); }
