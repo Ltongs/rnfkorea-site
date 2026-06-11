@@ -1283,15 +1283,17 @@ serve(async (req) => {
               try {
                 const kakaoRes = await fetch(KAKAO_EDGE_URL, {
                   method: "POST",
-                  headers: { "Content-Type": "application/json" },
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${Deno.env.get("SUPABASE_ANON_KEY") ?? ""}`,
+                  },
                   body: JSON.stringify({
                     type:         "order_forwarded",
                     orderNo:      orderId,
                     customerName: a.customer_name as string ?? "확인필요",
                     productSpec:  productSpec ?? "확인필요",
                     quantity:     qty != null ? String(qty) : "확인필요",
-                    deliveredUrl:     `https://rnfkorea.co.kr/order/confirm/delivered/${orderId}`,
-                    wheelReturnedUrl: `https://rnfkorea.co.kr/order/confirm/completed_order/${orderId}`,
+                    deliveredUrl: `https://rnfkorea.co.kr/order/confirm/delivered/${orderId}`,
                   }),
                 });
                 const kakaoBody = await kakaoRes.text();
