@@ -13,56 +13,38 @@ const SITE_URL = "https://www.rnfkorea.co.kr";
 
 type Status = "loading" | "success" | "already_done" | "error";
 
-const ACTION_MAP: Record<string, { label: string; next: string; nextLabel: string }> = {
-  delivered: {
-    label:     "물품발송",
-    next:      "completed_order",
-    nextLabel: "휠반납완료",
-  },
-  completed_order: {
-    label:     "휠반납완료",
-    next:      "invoiced",
-    nextLabel: "계산서발행",
-  },
+const ACTION_MAP: Record<string, { label: string }> = {
+  delivered:       { label: "물품발송" },
+  completed_order: { label: "휠반납완료" },
 };
 
-const AUTO_CLOSE_SEC = 3;
+// 각 action이 처리 완료로 간주되는 상태 목록
+const DONE_MAP: Record<string, string[]> = {
+  delivered:       ["delivered", "completed_order", "wheel_returned", "invoiced", "payment_in", "payment_out"],
+  completed_order: ["completed_order", "wheel_returned", "invoiced", "payment_in", "payment_out"],
+};
 
 export default function OrderConfirmPage() {
-  const [params]  = useSearchParams();
+  const [params]    = useSearchParams();
   const routeParams = useParams<{ action?: string; id?: string }>();
-  const id        = routeParams.id ?? params.get("id") ?? "";
-  const action    = routeParams.action ?? params.get("action") ?? "";
+  const id          = routeParams.id ?? params.get("id") ?? "";
+  const action      = routeParams.action ?? params.get("action") ?? "";
   const [status, setStatus]       = useState<Status>("loading");
-  const [errorMsg, setErrorMsg]   = useState<string>("");
   const [orderInfo, setOrderInfo] = useState<{
     customer_name_raw: string;
     product_spec: string;
     quantity: number | null;
   } | null>(null);
-  const [countdown, setCountdown] = useState(AUTO_CLOSE_SEC);
 
   const actionMeta = ACTION_MAP[action];
 
   useEffect(() => {
     if (!id || !actionMeta) {
-      setErrorMsg(`id=${id}, action=${action}, actionMeta=${JSON.stringify(actionMeta)}`);
       setStatus("error");
       return;
     }
     processAction();
   }, [id, action]);
-
-  useEffect(() => {
-    if (status !== "success" && status !== "already_done") return;
-    const interval = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) { clearInterval(interval); window.close(); return 0; }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [status]);
 
   async function processAction() {
     try {
@@ -73,7 +55,6 @@ export default function OrderConfirmPage() {
         .single();
 
       if (fetchErr || !order) {
-        setErrorMsg(`fetch 오류: ${fetchErr?.message ?? "order null"} / id=${id}`);
         setStatus("error");
         return;
       }
@@ -84,12 +65,14 @@ export default function OrderConfirmPage() {
         quantity:          order.quantity,
       });
 
-      const doneStatuses = ["delivered", "completed_order", "wheel_returned", "invoiced", "payment_in", "payment_out"];
-      if (doneStatuses.includes(order.status) && order.status !== "forwarded") {
+      // 이미 처리된 경우 — action별로 다르게 체크
+      const doneStatuses = DONE_MAP[action] ?? [];
+      if (doneStatuses.includes(order.status)) {
         setStatus("already_done");
         return;
       }
 
+      // 상태 업데이트
       const now = new Date().toISOString();
       const patch: Record<string, unknown> = { status: action };
       if (action === "delivered")        patch.delivered_at      = now;
@@ -101,50 +84,24 @@ export default function OrderConfirmPage() {
         .eq("id", id);
 
       if (updateErr) {
-        setErrorMsg(`update 오류: ${updateErr.message}`);
         setStatus("error");
         return;
       }
 
-      if (action === "delivered") {
-        try {
-          const wheelReturnedUrl = `${SITE_URL}/order/confirm/completed_order/${id}`;
-          await fetch(KAKAO_EDGE_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              type:            "wheel_return_request",
-              orderNo:         id,
-              customerName:    order.customer_name_raw ?? "확인필요",
-              productSpec:     order.product_spec      ?? "확인필요",
-              quantity:        order.quantity != null ? String(order.quantity) : "확인필요",
-              wheelReturnedUrl,
-            }),
-          });
-        } catch (e) {
-          console.warn("[휠반납 알림톡 발송 실패]", e);
-        }
-      }
-
-      const { error: chatErr } = await supabase.from("secretary_chat_logs").insert({
+      // AI 비서 채팅 알림
+      await supabase.from("secretary_chat_logs").insert({
         role:       "assistant",
         content:    `📦 **${actionMeta.label} 완료**\n\n**${order.customer_name_raw}** ${order.product_spec ?? ""} ${order.quantity ? order.quantity + "개" : ""}\n주문번호: ${id.slice(-8).toUpperCase()}\n✅ (주)진흥에서 ${actionMeta.label} 처리 완료`,
         session_id: "main",
       });
 
-      if (chatErr) {
-        setErrorMsg(`chat_log 오류: ${chatErr.message}`);
-        setStatus("error");
-        return;
-      }
-
       setStatus("success");
-    } catch (e) {
-      setErrorMsg(`예외: ${(e as Error).message}`);
+    } catch {
       setStatus("error");
     }
   }
 
+  // ── 로딩 ──────────────────────────────────────────
   if (status === "loading") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -156,6 +113,7 @@ export default function OrderConfirmPage() {
     );
   }
 
+  // ── 이미 처리됨 ───────────────────────────────────
   if (status === "already_done") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
@@ -170,12 +128,13 @@ export default function OrderConfirmPage() {
               <p>품목: {orderInfo.product_spec}</p>
             </div>
           )}
-          <p className="text-xs text-gray-400 mt-6">{countdown}초 후 자동으로 닫힙니다</p>
+          <p className="text-xs text-gray-400 mt-6">이 창을 닫아주세요</p>
         </div>
       </div>
     );
   }
 
+  // ── 오류 ──────────────────────────────────────────
   if (status === "error") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
@@ -186,14 +145,12 @@ export default function OrderConfirmPage() {
           <h1 className="text-xl font-bold text-red-600 mb-2">처리 중 오류가 발생했습니다</h1>
           <p className="text-sm text-gray-500">링크를 다시 확인하거나 RNF Korea로 문의해주세요.</p>
           <p className="text-xs text-gray-400 mt-2">1551-1873</p>
-          {errorMsg && (
-            <p className="text-xs text-red-400 mt-4 break-all bg-red-50 rounded p-2">{errorMsg}</p>
-          )}
         </div>
       </div>
     );
   }
 
+  // ── 성공 ──────────────────────────────────────────
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="bg-white rounded-2xl shadow-md p-8 max-w-sm w-full text-center">
@@ -215,7 +172,7 @@ export default function OrderConfirmPage() {
         {action === "delivered" && (
           <p className="text-xs text-orange-500 mt-1">휠반납 요청 알림톡이 (주)진흥으로 발송되었습니다.</p>
         )}
-        <p className="text-xs text-gray-400 mt-1">{countdown}초 후 자동으로 닫힙니다</p>
+        <p className="text-xs text-gray-400 mt-4">이 창을 닫아주세요</p>
       </div>
     </div>
   );
