@@ -8,7 +8,7 @@ export default function HyundaiCMRouteGuard({
 }: {
   children: React.ReactNode;
 }) {
-  const { loading, user, isAdmin, isSubAdmin, isHyundaiCM, isNhCapital } = useAuth() as any;
+  const { loading, user, isAdmin, isSubAdmin, isHyundaiCM, isNhCapital, isNhCapitalStaff } = useAuth() as any;
   const location = useLocation();
 
   if (loading) {
@@ -29,8 +29,8 @@ export default function HyundaiCMRouteGuard({
     );
   }
 
-  // admin, 부관리자, 현대건설기계, 농협캐피탈(파트너) 계정만 허용
-  if (!isAdmin && !isSubAdmin && !isHyundaiCM && !isNhCapital) {
+  // admin, 부관리자, 현대건설기계, 농협캐피탈(파트너), NH캐피탈 직원(조회전용) 계정만 허용
+  if (!isAdmin && !isSubAdmin && !isHyundaiCM && !isNhCapital && !isNhCapitalStaff) {
     return (
       <div className="container mx-auto px-4 py-16">
         <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm font-semibold">
