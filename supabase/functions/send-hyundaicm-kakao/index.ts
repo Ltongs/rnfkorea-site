@@ -758,7 +758,7 @@ serve(async (req) => {
     if (body.type === "wheel_return_request") {
       const JINHEUNG_PHONE = (Deno.env.get("JINHEUNG_PHONE") ?? "").replace(/\D/g, "");
       const PF_ID       = Deno.env.get("SOLAPI_PF_ID") ?? "";
-      const TEMPLATE_ID = Deno.env.get("SOLAPI_TEMPLATE_ID_ORDER") ?? "";
+      const TEMPLATE_ID = Deno.env.get("SOLAPI_TEMPLATE_ID_WHEEL_REQUEST") ?? "";
 
       if (!JINHEUNG_PHONE) {
         return new Response(JSON.stringify({ error: "JINHEUNG_PHONE 미설정" }), {

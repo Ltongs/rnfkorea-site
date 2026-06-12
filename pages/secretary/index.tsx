@@ -1605,7 +1605,7 @@ const SecretaryPage:React.FC = () => {
   const fmtProgress = (wt:string, stage:string|null):string => {
     if(!stage) return "-";
     // 공통 단계
-    const COMMON:Record<string,string> = {consulting:"상담",quote:"견적",contract:"계약",delivery:"납품",invoiced:"계산서발행",cancelled:"취소"};
+    const COMMON:Record<string,string> = {consulting:"상담",quote:"견적",contract:"계약",delivery:"납품",completed_order:"완결",invoiced:"계산서발행",cancelled:"취소"};
     if(COMMON[stage]) return COMMON[stage];
     // 타이어 레거시 — 나르미 formatCommonStage와 동일하게 맞춤
     const TIRE:Record<string,string> = {
@@ -1633,7 +1633,7 @@ const SecretaryPage:React.FC = () => {
   // 진행단계 컬러
   const progressColor = (stage:string|null):string => {
     if(!stage) return "text-gray-400";
-    if(["invoiced","completed","confirmed","delivered","확정"].includes(stage)) return "text-emerald-600 font-semibold";
+    if(["invoiced","completed","confirmed","delivered","completed_order","확정"].includes(stage)) return "text-emerald-600 font-semibold";
     if(["cancelled","rejected","취소","거절"].includes(stage)) return "text-red-400";
     if(["closed"].includes(stage)) return "text-gray-500"; // 종결 — 회색
     if(["contract","contract_sent","approved","승인","보완","supplement"].includes(stage)) return "text-blue-600";

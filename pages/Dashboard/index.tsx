@@ -14,6 +14,7 @@ import {
   Shield,
   TrendingUp,
   Truck,
+  Package,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 
@@ -95,6 +96,24 @@ type TbOrder = {
   margin: number | null;
   delivered_at: string | null;
   wheel_returned_at: string | null;
+};
+
+type SalesRecord = {
+  id: number;
+  sale_date: string;
+  customer_name: string;
+  category: string;
+  maker: string | null;
+  spec: string | null;
+  quantity: number;
+  unit_price: number;
+  unit_cost: number;
+  total_revenue: number;
+  total_cost: number;
+  margin: number;
+  tax_invoice: boolean;
+  payment_confirmed: boolean;
+  delivery_confirmed: boolean;
 };
 
 type Metric = {
@@ -209,8 +228,6 @@ function inflowChannelLabel(
 
 function consultationListUrl(params?: Record<string, string | number | null | undefined>) {
   const search = new URLSearchParams();
-
-  // 상담관리 페이지 구현 차이에 대비해 목록 탭을 가리키는 키를 함께 전달
   search.set("tab", "list");
   search.set("view", "list");
   search.set("mode", "list");
@@ -226,6 +243,15 @@ function consultationListUrl(params?: Record<string, string | number | null | un
   return `/work/call-management?${search.toString()}#list`;
 }
 
+// 카테고리 색상
+const CATEGORY_COLORS: Record<string, string> = {
+  "타이어":         "bg-blue-100 text-blue-700",
+  "렌탈":           "bg-purple-100 text-purple-700",
+  "LFP(지게차)":    "bg-emerald-100 text-emerald-700",
+  "LFP(고소작업대)":"bg-teal-100 text-teal-700",
+  "기타":           "bg-gray-100 text-gray-600",
+};
+
 const DashboardPage: React.FC = () => {
   const today = new Date();
   const [selectedYear, setSelectedYear] = useState(today.getFullYear());
@@ -239,6 +265,7 @@ const DashboardPage: React.FC = () => {
   const [tireDetails, setTireDetails] = useState<TireDetailRow[]>([]);
   const [narumiTasks, setNarumiTasks] = useState<NarumiTask[]>([]);
   const [tbOrders, setTbOrders] = useState<TbOrder[]>([]);
+  const [salesRecords, setSalesRecords] = useState<SalesRecord[]>([]);
 
   useEffect(() => {
     let alive = true;
@@ -249,6 +276,8 @@ const DashboardPage: React.FC = () => {
 
       const yearStart = startOfYear(selectedYear).toISOString();
       const yearEnd = endOfYear(selectedYear).toISOString();
+      const yearStartDate = `${selectedYear}-01-01`;
+      const yearEndDate = `${selectedYear}-12-31`;
 
       try {
         const [
@@ -258,6 +287,7 @@ const DashboardPage: React.FC = () => {
           tireRes,
           narumiRes,
           tbOrdersRes,
+          salesRes,
         ] = await Promise.all([
           supabase
             .from("consultation_cases")
@@ -295,6 +325,12 @@ const DashboardPage: React.FC = () => {
             .select("id, created_at, customer_name_raw, product_spec, quantity, status, price_to_customer, price_from_jinheung, margin, delivered_at, wheel_returned_at")
             .order("created_at", { ascending: false })
             .limit(50),
+          supabase
+            .from("sales_records")
+            .select("id, sale_date, customer_name, category, maker, spec, quantity, unit_price, unit_cost, total_revenue, total_cost, margin, tax_invoice, payment_confirmed, delivery_confirmed")
+            .gte("sale_date", yearStartDate)
+            .lte("sale_date", yearEndDate)
+            .order("sale_date", { ascending: false }),
         ]);
 
         const firstError =
@@ -303,7 +339,8 @@ const DashboardPage: React.FC = () => {
           financeRes.error ||
           tireRes.error ||
           narumiRes.error ||
-          tbOrdersRes.error;
+          tbOrdersRes.error ||
+          salesRes.error;
 
         if (firstError) throw firstError;
         if (!alive) return;
@@ -328,6 +365,7 @@ const DashboardPage: React.FC = () => {
           )
         );
         setNarumiTasks((narumiRes.data || []) as NarumiTask[]);
+        setSalesRecords((salesRes.data || []) as SalesRecord[]);
       } catch (e: any) {
         if (!alive) return;
         setError(e?.message || "운영 대시보드 데이터를 불러오지 못했습니다.");
@@ -386,6 +424,66 @@ const DashboardPage: React.FC = () => {
     () => narumiTasks.filter((row) => isInRange(row.created_at, ranges.monthStart, ranges.monthEnd)),
     [narumiTasks, ranges]
   );
+
+  // ── 매출 집계 ──────────────────────────────────────────────────────────────
+  const monthSalesRecords = useMemo(
+    () => salesRecords.filter((row) => {
+      if (!row.sale_date) return false;
+      const d = new Date(row.sale_date);
+      return d.getFullYear() === selectedYear && d.getMonth() + 1 === selectedMonth;
+    }),
+    [salesRecords, selectedYear, selectedMonth]
+  );
+
+  const salesSummary = useMemo(() => {
+    const sum = (rows: SalesRecord[], key: keyof SalesRecord) =>
+      rows.reduce((acc, r) => acc + safeNumber(r[key] as number), 0);
+
+    const byCategory = (rows: SalesRecord[]) => {
+      const map: Record<string, { revenue: number; margin: number; count: number }> = {};
+      rows.forEach((r) => {
+        const cat = r.category || "기타";
+        if (!map[cat]) map[cat] = { revenue: 0, margin: 0, count: 0 };
+        map[cat].revenue += safeNumber(r.total_revenue);
+        map[cat].margin += safeNumber(r.margin);
+        map[cat].count += 1;
+      });
+      return map;
+    };
+
+    const topCustomers = (rows: SalesRecord[]) => {
+      const map: Record<string, number> = {};
+      rows.forEach((r) => {
+        map[r.customer_name] = (map[r.customer_name] || 0) + safeNumber(r.total_revenue);
+      });
+      return Object.entries(map)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5);
+    };
+
+    const unpaidMonth = monthSalesRecords.filter((r) => !r.payment_confirmed);
+    const unpaidMonthAmount = sum(unpaidMonth, "total_revenue");
+
+    return {
+      month: {
+        revenue: sum(monthSalesRecords, "total_revenue"),
+        cost: sum(monthSalesRecords, "total_cost"),
+        margin: sum(monthSalesRecords, "margin"),
+        count: monthSalesRecords.length,
+        unpaidAmount: unpaidMonthAmount,
+        unpaidCount: unpaidMonth.length,
+        byCategory: byCategory(monthSalesRecords),
+      },
+      ytd: {
+        revenue: sum(salesRecords, "total_revenue"),
+        cost: sum(salesRecords, "total_cost"),
+        margin: sum(salesRecords, "margin"),
+        count: salesRecords.length,
+        byCategory: byCategory(salesRecords),
+        topCustomers: topCustomers(salesRecords),
+      },
+    };
+  }, [monthSalesRecords, salesRecords]);
 
   const metricNewConsultations: Metric = useMemo(
     () => ({ month: monthConsultations.length, ytd: consultations.length }),
@@ -665,6 +763,144 @@ const DashboardPage: React.FC = () => {
           </div>
         ) : (
           <>
+            {/* ── 매출 현황 섹션 ── */}
+            <section className={`${cardClass} p-6 space-y-5`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className={sectionTitleClass}>Sales</p>
+                  <h2 className="mt-1 text-lg font-semibold text-navy-900 flex items-center gap-2">
+                    <Package className="w-5 h-5 text-orange-500" />
+                    매출 현황
+                  </h2>
+                </div>
+                <a href="/work/sales" className="text-xs font-medium text-orange-500 hover:underline">매출 입력 →</a>
+              </div>
+
+              {/* 매출 KPI 3개 */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {[
+                  {
+                    label: `${selectedMonth}월 매출`,
+                    value: formatCurrency(salesSummary.month.revenue),
+                    ytd: formatCurrency(salesSummary.ytd.revenue),
+                    color: "text-navy-900",
+                  },
+                  {
+                    label: `${selectedMonth}월 수익`,
+                    value: formatCurrency(salesSummary.month.margin),
+                    ytd: formatCurrency(salesSummary.ytd.margin),
+                    color: "text-emerald-600",
+                  },
+                  {
+                    label: `${selectedMonth}월 미수금`,
+                    value: formatCurrency(salesSummary.month.unpaidAmount),
+                    ytd: `${salesSummary.month.unpaidCount}건 미수`,
+                    color: salesSummary.month.unpaidAmount > 0 ? "text-red-600" : "text-gray-400",
+                  },
+                ].map((kpi) => (
+                  <div key={kpi.label} className={subCardClass}>
+                    <p className={labelClass}>{kpi.label}</p>
+                    <p className={`mt-2 text-2xl font-semibold ${kpi.color}`}>{kpi.value}</p>
+                    <p className="mt-2 text-xs text-gray-400">{ytdLabel} {kpi.ytd}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* 카테고리별 매출 */}
+              <div>
+                <p className="text-xs font-semibold text-gray-400 mb-3">카테고리별 {selectedMonth}월 매출</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {["타이어", "렌탈", "LFP(지게차)", "LFP(고소작업대)", "기타"].map((cat) => {
+                    const d = salesSummary.month.byCategory[cat];
+                    const ytdD = salesSummary.ytd.byCategory[cat];
+                    if (!d && !ytdD) return null;
+                    return (
+                      <div key={cat} className={subCardClass}>
+                        <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${CATEGORY_COLORS[cat] || "bg-gray-100 text-gray-600"}`}>
+                          {cat}
+                        </span>
+                        <p className="mt-2 text-lg font-semibold text-navy-900">
+                          {d ? formatCurrency(d.revenue) : "-"}
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500">
+                          수익 {d ? formatCurrency(d.margin) : "-"}
+                        </p>
+                        <p className="mt-1 text-xs text-gray-400">
+                          {ytdLabel} {ytdD ? formatCurrency(ytdD.revenue) : "-"}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Top 5 거래처 */}
+              <div>
+                <p className="text-xs font-semibold text-gray-400 mb-3">Top 5 거래처 ({ytdLabel})</p>
+                <div className="space-y-2">
+                  {salesSummary.ytd.topCustomers.map(([name, revenue], i) => {
+                    const maxRevenue = salesSummary.ytd.topCustomers[0]?.[1] || 1;
+                    const pct = (revenue / maxRevenue) * 100;
+                    return (
+                      <div key={name} className="flex items-center gap-3">
+                        <span className="text-xs font-bold text-orange-500 w-4">{i + 1}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <span className="text-sm font-medium text-navy-900 truncate">{name}</span>
+                            <span className="text-sm font-semibold text-navy-900 shrink-0">{formatCurrency(revenue)}</span>
+                          </div>
+                          <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-orange-500 rounded-full transition-all"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {salesSummary.ytd.topCustomers.length === 0 && (
+                    <p className="text-sm text-gray-400">매출 데이터가 없습니다.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* 최근 매출 목록 */}
+              <div>
+                <p className="text-xs font-semibold text-gray-400 mb-3">최근 매출 내역</p>
+                <div className="space-y-2">
+                  {monthSalesRecords.slice(0, 8).map((r) => (
+                    <div key={r.id} className={`${subCardClass} flex items-center justify-between gap-2`}>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium shrink-0 ${CATEGORY_COLORS[r.category] || "bg-gray-100 text-gray-600"}`}>
+                            {r.category}
+                          </span>
+                          <p className="text-sm font-semibold text-navy-900 truncate">{r.customer_name}</p>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {r.maker || ""} {r.spec || ""} {r.quantity > 0 ? `× ${r.quantity}` : ""}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-sm font-semibold text-navy-900">{formatCurrency(safeNumber(r.total_revenue))}</p>
+                        <div className="flex items-center gap-1 mt-0.5 justify-end">
+                          {r.payment_confirmed
+                            ? <span className="text-[10px] text-emerald-600 font-medium">입금</span>
+                            : <span className="text-[10px] text-red-500 font-medium">미수</span>
+                          }
+                          <span className="text-[10px] text-gray-400">{r.sale_date}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {monthSalesRecords.length === 0 && (
+                    <div className={`${subCardClass} text-sm text-gray-400`}>해당 월 매출 데이터가 없습니다.</div>
+                  )}
+                </div>
+              </div>
+            </section>
+
             {/* ── KPI 카드 5개 ── */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
               {[
@@ -930,7 +1166,6 @@ const DashboardPage: React.FC = () => {
 
             {/* ── 진흥 주문 현황 ── */}
             {(() => {
-              const now = new Date();
               const monthOrders = tbOrders.filter(o => {
                 const d = new Date(o.created_at);
                 return d.getFullYear() === selectedYear && d.getMonth() + 1 === selectedMonth;
@@ -950,7 +1185,6 @@ const DashboardPage: React.FC = () => {
                 ...stageMap[key],
                 count: tbOrders.filter(o => o.status === key).length,
               }));
-              // 휠반납 미결 = delivered 상태 (납품완료됐으나 아직 완결 안 된 것)
               const wheelPending = tbOrders.filter(o => o.status === "delivered");
               const totalRevenue = monthOrders.reduce((s, o) => s + (o.price_to_customer ?? 0), 0);
               const totalMargin  = monthOrders.reduce((s, o) => s + (o.margin ?? 0), 0);
@@ -969,7 +1203,6 @@ const DashboardPage: React.FC = () => {
                     <a href="/work/orders" className="text-xs font-medium text-orange-500 hover:underline">전체보기 →</a>
                   </div>
 
-                  {/* 월 KPI */}
                   <div className="grid grid-cols-3 gap-3">
                     {[
                       { label: `${selectedMonth}월 주문`, value: `${monthOrders.length}건`, color: "text-navy-900" },
@@ -983,7 +1216,6 @@ const DashboardPage: React.FC = () => {
                     ))}
                   </div>
 
-                  {/* 단계별 현황 */}
                   <div>
                     <p className="text-xs font-semibold text-gray-400 mb-2">단계별 전체 현황</p>
                     <div className="flex flex-wrap gap-2">
@@ -995,7 +1227,6 @@ const DashboardPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* 휠반납 미결 */}
                   {wheelPending.length > 0 && (
                     <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                       <p className="text-xs font-semibold text-amber-700 mb-2">⚠️ 휠반납 미결 {wheelPending.length}건</p>
@@ -1011,7 +1242,6 @@ const DashboardPage: React.FC = () => {
                     </div>
                   )}
 
-                  {/* 최근 주문 목록 */}
                   <div>
                     <p className="text-xs font-semibold text-gray-400 mb-2">최근 주문</p>
                     <div className="space-y-2">

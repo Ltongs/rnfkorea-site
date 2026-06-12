@@ -747,6 +747,7 @@ const CallManagementPage: React.FC = () => {
     if (value === "new") return "신규";
     if (value === "in_progress") return "진행중";
     if (value === "waiting_customer") return "고객대기";
+    if (value === "delivered") return "납품";
     if (value === "completed") return "완료";
     if (value === "on_hold") return "보류";
     if (value === "closed") return "종결";
@@ -3850,6 +3851,7 @@ const CallManagementPage: React.FC = () => {
                       <th className={thClass}>연락처</th>
                       <th className={thClass}>업무유형</th>
                       <th className={thClass}>자동요약</th>
+                      <th className={thClass}>진행단계</th>
                       <th className={thClass}>Closing</th>
                       <th className={thClass}>수정</th>
                     </tr>
@@ -3892,6 +3894,19 @@ const CallManagementPage: React.FC = () => {
                           </td>
                           <td className={tdClass} style={{maxWidth:"240px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.summary}</td>
                           <td className={tdClass}>
+                            {row.work_type === "registration_insurance"
+                              ? <span className="text-xs font-medium text-blue-600">{formatInsuranceProcess(insuranceDetailsMap[row.id] ?? null)}</span>
+                              : row.work_type === "finance"
+                              ? <span className="text-xs font-medium text-purple-600">{formatFinanceStage(financeDetailsMap[row.id]?.finance_stage ?? null)}</span>
+                              : row.work_type === "tire_sales"
+                              ? <span className="text-xs font-medium text-orange-600">{formatCommonStage(tireDetailsMap[row.id]?.process_status ?? null)}</span>
+                              : row.work_type === "forklift_sales"
+                              ? <span className="text-xs font-medium text-orange-600">{formatCommonStage(resolvedForkliftStatus(forkliftDetailsMap[row.id] ?? null))}</span>
+                              : row.work_type === "battery_sales"
+                              ? <span className="text-xs font-medium text-orange-600">{formatCommonStage(resolvedBatteryStatus(batteryDetailsMap[row.id] ?? null))}</span>
+                              : "-"}
+                          </td>
+                          <td className={tdClass}>
                             {isClosingCase(
                               row,
                               insuranceDetailsMap[row.id],
@@ -3917,7 +3932,7 @@ const CallManagementPage: React.FC = () => {
 
                         {expandedRowId === row.id && (
                           <tr>
-                            <td colSpan={8} className="p-2 bg-white max-w-0">
+                            <td colSpan={9} className="p-2 bg-white max-w-0">
                               <div className={inlineDetailBoxClass}>
                                 {loadingDetail && (
                                   <div className="text-sm text-gray-500">

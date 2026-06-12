@@ -608,6 +608,16 @@ export default function PageHeader() {
                     </button>
                   )}
 
+                  {isAdminLevel && (
+                    <button
+                      type="button"
+                      className={dropItem}
+                      onClick={() => goWorkInternalOnly("/work/sales")}
+                    >
+                      📊 매출관리
+                    </button>
+                  )}
+
                   {(isAdminLevel || !user) && (
                     <button
                       type="button"

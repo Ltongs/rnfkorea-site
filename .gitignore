@@ -25,3 +25,4 @@ dist-ssr
 public/asset/samwoo_original/.env
 .env.local
 .env.production
+public/asset/samwoo_original/

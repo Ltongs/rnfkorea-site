@@ -1264,7 +1264,7 @@ serve(async (req) => {
             console.log("[tb_orders insert]", JSON.stringify({ customer_name_raw: a.customer_name, product_type: productType, product_spec: productSpec, quantity: qty }));
             const { data: tbOrder, error: tbErr } = await db.from("tb_orders").insert({
               customer_name_raw: a.customer_name,
-              inbound_channel:   a.channel ?? "phone",
+              inbound_channel:   ["phone","sms","kakao","email","other"].includes(a.channel) ? a.channel : "phone",
               raw_message:       a.summary,
               product_type:      productType,
               product_spec:      productSpec,
@@ -1272,6 +1272,7 @@ serve(async (req) => {
               status:            "forwarded",
               parsed_confidence: "high",
               forwarded_at:      now,
+              consultation_id:   cid ?? null,
             }).select("id").single();
             if (tbErr) console.error("[tb_orders insert 오류]:", tbErr.message);
             console.log("[tb_orders insert 결과]:", tbOrder ? `id=${(tbOrder as Record<string,unknown>).id}` : "null");
