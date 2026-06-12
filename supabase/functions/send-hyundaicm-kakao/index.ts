@@ -50,6 +50,57 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+// ─── 주문번호 포맷 (YYMMDD-순번) ─────────────────────────────
+// tb_orders.id(uuid)를 받아서, 해당 주문이 등록된 날짜(KST 기준)와
+// 그날 몇 번째로 등록된 주문인지를 조회해 "YYMMDD-001" 형식으로 변환한다.
+// 조회에 실패하거나 uuid 형식이 아니면 원본 값을 그대로 반환한다.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function formatOrderNo(rawOrderNo: string | undefined | null): Promise<string> {
+  const fallback = rawOrderNo ?? "-";
+  if (!rawOrderNo || !UUID_RE.test(rawOrderNo)) return fallback;
+
+  try {
+    const sbUrl = Deno.env.get("APP_SUPABASE_URL") ?? Deno.env.get("SUPABASE_URL") ?? "";
+    const sbKey = Deno.env.get("APP_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const db = createClient(sbUrl, sbKey);
+
+    const { data: orderRow, error: orderErr } = await db
+      .from("tb_orders")
+      .select("created_at")
+      .eq("id", rawOrderNo)
+      .maybeSingle();
+    if (orderErr || !orderRow?.created_at) return fallback;
+
+    const createdAt  = new Date(orderRow.created_at);
+    const KST_OFFSET = 9 * 60 * 60 * 1000;
+    const kst        = new Date(createdAt.getTime() + KST_OFFSET);
+
+    const yy = String(kst.getUTCFullYear() % 100).padStart(2, "0");
+    const mm = String(kst.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(kst.getUTCDate()).padStart(2, "0");
+
+    // 해당 날짜(KST)의 00:00 ~ 24:00 구간을 UTC 범위로 환산
+    const dayStartUTC = new Date(
+      Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate()) - KST_OFFSET
+    );
+    const dayEndUTC = new Date(dayStartUTC.getTime() + 24 * 60 * 60 * 1000);
+
+    const { count, error: countErr } = await db
+      .from("tb_orders")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", dayStartUTC.toISOString())
+      .lt("created_at", dayEndUTC.toISOString())
+      .lte("created_at", orderRow.created_at);
+    if (countErr || !count) return `${yy}${mm}${dd}-001`;
+
+    const seq = String(count).padStart(3, "0");
+    return `${yy}${mm}${dd}-${seq}`;
+  } catch {
+    return fallback;
+  }
+}
+
 // ─── 솔라피 HMAC-SHA256 인증 ─────────────────────────────────
 async function getSolapiAuthHeader(): Promise<string> {
   const date = new Date().toISOString();
@@ -726,6 +777,9 @@ serve(async (req) => {
 
     // ── 타이어/배터리 발주 알림톡 (진흥 전용) ─────────────────
     if (body.type === "order_forwarded") {
+      // 주문번호를 YYMMDD-순번 형식으로 변환
+      body.orderNo = await formatOrderNo(body.orderNo);
+
       // 쉼표로 구분된 여러 수신자 지원 (예: "01028378838,01050549006")
       const JINHEUNG_PHONES = (Deno.env.get("JINHEUNG_PHONE") ?? "")
         .split(",")
@@ -783,6 +837,9 @@ serve(async (req) => {
 
     // ── 휠반납 요청 알림톡 (배송완료 후 자동 발송) ───────────────
     if (body.type === "wheel_return_request") {
+      // 주문번호를 YYMMDD-순번 형식으로 변환
+      body.orderNo = await formatOrderNo(body.orderNo);
+
       // 쉼표로 구분된 여러 수신자 지원 (예: "01028378838,01050549006")
       const JINHEUNG_PHONES = (Deno.env.get("JINHEUNG_PHONE") ?? "")
         .split(",")

@@ -448,37 +448,19 @@ const CallManagementPage: React.FC = () => {
   const [applicationIssued, setApplicationIssued] = useState(false);
   const [paymentCompleted, setPaymentCompleted] = useState(false);
   const [policyIssued, setPolicyIssued] = useState(false);
-  const handleInsuranceStatusChange = (
-    key: "requested" | "proposal" | "paid" | "issued",
-    checked: boolean
-  ) => {
-    let next = {
-      requested: designRequested,
-      proposal: applicationIssued,
-      paid: paymentCompleted,
-      issued: policyIssued,
-    };
-
-    // 기존 ON 자동화는 유지, 하나라도 OFF 되면 전체 OFF
-    if (!checked) {
-      next = { requested: false, proposal: false, paid: false, issued: false };
+  // 보험 진행상태: 설계요청 / 증권발급 두 단계만 관리
+  const handleInsuranceStatusSelect = (value: "requested" | "issued") => {
+    if (value === "issued") {
+      setDesignRequested(true);
+      setApplicationIssued(true);
+      setPaymentCompleted(true);
+      setPolicyIssued(true);
     } else {
-      next[key] = true;
-
-      if (key === "issued") {
-        next = { requested: true, proposal: true, paid: true, issued: true };
-      } else if (key === "paid") {
-        next.requested = true;
-        next.proposal = true;
-      } else if (key === "proposal") {
-        next.requested = true;
-      }
+      setDesignRequested(true);
+      setApplicationIssued(false);
+      setPaymentCompleted(false);
+      setPolicyIssued(false);
     }
-
-    setDesignRequested(next.requested);
-    setApplicationIssued(next.proposal);
-    setPaymentCompleted(next.paid);
-    setPolicyIssued(next.issued);
   };
 
   const [insuranceNote, setInsuranceNote] = useState("");
@@ -764,12 +746,9 @@ const CallManagementPage: React.FC = () => {
 
   const formatInsuranceProcess = (detail: InsuranceDetailRow | null) => {
     if (!detail) return "-";
-    const done: string[] = [];
-    if (detail.design_requested) done.push("설계요청");
-    if (detail.application_issued) done.push("청약서발행");
-    if (detail.payment_completed) done.push("결제");
-    if (detail.policy_issued) done.push("증권발급");
-    return done.length ? done.join(" → ") : "미진행";
+    if (detail.policy_issued) return "증권발급";
+    if (detail.design_requested) return "설계요청";
+    return "미진행";
   };
 
   const formatTireProcessStatus = (value: string | null) => formatCommonStage(value);
@@ -2798,49 +2777,23 @@ const CallManagementPage: React.FC = () => {
                     />
                   </div>
 
+                  <div>
+                    <label className={labelClass}>보험 진행상태</label>
+                    <select
+                      className={controlClass}
+                      style={insuranceEqualFieldStyle}
+                      value={policyIssued ? "issued" : "requested"}
+                      onChange={(e) =>
+                        handleInsuranceStatusSelect(e.target.value as "requested" | "issued")
+                      }
+                    >
+                      <option value="requested">설계요청</option>
+                      <option value="issued">증권발급</option>
+                    </select>
+                  </div>
 
                 </div>
 
-
-            <div className={compactCard}>
-                  <div className="text-sm font-semibold text-navy-900 mb-2">
-                    보험 진행상태
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                      <input
-                        type="checkbox"
-                        checked={designRequested}
-                        onChange={(e) => handleInsuranceStatusChange("requested", e.target.checked)}
-                      />
-                      설계요청
-                    </label>
-                    <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                      <input
-                        type="checkbox"
-                        checked={applicationIssued}
-                        onChange={(e) => handleInsuranceStatusChange("proposal", e.target.checked)}
-                      />
-                      청약서발행
-                    </label>
-                    <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                      <input
-                        type="checkbox"
-                        checked={paymentCompleted}
-                        onChange={(e) => handleInsuranceStatusChange("paid", e.target.checked)}
-                      />
-                      결제
-                    </label>
-                    <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                      <input
-                        type="checkbox"
-                        checked={policyIssued}
-                        onChange={(e) => handleInsuranceStatusChange("issued", e.target.checked)}
-                      />
-                      증권발급
-                    </label>
-                  </div>
-                </div>
 
                 <div>
                   <label className={labelClass}>상담내용</label>
