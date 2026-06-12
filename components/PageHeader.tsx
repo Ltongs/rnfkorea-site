@@ -93,7 +93,7 @@ function calcMobileMenuStyle(btnEl: HTMLButtonElement | null): MobileMenuStyle {
 export default function PageHeader() {
   const { pathname } = useLocation();
   const nav = useNavigate();
-  const { user, canViewAll, isAdmin, isSubAdmin, isNarumi, isLotte, isInsuranceManager, isHyundaiCM, isNhCapital, isInsAI } = useAuth() as any;
+  const { user, canViewAll, isAdmin, isSubAdmin, isNarumi, isLotte, isInsuranceManager, isHyundaiCM, isNhCapital, isNhCapitalStaff, isInsAI } = useAuth() as any;
   const isAdminLevel = isAdmin || isSubAdmin;
 
   const [openBiz, setOpenBiz] = useState(false);
@@ -578,7 +578,7 @@ export default function PageHeader() {
                     </button>
                   )}
 
-                  {(isAdminLevel || isHyundaiCM || isNhCapital || !user) && (
+                  {(isAdminLevel || isHyundaiCM || isNhCapital || isNhCapitalStaff || !user) && (
                     <button
                       type="button"
                       className={dropItem}

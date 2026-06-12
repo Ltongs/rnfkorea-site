@@ -772,7 +772,7 @@ const SecretaryPage:React.FC = () => {
   const [narumiList,setNarumiList] = useState<NarumiTask[]>([]);
   const [narumiConsults,setNarumiConsults] = useState<OrderView[]>([]);
   // 진흥주문 탭
-  const [jFilter,setJFilter] = useState<"active"|"all"|"done">("active");
+  const [jFilter,setJFilter] = useState<"active"|"all"|"done"|"wheel_pending">("active");
   const [jExpanded,setJExpanded] = useState<string|null>(null);
   const [jLoading,setJLoading] = useState(false);
   const [jList,setJList] = useState<any[]>([]);
@@ -2653,10 +2653,10 @@ const SecretaryPage:React.FC = () => {
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <p className="text-sm font-semibold text-[#0f172a]">🔧 진흥주문 관리</p>
                 <div className="flex gap-1.5 flex-wrap">
-                  {(["active","all","done"] as const).map(f=>(
+                  {(["active","all","done","wheel_pending"] as const).map(f=>(
                     <button key={f} onClick={()=>setJFilter(f)}
                       className={`px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${jFilter===f?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
-                      {{active:"진행중",all:"전체",done:"완료"}[f]}
+                      {{active:"진행중",all:"전체",done:"완료",wheel_pending:"휠반납대상"}[f]}
                     </button>
                   ))}
                   <button className={BTG} onClick={()=>{
@@ -2728,9 +2728,13 @@ const SecretaryPage:React.FC = () => {
                 const NEXT:Record<string,string|null>={received:"forwarded",forwarded:"delivered",delivered:"wheel_returned",wheel_returned:"invoiced",invoiced:"billed_in",billed_in:"payment_in",payment_in:"payment_out",payment_out:null};
                 const PREV:Record<string,string|null>={received:null,forwarded:"received",delivered:"forwarded",wheel_returned:"delivered",invoiced:"wheel_returned",billed_in:"invoiced",payment_in:"billed_in",payment_out:"payment_in"};
                 const DFLD:Record<string,string>={forwarded:"forwarded_at",delivered:"delivered_at",wheel_returned:"wheel_returned_at",invoiced:"invoiced_at",billed_in:"billed_in_at",payment_in:"payment_in_at",payment_out:"payment_out_at"};
-                const filtered=jList.filter((o:any)=>jFilter==="active"?o.status!=="payment_out":jFilter==="done"?o.status==="payment_out":true);
+                let filtered=jList.filter((o:any)=>jFilter==="active"?o.status!=="payment_out":jFilter==="done"?o.status==="payment_out":jFilter==="wheel_pending"?o.status==="delivered":true);
+                if(jFilter==="wheel_pending"){
+                  // 납품일 오래된 순으로 정렬 (휠반납 누락 우려가 큰 건부터)
+                  filtered=[...filtered].sort((a:any,b:any)=>new Date(a.delivered_at??a.created_at).getTime()-new Date(b.delivered_at??b.created_at).getTime());
+                }
                 const reload=()=>{setJLoading(true);supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60).then(({data})=>{setJList(data??[]);setJLoading(false);});};
-                if(filtered.length===0) return <div className={`${CARD} p-8 text-center text-gray-400 text-sm`}>주문이 없습니다</div>;
+                if(filtered.length===0) return <div className={`${CARD} p-8 text-center text-gray-400 text-sm`}>{jFilter==="wheel_pending"?"휠반납 대상 주문이 없습니다 (모두 회수 완료) 🎉":"주문이 없습니다"}</div>;
                 return (
                   <div className="space-y-2">
                     {filtered.map((o:any)=>{

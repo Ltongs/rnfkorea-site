@@ -212,14 +212,14 @@ const btnGhost =
 
 // ─── 메인 컴포넌트 ────────────────────────────────────────
 export default function HyundaiCMPage() {
-  const { user, logout, isAdmin, isSubAdmin, isHyundaiCM, isNhCapital } = useAuth() as any;
+  const { user, logout, isAdmin, isSubAdmin, isHyundaiCM, isNhCapital, isNhCapitalStaff } = useAuth() as any;
   const nav = useNavigate();
   const isAdminLevel           = isAdmin || isSubAdmin;
   const canCreate              = isAdminLevel || isHyundaiCM || isNhCapital;
   const canEditExisting        = isAdminLevel || isNhCapital;
-  const canChangeStatus        = isAdminLevel || isNhCapital;
+  const canChangeStatus        = isAdminLevel || isNhCapital || isNhCapitalStaff;
   const canUploadDoc           = isAdminLevel || isNhCapital;
-  const canUploadVehicleRegDoc = isAdminLevel || isHyundaiCM || isNhCapital;
+  const canUploadVehicleRegDoc = isAdminLevel || isHyundaiCM || isNhCapital || isNhCapitalStaff;
   const canUploadTaxInvoice    = isHyundaiCM || isAdminLevel;  // 세금계산서 업로드: p2001103 + admin + ltongs7
   const canDelete              = isAdminLevel || isNhCapital;
 
@@ -623,7 +623,11 @@ export default function HyundaiCMPage() {
       const { data, error } = await q.order("created_at", { ascending: false });
       if (error) throw error;
 
-      const nextRows = (data ?? []) as HCMTask[];
+      const fetchedRows = (data ?? []) as HCMTask[];
+      // NH캐피탈 직원(조회 전용)은 할부금융사가 NH캐피탈인 건만 조회 가능
+      const nextRows = isNhCapitalStaff
+        ? fetchedRows.filter((r) => r.finance_company === "NH캐피탈")
+        : fetchedRows;
       setRows(nextRows);
       const drafts: Record<string, string> = {};
       const credits: Record<string, HCMStatus> = {};
@@ -666,7 +670,7 @@ export default function HyundaiCMPage() {
     }
   };
 
-  useEffect(() => { fetchRows(); }, [showClosed, isAdmin, isHyundaiCM]); // eslint-disable-line
+  useEffect(() => { fetchRows(); }, [showClosed, isAdmin, isHyundaiCM, isNhCapitalStaff]); // eslint-disable-line
 
   // ─── 모바일 파일 선택 후 세션 자동 복구 ─────────────────────
   // 모바일에서 파일 picker 사용 시 앱이 백그라운드 전환 후 복귀하면서 세션이 끊기는 현상 방지
@@ -1903,7 +1907,7 @@ export default function HyundaiCMPage() {
                                 </span>
                               </p>
                             </div>
-                            {(isAdmin || isSubAdmin || isNhCapital) && (
+                            {(isAdmin || isSubAdmin || isNhCapital || isNhCapitalStaff) && (
                             <button
                               onClick={() => downloadVehicleRegDoc(f.path, f.name)}
                               className="shrink-0 px-3 py-1 rounded-2xl border border-emerald-200 text-emerald-700 text-xs font-medium hover:border-emerald-400 transition-all"

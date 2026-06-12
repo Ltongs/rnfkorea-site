@@ -22,6 +22,7 @@ type AuthContextType = {
   isInsuranceManager: boolean;
   isHyundaiCM: boolean;   // 현대건설기계 (배성구 팀장)
   isNhCapital: boolean;   // 농협캐피탈 (강신규 소장)
+  isNhCapitalStaff: boolean; // NH캐피탈 직원 (조회 전용, NH캐피탈 건만)
   isInsAI: boolean;       // AI 비서 (Ins) 전용 (everyasset.fc@gmail.com)
   isInternal: boolean;
 
@@ -59,6 +60,7 @@ function getRoleFlags(emailRaw?: string | null) {
   const isHyundaiCM        = email === "p2001103@hanmail.net";   // 현대건설기계 배성구 팀장
   const isNhCapital        = email === "allbar7555@naver.com"      // 농협캐피탈 강신규 소장
                           || email === "yongbaek_jo@orix.co.kr";  // ORIX 조용백
+  const isNhCapitalStaff   = email === "ehddhks1115@nhcapital.co.kr"; // NH캐피탈 직원 (조회 전용)
   const isInsAI            = email === "everyasset.fc@gmail.com"; // AI 비서 (Ins) 전용
 
   // isHyundaiCM / isNhCapital 은 각자 전용 페이지만 볼 수 있으므로
@@ -74,6 +76,7 @@ function getRoleFlags(emailRaw?: string | null) {
     isInsuranceManager,
     isHyundaiCM,
     isNhCapital,
+    isNhCapitalStaff,
     isInsAI,
     isInternal,
   };
@@ -88,6 +91,7 @@ function getPermissions(emailRaw?: string | null) {
     isInsuranceManager,
     isHyundaiCM,
     isNhCapital,
+    isNhCapitalStaff,
     isInsAI,
     isInternal,
   } = getRoleFlags(emailRaw);
@@ -102,18 +106,19 @@ function getPermissions(emailRaw?: string | null) {
     isInsuranceManager,
     isHyundaiCM,
     isNhCapital,
+    isNhCapitalStaff,
     isInsAI,
     isInternal,
 
     canViewAll:          isInternal,
-    canViewHyundaiCM:    isInternal || isHyundaiCM || isNhCapital,
+    canViewHyundaiCM:    isInternal || isHyundaiCM || isNhCapital || isNhCapitalStaff,
     canCreate:           isAdminLevel || isNarumi || isInsuranceManager || isHyundaiCM || isNhCapital,
     canEditExisting:     isAdminLevel || isInsuranceManager || isNhCapital,
     canDelete:           isAdminLevel || isInsuranceManager || isNhCapital,
-    canChangeStatus:     isAdminLevel || isInsuranceManager || isNhCapital,
+    canChangeStatus:     isAdminLevel || isInsuranceManager || isNhCapital || isNhCapitalStaff,
     canEditMemo:         isAdminLevel || isInsuranceManager || isNhCapital,
     canUploadVehicleDoc: isAdminLevel || isInsuranceManager || isNhCapital,
-    canUploadVehicleRegDoc: isHyundaiCM || isAdminLevel || isNhCapital,
+    canUploadVehicleRegDoc: isHyundaiCM || isAdminLevel || isNhCapital || isNhCapitalStaff,
     canUploadTaxInvoice: isHyundaiCM || isAdminLevel,  // 세금계산서 업로드: isHyundaiCM + admin + ltongs7
   };
 }
@@ -198,6 +203,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isInsuranceManager: permissionState.isInsuranceManager,
       isHyundaiCM:        permissionState.isHyundaiCM,
       isNhCapital:        permissionState.isNhCapital,
+      isNhCapitalStaff:   permissionState.isNhCapitalStaff,
       isInsAI:            permissionState.isInsAI,
       isInternal:         permissionState.isInternal,
 
