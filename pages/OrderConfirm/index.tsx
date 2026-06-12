@@ -18,12 +18,6 @@ const ACTION_MAP: Record<string, { label: string }> = {
   completed_order: { label: "휠반납완료" },
 };
 
-<<<<<<< HEAD
-// 각 action이 처리 완료로 간주되는 상태 목록
-const DONE_MAP: Record<string, string[]> = {
-  delivered:       ["delivered", "completed_order", "wheel_returned", "invoiced", "payment_in", "payment_out"],
-  completed_order: ["completed_order", "wheel_returned", "invoiced", "payment_in", "payment_out"],
-=======
 // action(URL 파라미터) → 실제 tb_orders.status 컬럼에 들어갈 값
 // tb_orders_status_check 제약조건: received | forwarded | delivered | wheel_returned | invoiced | billed_in | payment_in | payment_out
 const STATUS_MAP: Record<string, string> = {
@@ -35,7 +29,6 @@ const STATUS_MAP: Record<string, string> = {
 const DONE_MAP: Record<string, string[]> = {
   delivered:       ["delivered", "wheel_returned", "invoiced", "payment_in", "payment_out"],
   completed_order: ["wheel_returned", "invoiced", "payment_in", "payment_out"],
->>>>>>> 58cf7e5a27fb99b3d52b80cad57824cafcde03e9
 };
 
 export default function OrderConfirmPage() {
