@@ -1393,7 +1393,9 @@ const AppRoutes = () => {
           <Route path="/" element={
             isAdminLevel
               ? <Navigate to="/work/secretary" replace />
-              : <HomePage />
+              : isInsAI
+                ? <Navigate to="/work/secretary-ins" replace />
+                : <HomePage />
           } />
           <Route path="/tires" element={<TiresPage />} />
           <Route path="/battery" element={<BatteryPage />} />
