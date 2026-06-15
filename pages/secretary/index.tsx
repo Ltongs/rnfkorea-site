@@ -2071,7 +2071,6 @@ const SecretaryPage:React.FC = () => {
             <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 font-medium">📅 {stats.todaySch}</span>
             <span className="px-2.5 py-1 rounded-full bg-orange-50 text-orange-600 font-medium">✅ {stats.activeTodo}</span>
             <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-600 font-medium">📦 {stats.newOrders}</span>
-
             {stats.newConsult>0&&<span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 font-medium">💬 오늘상담 {stats.newConsult}</span>}
           </div>
           {/* 탭 - 항상 보이도록 */}
@@ -2084,6 +2083,7 @@ const SecretaryPage:React.FC = () => {
                 }
               </button>
             ))}
+            <button className={`${TB} ${TI}`} onClick={()=>navigate("/work/finance-hub")}>💵 매출/매입</button>
           </div>
 
         </div>
