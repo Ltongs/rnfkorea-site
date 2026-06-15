@@ -193,6 +193,8 @@ const FinanceHubPage: React.FC = () => {
   // 데이터
   const [sales, setSales] = useState<SalesRecord[]>([]);
   const [purchases, setPurchases] = useState<PurchaseRecord[]>([]);
+  const [allSales, setAllSales] = useState<SalesRecord[]>([]);
+  const [allPurchases, setAllPurchases] = useState<PurchaseRecord[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -279,14 +281,18 @@ const FinanceHubPage: React.FC = () => {
 
   async function loadAll() {
     setLoading(true); setError(null);
-    const [s, p] = await Promise.all([
+    const [s, p, sa, pa] = await Promise.all([
       supabase.from("sales_records").select("*").gte("sale_date", from).lte("sale_date", to).order("sale_date", { ascending: false }),
       supabase.from("purchase_records").select("*").gte("purchase_date", from).lte("purchase_date", to).order("purchase_date", { ascending: false }),
+      supabase.from("sales_records").select("*").order("sale_date", { ascending: false }),
+      supabase.from("purchase_records").select("*").order("purchase_date", { ascending: false }),
     ]);
     if (s.error) setError(s.error.message);
     else setSales((s.data || []) as SalesRecord[]);
     if (p.error) setError(p.error.message);
     else setPurchases((p.data || []) as PurchaseRecord[]);
+    setAllSales((sa.data || []) as SalesRecord[]);
+    setAllPurchases((pa.data || []) as PurchaseRecord[]);
     setLoading(false);
   }
 
@@ -416,23 +422,29 @@ const FinanceHubPage: React.FC = () => {
   const displaySales = showUncategorized ? uncatSales : sales;
   const displayPurchases = showUncategorized ? uncatPurchases : purchases;
 
-  const filteredSales = useMemo(() => displaySales.filter(r => {
-    if (filterCategory !== "전체" && r.category !== filterCategory) return false;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      return r.customer_name.toLowerCase().includes(q) || (r.spec || "").toLowerCase().includes(q) || (r.maker || "").toLowerCase().includes(q);
-    }
-    return true;
-  }), [displaySales, filterCategory, searchQuery]);
+  const filteredSales = useMemo(() => {
+    const base = searchQuery ? allSales : displaySales;
+    return base.filter(r => {
+      if (filterCategory !== "전체" && r.category !== filterCategory) return false;
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        return r.customer_name.toLowerCase().includes(q) || (r.spec || "").toLowerCase().includes(q) || (r.maker || "").toLowerCase().includes(q);
+      }
+      return true;
+    });
+  }, [displaySales, allSales, filterCategory, searchQuery]);
 
-  const filteredPurchases = useMemo(() => displayPurchases.filter(r => {
-    if (filterCategory !== "전체" && r.category !== filterCategory) return false;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      return r.supplier_name.toLowerCase().includes(q) || (r.spec || "").toLowerCase().includes(q) || (r.maker || "").toLowerCase().includes(q);
-    }
-    return true;
-  }), [displayPurchases, filterCategory, searchQuery]);
+  const filteredPurchases = useMemo(() => {
+    const base = searchQuery ? allPurchases : displayPurchases;
+    return base.filter(r => {
+      if (filterCategory !== "전체" && r.category !== filterCategory) return false;
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        return r.supplier_name.toLowerCase().includes(q) || (r.spec || "").toLowerCase().includes(q) || (r.maker || "").toLowerCase().includes(q);
+      }
+      return true;
+    });
+  }, [displayPurchases, allPurchases, filterCategory, searchQuery]);
 
   // ── 거래처 자동완성 ───────────────────────────────────────────────────────
   const filteredCustomers = useMemo(() => {
@@ -942,8 +954,11 @@ const FinanceHubPage: React.FC = () => {
           <div className="relative flex-1 min-w-[180px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-              placeholder={activeTab === "sales" ? "거래처, Maker, 규격 검색" : "매입처, Maker, 규격 검색"}
+              placeholder={activeTab === "sales" ? "거래처, Maker, 규격 검색 (전 기간)" : "매입처, Maker, 규격 검색 (전 기간)"}
               className="w-full h-[38px] pl-9 pr-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-orange-400" />
+            {searchQuery && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-orange-500 font-medium whitespace-nowrap">전 기간</span>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             {["전체", ...CATEGORIES].map(cat => (
@@ -1037,29 +1052,35 @@ const FinanceHubPage: React.FC = () => {
                                   <p className="text-[11px] text-gray-400 mb-0.5">수량</p>
                                   <p className="font-semibold text-gray-800">{r.quantity}개</p>
                                 </div>
-                                {/* 단가 */}
                                 <div>
                                   <p className="text-[11px] text-gray-400 mb-0.5">판매단가</p>
                                   <p className="font-semibold text-gray-900">{fmt(r.unit_price || 0)}</p>
                                 </div>
-                                <div>
-                                  <p className="text-[11px] text-gray-400 mb-0.5">매입단가</p>
-                                  <p className="font-semibold text-gray-900">{fmt(r.unit_cost || 0)}</p>
-                                </div>
-                                {/* 합계 */}
-                                <div>
-                                  <p className="text-[11px] text-gray-400 mb-0.5">총 매출</p>
-                                  <p className="font-bold text-orange-600">{fmt(r.total_revenue || 0)}</p>
-                                </div>
-                                <div>
-                                  <p className="text-[11px] text-gray-400 mb-0.5">총 매입</p>
-                                  <p className="font-semibold text-gray-900">{fmt(r.total_cost || 0)}</p>
-                                </div>
-                                <div>
-                                  <p className="text-[11px] text-gray-400 mb-0.5">이익</p>
-                                  <p className={`font-bold ${(r.margin || 0) >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmt(r.margin || 0)}</p>
-                                </div>
+                                {/* 구분선 */}
+                                <div className="w-full border-t border-dashed border-gray-200 my-0.5"/>
+                                {/* 공급가액 / 부가세 / 합계 */}
+                                {(() => {
+                                  const isExport = r.trade_type === "수출";
+                                  const supply = Math.round(r.total_revenue || 0);
+                                  const vat = isExport ? 0 : Math.round(supply * 0.1);
+                                  const total = supply + vat;
+                                  return (<>
+                                    <div>
+                                      <p className="text-[11px] text-gray-400 mb-0.5">공급가액</p>
+                                      <p className="font-semibold text-gray-900">{fmt(supply)}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[11px] text-gray-400 mb-0.5">부가세 {isExport ? "(영세율)" : "(10%)"}</p>
+                                      <p className="font-semibold text-gray-500">{fmt(vat)}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[11px] text-orange-400 mb-0.5">합계금액 (VAT 포함)</p>
+                                      <p className="font-bold text-orange-600 text-base">{fmt(total)}</p>
+                                    </div>
+                                  </>);
+                                })()}
                                 {/* 상태 */}
+                                <div className="w-full border-t border-dashed border-gray-200 my-0.5"/>
                                 <div>
                                   <p className="text-[11px] text-gray-400 mb-0.5">계산서</p>
                                   <p className={`font-semibold text-xs ${r.tax_invoice ? "text-emerald-600" : "text-gray-400"}`}>{r.tax_invoice ? "✅ 발행완료" : "미발행"}</p>
@@ -1179,16 +1200,35 @@ const FinanceHubPage: React.FC = () => {
                                   <p className="text-[11px] text-gray-400 mb-0.5">수량</p>
                                   <p className="font-semibold text-gray-800">{r.quantity}개</p>
                                 </div>
-                                {/* 단가 / 합계 */}
                                 <div>
                                   <p className="text-[11px] text-gray-400 mb-0.5">매입단가</p>
                                   <p className="font-semibold text-gray-900">{fmt(r.unit_price || 0)}</p>
                                 </div>
-                                <div>
-                                  <p className="text-[11px] text-gray-400 mb-0.5">총 매입금액</p>
-                                  <p className="font-bold text-blue-700">{fmtAbs(r.total_cost || 0)}</p>
-                                </div>
+                                {/* 구분선 */}
+                                <div className="w-full border-t border-dashed border-gray-200 my-0.5"/>
+                                {/* 공급가액 / 부가세 / 합계 */}
+                                {(() => {
+                                  const isImport = r.trade_type === "수입";
+                                  const supply = Math.round(Math.abs(r.total_cost || 0));
+                                  const vat = isImport ? 0 : Math.round(supply * 0.1);
+                                  const total = supply + vat;
+                                  return (<>
+                                    <div>
+                                      <p className="text-[11px] text-gray-400 mb-0.5">공급가액</p>
+                                      <p className="font-semibold text-gray-900">{fmt(supply)}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[11px] text-gray-400 mb-0.5">부가세 {isImport ? "(영세율)" : "(10%)"}</p>
+                                      <p className="font-semibold text-gray-500">{fmt(vat)}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[11px] text-blue-400 mb-0.5">합계금액 (VAT 포함)</p>
+                                      <p className="font-bold text-blue-700 text-base">{fmt(total)}</p>
+                                    </div>
+                                  </>);
+                                })()}
                                 {/* 상태 */}
+                                <div className="w-full border-t border-dashed border-gray-200 my-0.5"/>
                                 <div>
                                   <p className="text-[11px] text-gray-400 mb-0.5">계산서</p>
                                   <p className={`font-semibold text-xs ${r.tax_invoice ? "text-emerald-600" : "text-gray-400"}`}>{r.tax_invoice ? "✅ 수취완료" : "미수취"}</p>
