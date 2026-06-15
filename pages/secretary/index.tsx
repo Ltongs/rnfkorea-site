@@ -329,7 +329,9 @@ function StatusTabContent({
           :(
             <div className="space-y-2">
               {narumiTasks.slice(0,6).map((t:any)=>{
-                const stsCls = !t.status?"bg-gray-100 text-gray-500":t.status.includes("완료")?"bg-emerald-50 text-emerald-700":t.status.includes("대기")?"bg-amber-50 text-amber-700":"bg-blue-50 text-blue-700";
+                const NARUMI_STS_LBL:Record<string,string> = {completed:"완료",registered:"등록완료",docs:"서류준비",insurance:"보험확인",consulting:"상담중",in_progress:"진행중",pending:"대기",cancelled:"취소",done:"완료"};
+                const stsLbl = NARUMI_STS_LBL[t.status]??t.status??"진행중";
+                const stsCls = !t.status?"bg-gray-100 text-gray-500":["completed","registered","done"].includes(t.status)?"bg-emerald-50 text-emerald-700":["pending","docs"].includes(t.status)?"bg-amber-50 text-amber-700":"bg-blue-50 text-blue-700";
                 return (
                   <div key={t.id} className={`flex items-center gap-2 p-2.5 rounded-xl transition-all ${t.is_urgent?"bg-red-50 hover:bg-red-100":"bg-gray-50 hover:bg-emerald-50"}`}>
                     <div className="flex-1 min-w-0">
@@ -343,7 +345,7 @@ function StatusTabContent({
                         {!t.docs_ready&&<span className="text-xs text-amber-600">서류미비</span>}
                       </div>
                     </div>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${stsCls}`}>{t.status??"진행중"}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${stsCls}`}>{stsLbl}</span>
                   </div>
                 );
               })}
