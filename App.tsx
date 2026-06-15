@@ -80,7 +80,7 @@ import SecretaryPage from "./pages/secretary/index";
 import SecretaryInsPage from "./pages/secretary-ins/index";
 import OrdersPage from "./pages/Orders/index";
 import OrderConfirmPage from "./pages/OrderConfirm/index";
-import SalesPage from "./pages/Sales/index";
+import FinanceHubPage from "./pages/FinanceHub/index";
 
 /* utils / config */
 import { fetchTireRows } from "./lib/tiresCsv";
@@ -1487,10 +1487,16 @@ const AppRoutes = () => {
             element={isAdminLevel ? <OrdersPage /> : <Navigate to="/" replace />}
           />
 
-          {/* 매출 관리 */}
+          {/* 매출 관리 (legacy redirect) */}
+          <Route path="/work/sales" element={<Navigate to="/work/finance-hub" replace />} />
+
+          {/* 매입 관리 (legacy redirect) */}
+          <Route path="/work/purchases" element={<Navigate to="/work/finance-hub" replace />} />
+
+          {/* 매출/매입 통합 관리 */}
           <Route
-            path="/work/sales"
-            element={isAdminLevel ? <SalesPage /> : <Navigate to="/" replace />}
+            path="/work/finance-hub"
+            element={isAdminLevel ? <FinanceHubPage /> : <Navigate to="/" replace />}
           />
 
           {/* 물품발송/휠반납 확인 페이지 (진흥 전용, 인증 불필요) */}
@@ -1502,7 +1508,7 @@ const AppRoutes = () => {
         </Routes>
       </main>
 
-      <Footer />
+      {!useLocation().pathname.startsWith("/work/") && <Footer />}
     </div>
   );
 };

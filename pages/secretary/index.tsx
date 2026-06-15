@@ -206,13 +206,13 @@ function StatusTabContent({
   const cOtherMo  = cOther.filter((c:any)=>isMo(c.created_at)).length;
 
   const STS_LBL_HCM:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료"};
-  const FINANCE_STAGE_LBL:Record<string,string> = {consulting:"상담",quote_submitted:"견적제출",approved:"승인",rejected:"부결",documents_requested:"서류징구",confirmed:"확정"};
+  const FINANCE_STAGE_LBL:Record<string,string> = {consulting:"상담",quote_submitted:"견적제출",approved:"승인",rejected:"부결",documents_requested:"서류징구",confirmed:"확정",received:"접수",credit_check:"신용조회",supplement:"보완",doc_registration:"서류등록",contract_sent:"전자계약",cancelled:"취소"};
   const getConsultDisplayStatus = (c:any) => {
     if(c.work_type==="finance" && c.finance_stage) return c.finance_stage;
     return c.status;
   };
   const StsBadgeLocal = ({s,isFinance}:{s:string;isFinance?:boolean}) => {
-    const ALL_LBL:Record<string,string> = {new:"신규",in_progress:"진행중",completed:"완료",closed:"완료",on_hold:"보류",waiting_customer:"고객대기",approved:"승인",confirmed:"확정",rejected:"거절",cancelled:"취소",supplement:"보완"};
+    const ALL_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",in_progress:"진행중",completed:"완료",done:"완료",closed:"완료",on_hold:"보류",waiting_customer:"고객대기",approved:"승인",confirmed:"확정",rejected:"거절",cancelled:"취소",supplement:"보완",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",credit_check:"신용조회",received:"접수",doc_registration:"서류등록",contract_sent:"전자계약"};
     const lbl = isFinance ? (FINANCE_STAGE_LBL[s]??ALL_LBL[s]??s) : (ALL_LBL[s]??s);
     const cls = s==="approved"?"bg-emerald-50 text-emerald-700"
       :s==="confirmed"?"bg-[#0f172a] text-white"

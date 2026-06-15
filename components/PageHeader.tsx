@@ -538,36 +538,6 @@ export default function PageHeader() {
                   onMouseLeave={() => hoverClose(setOpenWork)}
                   onPointerDown={(e) => e.stopPropagation()}
                 >
-                  {isAdminLevel && (
-                    <button
-                      type="button"
-                      className={dropItem}
-                      onClick={() => goWorkInternalOnly("/work/dashboard")}
-                    >
-                      운영대시보드
-                    </button>
-                  )}
-
-                  {isAdminLevel && (
-                    <button
-                      type="button"
-                      className={`${dropItem} text-orange-600 font-semibold`}
-                      onClick={() => goWorkInternalOnly("/work/secretary")}
-                    >
-                      🤖 AI 비서
-                    </button>
-                  )}
-
-                  {isInsAI && (
-                    <button
-                      type="button"
-                      className={`${dropItem} text-orange-600 font-semibold`}
-                      onClick={() => goWorkInternalOnly("/work/secretary-ins")}
-                    >
-                      🤖 AI 비서 (Ins)
-                    </button>
-                  )}
-
                   {(isAdminLevel || isNarumi || isLotte || isInsuranceManager || !user) && (
                     <button
                       type="button"
@@ -588,13 +558,31 @@ export default function PageHeader() {
                     </button>
                   )}
 
-                  {(isAdminLevel || isInsuranceManager || !user) && (
+                  <button
+                    type="button"
+                    className={dropItem}
+                    onClick={goBsonPublic}
+                  >
+                    BS_ON 업무
+                  </button>
+
+                  {isAdminLevel && (
                     <button
                       type="button"
-                      className={dropItem}
-                      onClick={() => goWorkInternalOnly("/work/call-management")}
+                      className={`${dropItem} text-orange-600 font-semibold`}
+                      onClick={() => goWorkInternalOnly("/work/secretary")}
                     >
-                      상담관리
+                      AI 비서
+                    </button>
+                  )}
+
+                  {isInsAI && (
+                    <button
+                      type="button"
+                      className={`${dropItem} text-orange-600 font-semibold`}
+                      onClick={() => goWorkInternalOnly("/work/secretary-ins")}
+                    >
+                      AI 비서 (Ins)
                     </button>
                   )}
 
@@ -602,9 +590,9 @@ export default function PageHeader() {
                     <button
                       type="button"
                       className={dropItem}
-                      onClick={() => goWorkInternalOnly("/work/orders")}
+                      onClick={() => goWorkInternalOnly("/work/dashboard")}
                     >
-                      🚛 주문관리
+                      운영대시보드
                     </button>
                   )}
 
@@ -612,19 +600,9 @@ export default function PageHeader() {
                     <button
                       type="button"
                       className={dropItem}
-                      onClick={() => goWorkInternalOnly("/work/sales")}
+                      onClick={() => goWorkInternalOnly("/work/finance-hub")}
                     >
-                      📊 매출관리
-                    </button>
-                  )}
-
-                  {(isAdminLevel || !user) && (
-                    <button
-                      type="button"
-                      className={dropItem}
-                      onClick={goBsonPublic}
-                    >
-                      BS_ON 업무
+                      매출/매입 관리
                     </button>
                   )}
                 </div>

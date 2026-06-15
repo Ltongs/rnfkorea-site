@@ -1,3 +1,4 @@
+// @ts-nocheck
 // supabase/functions/send-hyundaicm-kakao/index.ts
 // 발송 방식: 솔라피 카카오 알림톡 (HCM + 나르미) + SMS fallback
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";

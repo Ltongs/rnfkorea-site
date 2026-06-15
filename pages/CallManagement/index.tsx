@@ -135,6 +135,51 @@ type InsuranceExpiryRow = {
   } | null;
 };
 
+// ── 매출 등록(계산서 매칭) 모달 타입 ─────────────────────────────────────────
+const SALES_CATEGORIES = ["타이어", "지게차렌탈", "건설기계수출", "배터리(LFP)", "배터리(납산)", "렌탈사업", "기타"];
+const SALES_TRADE_TYPES = ["내수", "수출"] as const;
+
+type InvoiceRegForm = {
+  invoice_no: string;
+  issue_date: string;
+  customer_name: string;
+  business_no: string;
+  supply_amount: string;
+  tax_amount: string;
+  total_amount: string;
+  items: string;
+};
+
+const EMPTY_INVOICE_REG_FORM: InvoiceRegForm = {
+  invoice_no: "",
+  issue_date: new Date().toISOString().split("T")[0],
+  customer_name: "",
+  business_no: "",
+  supply_amount: "",
+  tax_amount: "",
+  total_amount: "",
+  items: "",
+};
+
+type InvoiceRegRow = {
+  consultation_id: number;
+  customer_name: string;
+  category: string;
+  trade_type: "내수" | "수출";
+  maker: string;
+  spec: string;
+  quantity: string;
+  unit_price: string;
+  unit_cost: string;
+};
+
+function calcInvoiceRegRowRevenue(r: InvoiceRegRow) {
+  const qty = parseFloat(r.quantity) || 0;
+  const price = parseFloat(r.unit_price) || 0;
+  const vat = r.trade_type === "수출" ? 1 : 1.1;
+  return qty * price * vat;
+}
+
 const NON_LIFE_INSURERS = [
   "삼성화재",
   "현대해상",
@@ -501,6 +546,31 @@ const CallManagementPage: React.FC = () => {
   const [followupRescheduleMap, setFollowupRescheduleMap] = useState<Record<number, string>>({});
   const [overdueRows, setOverdueRows] = useState<{id:number;customer_name:string;work_type:string|null;created_at:string}[]>([]);
   const [showOverdueModal, setShowOverdueModal] = useState(false);
+
+  // 매출관리(sales_records) 연동 — 이미 등록된 상담건 id 집합
+  const [salesRegisteredIds, setSalesRegisteredIds] = useState<Set<number>>(new Set());
+  const [registeringSalesId, setRegisteringSalesId] = useState<number | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase
+        .from("sales_records")
+        .select("consultation_id")
+        .not("consultation_id", "is", null);
+      if (!error && data) {
+        setSalesRegisteredIds(new Set(data.map((d: any) => d.consultation_id as number)));
+      }
+    })();
+  }, []);
+
+  // 매출 등록(계산서 매칭) 모달
+  const [showInvoiceRegModal, setShowInvoiceRegModal] = useState(false);
+  const [invoiceRegMode, setInvoiceRegMode] = useState<"manual" | "image">("manual");
+  const [invoiceRegParsing, setInvoiceRegParsing] = useState(false);
+  const [invoiceRegSaving, setInvoiceRegSaving] = useState(false);
+  const [invoiceRegForm, setInvoiceRegForm] = useState<InvoiceRegForm>(EMPTY_INVOICE_REG_FORM);
+  const [invoiceRegRows, setInvoiceRegRows] = useState<InvoiceRegRow[]>([]);
+  const invoiceRegFileRef = useRef<HTMLInputElement>(null);
 
   const [rows, setRows] = useState<ConsultationRow[]>([]);
   const [loadingList, setLoadingList] = useState(false);
@@ -1142,6 +1212,357 @@ const CallManagementPage: React.FC = () => {
 
     setTab("new");
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // ── 매출관리(sales_records) 등록 ─────────────────────────────────────────
+  // 상담건(타이어/지게차/배터리/수출)을 매출관리에 1건으로 등록합니다.
+  // 단가/매입가/규격 등 세부 정보는 매출관리에서 확인·보완해야 합니다.
+  const handleRegisterToSales = async (row: ConsultationRow) => {
+    if (salesRegisteredIds.has(row.id)) {
+      alert("이미 매출관리에 등록된 건입니다. (매출관리에서 확인해주세요)");
+      return;
+    }
+    if (!["tire_sales", "forklift_sales", "battery_sales", "export"].includes(row.work_type)) {
+      return;
+    }
+
+    setRegisteringSalesId(row.id);
+
+    // 종류(카테고리) 매핑
+    let category = "기타";
+    if (row.work_type === "tire_sales") category = "타이어";
+    else if (row.work_type === "forklift_sales") category = "지게차렌탈";
+    else if (row.work_type === "battery_sales") category = "배터리(LFP)"; // 필요시 매출관리에서 '배터리(납산)'으로 변경
+    else if (row.work_type === "export") category = "건설기계수출";
+
+    // 거래구분(수출/내수) — 수출 업무는 영세율로 기본 설정
+    const trade_type = row.work_type === "export" ? "수출" : "내수";
+
+    // 상세 정보에서 가능한 만큼 자동 채움 (단가/매입가는 0으로, 매출관리에서 보완)
+    const tire = tireDetailsMap[row.id];
+    const forklift = forkliftDetailsMap[row.id];
+    const battery = batteryDetailsMap[row.id];
+
+    let quantity = 1;
+    let unit_price = 0;
+    let maker: string | null = null;
+    let spec: string | null = null;
+
+    if (row.work_type === "tire_sales" && tire) {
+      quantity = tire.quantity || 1;
+      maker = tire.vehicle_type || null;
+      spec = tire.tire_size || null;
+    } else if (row.work_type === "forklift_sales" && forklift) {
+      maker = formatForkliftCondition(forklift.forklift_condition);
+      spec = [formatForkliftType(forklift.forklift_type), forklift.forklift_ton]
+        .filter(Boolean)
+        .join(" ") || null;
+    } else if (row.work_type === "battery_sales" && battery) {
+      quantity = battery.battery_quantity || 1;
+      unit_price = battery.battery_unit_sale_price || 0;
+      spec = formatBatteryVehicleType(battery.battery_vehicle_type);
+    }
+
+    const payload = {
+      sale_date: new Date().toISOString().split("T")[0],
+      customer_name: row.company_name || row.customer_name,
+      business_no: null,
+      category,
+      trade_type,
+      maker,
+      spec,
+      quantity,
+      unit_price,
+      unit_cost: 0,
+      tax_invoice: false,
+      payment_confirmed: false,
+      payment_date: null,
+      delivery_date: null,
+      delivery_confirmed: false,
+      wheel_returned: false,
+      closing: false,
+      note: `상담건 #${row.id} (${row.customer_name}) 연동 — 단가/매입가/거래처(사업자번호) 확인 필요`,
+      consultation_id: row.id,
+    };
+
+    const { error } = await supabase.from("sales_records").insert(payload);
+
+    if (error) {
+      alert("매출 등록에 실패했습니다: " + error.message);
+    } else {
+      setSalesRegisteredIds((prev) => {
+        const next = new Set(prev);
+        next.add(row.id);
+        return next;
+      });
+      alert(
+        "매출관리에 등록되었습니다.\n매출관리(/work/sales)에서 거래처 사업자번호 · 단가 · 매입가 · 거래구분을 확인/보완해주세요."
+      );
+    }
+    setRegisteringSalesId(null);
+  };
+
+  // ── 매출 등록(계산서 매칭) 모달 — 선택한 여러 상담건을 한 장의 계산서에 일괄 등록 ──
+  function fileToBase64ForInvoice(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result.split(",")[1] || "");
+      };
+      reader.onerror = () => reject(new Error("파일을 읽는 중 오류가 발생했습니다."));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // 상담건 1건 → 매출 등록용 행(InvoiceRegRow) 초안 생성
+  function buildInvoiceRegRow(row: ConsultationRow): InvoiceRegRow {
+    let category = "기타";
+    if (row.work_type === "tire_sales") category = "타이어";
+    else if (row.work_type === "forklift_sales") category = "지게차렌탈";
+    else if (row.work_type === "battery_sales") category = "배터리(LFP)";
+    else if (row.work_type === "export") category = "건설기계수출";
+
+    const trade_type: "내수" | "수출" = row.work_type === "export" ? "수출" : "내수";
+
+    const tire = tireDetailsMap[row.id];
+    const forklift = forkliftDetailsMap[row.id];
+    const battery = batteryDetailsMap[row.id];
+
+    let quantity = "1";
+    let unit_price = "";
+    let maker = "";
+    let spec = "";
+
+    if (row.work_type === "tire_sales" && tire) {
+      quantity = String(tire.quantity || 1);
+      maker = tire.vehicle_type || "";
+      spec = tire.tire_size || "";
+    } else if (row.work_type === "forklift_sales" && forklift) {
+      maker = formatForkliftCondition(forklift.forklift_condition);
+      spec = [formatForkliftType(forklift.forklift_type), forklift.forklift_ton].filter(Boolean).join(" ");
+    } else if (row.work_type === "battery_sales" && battery) {
+      quantity = String(battery.battery_quantity || 1);
+      unit_price = battery.battery_unit_sale_price ? String(battery.battery_unit_sale_price) : "";
+      spec = formatBatteryVehicleType(battery.battery_vehicle_type);
+    }
+
+    return {
+      consultation_id: row.id,
+      customer_name: row.company_name || row.customer_name,
+      category,
+      trade_type,
+      maker,
+      spec,
+      quantity,
+      unit_price,
+      unit_cost: "",
+    };
+  }
+
+  // 선택된 상담건들로 매출 등록 모달 오픈 (거래처 동일 여부 등 검증)
+  const openInvoiceRegModal = () => {
+    const selectedRows = rows.filter((r) => selectedIds.includes(r.id));
+
+    if (selectedRows.length === 0) return;
+
+    // 1) 업무유형 검증 (계산서를 통해 매출 인식하는 영역만)
+    const invalid = selectedRows.filter(
+      (r) => !["tire_sales", "forklift_sales", "battery_sales", "export"].includes(r.work_type)
+    );
+    if (invalid.length > 0) {
+      alert(
+        "매출 등록은 타이어/지게차/배터리/수출 건만 가능합니다.\n" +
+          "다음 건은 제외하고 다시 선택해주세요:\n" +
+          invalid.map((r) => `- ${r.customer_name} (${formatWorkType(r.work_type)})`).join("\n")
+      );
+      return;
+    }
+
+    // 2) 이미 매출등록된 건 검증
+    const alreadyRegistered = selectedRows.filter((r) => salesRegisteredIds.has(r.id));
+    if (alreadyRegistered.length > 0) {
+      alert(
+        "이미 매출관리에 등록된 건이 포함되어 있습니다:\n" +
+          alreadyRegistered.map((r) => `- ${r.customer_name}`).join("\n") +
+          "\n\n해당 건은 매출관리(/work/sales)의 '계산서 매칭' 기능을 이용해주세요."
+      );
+      return;
+    }
+
+    // 3) 거래처(공급받는자) 동일 여부 검증
+    const customerKeys = Array.from(
+      new Set(selectedRows.map((r) => (r.company_name || r.customer_name).trim()))
+    );
+    if (customerKeys.length > 1) {
+      alert(
+        "거래처가 상이합니다. 한 장의 계산서는 동일한 거래처 건만 묶을 수 있습니다.\n\n" +
+          "선택된 건의 거래처:\n" +
+          selectedRows.map((r) => `- ${r.customer_name} → ${r.company_name || r.customer_name}`).join("\n") +
+          "\n\n각 건의 '수정'에서 거래처(회사명)를 동일하게 통일한 뒤, 다시 체크하여 매출 등록을 진행해주세요."
+      );
+      return;
+    }
+
+    const customerName = customerKeys[0];
+
+    setInvoiceRegForm({
+      ...EMPTY_INVOICE_REG_FORM,
+      customer_name: customerName,
+    });
+    setInvoiceRegRows(selectedRows.map(buildInvoiceRegRow));
+    setInvoiceRegMode("manual");
+    setShowInvoiceRegModal(true);
+  };
+
+  function closeInvoiceRegModal() {
+    setShowInvoiceRegModal(false);
+    setInvoiceRegForm(EMPTY_INVOICE_REG_FORM);
+    setInvoiceRegRows([]);
+    setInvoiceRegMode("manual");
+  }
+
+  function setInvoiceRegField<K extends keyof InvoiceRegForm>(key: K, value: InvoiceRegForm[K]) {
+    setInvoiceRegForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function setInvoiceRegRowField<K extends keyof InvoiceRegRow>(
+    consultationId: number,
+    key: K,
+    value: InvoiceRegRow[K]
+  ) {
+    setInvoiceRegRows((prev) =>
+      prev.map((r) => (r.consultation_id === consultationId ? { ...r, [key]: value } : r))
+    );
+  }
+
+  // 계산서 이미지 업로드 → AI 인식 → invoiceRegForm 자동 채움
+  const handleInvoiceRegFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setInvoiceRegParsing(true);
+    try {
+      const base64 = await fileToBase64ForInvoice(file);
+      const mediaType = file.type || "image/png";
+
+      const { data, error } = await supabase.functions.invoke("parse-tax-invoice", {
+        body: { image_base64: base64, media_type: mediaType },
+      });
+      if (error) throw error;
+
+      const parsed = (data || {}) as {
+        invoice_no?: string | null;
+        sale_date?: string | null;
+        customer_name?: string | null;
+        business_no?: string | null;
+        supply_amount?: number | null;
+        tax_amount?: number | null;
+        total_amount?: number | null;
+        items?: string | null;
+      };
+
+      setInvoiceRegForm((prev) => ({
+        ...prev,
+        invoice_no: parsed.invoice_no ? String(parsed.invoice_no) : prev.invoice_no,
+        issue_date: parsed.sale_date || prev.issue_date,
+        business_no: parsed.business_no ? String(parsed.business_no).replace(/[^0-9]/g, "") : prev.business_no,
+        supply_amount: parsed.supply_amount != null ? String(Math.round(parsed.supply_amount)) : prev.supply_amount,
+        tax_amount: parsed.tax_amount != null ? String(Math.round(parsed.tax_amount)) : prev.tax_amount,
+        total_amount: parsed.total_amount != null ? String(Math.round(parsed.total_amount)) : prev.total_amount,
+        items: parsed.items || prev.items,
+        // 거래처명은 인식 결과가 있어도 이미 검증된 거래처명을 우선 유지
+      }));
+    } catch (err: any) {
+      alert("계산서 인식에 실패했습니다: " + (err?.message || "알 수 없는 오류") + "\n수기입력으로 진행해주세요.");
+    } finally {
+      setInvoiceRegParsing(false);
+      if (invoiceRegFileRef.current) invoiceRegFileRef.current.value = "";
+    }
+  };
+
+  const invoiceRegSelectedSum = invoiceRegRows.reduce((s, r) => s + calcInvoiceRegRowRevenue(r), 0);
+  const invoiceRegTotalAmount = parseFloat(invoiceRegForm.total_amount) || 0;
+  const invoiceRegDiff = invoiceRegTotalAmount - invoiceRegSelectedSum;
+  const invoiceRegIsClose = Math.abs(invoiceRegDiff) < 1;
+
+  // 확정: tax_invoices 1건 생성 + 선택된 상담건마다 sales_records 1건씩 생성
+  const handleConfirmInvoiceReg = async () => {
+    if (!invoiceRegForm.customer_name.trim()) {
+      alert("거래처명을 입력해주세요.");
+      return;
+    }
+    if (invoiceRegRows.some((r) => !r.quantity || !r.unit_price)) {
+      alert("모든 건의 수량/판매단가를 입력해주세요.");
+      return;
+    }
+
+    setInvoiceRegSaving(true);
+
+    const { data: invRow, error: invErr } = await supabase
+      .from("tax_invoices")
+      .insert({
+        invoice_no: invoiceRegForm.invoice_no || null,
+        issue_date: invoiceRegForm.issue_date || null,
+        customer_name: invoiceRegForm.customer_name || null,
+        business_no: invoiceRegForm.business_no || null,
+        supply_amount: invoiceRegForm.supply_amount ? parseFloat(invoiceRegForm.supply_amount) : null,
+        tax_amount: invoiceRegForm.tax_amount ? parseFloat(invoiceRegForm.tax_amount) : null,
+        total_amount: invoiceRegForm.total_amount ? parseFloat(invoiceRegForm.total_amount) : null,
+        items: invoiceRegForm.items || null,
+        matched_total: invoiceRegSelectedSum,
+      })
+      .select()
+      .single();
+
+    if (invErr || !invRow) {
+      alert("계산서 등록에 실패했습니다: " + (invErr?.message || ""));
+      setInvoiceRegSaving(false);
+      return;
+    }
+
+    const payloads = invoiceRegRows.map((r) => ({
+      sale_date: invoiceRegForm.issue_date || new Date().toISOString().split("T")[0],
+      customer_name: invoiceRegForm.customer_name,
+      business_no: invoiceRegForm.business_no || null,
+      category: r.category,
+      trade_type: r.trade_type,
+      maker: r.maker || null,
+      spec: r.spec || null,
+      quantity: parseFloat(r.quantity) || 0,
+      unit_price: parseFloat(r.unit_price) || 0,
+      unit_cost: parseFloat(r.unit_cost) || 0,
+      tax_invoice: true,
+      payment_confirmed: false,
+      payment_date: null,
+      delivery_date: null,
+      delivery_confirmed: false,
+      wheel_returned: false,
+      closing: false,
+      note: `상담건 #${r.consultation_id} 연동 — 계산서 #${invRow.id}${invoiceRegForm.invoice_no ? ` (${invoiceRegForm.invoice_no})` : ""}`,
+      consultation_id: r.consultation_id,
+      invoice_id: invRow.id,
+    }));
+
+    const { error: insErr } = await supabase.from("sales_records").insert(payloads);
+
+    if (insErr) {
+      alert("매출 등록에 실패했습니다: " + insErr.message);
+    } else {
+      setSalesRegisteredIds((prev) => {
+        const next = new Set(prev);
+        invoiceRegRows.forEach((r) => next.add(r.consultation_id));
+        return next;
+      });
+      setSelectedIds([]);
+      closeInvoiceRegModal();
+      alert(
+        `매출관리에 ${invoiceRegRows.length}건이 등록되고, 계산서${
+          invoiceRegForm.invoice_no ? ` #${invoiceRegForm.invoice_no}` : ""
+        }에 매칭되었습니다.`
+      );
+    }
+    setInvoiceRegSaving(false);
   };
 
   const handleStartEdit = (row: ConsultationRow) => {
@@ -2331,6 +2752,236 @@ const CallManagementPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+
+      {/* 매출 등록(계산서 매칭) 모달 */}
+      {showInvoiceRegModal && (
+        <div className="fixed inset-0 z-[99999] flex items-start justify-center bg-black/50 px-4 py-8 overflow-y-auto" onClick={closeInvoiceRegModal}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-base font-semibold text-[#0f172a]">매출 등록 / 계산서 매칭</p>
+              <button className="text-gray-400 hover:text-gray-600" onClick={closeInvoiceRegModal}>✕</button>
+            </div>
+            <p className="text-xs text-gray-400 mb-4">
+              선택한 {invoiceRegRows.length}건을 한 장의 계산서에 묶어 매출관리에 등록합니다. 거래처: <span className="font-semibold text-gray-700">{invoiceRegForm.customer_name}</span>
+            </p>
+
+            {/* 모드 선택 */}
+            <div className="flex gap-2 mb-4">
+              <button
+                type="button"
+                className={`${typeBtnBase} ${invoiceRegMode === "manual" ? typeBtnActive : typeBtnInactive}`}
+                onClick={() => setInvoiceRegMode("manual")}
+              >
+                수기입력
+              </button>
+              <button
+                type="button"
+                className={`${typeBtnBase} ${invoiceRegMode === "image" ? typeBtnActive : typeBtnInactive}`}
+                onClick={() => setInvoiceRegMode("image")}
+              >
+                계산서 이미지 업로드
+              </button>
+            </div>
+
+            {invoiceRegMode === "image" && (
+              <div className="mb-4 rounded-2xl border border-gray-200 bg-gray-50 p-3 flex items-center gap-3">
+                <input
+                  ref={invoiceRegFileRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleInvoiceRegFile}
+                />
+                <button
+                  type="button"
+                  className={actionBtnClass}
+                  disabled={invoiceRegParsing}
+                  onClick={() => invoiceRegFileRef.current?.click()}
+                >
+                  {invoiceRegParsing ? "인식 중..." : "이미지 선택"}
+                </button>
+                <p className="text-xs text-gray-400">계산서 캡처 이미지를 업로드하면 계산서번호/공급가액/세액/합계금액이 자동으로 채워집니다.</p>
+              </div>
+            )}
+
+            {/* 계산서 정보 */}
+            <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 mb-4 space-y-3">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">계산서 정보</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">작성일자</label>
+                  <input
+                    type="date"
+                    value={invoiceRegForm.issue_date}
+                    onChange={(e) => setInvoiceRegField("issue_date", e.target.value)}
+                    className="w-full h-9 rounded-xl border border-gray-200 px-3 text-sm bg-white focus:outline-none focus:border-orange-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">계산서번호</label>
+                  <input
+                    value={invoiceRegForm.invoice_no}
+                    onChange={(e) => setInvoiceRegField("invoice_no", e.target.value)}
+                    placeholder="승인번호"
+                    className="w-full h-9 rounded-xl border border-gray-200 px-3 text-sm bg-white focus:outline-none focus:border-orange-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">사업자번호</label>
+                  <input
+                    value={invoiceRegForm.business_no}
+                    onChange={(e) => setInvoiceRegField("business_no", e.target.value)}
+                    placeholder="숫자만"
+                    className="w-full h-9 rounded-xl border border-gray-200 px-3 text-sm bg-white focus:outline-none focus:border-orange-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">공급가액</label>
+                  <input
+                    type="number"
+                    value={invoiceRegForm.supply_amount}
+                    onChange={(e) => setInvoiceRegField("supply_amount", e.target.value)}
+                    placeholder="0"
+                    className="w-full h-9 rounded-xl border border-gray-200 px-3 text-sm bg-white focus:outline-none focus:border-orange-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">세액</label>
+                  <input
+                    type="number"
+                    value={invoiceRegForm.tax_amount}
+                    onChange={(e) => setInvoiceRegField("tax_amount", e.target.value)}
+                    placeholder="0"
+                    className="w-full h-9 rounded-xl border border-gray-200 px-3 text-sm bg-white focus:outline-none focus:border-orange-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">합계금액</label>
+                  <input
+                    type="number"
+                    value={invoiceRegForm.total_amount}
+                    onChange={(e) => setInvoiceRegField("total_amount", e.target.value)}
+                    placeholder="0"
+                    className="w-full h-9 rounded-xl border border-gray-200 px-3 text-sm bg-white focus:outline-none focus:border-orange-400"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 딜별 매출 정보 */}
+            <div className="space-y-3 mb-4">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">매출 건별 정보 ({invoiceRegRows.length}건)</p>
+              {invoiceRegRows.map((r) => (
+                <div key={r.consultation_id} className="rounded-2xl border border-gray-200 p-3 grid grid-cols-2 md:grid-cols-6 gap-2">
+                  <div className="col-span-2 md:col-span-1">
+                    <label className="block text-[10px] font-medium text-gray-400 mb-1">종류</label>
+                    <select
+                      value={r.category}
+                      onChange={(e) => setInvoiceRegRowField(r.consultation_id, "category", e.target.value)}
+                      className="w-full h-9 rounded-xl border border-gray-200 px-2 text-xs bg-white focus:outline-none focus:border-orange-400"
+                    >
+                      {SALES_CATEGORIES.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-gray-400 mb-1">거래구분</label>
+                    <select
+                      value={r.trade_type}
+                      onChange={(e) => setInvoiceRegRowField(r.consultation_id, "trade_type", e.target.value as "내수" | "수출")}
+                      className="w-full h-9 rounded-xl border border-gray-200 px-2 text-xs bg-white focus:outline-none focus:border-orange-400"
+                    >
+                      {SALES_TRADE_TYPES.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-gray-400 mb-1">Maker</label>
+                    <input
+                      value={r.maker}
+                      onChange={(e) => setInvoiceRegRowField(r.consultation_id, "maker", e.target.value)}
+                      className="w-full h-9 rounded-xl border border-gray-200 px-2 text-xs bg-white focus:outline-none focus:border-orange-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-gray-400 mb-1">규격</label>
+                    <input
+                      value={r.spec}
+                      onChange={(e) => setInvoiceRegRowField(r.consultation_id, "spec", e.target.value)}
+                      className="w-full h-9 rounded-xl border border-gray-200 px-2 text-xs bg-white focus:outline-none focus:border-orange-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-gray-400 mb-1">수량</label>
+                    <input
+                      type="number"
+                      value={r.quantity}
+                      onChange={(e) => setInvoiceRegRowField(r.consultation_id, "quantity", e.target.value)}
+                      className="w-full h-9 rounded-xl border border-gray-200 px-2 text-xs bg-white focus:outline-none focus:border-orange-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-gray-400 mb-1">판매단가</label>
+                    <input
+                      type="number"
+                      value={r.unit_price}
+                      onChange={(e) => setInvoiceRegRowField(r.consultation_id, "unit_price", e.target.value)}
+                      className="w-full h-9 rounded-xl border border-gray-200 px-2 text-xs bg-white focus:outline-none focus:border-orange-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-gray-400 mb-1">매입단가</label>
+                    <input
+                      type="number"
+                      value={r.unit_cost}
+                      onChange={(e) => setInvoiceRegRowField(r.consultation_id, "unit_cost", e.target.value)}
+                      className="w-full h-9 rounded-xl border border-gray-200 px-2 text-xs bg-white focus:outline-none focus:border-orange-400"
+                    />
+                  </div>
+                  <div className="md:col-span-1 flex items-end">
+                    <p className="text-xs text-gray-400">
+                      매출 <span className="font-semibold text-gray-700">{Math.round(calcInvoiceRegRowRevenue(r)).toLocaleString("ko-KR")}원</span>
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* 합계 비교 */}
+            <div className={`rounded-2xl border px-4 py-3 flex flex-wrap items-center justify-between gap-3 mb-4 ${
+              invoiceRegIsClose && invoiceRegTotalAmount > 0 ? "border-emerald-200 bg-emerald-50" : "border-gray-100 bg-gray-50"
+            }`}>
+              <div>
+                <p className="text-[11px] text-gray-400 font-medium">건별 매출 합계</p>
+                <p className="text-sm font-semibold text-gray-900 mt-0.5">{Math.round(invoiceRegSelectedSum).toLocaleString("ko-KR")}원</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-gray-400 font-medium">계산서 합계금액</p>
+                <p className="text-sm font-semibold text-gray-900 mt-0.5">{Math.round(invoiceRegTotalAmount).toLocaleString("ko-KR")}원</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-gray-400 font-medium">차이</p>
+                <p className={`text-sm font-semibold mt-0.5 ${invoiceRegIsClose ? "text-emerald-600" : "text-red-500"}`}>
+                  {Math.round(invoiceRegDiff).toLocaleString("ko-KR")}원{invoiceRegIsClose && invoiceRegTotalAmount > 0 ? " · 일치" : ""}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button className={actionBtnClass} onClick={closeInvoiceRegModal}>취소</button>
+              <button
+                className="px-4 py-2 rounded-xl bg-emerald-500 text-white text-sm font-semibold hover:bg-emerald-600 disabled:opacity-50"
+                onClick={handleConfirmInvoiceReg}
+                disabled={invoiceRegSaving}
+              >
+                {invoiceRegSaving ? "등록 중..." : `매출 등록 확정 (${invoiceRegRows.length}건)`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* D+30일 초과 상담 취소 후보 팝업 */}
       {showOverdueModal && overdueRows.length > 0 && (
@@ -3767,6 +4418,14 @@ const CallManagementPage: React.FC = () => {
                 </div>
                 <button
                   type="button"
+                  className={`${actionBtnClass} text-emerald-600 border-emerald-200 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap`}
+                  onClick={openInvoiceRegModal}
+                  disabled={selectedIds.length === 0}
+                >
+                  매출 등록{selectedIds.length > 0 ? ` (${selectedIds.length})` : ""}
+                </button>
+                <button
+                  type="button"
                   className={`${actionBtnClass} text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap`}
                   onClick={handleBulkDelete}
                   disabled={selectedIds.length === 0}
@@ -3905,6 +4564,22 @@ const CallManagementPage: React.FC = () => {
                                     <div className="flex items-center justify-between mb-1.5">
                                       <span className="text-sm font-semibold text-gray-700">{row.customer_name} 상세</span>
                                       <div className="flex gap-1.5">
+                                        {["tire_sales","forklift_sales","battery_sales","export"].includes(row.work_type) && (
+                                          salesRegisteredIds.has(row.id) ? (
+                                            <span className="px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-50 text-emerald-600 border border-emerald-100">
+                                              매출등록됨
+                                            </span>
+                                          ) : (
+                                            <button
+                                              type="button"
+                                              className={actionBtnClass}
+                                              disabled={registeringSalesId === row.id}
+                                              onClick={(e) => { e.stopPropagation(); handleRegisterToSales(row); }}
+                                            >
+                                              {registeringSalesId === row.id ? "등록 중..." : "매출 등록"}
+                                            </button>
+                                          )
+                                        )}
                                         <button type="button" className={actionBtnClass} onClick={(e)=>{e.stopPropagation();handleStartEdit(row);}}>수정</button>
                                         <button type="button" className={actionBtnClass} onClick={(e)=>{e.stopPropagation();setExpandedRowId(null);setExpandedTireDetail(null);setExpandedInsuranceDetail(null);setExpandedFinanceDetail(null);setExpandedForkliftDetail(null);setExpandedBatteryDetail(null);setDetailError("");}}>닫기</button>
                                       </div>
