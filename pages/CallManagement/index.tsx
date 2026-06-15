@@ -301,7 +301,7 @@ function onlyKoreanAndDigits(value: string) {
 }
 
 function onlyEnglishTireSize(value: string) {
-  return value.replace(/[^A-Za-z0-9./\-\s]/g, "").toUpperCase();
+  return value;
 }
 
 function formatNumberWithCommas(value: string | number | null | undefined) {
