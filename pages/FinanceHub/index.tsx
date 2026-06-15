@@ -248,6 +248,10 @@ const FinanceHubPage: React.FC = () => {
   // 인라인 종류 편집
   const [editingCategoryId, setEditingCategoryId] = useState<{ id: number; table: "sales" | "purchases" } | null>(null);
 
+  // 상세 보기 모달
+  const [detailSales, setDetailSales] = useState<SalesRecord | null>(null);
+  const [detailPurchase, setDetailPurchase] = useState<PurchaseRecord | null>(null);
+
   // ── 데이터 로드 ───────────────────────────────────────────────────────────
   const { from, to } = useMemo(() => getDateRange(year, month, period), [year, month, period]);
 
@@ -966,13 +970,14 @@ const FinanceHubPage: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {filteredSales.map(r => (
-                      <tr key={r.id} className="hover:bg-gray-50/60 transition-colors">
+                      <React.Fragment key={r.id}>
+                      <tr className={`transition-colors cursor-pointer ${detailSales?.id === r.id ? "bg-orange-50" : "hover:bg-orange-50/40"}`} onClick={() => setDetailSales(prev => prev?.id === r.id ? null : r)}>
                         <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{r.sale_date}</td>
                         <td className="px-4 py-3">
                           <p className="font-semibold text-gray-900 whitespace-nowrap">{r.customer_name}</p>
                           {r.business_no && <p className="text-xs text-gray-400">{r.business_no}</p>}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                           {editingCategoryId?.id === r.id && editingCategoryId?.table === "sales" ? (
                             <select
                               autoFocus
@@ -1005,19 +1010,83 @@ const FinanceHubPage: React.FC = () => {
                             {r.invoice_id && <Link2 className="w-3 h-3" />}{r.tax_invoice ? "완료" : "-"}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-center">
+                        <td className="px-4 py-3 text-center" onClick={e => e.stopPropagation()}>
                           <button onClick={() => quickToggleSales(r.id, "payment_confirmed", r.payment_confirmed)}
                             className={`text-[11px] px-2 py-0.5 rounded-full font-medium transition-colors ${r.payment_confirmed ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200" : "bg-red-100 text-red-600 hover:bg-red-200"}`}>
                             {r.payment_confirmed ? "입금" : "미수"}
                           </button>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                           <div className="flex items-center gap-1">
                             <button onClick={() => openEditSales(r)} className={`${btnGhost} text-gray-400 hover:text-orange-500 hover:bg-orange-50`}><Pencil className="w-3.5 h-3.5" /></button>
                             <button onClick={() => deleteSales(r.id)} className={`${btnGhost} text-gray-400 hover:text-red-500 hover:bg-red-50`}><Trash2 className="w-3.5 h-3.5" /></button>
                           </div>
                         </td>
                       </tr>
+                      {detailSales?.id === r.id && (
+                        <tr>
+                          <td colSpan={11} className="px-4 pb-3 pt-0 bg-orange-50">
+                            <div className="rounded-xl border border-orange-100 bg-white shadow-sm p-4">
+                              <div className="flex flex-wrap gap-x-8 gap-y-3 text-sm">
+                                {/* 품목 */}
+                                <div>
+                                  <p className="text-[11px] text-gray-400 mb-0.5">Maker / 규격</p>
+                                  <p className="font-semibold text-gray-800">{[r.maker, r.spec].filter(Boolean).join(" / ") || "-"}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[11px] text-gray-400 mb-0.5">수량</p>
+                                  <p className="font-semibold text-gray-800">{r.quantity}개</p>
+                                </div>
+                                {/* 단가 */}
+                                <div>
+                                  <p className="text-[11px] text-gray-400 mb-0.5">판매단가</p>
+                                  <p className="font-semibold text-gray-900">{fmt(r.unit_price || 0)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[11px] text-gray-400 mb-0.5">매입단가</p>
+                                  <p className="font-semibold text-gray-900">{fmt(r.unit_cost || 0)}</p>
+                                </div>
+                                {/* 합계 */}
+                                <div>
+                                  <p className="text-[11px] text-gray-400 mb-0.5">총 매출</p>
+                                  <p className="font-bold text-orange-600">{fmt(r.total_revenue || 0)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[11px] text-gray-400 mb-0.5">총 매입</p>
+                                  <p className="font-semibold text-gray-900">{fmt(r.total_cost || 0)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[11px] text-gray-400 mb-0.5">이익</p>
+                                  <p className={`font-bold ${(r.margin || 0) >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmt(r.margin || 0)}</p>
+                                </div>
+                                {/* 상태 */}
+                                <div>
+                                  <p className="text-[11px] text-gray-400 mb-0.5">계산서</p>
+                                  <p className={`font-semibold text-xs ${r.tax_invoice ? "text-emerald-600" : "text-gray-400"}`}>{r.tax_invoice ? "✅ 발행완료" : "미발행"}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[11px] text-gray-400 mb-0.5">납품일</p>
+                                  <p className={`font-semibold text-xs ${r.delivery_confirmed ? "text-emerald-600" : "text-gray-400"}`}>{r.delivery_confirmed ? `✅ ${r.delivery_date || "납품완료"}` : r.delivery_date || "-"}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[11px] text-gray-400 mb-0.5">입금일</p>
+                                  <p className={`font-semibold text-xs ${r.payment_confirmed ? "text-emerald-600" : "text-red-500"}`}>{r.payment_confirmed ? `✅ ${r.payment_date || "입금완료"}` : "미수"}</p>
+                                </div>
+                                {r.note && (
+                                  <div className="w-full">
+                                    <p className="text-[11px] text-gray-400 mb-0.5">비고</p>
+                                    <p className="text-sm text-gray-600">{r.note}</p>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex justify-end mt-3 pt-3 border-t border-gray-100">
+                                <button onClick={e => { e.stopPropagation(); openEditSales(r); setDetailSales(null); }} className={btnPrimary}><Pencil className="w-3.5 h-3.5" />수정</button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>
@@ -1041,13 +1110,14 @@ const FinanceHubPage: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {filteredPurchases.map(r => (
-                      <tr key={r.id} className="hover:bg-gray-50/60 transition-colors">
+                      <React.Fragment key={r.id}>
+                      <tr className={`transition-colors cursor-pointer ${detailPurchase?.id === r.id ? "bg-blue-50" : "hover:bg-orange-50/40"}`} onClick={() => setDetailPurchase(prev => prev?.id === r.id ? null : r)}>
                         <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{r.purchase_date}</td>
                         <td className="px-4 py-3">
                           <p className="font-semibold text-gray-900 whitespace-nowrap">{r.supplier_name}</p>
                           {r.business_no && <p className="text-xs text-gray-400">{r.business_no}</p>}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                           {editingCategoryId?.id === r.id && editingCategoryId?.table === "purchases" ? (
                             <select
                               autoFocus
@@ -1082,19 +1152,66 @@ const FinanceHubPage: React.FC = () => {
                         <td className="px-4 py-3 text-center whitespace-nowrap">
                           <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${r.tax_invoice ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-400"}`}>{r.tax_invoice ? "완료" : "-"}</span>
                         </td>
-                        <td className="px-4 py-3 text-center whitespace-nowrap">
+                        <td className="px-4 py-3 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
                           <button onClick={() => quickTogglePurchase(r.id, r.payment_confirmed)}
                             className={`text-[11px] px-2 py-0.5 rounded-full font-medium transition-colors ${r.payment_confirmed ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200" : "bg-red-100 text-red-600 hover:bg-red-200"}`}>
                             {r.payment_confirmed ? "지급" : "미납"}
                           </button>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                           <div className="flex items-center gap-1">
                             <button onClick={() => openEditPurchase(r)} className={`${btnGhost} text-gray-400 hover:text-orange-500 hover:bg-orange-50`}><Pencil className="w-3.5 h-3.5" /></button>
                             <button onClick={() => deletePurchase(r.id)} className={`${btnGhost} text-gray-400 hover:text-red-500 hover:bg-red-50`}><Trash2 className="w-3.5 h-3.5" /></button>
                           </div>
                         </td>
                       </tr>
+                      {detailPurchase?.id === r.id && (
+                        <tr>
+                          <td colSpan={10} className="px-4 pb-3 pt-0 bg-blue-50">
+                            <div className="rounded-xl border border-blue-100 bg-white shadow-sm p-4">
+                              <div className="flex flex-wrap gap-x-8 gap-y-3 text-sm">
+                                {/* 품목 */}
+                                <div>
+                                  <p className="text-[11px] text-gray-400 mb-0.5">Maker / 규격</p>
+                                  <p className="font-semibold text-gray-800">{[r.maker, r.spec].filter(Boolean).join(" / ") || "-"}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[11px] text-gray-400 mb-0.5">수량</p>
+                                  <p className="font-semibold text-gray-800">{r.quantity}개</p>
+                                </div>
+                                {/* 단가 / 합계 */}
+                                <div>
+                                  <p className="text-[11px] text-gray-400 mb-0.5">매입단가</p>
+                                  <p className="font-semibold text-gray-900">{fmt(r.unit_price || 0)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[11px] text-gray-400 mb-0.5">총 매입금액</p>
+                                  <p className="font-bold text-blue-700">{fmtAbs(r.total_cost || 0)}</p>
+                                </div>
+                                {/* 상태 */}
+                                <div>
+                                  <p className="text-[11px] text-gray-400 mb-0.5">계산서</p>
+                                  <p className={`font-semibold text-xs ${r.tax_invoice ? "text-emerald-600" : "text-gray-400"}`}>{r.tax_invoice ? "✅ 수취완료" : "미수취"}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[11px] text-gray-400 mb-0.5">지급일</p>
+                                  <p className={`font-semibold text-xs ${r.payment_confirmed ? "text-emerald-600" : "text-red-500"}`}>{r.payment_confirmed ? `✅ ${r.payment_date || "지급완료"}` : "미납"}</p>
+                                </div>
+                                {r.note && (
+                                  <div className="w-full">
+                                    <p className="text-[11px] text-gray-400 mb-0.5">비고</p>
+                                    <p className="text-sm text-gray-600">{r.note}</p>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex justify-end mt-3 pt-3 border-t border-gray-100">
+                                <button onClick={e => { e.stopPropagation(); openEditPurchase(r); setDetailPurchase(null); }} className={btnPrimary}><Pencil className="w-3.5 h-3.5" />수정</button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>
