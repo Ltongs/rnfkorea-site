@@ -307,7 +307,7 @@ KEY DISTINCTION — hyundaicm_update vs consult_update:
 6. General question → actions:[]
 7. Meeting memo / past record with no explicit action request → actions:[]`;
 
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   try {
@@ -458,7 +458,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({reply:raw,actions:[],saved:[],pendingUpdates:[],pendingHyundaiUpdates:[]}),{headers:{...CORS,"Content-Type":"application/json"}});
     }
 
-    const saved: {type:string;id:number;consultation_id?:number}[] = [];
+    const saved: {type:string;id:string|number;consultation_id?:number}[] = [];
     const pendingUpdates: {action:Record<string,unknown>;candidates:Record<string,unknown>[];bestMatch:Record<string,unknown>|null}[] = [];
     const pendingHyundaiUpdates: {action:Record<string,unknown>;matches:{id:number;customer_name:string;status:string;caseNo:string;equipment_ton:string|null;finance_company:string|null;customer_type:string;sales_rep:string|null;installment_principal:number|null}[]}[] = [];
 
@@ -569,7 +569,7 @@ serve(async (req) => {
               const gcalEvents: {id:string;summary:string;start?:{date?:string;dateTime?:string}}[] = gcalListData.events ?? [];
 
               // 키워드로 이벤트 찾기
-              const matched = gcalEvents.filter((e:any) =>
+              const matched = gcalEvents.filter((e) =>
                 (e.summary ?? "").toLowerCase().includes(kw)
               );
               console.log("[schedule_edit] gcal matched events:", matched.length);
@@ -764,7 +764,7 @@ serve(async (req) => {
                 .select("id").ilike("title", `%${custName}%`).eq("is_done", false);
               if (todos && todos.length > 0) {
                 await db.from("secretary_todos").update({is_done:true})
-                  .in("id", todos.map((t:any)=>t.id));
+                  .in("id", todos.map((t: {id: number})=>t.id));
               }
             }
 
@@ -784,7 +784,7 @@ serve(async (req) => {
               role:"assistant", content:chatMsg, session_id:"main",
             });
 
-            saved.push({type:"order_update", id:row.id as string});
+            saved.push({type:"order_update", id:String(row.id)});
           }
         }
 
@@ -1264,7 +1264,7 @@ serve(async (req) => {
             console.log("[tb_orders insert]", JSON.stringify({ customer_name_raw: a.customer_name, product_type: productType, product_spec: productSpec, quantity: qty }));
             const { data: tbOrder, error: tbErr } = await db.from("tb_orders").insert({
               customer_name_raw: a.customer_name,
-              inbound_channel:   ["phone","sms","kakao","email","other"].includes(a.channel) ? a.channel : "phone",
+              inbound_channel:   ["phone","sms","kakao","email","other"].includes(a.channel as string) ? (a.channel as string) : "phone",
               raw_message:       a.summary,
               product_type:      productType,
               product_spec:      productSpec,
@@ -1304,7 +1304,6 @@ serve(async (req) => {
               }
 
               // AI 비서 채팅 알림
-              const kstNow = new Date(new Date().getTime() + 9*60*60*1000);
               const chatMsg = [
                 `📦 **타이어/배터리 발주 등록**`,
                 ``,
@@ -1316,7 +1315,7 @@ serve(async (req) => {
                 role: "assistant", content: chatMsg, session_id: "main",
               });
 
-              saved.push({ type: "tb_order", id: orderId });
+              saved.push({ type: "tb_order", id: String(orderId) });
             }
           }
         }

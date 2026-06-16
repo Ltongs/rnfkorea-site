@@ -2544,6 +2544,95 @@ const CallManagementPage: React.FC = () => {
         setTab("list");
         return;
       }
+
+      // ── 신규 등록 시 자동화: 익일 할 일 + 진흥 알림톡 + admin 알림톡 ──
+      if (!editingCaseId && savedCaseId) {
+        const tomorrowDate = (() => {
+          const d = new Date();
+          d.setDate(d.getDate() + 1);
+          return d.toISOString().slice(0, 10);
+        })();
+
+        const frontQtyNum = tireFrontQuantity ? Number(tireFrontQuantity) : 0;
+        const rearQtyNum  = tireRearQuantity  ? Number(tireRearQuantity)  : 0;
+        const totalQtyNum = frontQtyNum + rearQtyNum;
+        const qtyStr      = totalQtyNum > 0 ? `${totalQtyNum}개` : "";
+        const todoTitle   = `[타이어] ${customerName.trim()} ${tireSize.trim()} ${qtyStr}`.trim();
+
+        // ① 익일 할 일 등록 (secretary_todos)
+        try {
+          await supabase.from("secretary_todos").insert({
+            title:    todoTitle,
+            description: tireNote.trim() || null,
+            priority: "normal",
+            category: "tire",
+            due_date: tomorrowDate,
+            is_done:  false,
+          });
+        } catch (todoErr) {
+          console.error("[타이어 할 일 등록 오류]:", todoErr);
+        }
+
+        // ② 진흥 알림톡 + tb_orders 등록
+        try {
+          const nowIso = new Date().toISOString();
+          const { data: tbOrder, error: tbErr } = await supabase
+            .from("tb_orders")
+            .insert({
+              customer_name_raw: customerName.trim(),
+              inbound_channel:   "phone",
+              raw_message:       `${tireSize.trim()} ${qtyStr}`.trim(),
+              product_type:      "tire",
+              product_spec:      tireSize.trim() || null,
+              quantity:          totalQtyNum || null,
+              status:            "forwarded",
+              parsed_confidence: "high",
+              forwarded_at:      nowIso,
+              consultation_id:   savedCaseId,
+            })
+            .select("id")
+            .single();
+
+          if (!tbErr && tbOrder) {
+            const orderId = (tbOrder as any).id as string;
+            await supabase.functions.invoke("send-hyundaicm-kakao", {
+              body: {
+                type:         "order_forwarded",
+                orderNo:      orderId,
+                customerName: customerName.trim(),
+                productSpec:  tireSize.trim() || "확인필요",
+                quantity:     totalQtyNum > 0 ? String(totalQtyNum) : "확인필요",
+                deliveredUrl: `https://rnfkorea.co.kr/order/confirm/delivered/${orderId}`,
+              },
+            });
+          } else if (tbErr) {
+            console.error("[tb_orders insert 오류]:", tbErr.message);
+          }
+        } catch (kakaoErr) {
+          console.error("[진흥 알림톡 오류]:", kakaoErr);
+        }
+
+        // ③ AI비서 채팅에 신규 상담 알림 기록
+        try {
+          const chatMsg = [
+            `📌 **타이어 상담 신규등록**`,
+            ``,
+            `고객: **${customerName.trim()}** (${phone.trim()})`,
+            `규격: ${tireSize.trim()} ${qtyStr}`,
+            tireVehicleInfo.trim() ? `차량: ${tireVehicleInfo.trim()}` : null,
+            tireNote.trim() ? `비고: ${tireNote.trim()}` : null,
+            ``,
+            `✅ 진흥 알림톡 발송 완료 | 내일 할 일 등록됨`,
+          ].filter((v) => v !== null).join("\n");
+          await supabase.from("secretary_chat_logs").insert({
+            role: "assistant",
+            content: chatMsg,
+            session_id: "main",
+          });
+        } catch (chatErr) {
+          console.error("[채팅 알림 오류]:", chatErr);
+        }
+      }
     }
 
     if (workType === "finance") {

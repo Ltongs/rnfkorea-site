@@ -810,6 +810,11 @@ const SecretaryPage:React.FC = () => {
   const [memoDetail,setMemoDetail]   = useState<Memo|null>(null);
   const [newMemo,setNewMemo]         = useState({title:"",content:"",category:"meeting" as Memo["category"],related_name:"",memo_date:new Date().toISOString().slice(0,10),consultation_id:""});
   const [cLoading,setCLoading]       = useState(false);
+  // Apple Notes 가져오기
+  const [showNotesImport,setShowNotesImport]     = useState(false);
+  const [notesRawText,setNotesRawText]           = useState("");
+  const [notesImporting,setNotesImporting]       = useState(false);
+  const [notesImportResult,setNotesImportResult] = useState<{saved:number;skipped:number;items:{title:string;date:string;summary:string}[]}|null>(null);
 
   // 채팅
   const [msgs,setMsgs]               = useState<ChatMsg[]>([]);
@@ -867,6 +872,63 @@ const SecretaryPage:React.FC = () => {
     setMemos(prev=>prev.filter(m=>m.id!==id));
     if(memoDetail?.id===id) setMemoDetail(null);
   },[memoDetail]);
+
+  // ── Apple Notes 붙여넣기 → AI 요약 → secretary_memos 저장 ──────────────────
+  const importNotesText = useCallback(async(rawText:string)=>{
+    if(!rawText.trim()) return;
+    setNotesImporting(true);
+    setNotesImportResult(null);
+    try {
+      // Claude API로 미팅별 분리 + 요약
+      const aiRes = await fetch("https://api.anthropic.com/v1/messages",{
+        method:"POST",
+        headers:{"Content-Type":"application/json","anthropic-version":"2023-06-01"},
+        body:JSON.stringify({
+          model:"claude-sonnet-4-6",
+          max_tokens:2000,
+          system:`You are a Korean business secretary AI. Parse Apple Notes Meeting History text into individual records.
+Return ONLY a raw JSON array, no markdown, no code fences.
+Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|call|visit|note","related_name":"회사명 or null","summary":"핵심내용 2~4문장 한국어 요약"}
+- title: 날짜+회사+미팅 형태 (예: [4/21] 동성종합지게차 미팅)
+- memo_date: 본문 날짜 추출, 연도 없으면 현재 연도(${new Date().getFullYear()}) 사용
+- category: meeting(미팅/회의), call(통화), visit(방문), note(기타)
+- related_name: 고객사·거래처명, 없으면 null
+- summary: 핵심 논의사항만 간결하게`,
+          messages:[{role:"user",content:`다음 Apple Notes Meeting History 내용을 분석해주세요:\n\n${rawText.slice(0,8000)}`}],
+        }),
+      });
+      const aiData = await aiRes.json();
+      const raw = (aiData.content?.[0]?.text??"[]").trim()
+        .replace(/^```json\s*/i,"").replace(/^```\s*/,"").replace(/\s*```\s*$/,"").trim();
+      let parsed:{title:string;memo_date:string;category:string;related_name:string|null;summary:string}[]=[];
+      try{ parsed=JSON.parse(raw.startsWith("[") ? raw : `[${raw}]`); }catch{ parsed=[]; }
+
+      // 중복 체크: 같은 날짜+제목 이미 저장된 항목 건너뜀
+      const {data:existing} = await supabase.from("secretary_memos").select("title,memo_date").limit(300);
+      const existSet = new Set((existing??[]).map((m:any)=>`${m.memo_date}||${m.title}`));
+
+      let saved=0, skipped=0;
+      const items:{title:string;date:string;summary:string}[]=[];
+      for(const item of parsed){
+        if(existSet.has(`${item.memo_date}||${item.title}`)){ skipped++; continue; }
+        const cat=(["meeting","call","visit","note"].includes(item.category)?item.category:"meeting") as Memo["category"];
+        const {error}=await supabase.from("secretary_memos").insert({
+          title:        item.title,
+          content:      item.summary,
+          category:     cat,
+          related_name: item.related_name??null,
+          memo_date:    item.memo_date,
+        });
+        if(!error){ saved++; items.push({title:item.title,date:item.memo_date,summary:item.summary}); }
+      }
+      setNotesImportResult({saved,skipped,items});
+      if(saved>0) void loadMemos();
+    }catch(e:any){
+      alert(`가져오기 오류: ${String(e?.message??e)}`);
+    }finally{
+      setNotesImporting(false);
+    }
+  },[loadMemos]);
 
   const loadEmailReports = useCallback(async()=>{
     setEmailLoading(true);
@@ -2825,11 +2887,81 @@ const SecretaryPage:React.FC = () => {
                   <p className="text-sm font-semibold text-[#0f172a]">📝 미팅/통화 메모</p>
                   <p className="text-xs text-gray-400 mt-0.5">회의·통화·방문 내용을 기록하고 검색합니다</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <button className={BTG} onClick={()=>void loadMemos()}>새로고침</button>
+                  <button
+                    onClick={()=>{setShowNotesImport(p=>!p);setNotesRawText("");setNotesImportResult(null);}}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${showNotesImport?"bg-[#0f172a] text-white border-[#0f172a]":"bg-amber-50 text-amber-700 border-amber-200 hover:border-amber-400"}`}>
+                    🍎 Apple Notes 가져오기
+                  </button>
                   <button className={`${BTG} bg-orange-500 text-white border-orange-500 hover:bg-orange-600`} onClick={()=>setShowMemoForm(true)}>+ 메모 작성</button>
                 </div>
               </div>
+
+              {/* Apple Notes 가져오기 패널 */}
+              {showNotesImport&&(
+                <div className={`${CARD} p-4 border-amber-200 bg-amber-50/30 space-y-3`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-[#0f172a]">🍎 Apple Notes → 메모탭 가져오기</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        메모 앱 → Meeting History 폴더 → 메모 선택 후 전체복사(⌘A→⌘C) → 아래 붙여넣기(⌘V)
+                      </p>
+                    </div>
+                    <button className="text-gray-400 hover:text-gray-600 text-xl leading-none flex-shrink-0"
+                      onClick={()=>{setShowNotesImport(false);setNotesRawText("");setNotesImportResult(null);}}>×</button>
+                  </div>
+
+                  <textarea rows={8}
+                    className="w-full rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs text-gray-700 resize-none focus:outline-none focus:border-orange-400 transition-all"
+                    placeholder={"여기에 붙여넣기 하세요...\n\n예시:\n[4/21] 동성종합지게차 미팅\n# 중고 지게차 렌탈 상품 안내\n• 성능점검표 기본 양식 공유 필요\n\n[4/13] Ch Int. 미팅\n# 뉴질랜드 박람회\n..."}
+                    value={notesRawText}
+                    onChange={e=>setNotesRawText(e.target.value)}
+                    disabled={notesImporting}
+                  />
+
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs text-gray-400">
+                      {notesRawText.trim()
+                        ? `${notesRawText.length.toLocaleString()}자 · AI가 자동 분리·요약 후 저장합니다`
+                        : "여러 건의 미팅 메모를 한번에 붙여넣으면 AI가 각각 분리하여 저장합니다"}
+                    </p>
+                    <button
+                      className={`${BTO} disabled:opacity-40 whitespace-nowrap`}
+                      disabled={!notesRawText.trim()||notesImporting}
+                      onClick={()=>void importNotesText(notesRawText)}>
+                      {notesImporting?"✨ AI 분석 중...":"✨ AI 요약 저장"}
+                    </button>
+                  </div>
+
+                  {/* 결과 */}
+                  {notesImportResult&&(
+                    <div className="border border-emerald-200 rounded-xl bg-emerald-50 p-3 space-y-2">
+                      <p className="text-xs font-semibold text-emerald-700">
+                        ✅ {notesImportResult.saved}건 저장 완료
+                        {notesImportResult.skipped>0&&<span className="font-normal text-gray-400 ml-1">({notesImportResult.skipped}건 중복 건너뜀)</span>}
+                      </p>
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                        {notesImportResult.items.map((it,i)=>(
+                          <div key={i} className="bg-white rounded-lg px-3 py-2 border border-emerald-100">
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <span className="text-xs font-semibold text-[#0f172a] truncate">{it.title}</span>
+                              <span className="text-xs text-gray-400 flex-shrink-0">{it.date}</span>
+                            </div>
+                            <p className="text-xs text-gray-500 line-clamp-2">{it.summary}</p>
+                          </div>
+                        ))}
+                      </div>
+                      {notesImportResult.saved>0&&(
+                        <button className={`${BTG} w-full text-xs`}
+                          onClick={()=>{setShowNotesImport(false);setNotesRawText("");setNotesImportResult(null);}}>
+                          메모 목록에서 확인하기 →
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* 필터 + 검색 */}
               <div className="flex flex-wrap gap-2 items-center">
