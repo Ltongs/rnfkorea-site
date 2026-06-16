@@ -52,6 +52,7 @@ type Consult = {
   work_type:string; status:string; summary:string;
   followup_needed:boolean; next_followup_date:string|null; created_at:string;
   finance_stage?:string|null;
+  process_stage?:string|null;
 };
 type HyundaiTask = {
   id:number; customer_name:string; company_name:string|null;
@@ -1392,11 +1393,24 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
     const fdMap:Record<number,string> = {};
     (fdr.data??[]).forEach((f:any)=>{ fdMap[f.consultation_id]=f.finance_stage; });
     if(fr.data)setFollowups(fr.data as Consult[]);
-    if(rr.data)setRecentC(rr.data.map((c:any)=>({
-      ...c,
-      // 금융 상담은 finance_stage로 표시용 상태 덮어쓰기
-      display_status: c.work_type==="finance" && fdMap[c.id] ? FIN_LBL[fdMap[c.id]]??fdMap[c.id] : null,
-    })) as Consult[]);
+
+    if(rr.data && rr.data.length > 0){
+      const cids = rr.data.map((c:any)=>c.id as number);
+      const [tireR, battR, forkR] = await Promise.all([
+        supabase.from("consultation_tire_details").select("consultation_id,process_status,process_stage").in("consultation_id",cids),
+        supabase.from("consultation_battery_details").select("consultation_id,process_stage").in("consultation_id",cids),
+        supabase.from("consultation_forklift_details").select("consultation_id,process_stage,forklift_status").in("consultation_id",cids),
+      ]);
+      const psMap:Record<number,string> = {};
+      (tireR.data??[]).forEach((d:any)=>{ psMap[d.consultation_id]=d.process_stage??d.process_status; });
+      (battR.data??[]).forEach((d:any)=>{ if(d.process_stage) psMap[d.consultation_id]=d.process_stage; });
+      (forkR.data??[]).forEach((d:any)=>{ if(d.process_stage||d.forklift_status) psMap[d.consultation_id]=d.process_stage??d.forklift_status; });
+      setRecentC(rr.data.map((c:any)=>({
+        ...c,
+        display_status: c.work_type==="finance" && fdMap[c.id] ? FIN_LBL[fdMap[c.id]]??fdMap[c.id] : null,
+        process_stage: psMap[c.id] ?? null,
+      })) as Consult[]);
+    }
     setCLoading(false);
   },[]);
 
@@ -2431,18 +2445,82 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                           {["고객명","업무","요약","상태","등록일",""].map(h=><th key={h} className="text-left py-1.5 px-2 text-xs font-medium text-gray-400">{h}</th>)}
                         </tr></thead>
                         <tbody>
-                          {recentC.map(c=>(
+                          {recentC.map(c=>{
+                            // 상담관리 COMMON_STAGES와 동일한 기준
+                            const COMMON_STAGES = [
+                              {value:"contract",       label:"계약"},
+                              {value:"delivery",       label:"납품"},
+                              {value:"completed_order",label:"완결"},
+                              {value:"invoiced",       label:"계산서발행"},
+                              {value:"cancelled",      label:"취소"},
+                            ];
+                            const FIN_STAGES = [
+                              {value:"received",          label:"접수"},
+                              {value:"credit_check",      label:"신용조회"},
+                              {value:"approved",          label:"승인"},
+                              {value:"supplement",        label:"보완"},
+                              {value:"rejected",          label:"거절"},
+                              {value:"doc_registration",  label:"서류등록"},
+                              {value:"contract_sent",     label:"전자계약"},
+                              {value:"confirmed",         label:"확정"},
+                              {value:"cancelled",         label:"취소"},
+                            ];
+                            const isTireOrBattery = ["tire_sales","tire","battery_sales","battery","forklift_sales","forklift"].includes(c.work_type);
+                            const isFinanceType   = c.work_type==="finance";
+                            // 표시할 현재 단계값
+                            const curStage = isTireOrBattery ? (c.process_stage??"contract") : isFinanceType ? ((c as any).display_status??"") : c.status;
+                            const stageOptions = isTireOrBattery ? COMMON_STAGES : isFinanceType ? FIN_STAGES : COMMON_STAGES;
+                            // 단계별 색상 (상담관리 progressColor와 동일)
+                            const stageColor = (s:string) =>
+                              ["invoiced","completed_order","confirmed","delivered"].includes(s) ? {bg:"#f0fdf4",fg:"#16a34a",bd:"#bbf7d0"}
+                              :["cancelled","rejected"].includes(s)                              ? {bg:"#fef2f2",fg:"#ef4444",bd:"#fecaca"}
+                              :["contract","contract_sent","approved"].includes(s)               ? {bg:"#eff6ff",fg:"#2563eb",bd:"#bfdbfe"}
+                              :["delivery"].includes(s)                                          ? {bg:"#fff7ed",fg:"#ea580c",bd:"#fed7aa"}
+                              :["completed_order"].includes(s)                                   ? {bg:"#f0fdf4",fg:"#16a34a",bd:"#bbf7d0"}
+                                                                                                : {bg:"#f9fafb",fg:"#6b7280",bd:"#e5e7eb"};
+                            const sc = stageColor(curStage);
+                            return (
                             <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer" onClick={()=>navigate(`/work/call-management?id=${c.id}`)}>
                               <td className="py-1.5 px-2 font-medium text-[#0f172a] whitespace-nowrap">{c.customer_name}</td>
                               <td className="py-1.5 px-2 whitespace-nowrap"><span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600">{WL[c.work_type]??c.work_type}</span></td>
                               <td className="py-1.5 px-2 text-gray-600 max-w-[160px] truncate">{c.summary}</td>
-                              <td className="py-1.5 px-2 whitespace-nowrap">{(c as any).display_status?<span className="text-xs px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-100 font-medium">{(c as any).display_status}</span>:<StsBadge s={c.status}/>}</td>
+                              <td className="py-1.5 px-2 whitespace-nowrap" onClick={e=>e.stopPropagation()}>
+                                <select
+                                  value={curStage}
+                                  onChange={async e=>{
+                                    const next = e.target.value;
+                                    if(isTireOrBattery){
+                                      const detailTable = ["tire_sales","tire"].includes(c.work_type)
+                                        ? "consultation_tire_details"
+                                        : ["battery_sales","battery"].includes(c.work_type)
+                                        ? "consultation_battery_details"
+                                        : "consultation_forklift_details";
+                                      const {error} = await supabase.from(detailTable).update({process_stage:next,process_status:next}).eq("consultation_id",c.id);
+                                      if(error){alert("단계 변경 실패: "+error.message);return;}
+                                      setRecentC(prev=>prev.map(x=>x.id===c.id?{...x,process_stage:next}:x));
+                                    } else if(isFinanceType){
+                                      const {error} = await supabase.from("consultation_finance_details").update({finance_stage:next}).eq("consultation_id",c.id);
+                                      if(error){alert("단계 변경 실패: "+error.message);return;}
+                                      setRecentC(prev=>prev.map(x=>x.id===c.id?{...x,display_status:next}:x));
+                                    } else {
+                                      const {error} = await supabase.from("consultation_cases").update({status:next}).eq("id",c.id);
+                                      if(error){alert("단계 변경 실패: "+error.message);return;}
+                                      setRecentC(prev=>prev.map(x=>x.id===c.id?{...x,status:next}:x));
+                                    }
+                                  }}
+                                  className="text-xs px-2 py-0.5 rounded-full border font-medium cursor-pointer focus:outline-none focus:ring-1 focus:ring-orange-400"
+                                  style={{background:sc.bg,color:sc.fg,borderColor:sc.bd}}
+                                >
+                                  {stageOptions.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
+                                </select>
+                              </td>
                               <td className="py-1.5 px-2 text-xs text-gray-400 whitespace-nowrap">{fmtDT(c.created_at)}</td>
                               <td className="py-1.5 px-2">
                                 <button className={BTG} onClick={e=>{e.stopPropagation();quickChat(`"${c.customer_name}" ${WL[c.work_type]??""} 후속 조치: ${c.summary}`);}}>AI</button>
                               </td>
                             </tr>
-                          ))}
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
