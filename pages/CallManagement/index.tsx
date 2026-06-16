@@ -639,6 +639,7 @@ const CallManagementPage: React.FC = () => {
   const [editingCaseId, setEditingCaseId] = useState<number | null>(null);
   const [pendingOpenId, setPendingOpenId] = useState<string|null>(null);
   const [showTodoBox, setShowTodoBox] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showListFilters, setShowListFilters] = useState(false);
   const [showFollowupFilters, setShowFollowupFilters] = useState(false);
 
@@ -2311,6 +2312,9 @@ const CallManagementPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
 
     if (!customerName.trim()) return alert("고객명을 입력해 주세요.");
     if (!phone.trim()) return alert("연락처를 입력해 주세요.");
@@ -2593,9 +2597,12 @@ const CallManagementPage: React.FC = () => {
             .select("id")
             .single();
 
-          if (!tbErr && tbOrder) {
+          if (tbErr) {
+            console.error("[tb_orders insert 오류]:", tbErr.message);
+            alert(`주문 등록 실패(알림톡 미발송): ${tbErr.message}`);
+          } else if (tbOrder) {
             const orderId = (tbOrder as any).id as string;
-            await supabase.functions.invoke("send-hyundaicm-kakao", {
+            const { error: kakaoErr } = await supabase.functions.invoke("send-hyundaicm-kakao", {
               body: {
                 type:         "order_forwarded",
                 orderNo:      orderId,
@@ -2605,8 +2612,10 @@ const CallManagementPage: React.FC = () => {
                 deliveredUrl: `https://rnfkorea.co.kr/order/confirm/delivered/${orderId}`,
               },
             });
-          } else if (tbErr) {
-            console.error("[tb_orders insert 오류]:", tbErr.message);
+            if (kakaoErr) {
+              console.error("[진흥 알림톡 오류]:", kakaoErr);
+              alert(`주문 등록됐지만 알림톡 발송 실패: ${JSON.stringify(kakaoErr)}`);
+            }
           }
         } catch (kakaoErr) {
           console.error("[진흥 알림톡 오류]:", kakaoErr);
@@ -2753,6 +2762,9 @@ const CallManagementPage: React.FC = () => {
     await fetchFollowups();
     await fetchInsuranceExpiries();
     setTab("list");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleCompleteFollowup = async (id: number) => {
@@ -4206,9 +4218,10 @@ const CallManagementPage: React.FC = () => {
 
               <button
                 type="submit"
-                className="px-6 py-2 rounded-xl bg-orange-500 text-white font-medium hover:bg-orange-600"
+                disabled={isSubmitting}
+                className="px-6 py-2 rounded-xl bg-orange-500 text-white font-medium hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {editingCaseId ? "수정 저장" : "저장"}
+                {isSubmitting ? "저장 중..." : editingCaseId ? "수정 저장" : "저장"}
               </button>
             </div>
           </form>
