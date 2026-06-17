@@ -1506,6 +1506,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       setSchedViewMode("day");
       void loadSchedules();
       void loadTodos();
+      // 구글 캘린더 → AI비서 자동 역방향 동기화
+      if(gcalConnected) void importGcalToLocal(calViewYear, calViewMonth);
     }
     if(tab==="status"){ void loadStatusData(); }
     if(tab==="chat"){ setTimeout(()=>{ const c=chatContainerRef.current; if(c)c.scrollTop=c.scrollHeight; },100); }
