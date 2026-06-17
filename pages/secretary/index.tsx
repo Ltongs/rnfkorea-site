@@ -839,6 +839,8 @@ const SecretaryPage:React.FC = () => {
   const [gcalConnected,setGcalConnected] = useState(false);
   const [gcalEvents,setGcalEvents] = useState<{id:string;title:string;start:string;color?:string}[]>([]);
   const [gcalImporting,setGcalImporting] = useState(false);
+  const [gcalBulkSyncing,setGcalBulkSyncing] = useState(false);
+  const [gcalBulkResult,setGcalBulkResult] = useState<string|null>(null);
 
   // 이메일 리포트
   const [emailReports,setEmailReports] = useState<EmailReport[]>([]);
@@ -1137,6 +1139,64 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
         void loadGcalEvents(calViewYear, calViewMonth);
       }
     }catch(e){console.error("gcal sync error",e);}
+  }
+
+  // ─── 기존 항목 전체 구글 캘린더 일괄 동기화 ──────────────────────────────────
+  async function bulkSyncToGcal(){
+    if(!user||!gcalConnected) return;
+    setGcalBulkSyncing(true);
+    setGcalBulkResult(null);
+    try{
+      const today = todayStr();
+      // 1. 오늘 이후 일정 중 gcal_event_id 없는 것
+      const {data:scheds} = await supabase.from("secretary_schedules")
+        .select("id,title,description,schedule_date,start_time,end_time,location")
+        .gte("schedule_date", today)
+        .is("gcal_event_id", null)
+        .eq("is_done", false);
+      // 2. 오늘 이후 할 일 중 due_date 있는 것
+      const {data:todos} = await supabase.from("secretary_todos")
+        .select("id,title,description,due_date")
+        .gte("due_date", today)
+        .eq("is_done", false);
+
+      const schedList = scheds ?? [];
+      const todoList  = todos  ?? [];
+      let ok = 0, fail = 0;
+
+      for(const s of schedList){
+        try{
+          await syncToGcal({
+            id: s.id, title: s.title,
+            description: s.description??null,
+            schedule_date: s.schedule_date,
+            start_time: s.start_time??null,
+            end_time: s.end_time??null,
+            location: s.location??null,
+          });
+          ok++;
+          await new Promise(r=>setTimeout(r,200)); // API 레이트 리밋 방지
+        }catch{ fail++; }
+      }
+      for(const t of todoList){
+        try{
+          await syncToGcal({
+            id: t.id, title: `✅ ${t.title}`,
+            description: t.description??null,
+            schedule_date: t.due_date,
+            start_time: null, end_time: null, location: null,
+          });
+          ok++;
+          await new Promise(r=>setTimeout(r,200));
+        }catch{ fail++; }
+      }
+      setGcalBulkResult(`완료: 일정 ${schedList.length}건 + 할일 ${todoList.length}건 → 성공 ${ok}건${fail>0?` / 실패 ${fail}건`:""}`);
+      void loadGcalEvents(calViewYear, calViewMonth);
+    }catch(e:any){
+      setGcalBulkResult("오류: " + String(e?.message??e));
+    }finally{
+      setGcalBulkSyncing(false);
+    }
   }
 
   const loadStats = useCallback(async()=>{
@@ -2281,6 +2341,17 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                 >
                   {gcalImporting ? "가져오는 중..." : "📥 구글 → AI비서 가져오기"}
                 </button>
+                {/* 기존 항목 일괄 동기화 */}
+                <button
+                  onClick={()=>void bulkSyncToGcal()}
+                  disabled={gcalBulkSyncing}
+                  className="w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-orange-50 border border-orange-200 text-xs font-semibold text-orange-600 hover:bg-orange-100 transition-all disabled:opacity-40"
+                >
+                  {gcalBulkSyncing ? "동기화 중..." : "📤 AI비서 → 구글 일괄전송"}
+                </button>
+                {gcalBulkResult && (
+                  <p className="text-[10px] text-gray-500 mt-1 text-center">{gcalBulkResult}</p>
+                )}
                 <button onClick={()=>void disconnectGcal()}
                   className="w-full text-xs text-gray-500 hover:text-red-500 py-1 transition-all">
                   연동 해제
