@@ -1049,6 +1049,68 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
     showToast("구글 캘린더 연동 해제");
   }
 
+  // ─── 구글 캘린더 → AI비서 역방향 가져오기 ────────────────────────────────────
+  const [gcalImporting, setGcalImporting] = useState(false);
+  async function importGcalToLocal(yr:number, mo:number){
+    if(!user || !gcalConnected) return;
+    setGcalImporting(true);
+    try {
+      // 1. 이번 달 구글 캘린더 이벤트 가져오기
+      const {data:{session}} = await supabase.auth.getSession();
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-sync`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token??""}`},
+        body:JSON.stringify({action:"list",user_id:user.id,year:yr,month:mo}),
+      });
+      const d = await res.json();
+      if(!d.events?.length){ showToast("가져올 새 일정이 없습니다"); return; }
+
+      // 2. 로컬에 있는 일정 제목+날짜 집합 조회
+      const from = `${yr}-${String(mo+1).padStart(2,"0")}-01`;
+      const lastDay = new Date(yr, mo+1, 0).getDate();
+      const to = `${yr}-${String(mo+1).padStart(2,"0")}-${String(lastDay).padStart(2,"0")}`;
+      const {data:localScheds} = await supabase.from("secretary_schedules")
+        .select("title,schedule_date").gte("schedule_date",from).lte("schedule_date",to);
+      const localSet = new Set(
+        (localScheds??[]).map((s:any)=>`${s.schedule_date}||${s.title.trim().toLowerCase()}`)
+      );
+
+      // 3. 로컬에 없는 구글 이벤트만 필터링
+      const toInsert = (d.events as any[]).filter(e=>{
+        const date = e.start?.date || e.start?.dateTime?.slice(0,10) || "";
+        if(!date) return false;
+        const title = (e.summary??"(제목없음)").trim().toLowerCase();
+        return !localSet.has(`${date}||${title}`);
+      });
+
+      if(toInsert.length === 0){ showToast("이미 모든 일정이 동기화되어 있습니다 ✅"); return; }
+
+      // 4. secretary_schedules에 일괄 insert
+      const rows = toInsert.map((e:any)=>({
+        title: e.summary ?? "(제목없음)",
+        description: e.description ?? null,
+        schedule_date: e.start?.date || e.start?.dateTime?.slice(0,10),
+        start_time: e.start?.dateTime ? e.start.dateTime.slice(11,16) : null,
+        end_time:   e.end?.dateTime   ? e.end.dateTime.slice(11,16)   : null,
+        location:   e.location ?? null,
+        category:   "task" as Schedule["category"],
+        related_type: "google_calendar",
+        consultation_id: null,
+        is_done: false,
+      }));
+      const {error} = await supabase.from("secretary_schedules").insert(rows);
+      if(error){ showToast("가져오기 실패: " + error.message, "err"); return; }
+
+      showToast(`구글 캘린더 ${toInsert.length}건 AI비서에 추가됨 ✅`);
+      void loadCalData(yr, mo);
+      void loadSchedules();
+    } catch(e:any){
+      showToast("가져오기 오류: " + String(e?.message??e), "err");
+    } finally {
+      setGcalImporting(false);
+    }
+  }
+
   // 일정 저장 후 구글 캘린더에도 동기화
   async function syncToGcal(schedule:{id:number;title:string;description:string|null;schedule_date:string;start_time:string|null;end_time:string|null;location:string|null}){
     if(!user||!gcalConnected) return;
@@ -1407,7 +1469,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       (forkR.data??[]).forEach((d:any)=>{ if(d.process_stage||d.forklift_status) psMap[d.consultation_id]=d.process_stage??d.forklift_status; });
       setRecentC(rr.data.map((c:any)=>({
         ...c,
-        display_status: c.work_type==="finance" && fdMap[c.id] ? FIN_LBL[fdMap[c.id]]??fdMap[c.id] : null,
+        display_status: c.work_type==="finance" ? (fdMap[c.id] ?? null) : null,
         process_stage: psMap[c.id] ?? null,
       })) as Consult[]);
     }
@@ -1572,7 +1634,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       patch.next_schedule_date = schedProgress.next_date;
       patch.next_schedule_time = schedProgress.next_time || null;
       patch.is_done = true; // 다음 일정 등록 시 기존 일정 자동 완료 처리
-      await supabase.from("secretary_schedules").insert({
+      const {data:newSchedData} = await supabase.from("secretary_schedules").insert({
         title: s.title,
         description: newMemo,
         schedule_date: schedProgress.next_date,
@@ -1581,7 +1643,19 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
         location: s.location,
         related_type: s.related_type,
         consultation_id: s.consultation_id,
-      });
+      }).select("id").single();
+      // 구글 캘린더 동기화 — 새로 등록된 다음 일정
+      if(gcalConnected && newSchedData){
+        void syncToGcal({
+          id: newSchedData.id,
+          title: s.title,
+          description: newMemo,
+          schedule_date: schedProgress.next_date,
+          start_time: schedProgress.next_time || null,
+          end_time: null,
+          location: s.location,
+        });
+      }
     }
     await supabase.from("secretary_schedules").update(patch).eq("id",s.id);
     await loadSchedules();
@@ -2195,8 +2269,16 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               {gcalConnected&&<span className="ml-auto w-2 h-2 rounded-full bg-emerald-500"/>}
             </div>
             {gcalConnected ? (
-              <div>
+              <div className="space-y-1.5">
                 <p className="text-[10px] text-emerald-600 mb-1.5">✅ 연동됨 — 일정 자동 동기화 중</p>
+                {/* 구글 → AI비서 역방향 가져오기 */}
+                <button
+                  onClick={()=>void importGcalToLocal(calViewYear, calViewMonth)}
+                  disabled={gcalImporting}
+                  className="w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-xs font-semibold text-blue-600 hover:bg-blue-100 transition-all disabled:opacity-40"
+                >
+                  {gcalImporting ? "가져오는 중..." : "📥 구글 → AI비서 가져오기"}
+                </button>
                 <button onClick={()=>void disconnectGcal()}
                   className="w-full text-xs text-gray-500 hover:text-red-500 py-1 transition-all">
                   연동 해제
@@ -2204,7 +2286,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               </div>
             ) : (
               <div>
-                <p className="text-[10px] text-gray-400 mb-1.5">연동하면 일정이 구글 캘린더와 양방향 동기화됩니다</p>
+                <p className="text-[10px] text-gray-400 mb-1.5">연동하면 AI비서 일정 ↔ 구글 캘린더 양방향 동기화됩니다</p>
                 <button onClick={()=>void connectGcal()}
                   className="w-full flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg bg-[#4285f4] text-white text-xs font-semibold hover:bg-[#3367d6] transition-all">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="white"><path d="M19 4h-1V2h-2v2H8V2H6v2H5C3.9 4 3 4.9 3 6v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"/></svg>
@@ -2554,12 +2636,11 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                           onClick={()=>navigate(`/work/call-management?id=${o.id}`)}>
                           <div className="flex items-start gap-2.5">
                             <div className="flex-1 min-w-0">
-                              {/* 1행: 고객명 + 업무유형 + 상태 */}
+                              {/* 1행: 고객명 + 업무유형 */}
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="text-sm font-semibold text-[#0f172a]">{o.customer_name}</span>
                                 <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600">{WL[o.work_type]??o.work_type}</span>
                                 {o.sub_type&&<span className="text-xs text-gray-400">{o.sub_type}</span>}
-                                <StsBadge s={o.status}/>
                               </div>
                               {/* 2행: 제품명·규격 */}
                               {o.product_detail&&(
@@ -2567,9 +2648,18 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                               )}
                               {/* 3행: 진행단계 + 등록일 */}
                               <div className="flex items-center gap-3 mt-1">
-                                <span className={`text-xs font-medium ${progressColor(o.progress_stage)}`}>
-                                  ▸ {fmtProgress(o.work_type, o.progress_stage)}
-                                </span>
+                                {o.progress_stage ? (
+                                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium border
+                                    ${["invoiced","completed_order","confirmed","delivered","완결","확정"].includes(o.progress_stage)?"bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    :["cancelled","rejected","취소","거절"].includes(o.progress_stage)?"bg-red-50 text-red-500 border-red-200"
+                                    :["contract","contract_sent","approved"].includes(o.progress_stage)?"bg-blue-50 text-blue-600 border-blue-200"
+                                    :["delivery"].includes(o.progress_stage)?"bg-orange-50 text-orange-600 border-orange-200"
+                                    :"bg-gray-50 text-gray-500 border-gray-200"}`}>
+                                    {fmtProgress(o.work_type, o.progress_stage)}
+                                  </span>
+                                ) : (
+                                  <span className="text-xs text-gray-400">-</span>
+                                )}
                                 <span className="text-xs text-gray-400">{fmtDT(o.created_at)}</span>
                               </div>
                               {/* 4행: 요약 (접힘) */}
