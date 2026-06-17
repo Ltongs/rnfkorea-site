@@ -96,6 +96,11 @@ export default function PageHeader() {
   const { user, canViewAll, isAdmin, isSubAdmin, isNarumi, isLotte, isInsuranceManager, isHyundaiCM, isNhCapital, isNhCapitalStaff, isInsAI } = useAuth() as any;
   const isAdminLevel = isAdmin || isSubAdmin;
 
+  // PWA 앱 모드에서는 헤더 숨김 (각 페이지에서 자체 컴팩트 헤더 제공)
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+    || (window.navigator as any).standalone === true;
+  if (isStandalone) return null;
+
   const [openBiz, setOpenBiz] = useState(false);
   const [openShop, setOpenShop] = useState(false);
   const [openWork, setOpenWork] = useState(false);

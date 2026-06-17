@@ -398,6 +398,110 @@ export default function HyundaiCMPage() {
     }
   };
 
+  // ── 원리금균등분납 상환스케줄 계산 ──
+  const calcAmortization = (principal: number, annualRate: number, months: number, startYM: string) => {
+    const r = annualRate / 100 / 12;
+    const payment = r === 0
+      ? principal / months
+      : (principal * r * Math.pow(1+r, months)) / (Math.pow(1+r, months) - 1);
+    const rows: {no:number;date:string;payment:number;interest:number;principalPmt:number;balance:number}[] = [];
+    let balance = principal;
+    const [sy, sm] = startYM.split('-').map(Number);
+    for (let i = 1; i <= months; i++) {
+      const interest = balance * r;
+      const principalPmt = payment - interest;
+      balance = Math.max(0, balance - principalPmt);
+      const d = new Date(sy, sm - 1 + i, 1);
+      const date = `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.01`;
+      rows.push({ no:i, date, payment:Math.round(payment), interest:Math.round(interest), principalPmt:Math.round(principalPmt), balance:Math.round(balance) });
+    }
+    return { payment: Math.round(payment), rows };
+  };
+
+  // ── 상환스케줄 PDF 다운로드 ──
+  const downloadSchedulePDF = (task: HCMTask, startYM: string, recipient: string) => {
+    const principal = task.installment_principal ?? 0;
+    const annualRate = task.interest_rate ?? 0;
+    const months = task.loan_period ?? 0;
+    if (!principal || !annualRate || !months) return;
+
+    const { payment, rows } = calcAmortization(principal, annualRate, months, startYM);
+    const fmt = (n:number) => n.toLocaleString('ko-KR');
+    const displayName = task.company_name
+      ? `${task.company_name}${task.customer_name !== task.company_name ? ` (${task.customer_name})` : ''}`
+      : task.customer_name;
+
+    const tableRows = rows.map(r => `
+      <tr>
+        <td>${r.no}</td>
+        <td>${r.date}</td>
+        <td>${fmt(r.payment)}</td>
+        <td>${fmt(r.principalPmt)}</td>
+        <td>${fmt(r.interest)}</td>
+        <td>${fmt(r.balance)}</td>
+      </tr>`).join('');
+
+    const totalInterest = rows.reduce((s,r) => s + r.interest, 0);
+    const totalPayment  = rows.reduce((s,r) => s + r.payment,  0);
+
+    const html = `<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"/>
+<title>상환스케줄 - ${displayName}</title>
+<style>
+  @page { size: A4; margin: 20mm 15mm; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; font-size: 11px; color: #1e293b; }
+  h1 { font-size: 18px; font-weight: 700; margin: 0 0 4px; color: #0a192f; }
+  .subtitle { font-size: 12px; color: #64748b; margin-bottom: 20px; }
+  .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; background: #f8fafc; border-radius: 8px; padding: 14px; }
+  .meta-item label { font-size: 10px; color: #94a3b8; display: block; margin-bottom: 2px; }
+  .meta-item span { font-weight: 600; color: #0a192f; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #0a192f; color: #fff; padding: 7px 6px; text-align: center; font-size: 10px; }
+  td { padding: 5px 6px; text-align: right; border-bottom: 1px solid #f1f5f9; font-size: 10.5px; }
+  td:nth-child(1), td:nth-child(2) { text-align: center; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  .tfoot td { background: #e2e8f0; font-weight: 700; color: #0a192f; border-top: 2px solid #94a3b8; }
+  .footer { margin-top: 20px; font-size: 10px; color: #94a3b8; text-align: center; }
+  .recipient { margin-bottom: 12px; font-size: 13px; }
+  .recipient strong { color: #0a192f; }
+</style>
+</head><body>
+<h1>원리금균등분납 상환스케줄</h1>
+<p class="subtitle">RNF Korea · 현대건설기계 할부금융</p>
+${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중</p>` : ''}
+<div class="meta">
+  <div class="meta-item"><label>고객명</label><span>${displayName}</span></div>
+  <div class="meta-item"><label>할부원금</label><span>${fmt(principal)}원</span></div>
+  <div class="meta-item"><label>금리 (연)</label><span>${annualRate}%</span></div>
+  <div class="meta-item"><label>대출기간</label><span>${months}개월</span></div>
+  <div class="meta-item"><label>월 납입액</label><span>${fmt(payment)}원</span></div>
+  <div class="meta-item"><label>금융사</label><span>${task.finance_company ?? '-'}</span></div>
+</div>
+<table>
+  <thead><tr><th>회차</th><th>납입일</th><th>월납입액</th><th>원금</th><th>이자</th><th>잔액</th></tr></thead>
+  <tbody>${tableRows}</tbody>
+  <tfoot><tr class="tfoot">
+    <td colspan="2">합계</td>
+    <td>${fmt(totalPayment)}</td>
+    <td>${fmt(principal)}</td>
+    <td>${fmt(Math.round(totalInterest))}</td>
+    <td>0</td>
+  </tr></tfoot>
+</table>
+<p class="footer">※ 실제 납입액은 금융사 기준일·계산방식에 따라 일부 다를 수 있습니다.</p>
+</body></html>`;
+
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const win  = window.open(url, '_blank');
+    if (win) {
+      win.addEventListener('load', () => {
+        setTimeout(() => { win.print(); URL.revokeObjectURL(url); }, 500);
+      });
+    }
+  };
+
   // ── 확정 카드 펼침/접힘 ──
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const toggleExpand = (id: string | number) => {
@@ -416,6 +520,14 @@ export default function HyundaiCMPage() {
   const [confirmInterestRate,  setConfirmInterestRate]  = useState("");
   const [confirmIncentive,     setConfirmIncentive]     = useState("");
   const [confirmVatAmount,     setConfirmVatAmount]     = useState("");
+
+  // ── 상환스케줄 PDF 모달 ──
+  const [scheduleModal, setScheduleModal] = useState<HCMTask | null>(null);
+  const [scheduleRecipient, setScheduleRecipient] = useState("");
+  const [scheduleStartDate, setScheduleStartDate] = useState(() => {
+    const d = new Date(); d.setMonth(d.getMonth()+1); d.setDate(1);
+    return d.toISOString().slice(0,7);
+  });
   const [confirmSaving,        setConfirmSaving]        = useState(false);
 
   // ─── 카카오 알림 ─────────────────────────────────────────
@@ -673,6 +785,7 @@ export default function HyundaiCMPage() {
   };
 
   useEffect(() => { fetchRows(); }, [showClosed, isAdmin, isHyundaiCM, isNhCapitalStaff]); // eslint-disable-line
+
 
   // ─── 모바일 파일 선택 후 세션 자동 복구 ─────────────────────
   // 모바일에서 파일 picker 사용 시 앱이 백그라운드 전환 후 복귀하면서 세션이 끊기는 현상 방지
@@ -1264,7 +1377,7 @@ export default function HyundaiCMPage() {
       {/* ── 히어로 헤더 ── */}
       {isStandalone ? (
         /* ── PWA 앱 모드: 컴팩트 헤더 ── */
-        <div className="bg-[#0a192f] text-white px-4 py-3 flex items-center justify-between gap-3 sticky top-0 z-30">
+        <div className="hyundaicm-app-header bg-[#0a192f] text-white px-4 py-3 flex items-center justify-between gap-3 sticky top-0 z-30">
           <div className="flex items-center gap-3">
             <button
               onClick={() => nav("/work/secretary")}
@@ -1592,6 +1705,13 @@ export default function HyundaiCMPage() {
                             r.status === "거절" ? "border-red-200 bg-red-50 text-red-600" : "border-emerald-200 bg-emerald-50 text-emerald-700"
                           }`}
                         >{isExpanded ? "접기 ↑" : "펼치기 ↓"}</button>
+                      )}
+                      {/* 상환스케줄 버튼: 원금+금리+기간 모두 있을 때 */}
+                      {r.installment_principal && r.interest_rate && r.loan_period && (
+                        <button
+                          onClick={() => { setScheduleModal(r); setScheduleRecipient(r.company_name ?? r.customer_name ?? ""); }}
+                          className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50 text-xs font-medium text-blue-600 hover:bg-blue-100 transition-all"
+                        >📄 상환표</button>
                       )}
                       <button onClick={() => openEditModal(r)} className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-gray-200 bg-white text-xs font-medium text-gray-600 hover:shadow-sm transition-all">수정</button>
                       {canDelete && (
@@ -2126,6 +2246,94 @@ export default function HyundaiCMPage() {
           </div>
         </div>
       )}
+
+      {/* ── 상환스케줄 PDF 모달 ── */}
+      {scheduleModal && (() => {
+        const r = scheduleModal;
+        const principal = r.installment_principal ?? 0;
+        const annualRate = r.interest_rate ?? 0;
+        const months = r.loan_period ?? 0;
+        const { payment, rows } = calcAmortization(principal, annualRate, months, scheduleStartDate);
+        const fmt = (n:number) => n.toLocaleString('ko-KR');
+        return (
+          <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 px-4">
+            <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-2xl flex flex-col max-h-[90vh]">
+              {/* 헤더 */}
+              <div className="px-5 pt-5 pb-4 border-b border-gray-100">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-sm font-semibold text-[#0a192f]">📄 원리금균등 상환스케줄</p>
+                  <button onClick={() => setScheduleModal(null)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
+                </div>
+                <p className="text-xs text-gray-500">
+                  {r.company_name ? `${r.company_name}${r.customer_name !== r.company_name ? ` (${r.customer_name})` : ''}` : r.customer_name}
+                  {' · '}{fmt(principal)}원 · {annualRate}% · {months}개월
+                </p>
+              </div>
+              {/* 수신인 + 시작월 */}
+              <div className="px-5 py-4 border-b border-gray-100 space-y-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">수신인</label>
+                  <input
+                    value={scheduleRecipient}
+                    onChange={e => setScheduleRecipient(e.target.value)}
+                    placeholder="예: (주)장장아스콘산업 홍길동 대표"
+                    className="w-full h-9 rounded-xl border border-gray-200 px-3 text-sm focus:outline-none focus:border-blue-400"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">납입 시작월</label>
+                  <input
+                    type="month"
+                    value={scheduleStartDate}
+                    onChange={e => setScheduleStartDate(e.target.value)}
+                    className="w-full h-9 rounded-xl border border-gray-200 px-3 text-sm focus:outline-none focus:border-blue-400"
+                  />
+                </div>
+                <div className="flex gap-3 text-center bg-blue-50 rounded-xl p-3">
+                  <div className="flex-1"><p className="text-xs text-blue-500">월 납입액</p><p className="font-bold text-blue-700 text-sm">{fmt(payment)}원</p></div>
+                  <div className="flex-1"><p className="text-xs text-blue-500">총 이자</p><p className="font-bold text-blue-700 text-sm">{fmt(rows.reduce((s,r)=>s+r.interest,0))}원</p></div>
+                  <div className="flex-1"><p className="text-xs text-blue-500">총 납입</p><p className="font-bold text-blue-700 text-sm">{fmt(rows.reduce((s,r)=>s+r.payment,0))}원</p></div>
+                </div>
+              </div>
+              {/* 미리보기 테이블 */}
+              <div className="flex-1 overflow-y-auto px-5 py-3">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      {['회차','납입일','월납입액','원금','이자','잔액'].map(h=>(
+                        <th key={h} className="text-left py-1.5 text-gray-400 font-medium">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map(row=>(
+                      <tr key={row.no} className="border-b border-gray-50">
+                        <td className="py-1">{row.no}</td>
+                        <td className="py-1 text-gray-500">{row.date}</td>
+                        <td className="py-1 font-medium">{fmt(row.payment)}</td>
+                        <td className="py-1">{fmt(row.principalPmt)}</td>
+                        <td className="py-1 text-gray-500">{fmt(row.interest)}</td>
+                        <td className="py-1">{fmt(row.balance)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {/* 버튼 */}
+              <div className="px-5 py-4 border-t border-gray-100 flex gap-2">
+                <button
+                  onClick={() => downloadSchedulePDF(r, scheduleStartDate, scheduleRecipient)}
+                  className="flex-1 py-2.5 rounded-xl bg-[#0a192f] text-white text-sm font-semibold hover:opacity-90 transition-all"
+                >🖨️ PDF 인쇄 / 저장</button>
+                <button
+                  onClick={() => setScheduleModal(null)}
+                  className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-500 hover:bg-gray-50 transition-all"
+                >닫기</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── 확정 처리 모달 (간소화: 승인 시 입력한 값 확인 + 대출원금만 수정 가능) ── */}
       {confirmModal && (
