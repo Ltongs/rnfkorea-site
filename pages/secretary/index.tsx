@@ -96,7 +96,7 @@ const WL:Record<string,string> = {
   finance_hcm:"현대CM금융",narumi:"나르미",
 };
 const CAT_LBL:Record<string,string> = {meeting:"미팅",call:"통화",task:"업무",followup:"사후관리"};
-const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료",closed:"종결",waiting_customer:"고객대기",on_hold:"보류",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",confirmed:"확정",approved:"승인",rejected:"거절",supplement:"보완",credit_check:"신용조회",received:"접수",doc_registration:"서류등록",contract_sent:"전자계약발송",cancelled:"취소"};
+const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료",closed:"종결",waiting_customer:"고객대기",on_hold:"보류",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",confirmed:"확정",approved:"승인",rejected:"거절",supplement:"보완",credit_check:"신용조회",received:"접수",doc_registration:"서류등록",contract_sent:"전자계약",cancelled:"취소"};
 const PRI_LBL:Record<string,string> = {urgent:"긴급",normal:"일반",low:"낮음"};
 const ACT_LBL:Record<string,string> = {todo:"✅ 할일",schedule:"📅 일정",order:"📦 주문",consult_update:"🔄 상담 업데이트",hyundaicm_update:"🏗 현대건설기계 변경",narumi_update:"🚛 나르미 단계 변경",schedule_update:"📅 일정 업데이트",schedule_edit:"✏️ 일정 수정",order_update:"📦 주문 상태 변경",memo:"📝 메모 저장",todo_edit:"✏️ 할일 수정"};
 const CAT_CLR:Record<string,string> = {meeting:"#60a5fa",call:"#fb923c",followup:"#c084fc",task:"#34d399"};
@@ -207,13 +207,13 @@ function StatusTabContent({
   const cOtherMo  = cOther.filter((c:any)=>isMo(c.created_at)).length;
 
   const STS_LBL_HCM:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료"};
-  const FINANCE_STAGE_LBL:Record<string,string> = {consulting:"상담중",quote_submitted:"견적제출",approved:"승인",rejected:"거절",documents_requested:"서류징구",confirmed:"확정",received:"접수",credit_check:"신용조회",supplement:"보완",doc_registration:"서류등록",contract_sent:"전자계약발송",cancelled:"취소"};
+  const FINANCE_STAGE_LBL:Record<string,string> = {consulting:"상담",quote_submitted:"견적제출",approved:"승인",rejected:"부결",documents_requested:"서류징구",confirmed:"확정",received:"접수",credit_check:"신용조회",supplement:"보완",doc_registration:"서류등록",contract_sent:"전자계약",cancelled:"취소"};
   const getConsultDisplayStatus = (c:any) => {
     if(c.work_type==="finance" && c.finance_stage) return c.finance_stage;
     return c.status;
   };
   const StsBadgeLocal = ({s,isFinance}:{s:string;isFinance?:boolean}) => {
-    const ALL_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",in_progress:"진행중",completed:"완료",done:"완료",closed:"완료",on_hold:"보류",waiting_customer:"고객대기",approved:"승인",confirmed:"확정",rejected:"거절",cancelled:"취소",supplement:"보완",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",credit_check:"신용조회",received:"접수",doc_registration:"서류등록",contract_sent:"전자계약발송"};
+    const ALL_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",in_progress:"진행중",completed:"완료",done:"완료",closed:"완료",on_hold:"보류",waiting_customer:"고객대기",approved:"승인",confirmed:"확정",rejected:"거절",cancelled:"취소",supplement:"보완",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",credit_check:"신용조회",received:"접수",doc_registration:"서류등록",contract_sent:"전자계약"};
     const lbl = isFinance ? (FINANCE_STAGE_LBL[s]??ALL_LBL[s]??s) : (ALL_LBL[s]??s);
     const cls = s==="approved"?"bg-emerald-50 text-emerald-700"
       :s==="confirmed"?"bg-[#0f172a] text-white"
@@ -838,6 +838,7 @@ const SecretaryPage:React.FC = () => {
   // 구글 캘린더
   const [gcalConnected,setGcalConnected] = useState(false);
   const [gcalEvents,setGcalEvents] = useState<{id:string;title:string;start:string;color?:string}[]>([]);
+  const [gcalImporting,setGcalImporting] = useState(false);
 
   // 이메일 리포트
   const [emailReports,setEmailReports] = useState<EmailReport[]>([]);
@@ -1050,7 +1051,6 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
   }
 
   // ─── 구글 캘린더 → AI비서 역방향 가져오기 ────────────────────────────────────
-  const [gcalImporting, setGcalImporting] = useState(false);
   async function importGcalToLocal(yr:number, mo:number){
     if(!user || !gcalConnected) return;
     setGcalImporting(true);
@@ -1346,7 +1346,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
     const filteredCaseViews = caseViews.filter(v=>{
       // finance: finance_stage 기준
       if(v.work_type==="finance"){
-        const doneStages = ["confirmed","cancelled","rejected"];
+        const doneStages = ["confirmed","cancelled","rejected","closed"];
         const isDone = doneStages.includes(v.progress_stage??v.status??"");
         if(ordFilter==="done") return isDone;
         if(ordFilter==="active") return !isDone;
@@ -1354,8 +1354,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       }
       // 타이어/지게차/배터리: progress_stage(process_status) 기준 — 나르미와 동일
       if(["tire_sales","forklift_sales","battery_sales","tire"].includes(v.work_type??"")){
-        const doneStages = ["invoiced","cancelled","completed_order"];
-        const isDone = doneStages.includes(v.progress_stage??"");
+        const doneStages = ["invoiced","cancelled"];
+        const isDone = doneStages.includes(v.progress_stage??"") || ["completed","closed","invoiced"].includes(v.status??"");
         if(ordFilter==="done") return isDone;
         if(ordFilter==="active") return !isDone;
         return true;
@@ -1431,7 +1431,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
     if(cr.data){
       const fdMap:Record<number,string|null> = {};
       if(fdr.data) fdr.data.forEach((f:any)=>{ fdMap[f.consultation_id]=f.finance_stage; });
-      const FIN_LBL_S:Record<string,string> = {consulting:"상담중",received:"접수",credit_check:"신용조회",approved:"승인",supplement:"보완",rejected:"거절",doc_registration:"서류등록",contract_sent:"전자계약발송",confirmed:"확정",cancelled:"취소"};
+      const FIN_LBL_S:Record<string,string> = {consulting:"상담중",received:"접수",credit_check:"신용조회",approved:"승인",supplement:"보완",rejected:"거절",doc_registration:"서류등록",contract_sent:"전자계약",confirmed:"확정",cancelled:"취소"};
       setRecentC(cr.data.map((c:any)=>{
         const fs = fdMap[c.id];
         return {
@@ -1451,7 +1451,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       supabase.from("consultation_cases").select("id,customer_name,phone,telecom_provider,work_type,status,summary,followup_needed,next_followup_date,created_at").order("created_at",{ascending:false}).limit(8),
       supabase.from("consultation_finance_details").select("consultation_id,finance_stage"),
     ]);
-    const FIN_LBL:Record<string,string> = {consulting:"상담중",received:"접수",credit_check:"신용조회",approved:"승인",supplement:"보완",rejected:"거절",doc_registration:"서류등록",contract_sent:"전자계약발송",confirmed:"확정",cancelled:"취소"};
+    const FIN_LBL:Record<string,string> = {consulting:"상담중",received:"접수",credit_check:"신용조회",approved:"승인",supplement:"보완",rejected:"거절",doc_registration:"서류등록",contract_sent:"전자계약",confirmed:"확정",cancelled:"취소"};
     const fdMap:Record<number,string> = {};
     (fdr.data??[]).forEach((f:any)=>{ fdMap[f.consultation_id]=f.finance_stage; });
     if(fr.data)setFollowups(fr.data as Consult[]);
@@ -1543,7 +1543,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
         const FIN_LBL:Record<string,string> = {
           consulting:"상담중", received:"접수", credit_check:"신용조회",
           approved:"승인", supplement:"보완", rejected:"거절",
-          doc_registration:"서류등록", contract_sent:"전자계약발송", confirmed:"확정", cancelled:"취소"
+          doc_registration:"서류등록", contract_sent:"전자계약", confirmed:"확정", cancelled:"취소"
         };
         setFinanceConsults(cases.map((c:any)=>({
           ...c,
@@ -1776,7 +1776,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
     };
     if(TIRE[stage]) return TIRE[stage];
     // 금융 / 현대CM
-    const FIN:Record<string,string> = {received:"접수",credit_check:"신용조회",approved:"승인",supplement:"보완",rejected:"거절",doc_registration:"서류등록",contract_sent:"전자계약발송",confirmed:"확정"};
+    const FIN:Record<string,string> = {received:"접수",credit_check:"신용조회",approved:"승인",supplement:"보완",rejected:"거절",doc_registration:"서류등록",contract_sent:"전자계약",confirmed:"확정"};
     if(FIN[stage]) return FIN[stage];
     // HCM 한글 status 그대로
     const HCM_KR = ["접수","신용조회","승인","보완","거절","서류등록","전자계약발송","확정","보류","취소"];
@@ -1787,8 +1787,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
   // 진행단계 컬러
   const progressColor = (stage:string|null):string => {
     if(!stage) return "text-gray-400";
-    if(["invoiced","completed","confirmed","delivered","completed_order"].includes(stage)) return "text-emerald-600 font-semibold";
-    if(["cancelled","rejected"].includes(stage)) return "text-red-400";
+    if(["invoiced","completed","confirmed","delivered","completed_order","확정"].includes(stage)) return "text-emerald-600 font-semibold";
+    if(["cancelled","rejected","취소","거절"].includes(stage)) return "text-red-400";
     if(["closed"].includes(stage)) return "text-gray-500"; // 종결 — 회색
     if(["contract","contract_sent","approved","승인","보완","supplement"].includes(stage)) return "text-blue-600";
     if(["quote","proposal","credit_check"].includes(stage)) return "text-indigo-500";
@@ -2545,7 +2545,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                               {value:"supplement",        label:"보완"},
                               {value:"rejected",          label:"거절"},
                               {value:"doc_registration",  label:"서류등록"},
-                              {value:"contract_sent",     label:"전자계약발송"},
+                              {value:"contract_sent",     label:"전자계약"},
                               {value:"confirmed",         label:"확정"},
                               {value:"cancelled",         label:"취소"},
                             ];
@@ -2652,8 +2652,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                               <div className="flex items-center gap-3 mt-1">
                                 {o.progress_stage ? (
                                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium border
-                                    ${["invoiced","completed_order","confirmed","delivered"].includes(o.progress_stage)?"bg-emerald-50 text-emerald-700 border-emerald-200"
-                                    :["cancelled","rejected"].includes(o.progress_stage)?"bg-red-50 text-red-500 border-red-200"
+                                    ${["invoiced","completed_order","confirmed","delivered","완결","확정"].includes(o.progress_stage)?"bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    :["cancelled","rejected","취소","거절"].includes(o.progress_stage)?"bg-red-50 text-red-500 border-red-200"
                                     :["contract","contract_sent","approved"].includes(o.progress_stage)?"bg-blue-50 text-blue-600 border-blue-200"
                                     :["delivery"].includes(o.progress_stage)?"bg-orange-50 text-orange-600 border-orange-200"
                                     :"bg-gray-50 text-gray-500 border-gray-200"}`}>

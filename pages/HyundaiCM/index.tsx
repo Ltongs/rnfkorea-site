@@ -214,6 +214,8 @@ const btnGhost =
 export default function HyundaiCMPage() {
   const { user, logout, isAdmin, isSubAdmin, isHyundaiCM, isNhCapital, isNhCapitalStaff } = useAuth() as any;
   const nav = useNavigate();
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+    || (window.navigator as any).standalone === true;
   const isAdminLevel           = isAdmin || isSubAdmin;
   const canCreate              = isAdminLevel || isHyundaiCM || isNhCapital;
   const canEditExisting        = isAdminLevel || isNhCapital;
@@ -757,7 +759,7 @@ export default function HyundaiCMPage() {
 
   const onAdd = async () => {
     if (!canCreate) { alert("신규 입력 권한이 없습니다."); return; }
-    if (!customerName.trim())  { alert("고객명을 입력해주세요."); return; }
+    if (customerType === "개인" && !customerName.trim()) { alert("고객명을 입력해주세요."); return; }
     if (!customerPhone.trim()) { alert("고객 전화번호를 입력해주세요."); return; }
     
     if (!salesRep.trim())      { alert("영업사원을 입력해주세요."); return; }
@@ -767,7 +769,7 @@ export default function HyundaiCMPage() {
     try {
       const payload = {
         customer_type:           customerType,
-        customer_name:           customerName.trim(),
+        customer_name:           customerType === "법인" ? (customerName.trim() || companyName.trim()) : customerName.trim(),
         customer_phone:          onlyDigits(customerPhone) || null,
         company_name:            customerType === "법인" ? companyName.trim() : null,
         equipment_ton:           equipmentTon.trim() || null,
@@ -1068,12 +1070,12 @@ export default function HyundaiCMPage() {
 
   const saveEditRow = async () => {
     if (!editRow) return;
-    if (!editCustomerName.trim()) { alert("고객명을 입력해주세요."); return; }
+    if (editCustomerType === "개인" && !editCustomerName.trim()) { alert("고객명을 입력해주세요."); return; }
     setEditSaving(true);
     try {
       const patch = {
         customer_type:          editCustomerType,
-        customer_name:          editCustomerName.trim(),
+        customer_name:          editCustomerType === "법인" ? (editCustomerName.trim() || editCompanyName.trim()) : editCustomerName.trim(),
         customer_phone:         onlyDigits(editCustomerPhone) || null,
         company_name:           editCustomerType === "법인" ? editCompanyName.trim() : null,
         equipment_ton:          editEquipmentTon.trim() || null,
@@ -1260,43 +1262,68 @@ export default function HyundaiCMPage() {
       />
 
       {/* ── 히어로 헤더 ── */}
-      <section className="relative bg-[#0a192f] text-white overflow-hidden">
-        <div
-          className="absolute inset-0 opacity-[0.04]" aria-hidden="true"
-          style={{
-            backgroundImage: "repeating-linear-gradient(45deg, white 0, white 1px, transparent 0, transparent 50%)",
-            backgroundSize: "24px 24px",
-          }}
-        />
-        <div className="relative max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-12 md:py-16">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-400">Business</p>
-              <h1 className="mt-3 text-3xl md:text-4xl font-semibold leading-[1.15] text-white break-keep">
-                현대건설기계 업무
-              </h1>
-              <p className="mt-3 text-base leading-7 text-white/75 break-keep">
-                건설기계 할부금융 신용조회 및 서류관리
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => nav("/hyundaicm/kakao-connect")}
-                title="카카오톡 알림 설정"
-                className="inline-flex items-center justify-center w-10 h-10 rounded-2xl border border-white/20 bg-white/10 text-white hover:bg-white/20 transition-all"
-              >
-                <Settings size={18} />
-              </button>
-              <button
-                onClick={() => { if (window.confirm("로그아웃 하시겠습니까?")) logout(); }}
-                className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl border border-white/20 bg-white/10 text-white text-sm font-medium hover:bg-white/20 transition-all"
-              >
-                로그아웃
-              </button>
-            </div>
+      {isStandalone ? (
+        /* ── PWA 앱 모드: 컴팩트 헤더 ── */
+        <div className="bg-[#0a192f] text-white px-4 py-3 flex items-center justify-between gap-3 sticky top-0 z-30">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => nav("/work/secretary")}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-semibold hover:bg-white/20 transition-all"
+            >
+              ← AI비서
+            </button>
+            <span className="text-sm font-semibold text-white">🏗 현대건설기계</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => nav("/hyundaicm/kakao-connect")}
+              title="카카오톡 알림 설정"
+              className="inline-flex items-center justify-center w-8 h-8 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/20 transition-all"
+            >
+              <Settings size={15} />
+            </button>
           </div>
         </div>
-      </section>
+      ) : (
+        /* ── 일반 브라우저: 기존 풀 헤더 ── */
+        <section className="relative bg-[#0a192f] text-white overflow-hidden">
+          <div
+            className="absolute inset-0 opacity-[0.04]" aria-hidden="true"
+            style={{
+              backgroundImage: "repeating-linear-gradient(45deg, white 0, white 1px, transparent 0, transparent 50%)",
+              backgroundSize: "24px 24px",
+            }}
+          />
+          <div className="relative max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-12 md:py-16">
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-400">Business</p>
+                <h1 className="mt-3 text-3xl md:text-4xl font-semibold leading-[1.15] text-white break-keep">
+                  현대건설기계 업무
+                </h1>
+                <p className="mt-3 text-base leading-7 text-white/75 break-keep">
+                  건설기계 할부금융 신용조회 및 서류관리
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => nav("/hyundaicm/kakao-connect")}
+                  title="카카오톡 알림 설정"
+                  className="inline-flex items-center justify-center w-10 h-10 rounded-2xl border border-white/20 bg-white/10 text-white hover:bg-white/20 transition-all"
+                >
+                  <Settings size={18} />
+                </button>
+                <button
+                  onClick={() => { if (window.confirm("로그아웃 하시겠습니까?")) logout(); }}
+                  className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl border border-white/20 bg-white/10 text-white text-sm font-medium hover:bg-white/20 transition-all"
+                >
+                  로그아웃
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-8 space-y-6">
 
@@ -1412,8 +1439,8 @@ export default function HyundaiCMPage() {
                 </select>
               </div>
               <div>
-                <label className={labelClass}>고객명 *</label>
-                <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="홍길동" className={inputClass} />
+                <label className={labelClass}>{customerType === "법인" ? "담당자명 (선택)" : "고객명 *"}</label>
+                <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder={customerType === "법인" ? "비우면 대표로 처리" : "홍길동"} className={inputClass} />
               </div>
               <div>
                 <label className={labelClass}>전화번호 *</label>
@@ -1554,7 +1581,7 @@ export default function HyundaiCMPage() {
                     <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 min-w-0">
                       <span className="text-xs font-semibold text-gray-400 font-mono shrink-0">{caseNoMap[String(r.id)] ?? "-"}</span>
                       <span className="text-base font-semibold text-navy-900 break-all">
-                        {r.customer_name}{r.company_name ? ` (${r.company_name})` : ""}
+                        {r.company_name ? `${r.company_name}${r.customer_name !== r.company_name ? ` (${r.customer_name})` : ""}` : r.customer_name}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
@@ -2002,7 +2029,7 @@ export default function HyundaiCMPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div><label className={labelClass}>고객 유형</label><select value={editCustomerType} onChange={(e) => setEditCustomerType(e.target.value as CustomerType)} className={inputClass} disabled={editSaving}><option value="개인">개인</option><option value="법인">법인</option></select></div>
-              <div><label className={labelClass}>고객명 *</label><input value={editCustomerName} onChange={(e) => setEditCustomerName(e.target.value)} className={inputClass} disabled={editSaving} placeholder="홍길동" /></div>
+              <div><label className={labelClass}>{editCustomerType === "법인" ? "담당자명 (선택)" : "고객명 *"}</label><input value={editCustomerName} onChange={(e) => setEditCustomerName(e.target.value)} className={inputClass} disabled={editSaving} placeholder={editCustomerType === "법인" ? "비우면 대표로 처리" : "홍길동"} /></div>
               <div><label className={labelClass}>전화번호</label><input value={editCustomerPhone} onChange={(e) => setEditCustomerPhone(formatPhoneKR(e.target.value))} className={inputClass} disabled={editSaving} inputMode="tel" /></div>
               {editCustomerType === "법인" && <div><label className={labelClass}>법인명</label><input value={editCompanyName} onChange={(e) => setEditCompanyName(e.target.value)} className={inputClass} disabled={editSaving} /></div>}
               <div><label className={labelClass}>톤수</label><input value={editEquipmentTon} onChange={(e) => setEditEquipmentTon(e.target.value)} className={inputClass} disabled={editSaving} placeholder="예: 20톤" /></div>
@@ -2107,7 +2134,7 @@ export default function HyundaiCMPage() {
             <p className="text-sm font-medium tracking-[0.12em] uppercase text-emerald-600 mb-2">확정 처리</p>
             <h2 className="text-xl font-semibold text-navy-900 mb-1">최종 확정</h2>
             <p className="text-sm text-gray-500 mb-1">
-              {confirmModal.customer_name} ({confirmModal.customer_type})
+              {confirmModal.company_name ? `${confirmModal.company_name}${confirmModal.customer_name !== confirmModal.company_name ? ` (${confirmModal.customer_name})` : ""}` : confirmModal.customer_name} ({confirmModal.customer_type})
             </p>
             <p className="text-xs text-gray-400 mb-4">승인 처리 시 입력한 값이 자동 반영됩니다. 필요 시 수정하세요.</p>
 
@@ -2222,7 +2249,7 @@ export default function HyundaiCMPage() {
               {creditModal.next} 처리
             </h2>
             <p className="text-sm text-gray-500 mb-5">
-              {creditModal.row.customer_name} ({creditModal.row.customer_type})
+              {creditModal.row.company_name ? `${creditModal.row.company_name}${creditModal.row.customer_name !== creditModal.row.company_name ? ` (${creditModal.row.customer_name})` : ""}` : creditModal.row.customer_name} ({creditModal.row.customer_type})
             </p>
 
             <div className="space-y-4">
@@ -2416,7 +2443,7 @@ export default function HyundaiCMPage() {
               <p className="text-sm font-medium tracking-[0.12em] uppercase text-amber-600 mb-2">보류 / 재통화 예약</p>
               <h2 className="text-xl font-semibold text-navy-900 mb-1">알림 예약</h2>
               <p className="text-sm text-gray-500 mb-5">
-                {holdModal.customer_name} ({holdModal.customer_type})
+                {holdModal.company_name ? `${holdModal.company_name}${holdModal.customer_name !== holdModal.company_name ? ` (${holdModal.customer_name})` : ""}` : holdModal.customer_name} ({holdModal.customer_type})
               </p>
 
               <div className="space-y-4">
