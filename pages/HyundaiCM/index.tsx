@@ -2766,7 +2766,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                 onClick={saveHold}
                 disabled={holdSaving}
                 className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl bg-amber-500 text-white font-semibold text-sm hover:bg-amber-600 transition-all disabled:opacity-50"
-              >{holdSaving ? "저장중..." : "⏰ 보류 예약"}</button>
+              >{holdSaving ? "저장중..." : "⏰ 보류예약"}</button>
             </div>
           </div>
         </div>
