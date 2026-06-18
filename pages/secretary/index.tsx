@@ -2187,7 +2187,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       )}
 
       {schedModal&&ReactDOM.createPortal(
-        <div className="fixed inset-0 z-[99990] flex items-end sm:items-center justify-center bg-black/40 px-0 sm:px-4" onClick={()=>setSchedModal(null)}>
+        <div className="fixed inset-0 z-[99990] flex items-end sm:items-center justify-center bg-black/60 px-0 sm:px-4" style={{backdropFilter:"blur(2px)"}} onClick={()=>setSchedModal(null)}>
           <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full max-w-md sm:max-w-md max-h-[90vh] flex flex-col" onClick={e=>e.stopPropagation()}>
             {/* 헤더 */}
             <div className="flex items-center justify-between px-5 pt-5 pb-3 flex-shrink-0">
@@ -3525,7 +3525,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       </div>
 
       {jAmtModal&&(
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 px-4" style={{backdropFilter:"blur(2px)"}}>
           <div className="w-full max-w-sm border border-gray-200 rounded-2xl bg-white shadow-2xl p-6">
             <h2 className="text-base font-bold text-[#0f172a] mb-1">금액 입력</h2>
             <p className="text-sm text-gray-500 mb-4">{jAmtModal.customer_name_raw} — {jAmtModal.product_spec}</p>

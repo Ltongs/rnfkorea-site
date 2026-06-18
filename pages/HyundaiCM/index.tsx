@@ -23,8 +23,12 @@ type HCMTask = {
   customer_phone: string | null;
   company_name: string | null;
   equipment_ton: string | null;        // 톤수
-  purchase_amount: number | null;      // 차량가격
+  purchase_amount: number | null;      // 차량가격 (차량+어태치 합산)
+  vehicle_amount: number | null;       // 차량가격 (순수 차량)
+  attach_amount: number | null;        // 어태치 가격
   installment_principal: number | null; // 할부원금
+  grace_period: number | null;         // 거치기간 (개월)
+  installment_period: number | null;   // 할부기간 (개월)
   finance_company: string | null;      // 할부금융사
   interest_rate: number | null;        // 금리
   incentive: number | null;            // 인센티브
@@ -222,7 +226,7 @@ export default function HyundaiCMPage() {
   const canChangeStatus        = isAdminLevel || isNhCapital || isNhCapitalStaff;
   const canUploadDoc           = isAdminLevel || isNhCapital;
   const canUploadVehicleRegDoc = isAdminLevel || isHyundaiCM || isNhCapital || isNhCapitalStaff;
-  const canUploadTaxInvoice    = isHyundaiCM || isAdminLevel || isNhCapital || isNhCapitalStaff;  // 세금계산서 업로드/다운로드
+  const canUploadTaxInvoice    = isHyundaiCM || isAdminLevel;  // 세금계산서 업로드: p2001103 + admin + ltongs7
   const canDelete              = isAdminLevel || isNhCapital;
 
   // ── 신규 접수 폼 ──
@@ -287,6 +291,10 @@ export default function HyundaiCMPage() {
   const [creditIncentive,    setCreditIncentive]    = useState("");
   const [creditLoanLimit,    setCreditLoanLimit]    = useState(""); // 대출한도 (승인 시)
   const [creditLoanPeriod,   setCreditLoanPeriod]   = useState(""); // 대출기간 (승인 시)
+  const [creditGracePeriod,  setCreditGracePeriod]  = useState(""); // 거치기간 (승인 시)
+  const [creditInstallmentPeriod, setCreditInstallmentPeriod] = useState(""); // 할부기간 (승인 시)
+  const [creditVehicleAmount, setCreditVehicleAmount] = useState(""); // 차량가격 순수 차량
+  const [creditAttachAmount,  setCreditAttachAmount]  = useState(""); // 어태치 가격
   const [creditVatAmount,    setCreditVatAmount]    = useState(""); // 부가세 후불금액 (승인 시)
   const [creditNote,         setCreditNote]         = useState(""); // 특이사항(승인)/보완사항(보완)/거절사유(거절)
   const [creditBizHistory,   setCreditBizHistory]   = useState<"1년이상" | "1년미만">("1년이상");
@@ -325,6 +333,7 @@ export default function HyundaiCMPage() {
   type RecipientId = typeof KAKAO_RECIPIENTS[number]["id"];
 
   const [holdModal,        setHoldModal]        = useState<HCMTask | null>(null);
+  const [approvalModal,    setApprovalModal]    = useState<HCMTask | null>(null); // 승인조건 확인 모달
   const [holdDate,         setHoldDate]         = useState("");        // YYYY-MM-DD
   const [holdTime,         setHoldTime]         = useState("10:00");   // HH:MM
   const [holdNote,         setHoldNote]         = useState("");
@@ -1126,6 +1135,13 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         loan_limit:          next === "승인" && creditLoanLimit.trim()
                                ? parseInt(creditLoanLimit.replace(/,/g, ""), 10) || null : null,
         loan_period:         next === "승인" && creditLoanPeriod.trim() ? parseInt(creditLoanPeriod, 10) || null : null,
+        grace_period:        next === "승인" && creditGracePeriod.trim() ? parseInt(creditGracePeriod, 10) || null : null,
+        installment_period:  next === "승인" && creditInstallmentPeriod.trim() ? parseInt(creditInstallmentPeriod, 10) || null : null,
+        vehicle_amount:      next === "승인" && creditVehicleAmount.trim() ? parseInt(creditVehicleAmount.replace(/,/g, ""), 10) || null : null,
+        attach_amount:       next === "승인" && creditAttachAmount.trim() ? parseInt(creditAttachAmount.replace(/,/g, ""), 10) || null : null,
+        purchase_amount:     next === "승인" && (creditVehicleAmount.trim() || creditAttachAmount.trim())
+                               ? ((parseInt(creditVehicleAmount.replace(/,/g, ""), 10) || 0) + (parseInt(creditAttachAmount.replace(/,/g, ""), 10) || 0)) || null
+                               : undefined as any,
         vat_deferred_amount: next === "승인" && creditModal.row.vat_deferred && creditVatAmount.trim()
                                ? parseInt(creditVatAmount.replace(/,/g, ""), 10) || null : null,
         credit_note:         creditNote.trim() || null,
@@ -1845,39 +1861,40 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                           );
                         })}
 
-                        {/* 신용결과 드롭다운 (승인/보완/거절) */}
-                        <div className="relative">
-                          <select
-                            disabled={!canChangeStatus || !canGoToStatus(r.status, "승인", isAdminLevel)}
-                            value={CREDIT_STATUSES.includes(r.status as any) ? r.status : (creditResults[String(r.id)] ?? "")}
-                            onChange={(e) => {
-                              if (!e.target.value) return;
-                              const next = e.target.value as HCMStatus;
-                              // 기존 신용결과 값 미리 채우기
-                              setCreditNiceScore(r.nice_score != null ? String(r.nice_score) : "");
-                              setCreditRate(r.credit_rate != null ? String(r.credit_rate) : "");
-                              setCreditIncentive(r.credit_incentive != null ? String(r.credit_incentive) : "");
-                              setCreditLoanLimit(r.loan_limit != null ? Number(r.loan_limit).toLocaleString("ko-KR") : "");
-                              setCreditLoanPeriod(r.loan_period != null ? String(r.loan_period) : "");
-                              setCreditVatAmount(r.vat_deferred_amount != null ? Number(r.vat_deferred_amount).toLocaleString("ko-KR") : "");
-                              setCreditNote(r.credit_note ?? "");
-                              setCreditBizHistory((r.biz_history as any) ?? "1년이상");
-                              setCreditModal({ row: r, next });
-                            }}
-                            className={`px-3 py-1 rounded-2xl border text-xs font-semibold transition-all appearance-none pr-6 cursor-pointer
-                              ${CREDIT_STATUSES.includes(r.status as any)
-                                ? statusStyle(r.status) + " ring-2 ring-offset-1 ring-orange-200/60"
-                                : creditResults[String(r.id)]
-                                  ? statusStyle(creditResults[String(r.id)]!) + " opacity-70"
-                                  : "bg-white border-gray-200 text-gray-500 hover:border-orange-200 hover:text-orange-600 disabled:opacity-40 disabled:cursor-not-allowed"
-                              }`}
-                          >
-                            <option value="" disabled>신용결과 ▾</option>
-                            {CREDIT_STATUSES.map((s) => (
-                              <option key={s} value={s}>{s}</option>
-                            ))}
-                          </select>
-                        </div>
+                        {/* 신용결과 버튼 (승인/보완/거절) */}
+                        {CREDIT_STATUSES.map((s) => {
+                          const isCurrent = r.status === s || creditResults[String(r.id)] === s;
+                          const canGo = canGoToStatus(r.status, s, isAdminLevel) || CREDIT_STATUSES.includes(r.status as any);
+                          const openCreditModal = () => {
+                            setCreditNiceScore(r.nice_score != null ? String(r.nice_score) : "");
+                            setCreditRate(r.credit_rate != null ? String(r.credit_rate) : "");
+                            setCreditIncentive(r.credit_incentive != null ? String(r.credit_incentive) : "");
+                            setCreditLoanLimit(r.loan_limit != null ? Number(r.loan_limit).toLocaleString("ko-KR") : "");
+                            setCreditLoanPeriod(r.loan_period != null ? String(r.loan_period) : "");
+                            setCreditGracePeriod(r.grace_period != null ? String(r.grace_period) : "");
+                            setCreditInstallmentPeriod(r.installment_period != null ? String(r.installment_period) : "");
+                            setCreditVehicleAmount(r.vehicle_amount != null ? Number(r.vehicle_amount).toLocaleString("ko-KR") : "");
+                            setCreditAttachAmount(r.attach_amount != null ? Number(r.attach_amount).toLocaleString("ko-KR") : "");
+                            setCreditVatAmount(r.vat_deferred_amount != null ? Number(r.vat_deferred_amount).toLocaleString("ko-KR") : "");
+                            setCreditNote(r.credit_note ?? "");
+                            setCreditBizHistory((r.biz_history as any) ?? "1년이상");
+                            setCreditModal({ row: r, next: s });
+                          };
+                          return (
+                            <button
+                              key={s}
+                              disabled={!canChangeStatus || !canGo}
+                              onClick={openCreditModal}
+                              className={`px-3 py-1 rounded-2xl border text-xs font-semibold transition-all
+                                ${isCurrent
+                                  ? statusStyle(s) + " ring-2 ring-offset-1 ring-orange-200/60"
+                                  : canGo && canChangeStatus
+                                    ? "bg-white border-gray-200 text-gray-500 hover:border-orange-200 hover:text-orange-600"
+                                    : "bg-white border-gray-100 text-gray-300 cursor-not-allowed"
+                                }`}
+                            >{s}</button>
+                          );
+                        })}
 
                         {/* 서류등록, 확정 버튼 */}
                         {["서류등록", "전자계약발송", "확정"].map((s) => {
@@ -1909,6 +1926,15 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                               }`}
                           >
                             {holdMap[String(r.id)] ? "⏰ 보류중" : "⏰ 보류"}
+                          </button>
+                        )}
+                        {/* 승인조건 확인 버튼 — 승인 결과가 있는 건만 표시 */}
+                        {(r.credit_rate != null || r.loan_limit != null || r.vehicle_amount != null || r.attach_amount != null) && (
+                          <button
+                            onClick={() => setApprovalModal(r)}
+                            className="px-3 py-1 rounded-2xl border text-xs font-semibold transition-all bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+                          >
+                            📋 승인조건
                           </button>
                         )}
                       </div>
@@ -2095,12 +2121,10 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                                 </span>
                               </p>
                             </div>
-                            {(isAdmin || isSubAdmin || isNhCapital || isNhCapitalStaff) && (
                             <button
                               onClick={() => downloadTaxInvoice(f.path, f.name)}
                               className="shrink-0 px-3 py-1 rounded-2xl border border-blue-200 text-blue-700 text-xs font-medium hover:border-blue-400 transition-all"
                             >다운로드</button>
-                            )}
                           </div>
                         );
                       })}
@@ -2561,6 +2585,56 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
               {/* 승인 시 추가 필드 */}
               {creditModal.next === "승인" && (<>
+
+              {/* ── 차량가격 분리 입력 ── */}
+              <div className="pt-2 pb-1">
+                <p className="text-xs font-semibold text-orange-500 uppercase tracking-wide">차량가격</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelClass}>차량 (원)</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={creditVehicleAmount}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/[^0-9]/g, "");
+                      setCreditVehicleAmount(raw ? Number(raw).toLocaleString("ko-KR") : "");
+                    }}
+                    placeholder="예: 80,000,000"
+                    className={inputClass}
+                    disabled={creditSaving}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>어태치 (원)</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={creditAttachAmount}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/[^0-9]/g, "");
+                      setCreditAttachAmount(raw ? Number(raw).toLocaleString("ko-KR") : "");
+                    }}
+                    placeholder="예: 10,000,000"
+                    className={inputClass}
+                    disabled={creditSaving}
+                  />
+                </div>
+              </div>
+              {/* 합산 표시 */}
+              {(creditVehicleAmount || creditAttachAmount) && (() => {
+                const v = parseInt(creditVehicleAmount.replace(/,/g, "")) || 0;
+                const a = parseInt(creditAttachAmount.replace(/,/g, "")) || 0;
+                const total = v + a;
+                return total > 0 ? (
+                  <p className="text-xs text-emerald-600 font-medium -mt-1">
+                    합산 차량가격: {total.toLocaleString("ko-KR")}원
+                  </p>
+                ) : null;
+              })()}
+
+              {/* ── 대출한도 ── */}
               <div>
                 <label className={labelClass}>대출한도 (원)</label>
                 <input
@@ -2576,18 +2650,55 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                   disabled={creditSaving}
                 />
               </div>
-              <div>
-                <label className={labelClass}>대출기간 (개월)</label>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  value={creditLoanPeriod}
-                  onChange={(e) => setCreditLoanPeriod(e.target.value)}
-                  placeholder="예: 60"
-                  className={inputClass}
-                  disabled={creditSaving}
-                />
+
+              {/* ── 기간 분리 입력 ── */}
+              <div className="pt-2 pb-1">
+                <p className="text-xs font-semibold text-orange-500 uppercase tracking-wide">대출기간</p>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelClass}>거치기간 (개월)</label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={creditGracePeriod}
+                    onChange={(e) => setCreditGracePeriod(e.target.value)}
+                    placeholder="예: 6"
+                    className={inputClass}
+                    disabled={creditSaving}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>할부기간 (개월)</label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={creditInstallmentPeriod}
+                    onChange={(e) => {
+                      setCreditInstallmentPeriod(e.target.value);
+                      // 거치+할부 합산 → loan_period 자동 계산
+                      const grace = parseInt(creditGracePeriod) || 0;
+                      const inst  = parseInt(e.target.value) || 0;
+                      setCreditLoanPeriod(String(grace + inst));
+                    }}
+                    placeholder="예: 54"
+                    className={inputClass}
+                    disabled={creditSaving}
+                  />
+                </div>
+              </div>
+              {/* 합산 대출기간 표시 */}
+              {(creditGracePeriod || creditInstallmentPeriod) && (() => {
+                const g = parseInt(creditGracePeriod) || 0;
+                const i = parseInt(creditInstallmentPeriod) || 0;
+                const total = g + i;
+                return total > 0 ? (
+                  <p className="text-xs text-emerald-600 font-medium -mt-1">
+                    총 대출기간: {total}개월 {g > 0 ? `(거치 ${g} + 할부 ${i})` : ""}
+                  </p>
+                ) : null;
+              })()}
+
               {creditModal.row.vat_deferred && (
               <div>
                 <label className={labelClass}>
@@ -2645,6 +2756,137 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           </div>
         </div>
       )}
+      {/* ── 승인조건 확인 모달 ── */}
+      {approvalModal && (() => {
+        const r = approvalModal;
+        const vehicleAmt = r.vehicle_amount ?? 0;
+        const attachAmt  = r.attach_amount ?? 0;
+        const totalVehicle = vehicleAmt + attachAmt;
+        const purchaseDisplay = totalVehicle > 0 ? totalVehicle : (r.purchase_amount ?? 0);
+        const gracePeriod = r.grace_period ?? 0;
+        const installmentPeriod = r.installment_period ?? 0;
+        const totalPeriod = r.loan_period ?? (gracePeriod + installmentPeriod);
+        const fmtAmt = (v: number | null) => v != null ? `${v.toLocaleString("ko-KR")}원` : "-";
+        return (
+          <div className="fixed inset-0 z-[136] flex items-center justify-center bg-black/60 px-4 py-6" style={{backdropFilter:"blur(2px)"}} onClick={() => setApprovalModal(null)}>
+            <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+              {/* 헤더 */}
+              <div className="bg-blue-600 px-5 py-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-blue-200 uppercase tracking-wide">승인조건 확인</p>
+                    <p className="text-base font-bold text-white mt-0.5">
+                      {r.company_name ?? r.customer_name}
+                      {r.company_name && r.customer_name !== r.company_name && (
+                        <span className="text-sm font-normal text-blue-200 ml-1">({r.customer_name})</span>
+                      )}
+                    </p>
+                    <p className="text-xs text-blue-200 mt-0.5">{r.equipment_ton} · {r.finance_company}</p>
+                  </div>
+                  <button onClick={() => setApprovalModal(null)} className="text-blue-200 hover:text-white text-xl font-light">✕</button>
+                </div>
+              </div>
+
+              {/* 차량가격 섹션 */}
+              <div className="px-5 py-4 border-b border-gray-100">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">차량가격</p>
+                <div className="space-y-2">
+                  {vehicleAmt > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-500">차량</span>
+                      <span className="text-sm font-medium text-gray-800">{fmtAmt(vehicleAmt)}</span>
+                    </div>
+                  )}
+                  {attachAmt > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-500">어태치</span>
+                      <span className="text-sm font-medium text-gray-800">{fmtAmt(attachAmt)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center pt-1 border-t border-gray-100">
+                    <span className="text-sm font-semibold text-gray-700">합산 차량가격</span>
+                    <span className="text-base font-bold text-blue-700">{fmtAmt(purchaseDisplay || null)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 할부 조건 섹션 */}
+              <div className="px-5 py-4 border-b border-gray-100">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">할부 승인조건</p>
+                <div className="space-y-2">
+                  {r.installment_principal != null && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-500">할부원금</span>
+                      <span className="text-sm font-medium text-gray-800">{fmtAmt(r.installment_principal)}</span>
+                    </div>
+                  )}
+                  {r.vat_deferred && r.vat_deferred_amount != null && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-500">부가세 후불</span>
+                      <span className="text-sm font-medium text-orange-600">+{fmtAmt(r.vat_deferred_amount)}</span>
+                    </div>
+                  )}
+                  
+                  {purchaseDisplay > 0 && r.installment_principal != null && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-500">선수율</span>
+                      <span className="text-sm font-semibold text-emerald-600">
+                        {(((purchaseDisplay - r.installment_principal) / purchaseDisplay) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 금리 & 기간 섹션 */}
+              <div className="px-5 py-4 border-b border-gray-100">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">금리 / 기간</p>
+                <div className="space-y-2">
+                  {r.credit_rate != null && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-500">적용금리</span>
+                      <span className="text-sm font-bold text-blue-700">{r.credit_rate}%</span>
+                    </div>
+                  )}
+                  {r.credit_incentive != null && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-500">인센티브</span>
+                      <span className="text-sm font-medium text-gray-800">{r.credit_incentive}%</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-500">대출기간</span>
+                    <span className="text-sm font-medium text-gray-800">
+                      {totalPeriod > 0 ? `${totalPeriod}개월` : "-"}
+                      {gracePeriod > 0 && installmentPeriod > 0 && (
+                        <span className="text-xs text-gray-400 ml-1">(거치 {gracePeriod} + 할부 {installmentPeriod})</span>
+                      )}
+                    </span>
+                  </div>
+                  {r.loan_limit != null && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-500">대출한도</span>
+                      <span className="text-sm font-medium text-gray-800">{fmtAmt(r.loan_limit)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 특이사항 */}
+              {r.credit_note && (
+                <div className="px-5 py-4 border-b border-gray-100">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">특이사항</p>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{r.credit_note}</p>
+                </div>
+              )}
+
+              <div className="px-5 py-3">
+                <button onClick={() => setApprovalModal(null)} className="w-full py-2.5 rounded-2xl bg-gray-100 text-sm font-semibold text-gray-600 hover:bg-gray-200 transition-all">닫기</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {/* ── 보류(재통화 예약) 모달 ── */}
       {holdModal && (
         <div className="fixed inset-0 z-[135] flex items-center justify-center bg-black/40 px-4 py-6">
@@ -2766,7 +3008,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                 onClick={saveHold}
                 disabled={holdSaving}
                 className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl bg-amber-500 text-white font-semibold text-sm hover:bg-amber-600 transition-all disabled:opacity-50"
-              >{holdSaving ? "저장중..." : "⏰ 보류예약"}</button>
+              >{holdSaving ? "저장중..." : "⏰ 보류 예약"}</button>
             </div>
           </div>
         </div>
