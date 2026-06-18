@@ -222,7 +222,7 @@ export default function HyundaiCMPage() {
   const canChangeStatus        = isAdminLevel || isNhCapital || isNhCapitalStaff;
   const canUploadDoc           = isAdminLevel || isNhCapital;
   const canUploadVehicleRegDoc = isAdminLevel || isHyundaiCM || isNhCapital || isNhCapitalStaff;
-  const canUploadTaxInvoice    = isHyundaiCM || isAdminLevel;  // 세금계산서 업로드: p2001103 + admin + ltongs7
+  const canUploadTaxInvoice    = isHyundaiCM || isAdminLevel || isNhCapital || isNhCapitalStaff;  // 세금계산서 업로드/다운로드
   const canDelete              = isAdminLevel || isNhCapital;
 
   // ── 신규 접수 폼 ──
@@ -2095,10 +2095,12 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                                 </span>
                               </p>
                             </div>
+                            {(isAdmin || isSubAdmin || isNhCapital || isNhCapitalStaff) && (
                             <button
                               onClick={() => downloadTaxInvoice(f.path, f.name)}
                               className="shrink-0 px-3 py-1 rounded-2xl border border-blue-200 text-blue-700 text-xs font-medium hover:border-blue-400 transition-all"
                             >다운로드</button>
+                            )}
                           </div>
                         );
                       })}
