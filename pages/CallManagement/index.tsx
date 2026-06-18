@@ -3141,50 +3141,32 @@ const CallManagementPage: React.FC = () => {
         </div>
       )}
 
-      {/* ── 히어로 헤더 ── */}
-      <section className="relative bg-[#0a192f] text-white overflow-hidden">
-        <div
-          className="absolute inset-0 opacity-[0.04]" aria-hidden="true"
-          style={{
-            backgroundImage: "repeating-linear-gradient(45deg, white 0, white 1px, transparent 0, transparent 50%)",
-            backgroundSize: "24px 24px",
-          }}
-        />
-        <div className="relative max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-12 md:py-16">
-          <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-400">Business</p>
-          <h1 className="mt-3 text-3xl md:text-4xl font-semibold leading-[1.15] text-white break-keep">
-            상담관리
-          </h1>
-          <p className="mt-3 text-base leading-7 text-white/75 break-keep">
-            상담 등록 · 내역 조회 · 사후관리
-          </p>
-
-          {/* 탭 */}
-          <div className="mt-6 flex flex-wrap gap-2">
-            <button
-              type="button"
-              className={`${tabBase} ${tab === "new" ? tabActive : tabInactive}`}
-              onClick={() => setTab("new")}
-            >
-              상담등록
-            </button>
-            <button
-              type="button"
-              className={`${tabBase} ${tab === "list" ? tabActive : tabInactive}`}
-              onClick={() => setTab("list")}
-            >
-              상담내역
-            </button>
-            <button
-              type="button"
-              className={`${tabBase} ${tab === "followups" ? tabActive : tabInactive}`}
-              onClick={() => setTab("followups")}
-            >
-              사후관리
-            </button>
-          </div>
+      {/* ── 탭 헤더 (경량화) ── */}
+      <div className="border-b border-gray-200 bg-white">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className={`${tabBase} ${tab === "new" ? tabActive : tabInactive}`}
+            onClick={() => setTab("new")}
+          >
+            상담등록
+          </button>
+          <button
+            type="button"
+            className={`${tabBase} ${tab === "list" ? tabActive : tabInactive}`}
+            onClick={() => setTab("list")}
+          >
+            상담내역
+          </button>
+          <button
+            type="button"
+            className={`${tabBase} ${tab === "followups" ? tabActive : tabInactive}`}
+            onClick={() => setTab("followups")}
+          >
+            사후관리
+          </button>
         </div>
-      </section>
+      </div>
 
       <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-8 space-y-6">
 

@@ -65,7 +65,7 @@ function getRoleFlags(emailRaw?: string | null) {
 
   // isHyundaiCM / isNhCapital 은 각자 전용 페이지만 볼 수 있으므로
   // isInternal(나르미 공통 접근)에는 포함하지 않음
-  const isInternal = isAdmin || isSubAdmin || isNarumi || isLotte || isInsuranceManager;
+  const isInternal = isAdmin || isSubAdmin || isNarumi || isLotte || isInsuranceManager || isInsAI;
 
   return {
     email,
@@ -112,14 +112,14 @@ function getPermissions(emailRaw?: string | null) {
 
     canViewAll:          isInternal,
     canViewHyundaiCM:    isInternal || isHyundaiCM || isNhCapital || isNhCapitalStaff,
-    canCreate:           isAdminLevel || isNarumi || isInsuranceManager || isHyundaiCM || isNhCapital,
+    canCreate:           isAdminLevel || isNarumi || isInsuranceManager || isHyundaiCM || isNhCapital || isInsAI,
     canEditExisting:     isAdminLevel || isInsuranceManager || isNhCapital,
     canDelete:           isAdminLevel || isInsuranceManager || isNhCapital,
     canChangeStatus:     isAdminLevel || isInsuranceManager || isNhCapital || isNhCapitalStaff,
     canEditMemo:         isAdminLevel || isInsuranceManager || isNhCapital,
     canUploadVehicleDoc: isAdminLevel || isInsuranceManager || isNhCapital,
     canUploadVehicleRegDoc: isHyundaiCM || isAdminLevel || isNhCapital || isNhCapitalStaff,
-    canUploadTaxInvoice: isHyundaiCM || isAdminLevel,  // 세금계산서 업로드: isHyundaiCM + admin + ltongs7
+    canUploadTaxInvoice: isHyundaiCM || isAdminLevel || isNhCapital || isNhCapitalStaff,  // 세금계산서: isHyundaiCM + admin + NH캐피탈
   };
 }
 

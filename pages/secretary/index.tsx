@@ -113,7 +113,7 @@ const md2html = (s:string) => s.replace(/\*\*(.*?)\*\*/g,"<strong>$1</strong>").
 // ─── 스타일 ───────────────────────────────────────────────────────────────────
 const TB  = "px-3 py-1.5 rounded-xl text-sm font-semibold border transition-all";
 const TA  = "bg-[#0f172a] text-white border-[#0f172a]";
-const TI  = "bg-white text-gray-500 border-gray-200 hover:border-orange-300 hover:text-orange-600";
+const TI  = "bg-gray-100 text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-700 hover:bg-gray-200";
 const CARD = "border border-gray-200 rounded-2xl bg-white shadow-sm";
 const LBL = "block text-xs font-medium text-gray-500 mb-1";
 const CTRL = "w-full h-10 rounded-xl border border-gray-200 px-3 text-sm text-[#0f172a] bg-white focus:outline-none focus:border-orange-400 transition-all";
@@ -2291,12 +2291,12 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
             {(["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo"] as TabKey[]).map(t=>(
               <button key={t} className={`${TB} ${tab===t?TA:TI}`} onClick={()=>setTabAndSave(t)}>
                 {t==="email"
-                  ? <span className="flex items-center gap-1">📧 이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
-                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",hyundaicm:"🏗 현대CM",finance:"🏦 금융상담",narumi:"🚛 나르미",jinheung:"🔧 진흥주문",memo:"📝 메모"}[t as string]
+                  ? <span className="flex items-center gap-1">이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
+                  : {chat:"채팅",schedule:"일정",status:"업무현황",orders:"주문·상담",hyundaicm:"현대CM",finance:"금융상담",narumi:"나르미",jinheung:"진흥주문",memo:"메모"}[t as string]
                 }
               </button>
             ))}
-            <button className={`${TB} ${TI}`} onClick={()=>navigate("/work/finance-hub")}>💵 매출/매입</button>
+            <button className={`${TB} ${TI}`} onClick={()=>navigate("/work/finance-hub")}>매출/매입</button>
           </div>
 
         </div>
@@ -3497,7 +3497,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
             <div className="flex flex-wrap gap-1.5 mb-2">
               {["오늘 현황 요약","긴급 업무","오늘 사후관리","방금 통화 저장","미팅 메모 정리"].map(c=>(
                 <button key={c} onClick={()=>quickChat(c.includes("저장")||c.includes("정리")?c+". ":c+" 알려줘")}
-                  className="px-2.5 py-1 rounded-full border border-gray-200 text-xs text-gray-500 hover:border-orange-300 hover:text-orange-500 bg-white transition-all">
+                  className="px-2.5 py-1 rounded-full border border-gray-200 text-xs text-gray-500 hover:border-gray-400 hover:text-gray-700 hover:bg-gray-100 bg-gray-50 transition-all">
                   {c}
                 </button>
               ))}
