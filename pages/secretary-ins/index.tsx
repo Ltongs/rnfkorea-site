@@ -11,6 +11,8 @@ type Schedule = {
   start_time:string|null; end_time:string|null;
   category:"meeting"|"call"|"task"|"followup";
   location:string|null; related_type:string|null; is_done:boolean; consultation_id:number|null;
+  progress_memo:string|null; next_schedule_date:string|null; next_schedule_time:string|null;
+  gcal_event_id:string|null;
 };
 type Todo = {
   id:number; title:string; description:string|null;
@@ -590,6 +592,12 @@ const SecretaryInsPage:React.FC = () => {
   const [schedLoading,setSchedLoading] = useState(false);
   const [schedDate,setSchedDate]     = useState(todayStr);
   const [showSchedForm,setShowSchedForm] = useState(false);
+  const [schedViewMode,setSchedViewMode] = useState<"day"|"week"|"all">("day");
+  const [schedShowDone,setSchedShowDone] = useState(false);
+  const [allSchedules,setAllSchedules] = useState<Schedule[]>([]);
+  const [allSchedLoading,setAllSchedLoading] = useState(false);
+  const [schedModal,setSchedModal] = useState<{s:Schedule}|null>(null);
+  const [schedProgress,setSchedProgress] = useState({memo:"",next_date:"",next_time:""});
   const [newSched,setNewSched] = useState({title:"",description:"",schedule_date:todayStr(),start_time:"",end_time:"",category:"meeting" as Schedule["category"],location:"",related_type:"",consultation_id:""});
 
   // 할일
@@ -696,6 +704,9 @@ const SecretaryInsPage:React.FC = () => {
   // 구글 캘린더
   const [gcalConnected,setGcalConnected] = useState(false);
   const [gcalEvents,setGcalEvents] = useState<{id:string;title:string;start:string;color?:string}[]>([]);
+  const [gcalImporting,setGcalImporting] = useState(false);
+  const [gcalBulkSyncing,setGcalBulkSyncing] = useState(false);
+  const [gcalBulkResult,setGcalBulkResult] = useState<string|null>(null);
 
   // 통계
   const [stats,setStats] = useState({todaySch:0,activeTodo:0,urgentTodo:0,newOrders:0,todayFollowup:0,newConsult:0,expiringCount:0,activeClaims:0});
@@ -819,7 +830,6 @@ const SecretaryInsPage:React.FC = () => {
         body:JSON.stringify({action:"create",user_id:user.id,event:{...schedule,schedule_id:schedule.id}}),
       });
       const d = await res.json();
-      // 응답에서 생성된 이벤트를 즉시 gcalEvents 상태에 추가
       if(d.event){
         const newEvt = {
           id: d.event.id ?? String(Date.now()),
@@ -828,14 +838,146 @@ const SecretaryInsPage:React.FC = () => {
           color: "#4285f4",
         };
         setGcalEvents(prev=>[...prev, newEvt]);
-        // 달력 점 반영을 위해 calData도 갱신
         void loadCalData(calViewYear, calViewMonth);
       } else {
-        // 응답에 이벤트 없으면 딜레이 후 재조회
         await new Promise(r=>setTimeout(r,1500));
         void loadGcalEvents(calViewYear, calViewMonth);
       }
     }catch(e){console.error("gcal sync error",e);}
+  }
+
+  // ─── 구글 캘린더 → AI비서(Ins) 역방향 가져오기 ────────────────────────────
+  async function importGcalToLocal(yr:number, mo:number){
+    if(!user || !gcalConnected) return;
+    setGcalImporting(true);
+    try {
+      const {data:{session}} = await supabase.auth.getSession();
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-sync`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token??""}`},
+        body:JSON.stringify({action:"list",user_id:user.id,year:yr,month:mo}),
+      });
+      const d = await res.json();
+      if(!d.events?.length){ showToast("가져올 새 일정이 없습니다"); return; }
+      const from = `${yr}-${String(mo+1).padStart(2,"0")}-01`;
+      const lastDay = new Date(yr, mo+1, 0).getDate();
+      const to = `${yr}-${String(mo+1).padStart(2,"0")}-${String(lastDay).padStart(2,"0")}`;
+      const {data:localScheds} = await supabase.from("ins_schedules")
+        .select("title,schedule_date").gte("schedule_date",from).lte("schedule_date",to);
+      const localSet = new Set(
+        (localScheds??[]).map((s:any)=>`${s.schedule_date}||${s.title.trim().toLowerCase()}`)
+      );
+      const toInsert = (d.events as any[]).filter(e=>{
+        const date = e.start?.date || e.start?.dateTime?.slice(0,10) || "";
+        if(!date) return false;
+        const title = (e.summary??"(제목없음)").trim().toLowerCase();
+        return !localSet.has(`${date}||${title}`);
+      });
+      if(toInsert.length === 0){ showToast("이미 모든 일정이 동기화되어 있습니다 ✅"); return; }
+      const rows = toInsert.map((e:any)=>({
+        title: e.summary ?? "(제목없음)",
+        description: e.description ?? null,
+        schedule_date: e.start?.date || e.start?.dateTime?.slice(0,10),
+        start_time: e.start?.dateTime ? e.start.dateTime.slice(11,16) : null,
+        end_time:   e.end?.dateTime   ? e.end.dateTime.slice(11,16)   : null,
+        location:   e.location ?? null,
+        category:   "task" as Schedule["category"],
+        related_type: "google_calendar",
+        consultation_id: null,
+        is_done: false,
+      }));
+      const {error} = await supabase.from("ins_schedules").insert(rows);
+      if(error){ showToast("가져오기 실패: " + error.message, "err"); return; }
+      showToast(`구글 캘린더 ${toInsert.length}건 AI비서에 추가됨 ✅`);
+      void loadCalData(yr, mo);
+      void loadSchedules();
+    } catch(e:any){
+      showToast("가져오기 오류: " + String(e?.message??e), "err");
+    } finally {
+      setGcalImporting(false);
+    }
+  }
+
+  // ─── 기존 항목 구글 캘린더 일괄 동기화 ────────────────────────────────────
+  async function bulkSyncToGcal(){
+    if(!user||!gcalConnected) return;
+    setGcalBulkSyncing(true);
+    setGcalBulkResult(null);
+    try{
+      const today = todayStr();
+      const {data:scheds} = await supabase.from("ins_schedules")
+        .select("id,title,description,schedule_date,start_time,end_time,location")
+        .gte("schedule_date", today).is("gcal_event_id", null).eq("is_done", false);
+      const {data:todos} = await supabase.from("ins_todos")
+        .select("id,title,description,due_date")
+        .gte("due_date", today).eq("is_done", false);
+      const schedList = scheds ?? [];
+      const todoList  = todos  ?? [];
+      let ok = 0, fail = 0;
+      for(const s of schedList){
+        try{
+          await syncToGcal({id:s.id,title:s.title,description:s.description??null,schedule_date:s.schedule_date,start_time:s.start_time??null,end_time:s.end_time??null,location:s.location??null});
+          ok++;
+          await new Promise(r=>setTimeout(r,200));
+        }catch{ fail++; }
+      }
+      for(const t of todoList){
+        try{
+          await syncToGcal({id:t.id,title:`✅ ${t.title}`,description:t.description??null,schedule_date:t.due_date,start_time:null,end_time:null,location:null});
+          ok++;
+          await new Promise(r=>setTimeout(r,200));
+        }catch{ fail++; }
+      }
+      setGcalBulkResult(`완료: 일정 ${schedList.length}건 + 할일 ${todoList.length}건 → 성공 ${ok}건${fail>0?` / 실패 ${fail}건`:""}`);
+      void loadGcalEvents(calViewYear, calViewMonth);
+    }catch(e:any){
+      setGcalBulkResult("오류: " + String(e?.message??e));
+    }finally{
+      setGcalBulkSyncing(false);
+    }
+  }
+
+  // ─── 주간/전체 일정 로드 ──────────────────────────────────────────────────
+  const loadAllSchedules = useCallback(async(mode:"week"|"all", baseDate:string, showDone:boolean)=>{
+    setAllSchedLoading(true);
+    const from = mode==="week" ? baseDate : todayStr();
+    const to   = mode==="week" ? addDays(baseDate,6) : addDays(todayStr(),90);
+    const q = supabase.from("ins_schedules").select("*").gte("schedule_date",from).lte("schedule_date",to).order("schedule_date").order("start_time");
+    const {data} = showDone ? await q : await q.eq("is_done",false);
+    setAllSchedules((data??[]) as Schedule[]);
+    setAllSchedLoading(false);
+  },[]);
+
+  // ─── 일정 경과 기록 저장 ──────────────────────────────────────────────────
+  async function saveSchedProgress(s:Schedule){
+    const today = todayStr();
+    const appendText = schedProgress.memo ? "["+today+"] "+schedProgress.memo : null;
+    const newMemo = appendText ? (s.progress_memo ? s.progress_memo+"\n"+appendText : appendText) : s.progress_memo;
+    const patch: Record<string,unknown> = { progress_memo: newMemo };
+    if (schedProgress.next_date) {
+      patch.next_schedule_date = schedProgress.next_date;
+      patch.next_schedule_time = schedProgress.next_time || null;
+      patch.is_done = true;
+      const {data:newSchedData} = await supabase.from("ins_schedules").insert({
+        title: s.title,
+        description: newMemo,
+        schedule_date: schedProgress.next_date,
+        start_time: schedProgress.next_time || null,
+        category: s.category,
+        location: s.location,
+        related_type: s.related_type,
+        consultation_id: s.consultation_id,
+      }).select("id").single();
+      if(gcalConnected && newSchedData){
+        void syncToGcal({id:newSchedData.id,title:s.title,description:newMemo,schedule_date:schedProgress.next_date,start_time:schedProgress.next_time||null,end_time:null,location:s.location});
+      }
+    }
+    await supabase.from("ins_schedules").update(patch).eq("id",s.id);
+    setSchedModal(null);
+    setSchedProgress({memo:"",next_date:"",next_time:""});
+    showToast("경과 저장 완료" + (schedProgress.next_date ? " + 다음 일정 등록" : ""));
+    void loadSchedules();
+    void loadCalData(calViewYear, calViewMonth);
   }
 
   const loadStats = useCallback(async()=>{
@@ -951,6 +1093,7 @@ const SecretaryInsPage:React.FC = () => {
       const today = todayStr();
       const tomorrowStr = addDays(today, 1);
       setSchedDate(today);
+      setSchedViewMode("day");
       setSchedLoading(true);
       Promise.all([
         supabase.from("ins_schedules").select("*")
@@ -962,6 +1105,8 @@ const SecretaryInsPage:React.FC = () => {
         if(tr.data) setTodos(tr.data as Todo[]);
         setSchedLoading(false);
       });
+      // 구글 캘린더 → AI비서(Ins) 자동 역방향 동기화
+      if(gcalConnected) void importGcalToLocal(calViewYear, calViewMonth);
     }
     if(tab==="todo") void loadTodos();
     if(tab==="chat"){ setTimeout(()=>{ const c=chatContainerRef.current; if(c)c.scrollTop=c.scrollHeight; },100); }
@@ -1991,8 +2136,25 @@ const SecretaryInsPage:React.FC = () => {
               {gcalConnected&&<span className="ml-auto w-2 h-2 rounded-full bg-emerald-500"/>}
             </div>
             {gcalConnected ? (
-              <div>
+              <div className="space-y-1.5">
                 <p className="text-[10px] text-emerald-600 mb-1.5">✅ 연동됨 — 일정 자동 동기화 중</p>
+                <button
+                  onClick={()=>void importGcalToLocal(calViewYear, calViewMonth)}
+                  disabled={gcalImporting}
+                  className="w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-xs font-semibold text-blue-600 hover:bg-blue-100 transition-all disabled:opacity-40"
+                >
+                  {gcalImporting ? "가져오는 중..." : "📥 구글 → AI비서 가져오기"}
+                </button>
+                <button
+                  onClick={()=>void bulkSyncToGcal()}
+                  disabled={gcalBulkSyncing}
+                  className="w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-orange-50 border border-orange-200 text-xs font-semibold text-orange-600 hover:bg-orange-100 transition-all disabled:opacity-40"
+                >
+                  {gcalBulkSyncing ? "동기화 중..." : "📤 AI비서 → 구글 일괄전송"}
+                </button>
+                {gcalBulkResult && (
+                  <p className="text-[10px] text-gray-500 mt-1 text-center">{gcalBulkResult}</p>
+                )}
                 <button onClick={()=>void disconnectGcal()}
                   className="w-full text-xs text-gray-500 hover:text-red-500 py-1 transition-all">
                   연동 해제
@@ -2028,8 +2190,21 @@ const SecretaryInsPage:React.FC = () => {
           {tab==="schedule"&&(
             <div className="space-y-3 pb-4">
               <div className="flex items-center gap-2 flex-wrap">
-                <input type="date" className={`${CTRL} w-36`} value={schedDate} onChange={e=>setSchedDate(e.target.value)}/>
-                <button className={BTS} onClick={()=>{void loadSchedules(); if(gcalConnected) void loadGcalEvents(new Date().getFullYear(), new Date().getMonth());}}>새로고침</button>
+                <div className="flex gap-1">
+                  {(["day","week","all"] as const).map(m=>(
+                    <button key={m} className={`px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${schedViewMode===m?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200 hover:border-orange-300"}`}
+                      onClick={()=>{ setSchedViewMode(m); if(m!=="day") void loadAllSchedules(m as "week"|"all", schedDate, schedShowDone); }}>
+                      {{day:"일별",week:"주간",all:"전체"}[m]}
+                    </button>
+                  ))}
+                </div>
+                {schedViewMode==="day"&&<input type="date" className={`${CTRL} w-36`} value={schedDate} onChange={e=>setSchedDate(e.target.value)}/>}
+                {schedViewMode!=="day"&&(
+                  <label className="flex items-center gap-1 text-xs text-gray-500 cursor-pointer">
+                    <input type="checkbox" checked={schedShowDone} onChange={e=>{setSchedShowDone(e.target.checked);void loadAllSchedules(schedViewMode as "week"|"all",schedDate,e.target.checked);}}/> 완료 포함
+                  </label>
+                )}
+                <button className={BTS} onClick={()=>{ if(schedViewMode==="day") void loadSchedules(); else void loadAllSchedules(schedViewMode as "week"|"all",schedDate,schedShowDone); }}>새로고침</button>
                 <button className={BTP} onClick={()=>setShowSchedForm(v=>!v)}>{showSchedForm?"닫기":"+ 일정 추가"}</button>
                 <button className="ml-auto text-xs text-orange-500 hover:underline" onClick={()=>quickChat("오늘 일정 브리핑해줘")}>AI 브리핑 →</button>
               </div>
@@ -2052,25 +2227,58 @@ const SecretaryInsPage:React.FC = () => {
                         <option value="">선택 안함</option><option value="insurance">보험</option>
                       </select>
                     </div>
-                    <div className="col-span-2"><label className={LBL}>🔗 상담 ID (사후관리 시 next_followup_date 자동 업데이트)</label><input className={CTRL} value={newSched.consultation_id} onChange={e=>setNewSched(p=>({...p,consultation_id:e.target.value.replace(/\D/g,"")}))} placeholder="숫자만"/></div>
+                    <div className="col-span-2"><label className={LBL}>🔗 상담 ID</label><input className={CTRL} value={newSched.consultation_id} onChange={e=>setNewSched(p=>({...p,consultation_id:e.target.value.replace(/\D/g,"")}))} placeholder="숫자만"/></div>
                     <div className="col-span-2"><label className={LBL}>메모</label><textarea className={TA2} rows={2} value={newSched.description} onChange={e=>setNewSched(p=>({...p,description:e.target.value}))}/></div>
                   </div>
                   <div className="flex gap-2"><button className={BTP} onClick={()=>void addSchedule()}>저장</button><button className={BTS} onClick={()=>setShowSchedForm(false)}>취소</button></div>
                 </div>
               )}
-              {schedLoading?<p className="text-sm text-gray-400 p-4">불러오는 중...</p>
+              {/* 주간/전체 뷰 */}
+              {schedViewMode!=="day"&&(
+                allSchedLoading?<p className="text-sm text-gray-400 p-4">불러오는 중...</p>
+                :allSchedules.length===0?<div className={`${CARD} p-8 text-center text-gray-400 text-sm`}>일정이 없습니다</div>
+                :(()=>{
+                  const groups = new Map<string,Schedule[]>();
+                  allSchedules.forEach(s=>{ if(!groups.has(s.schedule_date)) groups.set(s.schedule_date,[]); groups.get(s.schedule_date)!.push(s); });
+                  return Array.from(groups.entries()).map(([date,list])=>(
+                    <div key={date} className="space-y-2">
+                      <div className="flex items-center gap-2 pt-1">
+                        <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${date===todayStr()?"bg-[#0f172a] text-white":"bg-blue-50 text-blue-600"}`}>{fmtDate(date)}</span>
+                        <span className="text-xs text-gray-400">{list.length}건</span>
+                        <div className="flex-1 h-px bg-gray-100"/>
+                      </div>
+                      {list.map(s=>(
+                        <div key={s.id} className={`${CARD} p-4 flex items-start gap-3 ${s.is_done?"opacity-60":""}`}>
+                          <CatDot c={s.category}/>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`text-sm font-semibold text-[#0f172a] ${s.is_done?"line-through":""}`}>{s.title}</span>
+                              <span className="text-xs text-gray-400">{CAT_LBL[s.category]}</span>
+                              {s.related_type&&<span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600">{WL[s.related_type]??s.related_type}</span>}
+                            </div>
+                            {(s.start_time||s.location)&&<p className="text-xs text-gray-400 mt-0.5">{[s.start_time?fmtTime(s.start_time):null,s.location].filter(Boolean).join(" · ")}</p>}
+                            {s.progress_memo&&<p className="text-xs text-blue-500 mt-1 line-clamp-1">📝 {s.progress_memo.split("\n").slice(-1)[0]}</p>}
+                          </div>
+                          <div className="flex gap-1.5 flex-shrink-0">
+                            <button className={BTG} onClick={()=>{setSchedModal({s});setSchedProgress({memo:"",next_date:"",next_time:""});}}>경과</button>
+                            <button className={BTG} onClick={()=>void toggleSched(s.id,s.is_done)}>{s.is_done?"되돌리기":"완료"}</button>
+                            <button className="text-xs text-red-400 hover:text-red-600 px-1" onClick={()=>void delSched(s.id)}>삭제</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ));
+                })()
+              )}
+              {/* 일별 뷰 */}
+              {schedViewMode==="day"&&(schedLoading?<p className="text-sm text-gray-400 p-4">불러오는 중...</p>
                 :schedules.length===0?<div className={`${CARD} p-8 text-center text-gray-400 text-sm`}>오늘·내일 일정이 없습니다</div>
                 :(()=>{
-                  // 날짜별 그룹핑
                   const groups = new Map<string,Schedule[]>();
-                  schedules.forEach(s=>{
-                    if(!groups.has(s.schedule_date)) groups.set(s.schedule_date,[]);
-                    groups.get(s.schedule_date)!.push(s);
-                  });
+                  schedules.forEach(s=>{ if(!groups.has(s.schedule_date)) groups.set(s.schedule_date,[]); groups.get(s.schedule_date)!.push(s); });
                   const today = todayStr();
                   return Array.from(groups.entries()).map(([date,list])=>(
                     <div key={date} className="space-y-2">
-                      {/* 날짜 구분 헤더 */}
                       <div className="flex items-center gap-2 pt-1">
                         <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${date===today?"bg-[#0f172a] text-white":"bg-blue-50 text-blue-600"}`}>
                           {date===today?"📅 오늘 D-day":"📅 내일 D+1"}
@@ -2090,8 +2298,10 @@ const SecretaryInsPage:React.FC = () => {
                             </div>
                             {(s.start_time||s.location)&&<p className="text-xs text-gray-400 mt-0.5">{[s.start_time?fmtTime(s.start_time):null,s.location].filter(Boolean).join(" · ")}</p>}
                             {s.description&&<p className="text-xs text-gray-500 mt-0.5">{s.description}</p>}
+                            {s.progress_memo&&<p className="text-xs text-blue-500 mt-1 line-clamp-1">📝 {s.progress_memo.split("\n").slice(-1)[0]}</p>}
                           </div>
                           <div className="flex gap-1.5 flex-shrink-0">
+                            <button className={BTG} onClick={()=>{setSchedModal({s});setSchedProgress({memo:"",next_date:"",next_time:""});}}>경과</button>
                             <button className={BTG} onClick={()=>void toggleSched(s.id,s.is_done)}>{s.is_done?"되돌리기":"완료"}</button>
                             <button className={BTG} onClick={()=>quickChat(`"${s.title}" 미팅 내용 정리해줘. 메모: `)}>AI요약</button>
                             <button className="text-xs text-red-400 hover:text-red-600 px-1" onClick={()=>void delSched(s.id)}>삭제</button>
@@ -2101,17 +2311,17 @@ const SecretaryInsPage:React.FC = () => {
                     </div>
                   ));
                 })()
-              }
+              )}
               {/* 당일 마감 할일 */}
-              {(()=>{
+              {schedViewMode==="day"&&(()=>{
                 const dueTodos = todos.filter(t=>t.due_date===schedDate&&!t.is_done);
                 if(dueTodos.length===0) return null;
                 return (
                   <div>
-                    <p className="text-xs font-semibold text-blue-500 px-1 mb-2 mt-1">✅ 오늘 마감 할일 — {dueTodos.length}건</p>
+                    <p className="text-xs font-semibold text-orange-500 px-1 mb-2 mt-1">🔥 오늘 마감 할일 — {dueTodos.length}건</p>
                     {dueTodos.map(t=>(
-                      <div key={t.id} className={`${CARD} p-3.5 flex items-center gap-3 border-l-4 border-blue-400`}>
-                        <button className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${t.is_done?"bg-emerald-500 border-emerald-500":"border-gray-300 hover:border-blue-400"}`}
+                      <div key={t.id} className={`${CARD} p-3.5 flex items-center gap-3 border-l-4 border-orange-400`}>
+                        <button className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${t.is_done?"bg-emerald-500 border-emerald-500":"border-gray-300 hover:border-orange-400"}`}
                           onClick={()=>void toggleTodo(t.id,t.is_done)}>
                           {t.is_done&&<span className="text-white text-[10px]">✓</span>}
                         </button>
@@ -2130,6 +2340,42 @@ const SecretaryInsPage:React.FC = () => {
                 );
               })()}
             </div>
+          )}
+
+          {/* ── 일정 경과 기록 모달 ── */}
+          {schedModal&&ReactDOM.createPortal(
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={()=>setSchedModal(null)}>
+              <div className={`${CARD} p-5 w-full max-w-md`} onClick={e=>e.stopPropagation()}>
+                <p className="text-base font-semibold text-[#0f172a] mb-3">📝 일정 경과 기록</p>
+                <p className="text-sm text-gray-600 mb-3 font-medium">{schedModal.s.title}</p>
+                {schedModal.s.progress_memo&&(
+                  <div className="mb-3 p-2.5 rounded-lg bg-blue-50 border border-blue-100">
+                    <p className="text-xs text-gray-500 mb-1 font-medium">이전 경과</p>
+                    {schedModal.s.progress_memo.split("\n").map((line,i)=>(
+                      <p key={i} className="text-xs text-blue-700">{line}</p>
+                    ))}
+                  </div>
+                )}
+                <div className="space-y-3 mb-4">
+                  <div><label className={LBL}>오늘 경과 메모</label>
+                    <textarea className={TA2} rows={3} placeholder="오늘 진행 내용, 결과, 특이사항..."
+                      value={schedProgress.memo} onChange={e=>setSchedProgress(p=>({...p,memo:e.target.value}))}/></div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><label className={LBL}>다음 일정 날짜</label>
+                      <input type="date" className={CTRL} value={schedProgress.next_date} onChange={e=>setSchedProgress(p=>({...p,next_date:e.target.value}))}/></div>
+                    <div><label className={LBL}>다음 일정 시간</label>
+                      <input type="time" className={CTRL} value={schedProgress.next_time} onChange={e=>setSchedProgress(p=>({...p,next_time:e.target.value}))}/></div>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button className={BTP} onClick={()=>void saveSchedProgress(schedModal.s)} disabled={!schedProgress.memo&&!schedProgress.next_date}>
+                    {schedProgress.next_date?"저장 + 다음 일정":"경과 저장"}
+                  </button>
+                  <button className={BTS} onClick={()=>setSchedModal(null)}>취소</button>
+                </div>
+              </div>
+            </div>,
+            document.body
           )}
 
           {/* ══ 할일 ══ */}
