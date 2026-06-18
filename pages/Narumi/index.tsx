@@ -312,6 +312,7 @@ export default function NarumiPage() {
     logout,
     isAdmin,
     isNarumi,
+    isInsAI,
     isLotte,
     isInsuranceManager,
     canViewAll,
@@ -388,7 +389,7 @@ export default function NarumiPage() {
         if (!showOldUploaded) {
           q = q.or(`vehicle_doc_path.is.null,created_at.gte.${cutoffISO}`);
         }
-      } else if (isNarumi) {
+      } else if (isNarumi || isInsAI) {
         q = q.or(`vehicle_doc_path.is.null,created_at.gte.${cutoffISO}`);
       } else if (isLotte) {
         q = q
@@ -421,7 +422,7 @@ export default function NarumiPage() {
   useEffect(() => {
     fetchRows();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showOldUploaded, isPrivilegedManager, isNarumi, isLotte]);
+  }, [showOldUploaded, isPrivilegedManager, isNarumi, isInsAI, isLotte]);
 
   const searchedRows = useMemo(() => {
     let result = [...rows];
