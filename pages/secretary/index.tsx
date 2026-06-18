@@ -795,6 +795,7 @@ const SecretaryPage:React.FC = () => {
   const setOrdFilterAndSave = (f:string)=>{ try{sessionStorage.setItem("sec_ord_filter",f);}catch{} setOrdFilter(f); };
   const [showOrderForm,setShowOrderForm] = useState(false);
   const [expandedOrder,setExpandedOrder] = useState<number|null>(null);
+  const [orderSearch,setOrderSearch] = useState("");
   const [syncConsult,setSyncConsult] = useState(true);
   const [newOrder,setNewOrder] = useState({customer_name:"",phone:"",channel:"kakao" as Order["channel"],work_type:"",summary:"",detail:"",telecom_provider:"",region:""});
 
@@ -2582,25 +2583,48 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                   </div>
                 </div>
               )}
+              {/* 고객명 검색창 — 진행중·상담관리·주문내역 통합 필터 */}
+              <div className={`${CARD} p-3`}>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-400 flex-shrink-0">🔍</span>
+                  <input
+                    type="text"
+                    value={orderSearch}
+                    onChange={e=>setOrderSearch(e.target.value)}
+                    placeholder="고객 이름으로 검색..."
+                    className="flex-1 text-sm text-[#0f172a] bg-transparent outline-none placeholder-gray-300"
+                  />
+                  {orderSearch&&(
+                    <button onClick={()=>setOrderSearch("")} className="text-gray-300 hover:text-gray-500 flex-shrink-0 text-xl leading-none">×</button>
+                  )}
+                </div>
+                {orderSearch&&(
+                  <p className="text-xs text-orange-500 mt-1.5 pl-6">
+                    &quot;{orderSearch}&quot; 검색 결과 — 상담 {recentC.filter(c=>c.customer_name.includes(orderSearch)).length}건 · 주문 {orderViews.filter(o=>o.customer_name.includes(orderSearch)).length}건
+                  </p>
+                )}
+              </div>
               {/* 최근 상담 */}
               <div className={`${CARD} p-4`}>
                 <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm font-semibold text-[#0f172a]">💬 최근 상담</p>
+                  <p className="text-sm font-semibold text-[#0f172a]">💬 최근 상담{orderSearch&&<span className="ml-1 text-xs text-orange-500 font-normal">— &quot;{orderSearch}&quot; 필터 적용중</span>}</p>
                   <div className="flex gap-2">
                     <button className={BTG} onClick={()=>void loadConsults()}>새로고침</button>
                     <button className={BTG} onClick={()=>navigate("/work/call-management")}>전체 보기 →</button>
                   </div>
                 </div>
                 {cLoading?<p className="text-xs text-gray-400">불러오는 중...</p>
-                  :recentC.length===0?<p className="text-sm text-gray-400 text-center py-4">최근 상담이 없습니다</p>
-                  :(
+                  :(()=>{
+                    const filteredC = orderSearch ? recentC.filter(c=>c.customer_name.includes(orderSearch)) : recentC;
+                    if(filteredC.length===0) return <p className="text-sm text-gray-400 text-center py-4">{orderSearch?`"${orderSearch}"에 해당하는 상담이 없습니다`:"최근 상담이 없습니다"}</p>;
+                    return (
                     <div className="overflow-x-auto">
                       <table className="min-w-full text-sm">
                         <thead><tr className="border-b border-gray-100">
                           {["고객명","업무","요약","상태","등록일",""].map(h=><th key={h} className="text-left py-1.5 px-2 text-xs font-medium text-gray-400">{h}</th>)}
                         </tr></thead>
                         <tbody>
-                          {recentC.map(c=>{
+                          {filteredC.map(c=>{
                             // 상담관리 COMMON_STAGES와 동일한 기준
                             const COMMON_STAGES = [
                               {value:"contract",       label:"계약"},
@@ -2679,7 +2703,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                         </tbody>
                       </table>
                     </div>
-                  )
+                    );
+                  })()
                 }
               </div>
               {/* 주문내역 */}
@@ -2695,16 +2720,18 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                   </div>
                 </div>
                 {/* AI비서 채팅으로 입력 안내 */}
+                {!orderSearch&&(
                 <div className="mb-2 p-2.5 rounded-lg bg-blue-50 border border-blue-100 text-xs text-blue-600">
                   💡 주문 등록은 채팅탭에서 &quot;홍길동 타이어 18*7-8 두산 3톤 후륜 2개 주문&quot; 형태로 입력하시면 자동 저장됩니다
                 </div>
+                )}
                 {ordViewLoading
                   ? <p className="text-sm text-gray-400 p-4">불러오는 중...</p>
-                  : orderViews.length===0
-                  ? <div className={`${CARD} p-6 text-center text-gray-400 text-sm`}>주문 내역이 없습니다</div>
+                  : orderViews.filter(o=>!orderSearch||o.customer_name.includes(orderSearch)).length===0
+                  ? <div className={`${CARD} p-6 text-center text-gray-400 text-sm`}>{orderSearch?`"${orderSearch}"에 해당하는 주문이 없습니다`:"주문 내역이 없습니다"}</div>
                   : (
                     <div className="space-y-2">
-                      {orderViews.map(o=>(
+                      {orderViews.filter(o=>!orderSearch||o.customer_name.includes(orderSearch)).map(o=>(
                         <div key={o.id} className={`${CARD} p-3.5 cursor-pointer hover:shadow-md transition-all`}
                           onClick={()=>navigate(`/work/call-management?id=${o.id}`)}>
                           <div className="flex items-start gap-2.5">

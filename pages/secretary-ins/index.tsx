@@ -5,7 +5,7 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
-type TabKey = "chat"|"schedule"|"todo"|"consults"|"policies"|"claims"|"customers";
+type TabKey = "chat"|"schedule"|"todo"|"consults"|"policies"|"claims"|"customers"|"narumi";
 type Schedule = {
   id:number; title:string; description:string|null; schedule_date:string;
   start_time:string|null; end_time:string|null;
@@ -102,6 +102,12 @@ type CustomerInfo = {
   card_number: string;
   card_expiry: string;
   memo: string;
+};
+type NarumiTask = {
+  id:number; customer_name:string|null; memo:string|null;
+  status:string|null; is_urgent:boolean; docs_ready:boolean;
+  delivery_date:string|null; created_at:string; vin:string|null;
+  sales_rep:string|null; special_note:string|null;
 };
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
@@ -606,6 +612,11 @@ const SecretaryInsPage:React.FC = () => {
   const [followups,setFollowups]     = useState<Consult[]>([]);
   const [recentC,setRecentC]         = useState<Consult[]>([]);
   const [cLoading,setCLoading]       = useState(false);
+
+  // 나르미
+  const [narumiList,setNarumiList]       = useState<NarumiTask[]>([]);
+  const [narumiLoading,setNarumiLoading] = useState(false);
+  const [narumiConsults,setNarumiConsults] = useState<Consult[]>([]);
 
   // 채팅
   const [msgs,setMsgs]               = useState<ChatMsg[]>([]);
@@ -1357,6 +1368,20 @@ const SecretaryInsPage:React.FC = () => {
   },[]);
   useEffect(()=>{if(tab==="customers"){void loadRecentChanged();}},[tab,loadRecentChanged]);
 
+  // 나르미 데이터 로드
+  useEffect(()=>{
+    if(tab!=="narumi") return;
+    setNarumiLoading(true);
+    Promise.all([
+      supabase.from("narumi_tasks").select("*").order("created_at",{ascending:false}).limit(60),
+      supabase.from("consultation_cases").select("id,customer_name,work_type,status,summary,created_at,phone").eq("work_type","narumi").order("created_at",{ascending:false}).limit(30),
+    ]).then(([nRes, cRes])=>{
+      setNarumiList((nRes.data??[]) as NarumiTask[]);
+      setNarumiConsults((cRes.data??[]) as Consult[]);
+      setNarumiLoading(false);
+    });
+  },[tab]);
+
   // 전체 고객 로드 — ins_customer_info 전체 + consultation_cases 이름 목록 병합
   const loadAllCustomers = useCallback(async()=>{
     setAllCustsLoading(true);
@@ -1924,9 +1949,9 @@ const SecretaryInsPage:React.FC = () => {
           </div>
           {/* 탭 */}
           <div className="flex items-center gap-1.5 flex-wrap">
-            {(["chat","schedule","todo","consults","policies","claims","customers"] as TabKey[]).map(t=>(
+            {(["chat","schedule","todo","consults","policies","claims","customers","narumi"] as TabKey[]).map(t=>(
               <button key={t} className={`${TB} ${tab===t?TA:TI} relative`} onClick={()=>setTab(t)}>
-                {{chat:"💬 채팅",schedule:"📅 일정",todo:"✅ 할일",consults:"🛡 상담",policies:"📋 계약",claims:"🏥 청구",customers:"👤 고객조회"}[t]}
+                {{chat:"💬 채팅",schedule:"📅 일정",todo:"✅ 할일",consults:"🛡 상담",policies:"📋 계약",claims:"🏥 청구",customers:"👤 고객조회",narumi:"🚛 나르미"}[t]}
                 {t==="policies"&&stats.expiringCount>0&&(
                   <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center">{stats.expiringCount}</span>
                 )}
@@ -3095,6 +3120,96 @@ const SecretaryInsPage:React.FC = () => {
               )}
             </div>
           )}
+
+          {/* ══ 나르미 ══ */}
+          {tab==="narumi"&&(
+            <div className="space-y-3 pb-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <p className="text-sm font-semibold text-[#0f172a]">🚛 나르미 업무</p>
+                <div className="flex gap-1.5 flex-wrap">
+                  <button className={BTG} onClick={()=>{
+                    setNarumiLoading(true);
+                    Promise.all([
+                      supabase.from("narumi_tasks").select("*").order("created_at",{ascending:false}).limit(60),
+                      supabase.from("consultation_cases").select("id,customer_name,work_type,status,summary,created_at,phone").eq("work_type","narumi").order("created_at",{ascending:false}).limit(30),
+                    ]).then(([nRes,cRes])=>{
+                      setNarumiList((nRes.data??[]) as NarumiTask[]);
+                      setNarumiConsults((cRes.data??[]) as Consult[]);
+                      setNarumiLoading(false);
+                    });
+                  }}>새로고침</button>
+                  <button className={BTO} onClick={()=>navigate("/narumi")}>전체 페이지 →</button>
+                </div>
+              </div>
+              {narumiLoading
+                ? <p className="text-sm text-gray-400 p-4 text-center">불러오는 중...</p>
+                : narumiList.length===0
+                ? <div className={`${CARD} p-8 text-center text-gray-400 text-sm`}>등록된 차량이 없습니다</div>
+                : (
+                  <div className="space-y-2">
+                    {narumiList.map((t:any)=>(
+                      <div key={t.id} className={`${CARD} p-3.5`}>
+                        <div className="flex items-start gap-2.5">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {t.is_urgent&&<span className="text-xs font-bold text-red-500 flex-shrink-0">긴급</span>}
+                              <span className="text-sm font-semibold text-[#0f172a]">{t.customer_name||"미확인"}</span>
+                              {t.vin&&<span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100 font-mono">{t.vin}</span>}
+                              <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${
+                                t.status==="completed"?"bg-emerald-50 text-emerald-600 border-emerald-100":
+                                t.status==="registered"?"bg-blue-50 text-blue-600 border-blue-100":
+                                t.status==="docs"?"bg-purple-50 text-purple-600 border-purple-100":
+                                "bg-orange-50 text-orange-600 border-orange-100"}`}>
+                                {t.status==="completed"?"완료":t.status==="registered"?"등록완료":t.status==="docs"?"서류준비":t.status==="insurance"?"보험확인":"진행중"}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-gray-500">
+                              {t.sales_rep&&<span>영업: {t.sales_rep}</span>}
+                              {t.delivery_date&&<span>출고: {t.delivery_date}</span>}
+                              {t.memo&&<span className="truncate max-w-[160px]">{t.memo}</span>}
+                              {t.special_note&&<span className="text-orange-500 truncate max-w-[140px]">{t.special_note}</span>}
+                              {!t.docs_ready&&<span className="text-amber-600">서류미비</span>}
+                              <span className="ml-auto text-gray-300">{String(t.created_at||"").slice(0,10)}</span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-1 shrink-0">
+                            <button className={BTO} onClick={()=>navigate("/narumi")}>이동</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              }
+              {narumiConsults.length>0&&(
+                <div className={`${CARD} p-3.5`}>
+                  <p className="text-xs font-semibold text-gray-400 mb-2">📋 나르미 상담내역 ({narumiConsults.length}건)</p>
+                  <div className="space-y-2">
+                    {narumiConsults.map((c:any)=>(
+                      <div key={c.id} className={`${CARD} p-3.5`}>
+                        <div className="flex items-start gap-2.5">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-sm font-semibold text-[#0f172a]">{c.customer_name}</span>
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 border border-orange-100 font-medium">{STS_LBL[c.status]??c.status}</span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-gray-500">
+                              {c.summary&&<span className="truncate max-w-[200px]">{c.summary}</span>}
+                              <span className="ml-auto text-gray-300">{String(c.created_at||"").slice(0,10)}</span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-1 shrink-0">
+                            <button className={BTO} onClick={()=>navigate(`/work/call-management?id=${c.id}`)}>상담관리 →</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {tab==="chat"&&(
             <div className={`${CARD} p-4`} style={{height:"calc(100vh - 320px)",minHeight:300,display:"flex",flexDirection:"column"}}>
               {histLoading&&(
