@@ -820,14 +820,14 @@ const SecretaryInsPage:React.FC = () => {
   }
 
   // 일정 저장 후 구글 캘린더에도 동기화
-  async function syncToGcal(schedule:{id:number;title:string;description:string|null;schedule_date:string;start_time:string|null;end_time:string|null;location:string|null}){
+  async function syncToGcal(schedule:{id:number;title:string;description:string|null;schedule_date:string;start_time:string|null;end_time:string|null;location:string|null;table?:string}){
     if(!user||!gcalConnected) return;
     try{
       const {data:{session}} = await supabase.auth.getSession();
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-sync`,{
         method:"POST",
         headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token??""}`},
-        body:JSON.stringify({action:"create",user_id:user.id,event:{...schedule,schedule_id:schedule.id}}),
+        body:JSON.stringify({action:"create",user_id:user.id,event:{...schedule,schedule_id:schedule.id,table:schedule.table??"ins_schedules"}}),
       });
       const d = await res.json();
       if(d.event){
@@ -923,7 +923,7 @@ const SecretaryInsPage:React.FC = () => {
       }
       for(const t of todoList){
         try{
-          await syncToGcal({id:t.id,title:`✅ ${t.title}`,description:t.description??null,schedule_date:t.due_date,start_time:null,end_time:null,location:null});
+          await syncToGcal({id:t.id,title:`✅ ${t.title}`,description:t.description??null,schedule_date:t.due_date,start_time:null,end_time:null,location:null,table:"ins_todos"});
           ok++;
           await new Promise(r=>setTimeout(r,200));
         }catch{ fail++; }

@@ -1129,14 +1129,14 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
   }
 
   // 일정 저장 후 구글 캘린더에도 동기화
-  async function syncToGcal(schedule:{id:number;title:string;description:string|null;schedule_date:string;start_time:string|null;end_time:string|null;location:string|null}){
+  async function syncToGcal(schedule:{id:number;title:string;description:string|null;schedule_date:string;start_time:string|null;end_time:string|null;location:string|null;table?:string}){
     if(!user||!gcalConnected) return;
     try{
       const {data:{session}} = await supabase.auth.getSession();
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-sync`,{
         method:"POST",
         headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token??""}`},
-        body:JSON.stringify({action:"create",user_id:user.id,event:{...schedule,schedule_id:schedule.id}}),
+        body:JSON.stringify({action:"create",user_id:user.id,event:{...schedule,schedule_id:schedule.id,table:schedule.table??"secretary_schedules"}}),
       });
       const d = await res.json();
       // 응답에서 생성된 이벤트를 즉시 gcalEvents 상태에 추가
@@ -1200,6 +1200,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
             description: t.description??null,
             schedule_date: t.due_date,
             start_time: null, end_time: null, location: null,
+            table: "secretary_todos",
           });
           ok++;
           await new Promise(r=>setTimeout(r,200));
