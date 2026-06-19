@@ -1,4 +1,4 @@
-// @ts-nocheck
+// @ts-nocheck -- Deno Edge Function: npm/Deno 환경 타입 충돌 회피용 (Deno.env, esm.sh 외부 모듈 등)
 // supabase/functions/send-hyundaicm-kakao/index.ts
 // 발송 방식: 솔라피 카카오 알림톡 (HCM + 나르미) + SMS fallback
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -453,6 +453,29 @@ function buildMessage(body: Record<string, string>): string {
     ].filter(Boolean).join("\n");
   }
 
+  if (type === "credit_condition_updated") {
+    const v = body.vehicleAmount ? Number(body.vehicleAmount) : null;
+    const a = body.attachAmount  ? Number(body.attachAmount)  : null;
+    const totalVehicle = (v ?? 0) + (a ?? 0);
+    const g = body.gracePeriod ?? null;
+    const inst = body.installmentPeriod ?? null;
+    return [
+      "[HD현대(부산/경남) 승인조건 수정]", "",
+      `번호: ${caseNo ?? "-"}`,
+      `고객: ${customerName} (${customerType})`,
+      `장비: ${equipmentTon ?? "-"}`,
+      `영업: ${salesRep ?? "-"}`, "",
+      "── 수정된 승인조건 ──",
+      totalVehicle > 0 ? `차량가격: ${totalVehicle.toLocaleString("ko-KR")}원${v && a ? ` (차량 ${v.toLocaleString("ko-KR")} + 어태치 ${a.toLocaleString("ko-KR")})` : ""}` : null,
+      body.loanLimit ? `대출한도: ${Number(body.loanLimit).toLocaleString("ko-KR")}원` : null,
+      `대출기간: ${body.loanPeriod ?? "-"}개월${g && inst ? ` (거치 ${g} + 할부 ${inst})` : ""}`,
+      `적용금리: ${body.creditRate ?? "-"}%`,
+      body.creditIncentive ? `인센티브: ${body.creditIncentive}%` : null,
+      body.creditNote ? `특이사항: ${body.creditNote}` : null, "",
+      `시간: ${now}`,
+    ].filter(Boolean).join("\n");
+  }
+
   if (type === "vehicle_reg_upload") {
     return [
       "[HD현대(부산/경남) 차량등록증 업로드]", "",
@@ -737,6 +760,35 @@ function buildHcmVariables(body: Record<string, string>): { templateKey: string;
     };
   }
 
+  if (type === "credit_condition_updated") {
+    const v = body.vehicleAmount ? Number(body.vehicleAmount) : null;
+    const a = body.attachAmount  ? Number(body.attachAmount)  : null;
+    const totalVehicle = (v ?? 0) + (a ?? 0);
+    const g = body.gracePeriod ?? null;
+    const inst = body.installmentPeriod ?? null;
+    const periodText = `${loanPeriod ?? "-"}개월${g && inst ? ` (거치${g}+할부${inst})` : ""}`;
+    const summary = [
+      totalVehicle > 0 ? `차량가격 ${totalVehicle.toLocaleString("ko-KR")}원${v && a ? `(차량${v.toLocaleString("ko-KR")}+어태치${a.toLocaleString("ko-KR")})` : ""}` : null,
+      body.loanLimit ? `대출한도 ${Number(body.loanLimit).toLocaleString("ko-KR")}원` : null,
+      `대출기간 ${periodText}`,
+      `금리 ${body.creditRate ?? "-"}%`,
+      body.creditIncentive ? `인센티브 ${body.creditIncentive}%` : null,
+      body.creditNote ? `특이사항: ${body.creditNote}` : null,
+    ].filter(Boolean).join(" / ");
+    return {
+      templateKey: "hcm_edit",
+      variables: {
+        "#{케이스번호}": caseNo       ?? "-",
+        "#{고객명}":     customerName ?? "-",
+        "#{고객유형}":   customerType ?? "-",
+        "#{현재단계}":   "승인조건 수정",
+        "#{영업사원}":   salesRep     ?? "-",
+        "#{변경사항}":   summary || "변경사항 없음",
+        "#{시간}":       now,
+      },
+    };
+  }
+
   // vehicle_reg_upload / tax_invoice_upload / incentive_paid → hcm_status_change 재활용
   const typeLabel: Record<string, string> = {
     vehicle_reg_upload: "차량등록증 업로드",
@@ -786,7 +838,7 @@ serve(async (req) => {
         .split(",")
         .map((n) => n.replace(/\D/g, ""))
         .filter(Boolean);
-      const PF_ID       = Deno.env.get("SOLAPI_PF_ID") ?? "";
+      const _PF_ID       = Deno.env.get("SOLAPI_PF_ID") ?? "";
       const TEMPLATE_ID = Deno.env.get("SOLAPI_TEMPLATE_ID_ORDER") ?? "";
 
       if (JINHEUNG_PHONES.length === 0) {
@@ -846,7 +898,7 @@ serve(async (req) => {
         .split(",")
         .map((n) => n.replace(/\D/g, ""))
         .filter(Boolean);
-      const PF_ID       = Deno.env.get("SOLAPI_PF_ID") ?? "";
+      const _PF_ID       = Deno.env.get("SOLAPI_PF_ID") ?? "";
       const TEMPLATE_ID = Deno.env.get("SOLAPI_TEMPLATE_ID_WHEEL_REQUEST") ?? "";
 
       if (JINHEUNG_PHONES.length === 0) {
@@ -943,7 +995,7 @@ serve(async (req) => {
         const db = createClient(sbUrl, sbKey);
 
         const today    = new Date();
-        const todayIso = today.toISOString().slice(0, 10);
+        const _todayIso = today.toISOString().slice(0, 10);
         const tomorrow = new Date(today);
         tomorrow.setDate(tomorrow.getDate() + 1);
         const tomorrowIso = tomorrow.toISOString().slice(0, 10);
@@ -1082,7 +1134,7 @@ serve(async (req) => {
           if (existingTodos && existingTodos.length > 0) {
             await db.from("secretary_todos")
               .update({ is_done: true })
-              .in("id", existingTodos.map((t: any) => t.id));
+              .in("id", existingTodos.map((t: { id: string | number }) => t.id));
           }
         } else {
           const stageMap: Record<string, { title: string; priority: string }> = {

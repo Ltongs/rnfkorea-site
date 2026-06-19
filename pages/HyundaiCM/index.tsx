@@ -1151,9 +1151,10 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       setRows((prev) => prev.map((r) => String(r.id) === String(row.id) ? { ...r, ...patch } : r));
       setCreditResults((prev) => ({ ...prev, [String(row.id)]: next }));
 
-      // 카카오 알림
+      // 카카오 알림 — 동일 상태 재저장(조건 수정)인 경우 "수정 알림", 신규 상태 변경인 경우 기존 알림
+      const isConditionUpdate = row.status === next; // 이미 같은 상태(예: 승인)에서 재저장 = 조건 수정
       sendKakaoNotify({
-        type:             "status_change",
+        type:             isConditionUpdate ? "credit_condition_updated" : "status_change",
         caseNo:           caseNoMap[String(row.id)] ?? String(row.id),
         customerName:     row.customer_name,
         customerType:     row.customer_type,
@@ -1166,6 +1167,11 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         creditIncentive:  patch.credit_incentive,
         bizHistory:       next !== "거절" ? creditBizHistory : undefined,
         loanLimit:        patch.loan_limit ? String(patch.loan_limit) : undefined,
+        loanPeriod:       patch.loan_period ? String(patch.loan_period) : undefined,
+        gracePeriod:      patch.grace_period ? String(patch.grace_period) : undefined,
+        installmentPeriod: patch.installment_period ? String(patch.installment_period) : undefined,
+        vehicleAmount:    patch.vehicle_amount ? String(patch.vehicle_amount) : undefined,
+        attachAmount:     patch.attach_amount ? String(patch.attach_amount) : undefined,
         creditNote:       patch.credit_note ?? undefined,
       });
 
