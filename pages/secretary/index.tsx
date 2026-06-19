@@ -2288,20 +2288,20 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
           </div>
           {/* 탭 - 가로 스크롤 한 줄 */}
           <style>{`.hcm-tab-scroll::-webkit-scrollbar{display:none;}`}</style>
-          <div className="-mx-4 px-4 md:mx-0 md:px-0">
+          <div className="-mx-6 px-6 md:mx-0 md:px-0">
             <div
-              className="hcm-tab-scroll flex items-center gap-1.5 flex-nowrap overflow-x-auto pb-1"
-              style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}
+              className="hcm-tab-scroll flex items-center gap-1.5 flex-nowrap overflow-x-scroll pb-1"
+              style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}
             >
               {(["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo"] as TabKey[]).map(t=>(
                 <button key={t} className={`${TB} ${tab===t?TA:TI} shrink-0 whitespace-nowrap`} onClick={()=>setTabAndSave(t)}>
                   {t==="email"
-                    ? <span className="flex items-center gap-1">이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
-                    : {chat:"채팅",schedule:"일정",status:"업무현황",orders:"주문·상담",hyundaicm:"현대CM",finance:"금융상담",narumi:"나르미",jinheung:"진흥주문",memo:"메모"}[t as string]
+                    ? <span className="flex items-center gap-1">📧 이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
+                    : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",hyundaicm:"🏗 현대CM",finance:"🏦 금융상담",narumi:"🚛 나르미",jinheung:"🔧 진흥주문",memo:"📝 메모"}[t as string]
                   }
                 </button>
               ))}
-              <button className={`${TB} ${TI} shrink-0 whitespace-nowrap`} onClick={()=>navigate("/work/finance-hub")}>매출/매입</button>
+              <button className={`${TB} ${TI} shrink-0 whitespace-nowrap`} onClick={()=>navigate("/work/finance-hub")}>💵 매출/매입</button>
             </div>
           </div>
 
