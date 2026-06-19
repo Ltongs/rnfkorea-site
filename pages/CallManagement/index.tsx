@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Settings } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
@@ -3141,9 +3142,31 @@ const CallManagementPage: React.FC = () => {
         </div>
       )}
 
+      {/* ── 다크 네이비 헤더 (현대CM 스타일과 동일) ── */}
+      <div className="call-mgmt-app-header bg-[#0a192f] text-white px-4 py-3 flex items-center justify-between gap-3 sticky top-0 z-30">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate("/work/secretary")}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-semibold hover:bg-white/20 transition-all"
+          >
+            ← AI비서
+          </button>
+          <span className="text-sm font-semibold text-white">📋 상담관리</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            title="설정 (준비 중)"
+            disabled
+            className="inline-flex items-center justify-center w-8 h-8 rounded-xl border border-white/20 bg-white/10 text-white/50 cursor-not-allowed"
+          >
+            <Settings size={15} />
+          </button>
+        </div>
+      </div>
+
       {/* ── 탭 헤더 (경량화) ── */}
       <div className="border-b border-gray-200 bg-white">
-        <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-3 flex flex-wrap gap-2">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-3 flex flex-wrap items-center gap-2">
           <button
             type="button"
             className={`${tabBase} ${tab === "new" ? tabActive : tabInactive}`}

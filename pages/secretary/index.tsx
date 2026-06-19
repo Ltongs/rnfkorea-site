@@ -113,7 +113,7 @@ const md2html = (s:string) => s.replace(/\*\*(.*?)\*\*/g,"<strong>$1</strong>").
 // ─── 스타일 ───────────────────────────────────────────────────────────────────
 const TB  = "px-3 py-1.5 rounded-xl text-sm font-semibold border transition-all";
 const TA  = "bg-[#0f172a] text-white border-[#0f172a]";
-const TI  = "bg-white text-gray-500 border-gray-200 hover:border-orange-300 hover:text-orange-600";
+const TI  = "bg-gray-100 text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-700 hover:bg-gray-200";
 const CARD = "border border-gray-200 rounded-2xl bg-white shadow-sm";
 const LBL = "block text-xs font-medium text-gray-500 mb-1";
 const CTRL = "w-full h-10 rounded-xl border border-gray-200 px-3 text-sm text-[#0f172a] bg-white focus:outline-none focus:border-orange-400 transition-all";
@@ -718,31 +718,16 @@ function MiniCalendar({
 
 // ─── 메인 컴포넌트 ────────────────────────────────────────────────────────────
 const SecretaryPage:React.FC = () => {
-  const {user,isAdmin,isSubAdmin,isInsAI,logout} = useAuth() as any;
+  const {user,isAdmin,isSubAdmin,logout} = useAuth() as any;
   const navigate = useNavigate();
   // ─── PWA standalone 모드 감지 ─────────────────────────────────────────────
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches
     || (window.navigator as any).standalone === true;
 
-  if(!user||(!isAdmin&&!isSubAdmin&&!isInsAI))return <Navigate to="/" replace/>;
+  if(!user||(!isAdmin&&!isSubAdmin))return <Navigate to="/" replace/>;
 
-  // isInsAI 계정은 나르미 탭만 접근 가능
-  const allowedTabs: TabKey[] = isInsAI
-    ? ["narumi"]
-    : ["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo"];
-
-  const [tab,setTab] = useState<TabKey>(()=>{
-    try{
-      const saved = sessionStorage.getItem("sec_tab") as TabKey;
-      if(isInsAI) return "narumi";
-      return saved || "schedule";
-    }catch{ return isInsAI ? "narumi" : "schedule"; }
-  });
-  const setTabAndSave = (t:TabKey)=>{
-    if(isInsAI && t !== "narumi") return; // isInsAI는 탭 변경 불가
-    try{sessionStorage.setItem("sec_tab",t);}catch{}
-    setTab(t);
-  };
+  const [tab,setTab] = useState<TabKey>(()=>{ try{return (sessionStorage.getItem("sec_tab") as TabKey)||"schedule";}catch{return "schedule";} });
+  const setTabAndSave = (t:TabKey)=>{ try{sessionStorage.setItem("sec_tab",t);}catch{} setTab(t); };
 
   // 일정
   const [schedules,setSchedules]     = useState<Schedule[]>([]);
@@ -810,6 +795,7 @@ const SecretaryPage:React.FC = () => {
   const setOrdFilterAndSave = (f:string)=>{ try{sessionStorage.setItem("sec_ord_filter",f);}catch{} setOrdFilter(f); };
   const [showOrderForm,setShowOrderForm] = useState(false);
   const [expandedOrder,setExpandedOrder] = useState<number|null>(null);
+  const [orderSearch,setOrderSearch] = useState("");
   const [syncConsult,setSyncConsult] = useState(true);
   const [newOrder,setNewOrder] = useState({customer_name:"",phone:"",channel:"kakao" as Order["channel"],work_type:"",summary:"",detail:"",telecom_provider:"",region:""});
 
@@ -1129,14 +1115,14 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
   }
 
   // 일정 저장 후 구글 캘린더에도 동기화
-  async function syncToGcal(schedule:{id:number;title:string;description:string|null;schedule_date:string;start_time:string|null;end_time:string|null;location:string|null;table?:string}){
+  async function syncToGcal(schedule:{id:number;title:string;description:string|null;schedule_date:string;start_time:string|null;end_time:string|null;location:string|null}){
     if(!user||!gcalConnected) return;
     try{
       const {data:{session}} = await supabase.auth.getSession();
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-sync`,{
         method:"POST",
         headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token??""}`},
-        body:JSON.stringify({action:"create",user_id:user.id,event:{...schedule,schedule_id:schedule.id,table:schedule.table??"secretary_schedules"}}),
+        body:JSON.stringify({action:"create",user_id:user.id,event:{...schedule,schedule_id:schedule.id}}),
       });
       const d = await res.json();
       // 응답에서 생성된 이벤트를 즉시 gcalEvents 상태에 추가
@@ -1200,7 +1186,6 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
             description: t.description??null,
             schedule_date: t.due_date,
             start_time: null, end_time: null, location: null,
-            table: "secretary_todos",
           });
           ok++;
           await new Promise(r=>setTimeout(r,200));
@@ -1357,7 +1342,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       (ordFilter==="done"
         ? supabase.from("narumi_tasks").select("id,customer_name,status,vehicle_model,vehicle_no,created_at").in("status",["completed","registered"])
         : ordFilter==="active"
-        ? supabase.from("narumi_tasks").select("id,customer_name,status,vehicle_model,vehicle_no,created_at").filter("status","not.in","(completed,registered)")
+        ? supabase.from("narumi_tasks").select("id,customer_name,status,vehicle_model,vehicle_no,created_at").not("status","in","(completed,registered)")
         : supabase.from("narumi_tasks").select("id,customer_name,status,vehicle_model,vehicle_no,created_at")
       ).order("created_at",{ascending:false}).limit(100),
     ]);
@@ -2202,7 +2187,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       )}
 
       {schedModal&&ReactDOM.createPortal(
-        <div className="fixed inset-0 z-[99990] flex items-end sm:items-center justify-center bg-black/40 px-0 sm:px-4" onClick={()=>setSchedModal(null)}>
+        <div className="fixed inset-0 z-[99990] flex items-end sm:items-center justify-center bg-black/60 px-0 sm:px-4" style={{backdropFilter:"blur(2px)"}} onClick={()=>setSchedModal(null)}>
           <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full max-w-md sm:max-w-md max-h-[90vh] flex flex-col" onClick={e=>e.stopPropagation()}>
             {/* 헤더 */}
             <div className="flex items-center justify-between px-5 pt-5 pb-3 flex-shrink-0">
@@ -2301,17 +2286,23 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
             <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-600 font-medium">📦 {stats.newOrders}</span>
             {stats.newConsult>0&&<span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 font-medium">💬 오늘상담 {stats.newConsult}</span>}
           </div>
-          {/* 탭 - 항상 보이도록 */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {allowedTabs.map(t=>(
-              <button key={t} className={`${TB} ${tab===t?TA:TI}`} onClick={()=>setTabAndSave(t)}>
-                {t==="email"
-                  ? <span className="flex items-center gap-1">📧 이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
-                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",hyundaicm:"🏗 현대CM",finance:"🏦 금융상담",narumi:"🚛 나르미",jinheung:"🔧 진흥주문",memo:"📝 메모"}[t as string]
-                }
-              </button>
-            ))}
-            {!isInsAI && <button className={`${TB} ${TI}`} onClick={()=>navigate("/work/finance-hub")}>💵 매출/매입</button>}
+          {/* 탭 - 가로 스크롤 한 줄 */}
+          <style>{`.hcm-tab-scroll::-webkit-scrollbar{display:none;}`}</style>
+          <div className="-mx-4 px-4 md:mx-0 md:px-0">
+            <div
+              className="hcm-tab-scroll flex items-center gap-1.5 flex-nowrap overflow-x-auto pb-1"
+              style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}
+            >
+              {(["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo"] as TabKey[]).map(t=>(
+                <button key={t} className={`${TB} ${tab===t?TA:TI} shrink-0 whitespace-nowrap`} onClick={()=>setTabAndSave(t)}>
+                  {t==="email"
+                    ? <span className="flex items-center gap-1">이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
+                    : {chat:"채팅",schedule:"일정",status:"업무현황",orders:"주문·상담",hyundaicm:"현대CM",finance:"금융상담",narumi:"나르미",jinheung:"진흥주문",memo:"메모"}[t as string]
+                  }
+                </button>
+              ))}
+              <button className={`${TB} ${TI} shrink-0 whitespace-nowrap`} onClick={()=>navigate("/work/finance-hub")}>매출/매입</button>
+            </div>
           </div>
 
         </div>
@@ -2598,25 +2589,48 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                   </div>
                 </div>
               )}
+              {/* 고객명 검색창 — 진행중·상담관리·주문내역 통합 필터 */}
+              <div className={`${CARD} p-3`}>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-400 flex-shrink-0">🔍</span>
+                  <input
+                    type="text"
+                    value={orderSearch}
+                    onChange={e=>setOrderSearch(e.target.value)}
+                    placeholder="고객 이름으로 검색..."
+                    className="flex-1 text-sm text-[#0f172a] bg-transparent outline-none placeholder-gray-300"
+                  />
+                  {orderSearch&&(
+                    <button onClick={()=>setOrderSearch("")} className="text-gray-300 hover:text-gray-500 flex-shrink-0 text-xl leading-none">×</button>
+                  )}
+                </div>
+                {orderSearch&&(
+                  <p className="text-xs text-orange-500 mt-1.5 pl-6">
+                    &quot;{orderSearch}&quot; 검색 결과 — 상담 {recentC.filter(c=>c.customer_name.includes(orderSearch)).length}건 · 주문 {orderViews.filter(o=>o.customer_name.includes(orderSearch)).length}건
+                  </p>
+                )}
+              </div>
               {/* 최근 상담 */}
               <div className={`${CARD} p-4`}>
                 <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm font-semibold text-[#0f172a]">💬 최근 상담</p>
+                  <p className="text-sm font-semibold text-[#0f172a]">💬 최근 상담{orderSearch&&<span className="ml-1 text-xs text-orange-500 font-normal">— &quot;{orderSearch}&quot; 필터 적용중</span>}</p>
                   <div className="flex gap-2">
                     <button className={BTG} onClick={()=>void loadConsults()}>새로고침</button>
                     <button className={BTG} onClick={()=>navigate("/work/call-management")}>전체 보기 →</button>
                   </div>
                 </div>
                 {cLoading?<p className="text-xs text-gray-400">불러오는 중...</p>
-                  :recentC.length===0?<p className="text-sm text-gray-400 text-center py-4">최근 상담이 없습니다</p>
-                  :(
+                  :(()=>{
+                    const filteredC = orderSearch ? recentC.filter(c=>c.customer_name.includes(orderSearch)) : recentC;
+                    if(filteredC.length===0) return <p className="text-sm text-gray-400 text-center py-4">{orderSearch?`"${orderSearch}"에 해당하는 상담이 없습니다`:"최근 상담이 없습니다"}</p>;
+                    return (
                     <div className="overflow-x-auto">
                       <table className="min-w-full text-sm">
                         <thead><tr className="border-b border-gray-100">
                           {["고객명","업무","요약","상태","등록일",""].map(h=><th key={h} className="text-left py-1.5 px-2 text-xs font-medium text-gray-400">{h}</th>)}
                         </tr></thead>
                         <tbody>
-                          {recentC.map(c=>{
+                          {filteredC.map(c=>{
                             // 상담관리 COMMON_STAGES와 동일한 기준
                             const COMMON_STAGES = [
                               {value:"contract",       label:"계약"},
@@ -2695,7 +2709,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                         </tbody>
                       </table>
                     </div>
-                  )
+                    );
+                  })()
                 }
               </div>
               {/* 주문내역 */}
@@ -2711,16 +2726,18 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                   </div>
                 </div>
                 {/* AI비서 채팅으로 입력 안내 */}
+                {!orderSearch&&(
                 <div className="mb-2 p-2.5 rounded-lg bg-blue-50 border border-blue-100 text-xs text-blue-600">
                   💡 주문 등록은 채팅탭에서 &quot;홍길동 타이어 18*7-8 두산 3톤 후륜 2개 주문&quot; 형태로 입력하시면 자동 저장됩니다
                 </div>
+                )}
                 {ordViewLoading
                   ? <p className="text-sm text-gray-400 p-4">불러오는 중...</p>
-                  : orderViews.length===0
-                  ? <div className={`${CARD} p-6 text-center text-gray-400 text-sm`}>주문 내역이 없습니다</div>
+                  : orderViews.filter(o=>!orderSearch||o.customer_name.includes(orderSearch)).length===0
+                  ? <div className={`${CARD} p-6 text-center text-gray-400 text-sm`}>{orderSearch?`"${orderSearch}"에 해당하는 주문이 없습니다`:"주문 내역이 없습니다"}</div>
                   : (
                     <div className="space-y-2">
-                      {orderViews.map(o=>(
+                      {orderViews.filter(o=>!orderSearch||o.customer_name.includes(orderSearch)).map(o=>(
                         <div key={o.id} className={`${CARD} p-3.5 cursor-pointer hover:shadow-md transition-all`}
                           onClick={()=>navigate(`/work/call-management?id=${o.id}`)}>
                           <div className="flex items-start gap-2.5">
@@ -3486,7 +3503,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
             <div className="flex flex-wrap gap-1.5 mb-2">
               {["오늘 현황 요약","긴급 업무","오늘 사후관리","방금 통화 저장","미팅 메모 정리"].map(c=>(
                 <button key={c} onClick={()=>quickChat(c.includes("저장")||c.includes("정리")?c+". ":c+" 알려줘")}
-                  className="px-2.5 py-1 rounded-full border border-gray-200 text-xs text-gray-500 hover:border-orange-300 hover:text-orange-500 bg-white transition-all">
+                  className="px-2.5 py-1 rounded-full border border-gray-200 text-xs text-gray-500 hover:border-gray-400 hover:text-gray-700 hover:bg-gray-100 bg-gray-50 transition-all">
                   {c}
                 </button>
               ))}
@@ -3514,7 +3531,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       </div>
 
       {jAmtModal&&(
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 px-4" style={{backdropFilter:"blur(2px)"}}>
           <div className="w-full max-w-sm border border-gray-200 rounded-2xl bg-white shadow-2xl p-6">
             <h2 className="text-base font-bold text-[#0f172a] mb-1">금액 입력</h2>
             <p className="text-sm text-gray-500 mb-4">{jAmtModal.customer_name_raw} — {jAmtModal.product_spec}</p>
