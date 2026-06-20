@@ -10,10 +10,13 @@ const CORS = {
 const CLIENT_ID     = Deno.env.get("GOOGLE_CLIENT_ID")!;
 const CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
 
-async function getValidToken(db: ReturnType<typeof createClient>, userId: string) {
+// deno-lint-ignore no-explicit-any
+async function getValidToken(db: any, userId: string) {
   const { data } = await db.from("google_calendar_tokens")
     .select("access_token,refresh_token,expires_at")
-    .eq("user_id", userId).single();
+    .eq("user_id", userId).single() as {
+      data: { access_token: string; refresh_token: string; expires_at: string } | null;
+    };
 
   if (!data) throw new Error("구글 캘린더 미연동");
 
@@ -120,6 +123,99 @@ serve(async (req) => {
     if (action === "delete" && event_id) {
       await fetch(`${baseUrl}/${event_id}`, { method: "DELETE", headers });
       return new Response(JSON.stringify({ ok: true }), {
+        headers: { ...CORS, "Content-Type": "application/json" },
+      });
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // Google Tasks API (할일 목록) — 완료 체크 시 목록에서 사라지도록
+    // ════════════════════════════════════════════════════════════
+    const TASKS_BASE = "https://tasks.googleapis.com/tasks/v1";
+    const TASKLIST_ID = "@default"; // 기본 할 일 목록 사용
+
+    // ── 할일 생성
+    if (action === "create_task") {
+      const body: Record<string, unknown> = {
+        title: event.title,
+        notes: event.description ?? "",
+      };
+      // due는 RFC3339 (날짜만 있어도 무방, 시간은 00:00:00Z로 처리됨)
+      if (event.schedule_date) {
+        body.due = `${event.schedule_date}T00:00:00.000Z`;
+      }
+      const res = await fetch(`${TASKS_BASE}/lists/${TASKLIST_ID}/tasks`, {
+        method: "POST", headers, body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.error) {
+        return new Response(JSON.stringify({ error: data.error.message ?? "할일 생성 실패", raw: data }), {
+          status: 500, headers: { ...CORS, "Content-Type": "application/json" },
+        });
+      }
+
+      // 출처 테이블에 gcal_task_id 저장 (source_table: secretary_schedules / secretary_todos / consultation_cases / hyundaicm_tasks)
+      if (event.source_table && event.source_id && data.id) {
+        await db.from(event.source_table).update({ gcal_task_id: data.id }).eq("id", event.source_id);
+      }
+
+      return new Response(JSON.stringify({ ok: true, task: data }), {
+        headers: { ...CORS, "Content-Type": "application/json" },
+      });
+    }
+
+    // ── 할일 완료 처리 (목록에서 사라지도록 status=completed)
+    if (action === "complete_task" && event_id) {
+      const res = await fetch(`${TASKS_BASE}/lists/${TASKLIST_ID}/tasks/${event_id}`, {
+        method: "PATCH", headers,
+        body: JSON.stringify({ status: "completed" }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        return new Response(JSON.stringify({ error: data.error.message ?? "할일 완료 처리 실패", raw: data }), {
+          status: 500, headers: { ...CORS, "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ ok: true, task: data }), {
+        headers: { ...CORS, "Content-Type": "application/json" },
+      });
+    }
+
+    // ── 할일 마감일 수정 (다음 일정으로 변경)
+    if (action === "update_task" && event_id) {
+      const body: Record<string, unknown> = {};
+      if (event?.title) body.title = event.title;
+      if (event?.description != null) body.notes = event.description;
+      if (event?.schedule_date) body.due = `${event.schedule_date}T00:00:00.000Z`;
+      const res = await fetch(`${TASKS_BASE}/lists/${TASKLIST_ID}/tasks/${event_id}`, {
+        method: "PATCH", headers, body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.error) {
+        return new Response(JSON.stringify({ error: data.error.message ?? "할일 수정 실패", raw: data }), {
+          status: 500, headers: { ...CORS, "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ ok: true, task: data }), {
+        headers: { ...CORS, "Content-Type": "application/json" },
+      });
+    }
+
+    // ── 할일 삭제
+    if (action === "delete_task" && event_id) {
+      await fetch(`${TASKS_BASE}/lists/${TASKLIST_ID}/tasks/${event_id}`, { method: "DELETE", headers });
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { ...CORS, "Content-Type": "application/json" },
+      });
+    }
+
+    // ── 할일 목록 조회 (미완료만, 화면 표시용)
+    if (action === "list_tasks") {
+      const res = await fetch(
+        `${TASKS_BASE}/lists/${TASKLIST_ID}/tasks?showCompleted=false&showHidden=false&maxResults=100`,
+        { headers }
+      );
+      const data = await res.json();
+      return new Response(JSON.stringify({ tasks: data.items ?? [] }), {
         headers: { ...CORS, "Content-Type": "application/json" },
       });
     }

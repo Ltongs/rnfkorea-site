@@ -559,6 +559,78 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     }
   };
 
+  // ─── 구글 캘린더 자동 동기화 (신규 접수 시) ─────────────────
+  const syncHcmToGcal = async (task: {
+    id: number | string;
+    customer_name: string;
+    company_name: string | null;
+    equipment_ton: string | null;
+    finance_company: string | null;
+    sales_rep: string;
+  }) => {
+    if (!user) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const title = `${task.company_name ?? task.customer_name} (${task.equipment_ton ?? "현대CM"}) 접수`;
+      const description = [
+        task.equipment_ton ? `장비: ${task.equipment_ton}` : null,
+        task.finance_company ? `금융사: ${task.finance_company}` : null,
+        task.sales_rep ? `영업: ${task.sales_rep}` : null,
+      ].filter(Boolean).join("\n");
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-sync`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session?.access_token ?? ""}`,
+          },
+          body: JSON.stringify({
+            action: "create_task",
+            user_id: user.id,
+            event: {
+              title,
+              description,
+              schedule_date: todayIso,
+              source_table: "hyundaicm_tasks",
+              source_id: task.id,
+            },
+          }),
+        }
+      );
+      const d = await res.json();
+      if (d?.task?.id) {
+        await supabase.from("hyundaicm_tasks").update({ gcal_task_id: d.task.id }).eq("id", task.id);
+      }
+    } catch (e) {
+      console.warn("[hcm gcal task sync] 전송 실패:", e);
+    }
+  };
+
+  // 확정/거절 등 종결 처리 시 구글 할일도 완료 처리 (목록에서 사라짐)
+  const completeHcmGcalTask = async (taskId: number | string) => {
+    if (!user) return;
+    try {
+      const { data: row } = await supabase.from("hyundaicm_tasks").select("gcal_task_id").eq("id", taskId).maybeSingle();
+      if (!row?.gcal_task_id) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-sync`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session?.access_token ?? ""}`,
+          },
+          body: JSON.stringify({ action: "complete_task", user_id: user.id, event_id: row.gcal_task_id }),
+        }
+      );
+    } catch (e) {
+      console.warn("[hcm gcal task complete] 전송 실패:", e);
+    }
+  };
+
   // ─── 차량등록증 업로드 목록 조회 ────────────────────────────
   const fetchVehicleRegFiles = async (rowIds: (string | number)[]) => {
     if (rowIds.length === 0) return;
@@ -939,6 +1011,18 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         installmentPrincipal: payload.installment_principal,
       });
 
+      // 구글 캘린더 자동 동기화 (접수일 = 일정)
+      if (inserted) {
+        void syncHcmToGcal({
+          id: inserted.id,
+          customer_name: payload.customer_name,
+          company_name: payload.company_name,
+          equipment_ton: payload.equipment_ton,
+          finance_company: payload.finance_company,
+          sales_rep: payload.sales_rep,
+        });
+      }
+
       onReset(); setShowCreatePanel(false); await fetchRows();
     } catch (e: any) {
       setErr(e?.message || "등록 실패");
@@ -985,6 +1069,10 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       setRows((prev) => prev.map((r) => String(r.id) === String(row.id) ? { ...r, status: row.status } : r));
       alert(error.message);
     } else {
+      // 거절 시 구글 할일도 완료 처리 (목록에서 사라짐)
+      if (next === "거절") {
+        void completeHcmGcalTask(row.id);
+      }
       // 카카오 알림 (비동기, 실패해도 업무 영향 없음)
       const kakaoPayload: Record<string, unknown> = {
         type:                 "status_change",
@@ -1050,6 +1138,9 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       const { error } = await supabase.from("hyundaicm_tasks").update(patch).eq("id", confirmModal.id as any);
       if (error) throw error;
       setRows((prev) => prev.map((r) => String(r.id) === String(confirmModal.id) ? { ...r, ...patch } : r));
+
+      // 확정 시 구글 할일도 완료 처리 (목록에서 사라짐)
+      void completeHcmGcalTask(confirmModal.id);
 
       // 카카오 알림
       sendKakaoNotify({
@@ -1355,8 +1446,20 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         const paths = DOC_FIELDS.map((f) => target[f.key] as string | null).filter(Boolean) as string[];
         if (paths.length > 0) await supabase.storage.from("hcm_docs").remove(paths);
       }
+      // 삭제 전 gcal_task_id 조회 → 구글 할일도 삭제
+      const { data: gcalRow } = await supabase.from("hyundaicm_tasks").select("gcal_task_id").eq("id", rowId as any).maybeSingle();
       const { error } = await supabase.from("hyundaicm_tasks").delete().eq("id", rowId as any);
       if (error) throw error;
+      if (gcalRow?.gcal_task_id && user) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-sync`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token ?? ""}` },
+            body: JSON.stringify({ action: "delete_task", user_id: user.id, event_id: gcalRow.gcal_task_id }),
+          });
+        } catch (e) { console.warn("[hcm gcal task delete] 실패:", e); }
+      }
       setRows((prev) => prev.filter((r) => String(r.id) !== String(rowId)));
       setDeleteConfirmId(null);
     } catch (e: any) { alert(`삭제 실패: ${e?.message}`); }

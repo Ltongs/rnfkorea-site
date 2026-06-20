@@ -1389,7 +1389,11 @@ const AppRoutes = () => {
         </script>
       </Helmet>
 
-      <PageHeader />
+      {!useLocation().pathname.startsWith("/work/secretary")
+        && !useLocation().pathname.startsWith("/work/call-management")
+        && !useLocation().pathname.startsWith("/hyundaicm")
+        && !useLocation().pathname.startsWith("/narumi")
+        && <PageHeader />}
 
       {/* ✅ <main> 에 id와 role 명시 → 스크린리더 + 검색엔진 본문 인식 */}
       <main id="main-content" role="main" className="w-full">

@@ -786,6 +786,20 @@ const SecretaryPage:React.FC = () => {
   const [jAmtTo,setJAmtTo] = useState("");
   const [jAmtFrom,setJAmtFrom] = useState("");
   const [jSaving,setJSaving] = useState(false);
+  // 계산서발행 시 이미지 업로드 강제 모달
+  const [jInvoiceModal,setJInvoiceModal] = useState<any|null>(null);
+  const [jInvoiceFile,setJInvoiceFile] = useState<File|null>(null);
+  const [jInvoiceUploading,setJInvoiceUploading] = useState(false);
+  // 주문상담 탭 — 타이어/배터리 계산서발행 시 이미지 업로드 강제 모달
+  const [orderInvoiceModal,setOrderInvoiceModal] = useState<OrderView|null>(null);
+  const [orderInvoiceFile,setOrderInvoiceFile] = useState<File|null>(null);
+  const [orderInvoiceUploading,setOrderInvoiceUploading] = useState(false);
+  // 여러 건 묶어서 계산서 발행 (합산 청구)
+  const [orderSelectMode,setOrderSelectMode] = useState(false);
+  const [orderSelectedIds,setOrderSelectedIds] = useState<Set<number>>(new Set());
+  const [orderBulkInvoiceModal,setOrderBulkInvoiceModal] = useState<OrderView[]|null>(null);
+  const [orderBulkInvoiceFile,setOrderBulkInvoiceFile] = useState<File|null>(null);
+  const [orderBulkInvoiceUploading,setOrderBulkInvoiceUploading] = useState(false);
 
   // 주문
   const [orders,setOrders]           = useState<Order[]>([]);
@@ -1117,7 +1131,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
   }
 
   // 일정 저장 후 구글 캘린더에도 동기화
-  async function syncToGcal(schedule:{id:number;title:string;description:string|null;schedule_date:string;start_time:string|null;end_time:string|null;location:string|null}){
+  async function syncToGcal(schedule:{id:number;title:string;description:string|null;schedule_date:string;start_time:string|null;end_time:string|null;location:string|null}, isTodo=false){
     if(!user||!gcalConnected) return;
     try{
       const {data:{session}} = await supabase.auth.getSession();
@@ -1136,6 +1150,15 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
           color: "#4285f4",
         };
         setGcalEvents(prev=>[...prev, newEvt]);
+        // 중복 동기화 방지: 생성된 구글 이벤트 ID를 원본 레코드에 저장
+        if(d.event.id){
+          if(isTodo){
+            await supabase.from("secretary_todos").update({ gcal_event_id: d.event.id }).eq("id", schedule.id);
+          } else {
+            await supabase.from("secretary_schedules").update({ gcal_event_id: d.event.id }).eq("id", schedule.id);
+            setSchedules(prev=>prev.map(s=>s.id===schedule.id?{...s, gcal_event_id: d.event.id} as any:s));
+          }
+        }
         void loadCalData(calViewYear, calViewMonth);
       } else {
         await new Promise(r=>setTimeout(r,1500));
@@ -1171,10 +1194,11 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
         .gte("schedule_date", today)
         .is("gcal_event_id", null)
         .eq("is_done", false);
-      // 2. 오늘 이후 할 일 중 due_date 있는 것
+      // 2. 오늘 이후 할 일 중 due_date 있고, 아직 구글캘린더 미동기화인 것
       const {data:todos} = await supabase.from("secretary_todos")
         .select("id,title,description,due_date")
         .gte("due_date", today)
+        .is("gcal_event_id", null)
         .eq("is_done", false);
 
       const schedList = scheds ?? [];
@@ -1202,7 +1226,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
             description: t.description??null,
             schedule_date: t.due_date,
             start_time: null, end_time: null, location: null,
-          });
+          }, true);
           ok++;
           await new Promise(r=>setTimeout(r,200));
         }catch{ fail++; }
@@ -1812,7 +1836,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       // due_date 있으면 구글 캘린더 등록
       if(gcalConnected && newTodo.due_date){
         const {data:td} = await supabase.from("secretary_todos").select("id,title,due_date").eq("title",newTodo.title).order("created_at",{ascending:false}).limit(1).maybeSingle();
-        if(td) void syncToGcal({id:td.id,title:`✅ ${td.title}`,description:newTodo.description||null,schedule_date:td.due_date,start_time:null,end_time:null,location:null});
+        if(td) void syncToGcal({id:td.id,title:`✅ ${td.title}`,description:newTodo.description||null,schedule_date:td.due_date,start_time:null,end_time:null,location:null}, true);
       }
     }
   }
@@ -2029,7 +2053,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
             const todoItems = saved.filter((s:any)=>s.type==="todo" && s.id);
             for(const t of todoItems){
               const {data:td} = await supabase.from("secretary_todos").select("id,title,due_date,description").eq("id",t.id).maybeSingle();
-              if(td?.due_date) void syncToGcal({id:td.id,title:`✅ ${td.title}`,description:td.description??null,schedule_date:td.due_date,start_time:null,end_time:null,location:null});
+              if(td?.due_date) void syncToGcal({id:td.id,title:`✅ ${td.title}`,description:td.description??null,schedule_date:td.due_date,start_time:null,end_time:null,location:null}, true);
             }
           }
         }
@@ -2319,7 +2343,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       )}
 
       {/* 헤더 - PageHeader(64px) 바로 아래 sticky */}
-      <div ref={headerBarRef} className={`bg-white border-b border-gray-200 flex-shrink-0 fixed left-0 right-0 z-[200] shadow-sm ${isStandalone ? "top-0" : "top-16"}`}>
+      <div ref={headerBarRef} className="bg-white border-b border-gray-200 flex-shrink-0 sticky top-0 left-0 right-0 z-[200] shadow-sm">
         <div className="max-w-6xl mx-auto px-6 pt-3 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-[#0f172a] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">AI</div>
@@ -2386,9 +2410,6 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
         </div>
       </div>
 
-
-      {/* fixed 헤더 spacer — 동적 높이 */}
-      <div style={{height: headerBarHeight}} className="flex-shrink-0"/>
       {/* 바디 */}
       <div className="flex max-w-6xl w-full mx-auto px-6 py-4 gap-5" style={{minHeight:600}}>
 
@@ -2799,26 +2820,67 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                     {(["active","all","done"] as const).map(f=>(
                       <button key={f} className={`${TB} text-xs py-1 px-2.5 ${ordFilter===f?TA:TI}`} onClick={()=>setOrdFilterAndSave(f)}>{{active:"진행중",all:"전체",done:"완료"}[f]}</button>
                     ))}
+                    <button
+                      className={`${TB} text-xs py-1 px-2.5 ${orderSelectMode?TA:TI}`}
+                      onClick={()=>{ setOrderSelectMode(p=>!p); setOrderSelectedIds(new Set()); }}
+                    >{orderSelectMode?"묶음발행 취소":"📑 묶음발행"}</button>
                     <button className={BTG} onClick={()=>void loadOrderViews()}>새로고침</button>
                     <button className={BTP} onClick={()=>navigate("/work/call-management")}>상담관리 →</button>
                   </div>
                 </div>
+                {/* 묶음발행 모드 안내 + 실행 버튼 */}
+                {orderSelectMode&&(
+                  <div className="mb-2 p-2.5 rounded-lg bg-orange-50 border border-orange-100 text-xs text-orange-700 flex items-center justify-between flex-wrap gap-2">
+                    <span>타이어/배터리 건만 자동 필터링됩니다. 같은 거래처 여러 건을 체크해 계산서 1장으로 묶어 발행하세요. ({orderSelectedIds.size}건 선택됨)</span>
+                    <button
+                      disabled={orderSelectedIds.size===0}
+                      onClick={()=>{
+                        const selected = orderViews.filter(o=>orderSelectedIds.has(o.id));
+                        setOrderBulkInvoiceModal(selected);
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-[#0f172a] text-white text-xs font-semibold disabled:opacity-30"
+                    >선택건 묶음 계산서발행 →</button>
+                  </div>
+                )}
                 {/* AI비서 채팅으로 입력 안내 */}
                 {!orderSearch&&(
                 <div className="mb-2 p-2.5 rounded-lg bg-blue-50 border border-blue-100 text-xs text-blue-600">
                   💡 주문 등록은 채팅탭에서 &quot;홍길동 타이어 18*7-8 두산 3톤 후륜 2개 주문&quot; 형태로 입력하시면 자동 저장됩니다
                 </div>
                 )}
-                {ordViewLoading
-                  ? <p className="text-sm text-gray-400 p-4">불러오는 중...</p>
-                  : orderViews.filter(o=>!orderSearch||o.customer_name.includes(orderSearch)).length===0
-                  ? <div className={`${CARD} p-6 text-center text-gray-400 text-sm`}>{orderSearch?`"${orderSearch}"에 해당하는 주문이 없습니다`:"주문 내역이 없습니다"}</div>
-                  : (
+                {(() => {
+                  const visibleOrders = orderViews
+                    .filter(o=>!orderSearch||o.customer_name.includes(orderSearch))
+                    .filter(o=>!orderSelectMode||["tire","tire_sales","battery","battery_sales"].includes(o.work_type));
+                  if(ordViewLoading) return <p className="text-sm text-gray-400 p-4">불러오는 중...</p>;
+                  if(visibleOrders.length===0) return (
+                    <div className={`${CARD} p-6 text-center text-gray-400 text-sm`}>
+                      {orderSelectMode
+                        ? "타이어/배터리 건이 없습니다"
+                        : orderSearch?`"${orderSearch}"에 해당하는 주문이 없습니다`:"주문 내역이 없습니다"}
+                    </div>
+                  );
+                  return (
                     <div className="space-y-2">
-                      {orderViews.filter(o=>!orderSearch||o.customer_name.includes(orderSearch)).map(o=>(
-                        <div key={o.id} className={`${CARD} p-3.5 cursor-pointer hover:shadow-md transition-all`}
-                          onClick={()=>navigate(`/work/call-management?id=${o.id}`)}>
+                      {visibleOrders.map(o=>(
+                        <div key={o.id} className={`${CARD} p-3.5 ${orderSelectMode?"":"cursor-pointer hover:shadow-md"} transition-all`}
+                          onClick={()=>{ if(!orderSelectMode) navigate(`/work/call-management?id=${o.id}`); }}>
                           <div className="flex items-start gap-2.5">
+                            {orderSelectMode && ["tire","tire_sales","battery","battery_sales"].includes(o.work_type) && (
+                              <input
+                                type="checkbox"
+                                className="mt-1 w-4 h-4 accent-[#0f172a] shrink-0"
+                                checked={orderSelectedIds.has(o.id)}
+                                onClick={e=>e.stopPropagation()}
+                                onChange={(e)=>{
+                                  setOrderSelectedIds(prev=>{
+                                    const next = new Set(prev);
+                                    if(e.target.checked) next.add(o.id); else next.delete(o.id);
+                                    return next;
+                                  });
+                                }}
+                              />
+                            )}
                             <div className="flex-1 min-w-0">
                               {/* 1행: 고객명 + 업무유형 */}
                               <div className="flex items-center gap-1.5 flex-wrap">
@@ -2853,6 +2915,32 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                             </div>
                             {/* 우측 버튼 */}
                             <div className="flex flex-col gap-1.5 flex-shrink-0" onClick={e=>e.stopPropagation()}>
+                              {/* 배터리/타이어 항목만 — 목록에서 직접 단계 변경 (묶음발행 모드에서는 숨김) */}
+                              {!orderSelectMode && ["tire","tire_sales","battery","battery_sales"].includes(o.work_type) && (
+                                <select
+                                  value={o.progress_stage ?? ""}
+                                  onChange={async(e)=>{
+                                    const nextStage = e.target.value;
+                                    if(!nextStage || nextStage === o.progress_stage) return;
+                                    if(nextStage === "invoiced"){
+                                      setOrderInvoiceModal(o);
+                                      return;
+                                    }
+                                    const table = ["tire","tire_sales"].includes(o.work_type) ? "consultation_tire_details" : "consultation_battery_details";
+                                    await supabase.from(table).update({ process_stage: nextStage }).eq("consultation_id", o.id);
+                                    void loadOrderViews();
+                                    showToast("단계가 변경되었습니다");
+                                  }}
+                                  className="h-8 rounded-xl border border-gray-200 px-2 text-xs font-medium text-gray-600 focus:outline-none focus:border-orange-400 bg-white"
+                                >
+                                  <option value="" disabled>단계 선택</option>
+                                  <option value="contract">계약</option>
+                                  <option value="delivery">납품</option>
+                                  <option value="completed_order">완결</option>
+                                  <option value="invoiced">계산서발행</option>
+                                  <option value="cancelled">취소</option>
+                                </select>
+                              )}
                               <button className={BTG} onClick={()=>setExpandedOrder(expandedOrder===o.id?null:o.id)}>
                                 {expandedOrder===o.id?"접기":"펼침"}
                               </button>
@@ -2862,8 +2950,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                         </div>
                       ))}
                     </div>
-                  )
-                }
+                  );
+                })()}
               </div>
             </div>
           )}
@@ -3199,8 +3287,36 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                                 )}
                               </div>
                               <div className="flex flex-col gap-1 shrink-0">
+                                {/* 단계 직접 선택 드롭다운 */}
+                                <select
+                                  value={o.status}
+                                  onChange={async(e)=>{
+                                    const nextStatus = e.target.value;
+                                    if(nextStatus === o.status) return;
+                                    if(nextStatus === "invoiced"){
+                                      // 계산서발행 선택 시: 이미지 업로드 강제 모달
+                                      setJInvoiceModal(o);
+                                      return;
+                                    }
+                                    const patch:any={status:nextStatus};
+                                    if(DFLD[nextStatus]) patch[DFLD[nextStatus]]=new Date().toISOString();
+                                    await supabase.from("tb_orders").update(patch).eq("id",o.id);
+                                    try{await fetch("https://nfwtsptqloefsbpjvdyu.supabase.co/functions/v1/kakao-order-webhook",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({event:"status_change",orderId:o.id,status:nextStatus,customerName:o.customer_name_raw??"",productSpec:o.product_spec??"",quantity:o.quantity?.toString()??"",amount:String(o.price_to_customer??o.price_from_jinheung??"")})});}catch(err){console.error(err);}
+                                    reload();
+                                  }}
+                                  onClick={e=>e.stopPropagation()}
+                                  className="h-8 rounded-xl border border-gray-200 px-2 text-xs font-medium text-gray-600 focus:outline-none focus:border-orange-400 bg-white"
+                                >
+                                  {Object.keys(SLBL).map(s=>(
+                                    <option key={s} value={s}>{SLBL[s]}</option>
+                                  ))}
+                                </select>
                                 {next&&(
                                   <button onClick={async()=>{
+                                    if(next === "invoiced"){
+                                      setJInvoiceModal(o);
+                                      return;
+                                    }
                                     const patch:any={status:next};
                                     if(DFLD[next]) patch[DFLD[next]]=new Date().toISOString();
                                     await supabase.from("tb_orders").update(patch).eq("id",o.id);
@@ -3639,6 +3755,270 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                 setJSaving(false); setJAmtModal(null);
                 supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60).then(({data})=>setJList(data??[]));
               }} className="px-4 py-2 rounded-xl bg-[#0f172a] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40">저장</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 진흥주문 — 계산서발행 시 이미지 업로드 강제 모달 */}
+      {jInvoiceModal&&(
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 px-4" style={{backdropFilter:"blur(2px)"}} onClick={()=>{if(!jInvoiceUploading){setJInvoiceModal(null);setJInvoiceFile(null);}}}>
+          <div className="w-full max-w-sm border border-gray-200 rounded-2xl bg-white shadow-2xl p-6" onClick={e=>e.stopPropagation()}>
+            <h2 className="text-base font-bold text-[#0f172a] mb-1">계산서발행 — 세금계산서 등록</h2>
+            <p className="text-sm text-gray-500 mb-4">{jInvoiceModal.customer_name_raw} — {jInvoiceModal.product_spec}</p>
+            <p className="text-xs text-orange-600 bg-orange-50 border border-orange-100 rounded-xl p-2.5 mb-3">
+              계산서발행 단계로 전환하려면 세금계산서 이미지를 먼저 등록해야 합니다. 등록 즉시 매출관리에도 자동 반영됩니다.
+            </p>
+            <input
+              type="file"
+              accept="image/*,.pdf"
+              onChange={e=>setJInvoiceFile(e.target.files?.[0]??null)}
+              className="w-full text-xs text-gray-600 file:mr-3 file:px-3 file:py-1.5 file:rounded-xl file:border-0 file:bg-orange-50 file:text-orange-600 file:text-xs file:font-semibold"
+            />
+            {jInvoiceFile&&<p className="mt-2 text-xs text-gray-500">선택됨: {jInvoiceFile.name}</p>}
+            <div className="mt-5 flex justify-end gap-2">
+              <button disabled={jInvoiceUploading} onClick={()=>{setJInvoiceModal(null);setJInvoiceFile(null);}} className={BTG}>취소</button>
+              <button
+                disabled={!jInvoiceFile||jInvoiceUploading}
+                onClick={async()=>{
+                  if(!jInvoiceFile) return;
+                  setJInvoiceUploading(true);
+                  try{
+                    const o = jInvoiceModal;
+                    const ext = jInvoiceFile.name.split(".").pop() || "jpg";
+                    const path = `jinheung/${o.id}_${Date.now()}.${ext}`;
+                    const { error: upErr } = await supabase.storage.from("tax-invoices").upload(path, jInvoiceFile, { upsert:true, contentType: jInvoiceFile.type || undefined });
+                    if(upErr){ alert("업로드 실패: "+upErr.message); setJInvoiceUploading(false); return; }
+
+                    // 1. tb_orders 상태 업데이트 (계산서발행 + 이미지 경로 저장)
+                    await supabase.from("tb_orders").update({
+                      status: "invoiced",
+                      invoiced_at: new Date().toISOString(),
+                      invoice_image_path: path,
+                    }).eq("id", o.id);
+
+                    // 2. 매출(sales_records) 자동 반영
+                    await supabase.from("sales_records").insert({
+                      sale_date: new Date().toISOString().split("T")[0],
+                      customer_name: o.customer_name_raw || "미확인",
+                      business_no: null,
+                      category: "타이어",
+                      trade_type: "내수",
+                      maker: null,
+                      spec: o.product_spec || null,
+                      quantity: o.quantity || 1,
+                      unit_price: o.price_to_customer || 0,
+                      unit_cost: o.price_from_jinheung || 0,
+                      tax_invoice: true,
+                      payment_confirmed: false,
+                      payment_date: null,
+                      delivery_date: o.delivered_at ? String(o.delivered_at).slice(0,10) : null,
+                      delivery_confirmed: !!o.delivered_at,
+                      wheel_returned: !!o.wheel_returned_at,
+                      closing: false,
+                      note: `진흥주문 #${o.id} (${o.customer_name_raw}) 자동 연동 — 계산서발행 시 자동 등록`,
+                      jinheung_order_id: o.id,
+                    });
+
+                    try{await fetch("https://nfwtsptqloefsbpjvdyu.supabase.co/functions/v1/kakao-order-webhook",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({event:"status_change",orderId:o.id,status:"invoiced",customerName:o.customer_name_raw??"",productSpec:o.product_spec??"",quantity:o.quantity?.toString()??"",amount:String(o.price_to_customer??o.price_from_jinheung??"")})});}catch(e){console.error(e);}
+
+                    setJInvoiceModal(null); setJInvoiceFile(null); setJInvoiceUploading(false);
+                    showToast("계산서발행 완료 + 매출관리 자동 등록됨");
+                    supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60).then(({data})=>setJList(data??[]));
+                  }catch(err){
+                    console.error(err);
+                    alert("처리 중 오류가 발생했습니다.");
+                    setJInvoiceUploading(false);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-[#0f172a] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40"
+              >{jInvoiceUploading?"처리 중...":"등록 + 매출반영"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 주문상담 탭 — 타이어/배터리 계산서발행 시 이미지 업로드 강제 모달 */}
+      {orderInvoiceModal&&(
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 px-4" style={{backdropFilter:"blur(2px)"}} onClick={()=>{if(!orderInvoiceUploading){setOrderInvoiceModal(null);setOrderInvoiceFile(null);}}}>
+          <div className="w-full max-w-sm border border-gray-200 rounded-2xl bg-white shadow-2xl p-6" onClick={e=>e.stopPropagation()}>
+            <h2 className="text-base font-bold text-[#0f172a] mb-1">계산서발행 — 세금계산서 등록</h2>
+            <p className="text-sm text-gray-500 mb-4">{orderInvoiceModal.customer_name} — {orderInvoiceModal.product_detail ?? WL[orderInvoiceModal.work_type]}</p>
+            <p className="text-xs text-orange-600 bg-orange-50 border border-orange-100 rounded-xl p-2.5 mb-3">
+              계산서발행 단계로 전환하려면 세금계산서 이미지를 먼저 등록해야 합니다. 등록 즉시 매출관리에도 자동 반영됩니다.
+            </p>
+            <input
+              type="file"
+              accept="image/*,.pdf"
+              onChange={e=>setOrderInvoiceFile(e.target.files?.[0]??null)}
+              className="w-full text-xs text-gray-600 file:mr-3 file:px-3 file:py-1.5 file:rounded-xl file:border-0 file:bg-orange-50 file:text-orange-600 file:text-xs file:font-semibold"
+            />
+            {orderInvoiceFile&&<p className="mt-2 text-xs text-gray-500">선택됨: {orderInvoiceFile.name}</p>}
+            <div className="mt-5 flex justify-end gap-2">
+              <button disabled={orderInvoiceUploading} onClick={()=>{setOrderInvoiceModal(null);setOrderInvoiceFile(null);}} className={BTG}>취소</button>
+              <button
+                disabled={!orderInvoiceFile||orderInvoiceUploading}
+                onClick={async()=>{
+                  if(!orderInvoiceFile) return;
+                  setOrderInvoiceUploading(true);
+                  try{
+                    const o = orderInvoiceModal!;
+                    const ext = orderInvoiceFile.name.split(".").pop() || "jpg";
+                    const path = `orders/${o.id}_${Date.now()}.${ext}`;
+                    const { error: upErr } = await supabase.storage.from("tax-invoices").upload(path, orderInvoiceFile, { upsert:true, contentType: orderInvoiceFile.type || undefined });
+                    if(upErr){ alert("업로드 실패: "+upErr.message); setOrderInvoiceUploading(false); return; }
+
+                    // 1. 상세 테이블 단계 업데이트 + 계산서 이미지 경로 저장
+                    const table = ["tire","tire_sales"].includes(o.work_type) ? "consultation_tire_details" : "consultation_battery_details";
+                    await supabase.from(table).update({
+                      process_stage: "invoiced",
+                      invoice_image_path: path,
+                    }).eq("consultation_id", o.id);
+
+                    // 2. 매출(sales_records) 자동 반영 — 이미 등록된 건이면 중복 방지
+                    const { data: existing } = await supabase.from("sales_records").select("id").eq("consultation_id", o.id).maybeSingle();
+                    if(!existing){
+                      await supabase.from("sales_records").insert({
+                        sale_date: new Date().toISOString().split("T")[0],
+                        customer_name: o.customer_name,
+                        business_no: null,
+                        category: ["tire","tire_sales"].includes(o.work_type) ? "타이어" : "배터리(LFP)",
+                        trade_type: "내수",
+                        maker: null,
+                        spec: o.product_detail || null,
+                        quantity: 1,
+                        unit_price: 0,
+                        unit_cost: 0,
+                        tax_invoice: true,
+                        payment_confirmed: false,
+                        payment_date: null,
+                        delivery_date: null,
+                        delivery_confirmed: false,
+                        wheel_returned: false,
+                        closing: false,
+                        note: `상담건 #${o.id} (${o.customer_name}) 자동 연동 — 계산서발행 시 자동 등록, 단가/매입가 확인 필요`,
+                        consultation_id: o.id,
+                      });
+                    }
+
+                    setOrderInvoiceModal(null); setOrderInvoiceFile(null); setOrderInvoiceUploading(false);
+                    showToast("계산서발행 완료 + 매출관리 자동 등록됨");
+                    void loadOrderViews();
+                  }catch(err){
+                    console.error(err);
+                    alert("처리 중 오류가 발생했습니다.");
+                    setOrderInvoiceUploading(false);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-[#0f172a] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40"
+              >{orderInvoiceUploading?"처리 중...":"등록 + 매출반영"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 주문상담 탭 — 여러 건 묶어서 계산서 1장 발행 */}
+      {orderBulkInvoiceModal&&(
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 px-4" style={{backdropFilter:"blur(2px)"}} onClick={()=>{if(!orderBulkInvoiceUploading){setOrderBulkInvoiceModal(null);setOrderBulkInvoiceFile(null);}}}>
+          <div className="w-full max-w-md border border-gray-200 rounded-2xl bg-white shadow-2xl p-6 max-h-[85vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
+            <h2 className="text-base font-bold text-[#0f172a] mb-1">묶음 계산서발행</h2>
+            <p className="text-sm text-gray-500 mb-3">선택한 {orderBulkInvoiceModal.length}건을 계산서 1장으로 묶어 발행합니다.</p>
+
+            <div className="space-y-1.5 mb-3 max-h-40 overflow-y-auto border border-gray-100 rounded-xl p-2">
+              {orderBulkInvoiceModal.map(o=>(
+                <div key={o.id} className="flex items-center justify-between text-xs py-1 border-b border-gray-50 last:border-0">
+                  <span className="font-medium text-gray-700">{o.customer_name}</span>
+                  <span className="text-gray-400 truncate ml-2">{o.product_detail ?? WL[o.work_type]}</span>
+                </div>
+              ))}
+            </div>
+
+            {(() => {
+              const customers = new Set(orderBulkInvoiceModal.map(o=>o.customer_name));
+              if(customers.size > 1){
+                return (
+                  <p className="text-xs text-red-500 bg-red-50 border border-red-100 rounded-xl p-2.5 mb-3">
+                    ⚠️ 선택한 건의 거래처가 서로 다릅니다 ({[...customers].join(", ")}). 계산서는 동일 거래처 건끼리만 묶어 발행해주세요.
+                  </p>
+                );
+              }
+              return (
+                <p className="text-xs text-orange-600 bg-orange-50 border border-orange-100 rounded-xl p-2.5 mb-3">
+                  세금계산서 이미지 1장을 등록하면 선택된 {orderBulkInvoiceModal.length}건 모두 계산서발행 단계로 전환되고, 매출관리에도 각 건이 자동 등록됩니다.
+                </p>
+              );
+            })()}
+
+            <input
+              type="file"
+              accept="image/*,.pdf"
+              onChange={e=>setOrderBulkInvoiceFile(e.target.files?.[0]??null)}
+              className="w-full text-xs text-gray-600 file:mr-3 file:px-3 file:py-1.5 file:rounded-xl file:border-0 file:bg-orange-50 file:text-orange-600 file:text-xs file:font-semibold"
+            />
+            {orderBulkInvoiceFile&&<p className="mt-2 text-xs text-gray-500">선택됨: {orderBulkInvoiceFile.name}</p>}
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button disabled={orderBulkInvoiceUploading} onClick={()=>{setOrderBulkInvoiceModal(null);setOrderBulkInvoiceFile(null);}} className={BTG}>취소</button>
+              <button
+                disabled={!orderBulkInvoiceFile||orderBulkInvoiceUploading||new Set(orderBulkInvoiceModal.map(o=>o.customer_name)).size>1}
+                onClick={async()=>{
+                  if(!orderBulkInvoiceFile) return;
+                  setOrderBulkInvoiceUploading(true);
+                  try{
+                    const items = orderBulkInvoiceModal;
+                    const ext = orderBulkInvoiceFile.name.split(".").pop() || "jpg";
+                    const groupKey = `bulk_${Date.now()}`;
+                    const path = `orders/${groupKey}.${ext}`;
+                    const { error: upErr } = await supabase.storage.from("tax-invoices").upload(path, orderBulkInvoiceFile, { upsert:true, contentType: orderBulkInvoiceFile.type || undefined });
+                    if(upErr){ alert("업로드 실패: "+upErr.message); setOrderBulkInvoiceUploading(false); return; }
+
+                    for(const o of items){
+                      const table = ["tire","tire_sales"].includes(o.work_type) ? "consultation_tire_details" : "consultation_battery_details";
+                      await supabase.from(table).update({
+                        process_stage: "invoiced",
+                        invoice_image_path: path,
+                        invoice_group_key: groupKey,
+                      }).eq("consultation_id", o.id);
+
+                      const { data: existing } = await supabase.from("sales_records").select("id").eq("consultation_id", o.id).maybeSingle();
+                      if(!existing){
+                        await supabase.from("sales_records").insert({
+                          sale_date: new Date().toISOString().split("T")[0],
+                          customer_name: o.customer_name,
+                          business_no: null,
+                          category: ["tire","tire_sales"].includes(o.work_type) ? "타이어" : "배터리(LFP)",
+                          trade_type: "내수",
+                          maker: null,
+                          spec: o.product_detail || null,
+                          quantity: 1,
+                          unit_price: 0,
+                          unit_cost: 0,
+                          tax_invoice: true,
+                          payment_confirmed: false,
+                          payment_date: null,
+                          delivery_date: null,
+                          delivery_confirmed: false,
+                          wheel_returned: false,
+                          closing: false,
+                          note: `상담건 #${o.id} (${o.customer_name}) 묶음 계산서발행 — ${items.length}건 합산 발행, 단가/매입가 확인 필요`,
+                          consultation_id: o.id,
+                          invoice_group_key: groupKey,
+                        });
+                      }
+                    }
+
+                    setOrderBulkInvoiceModal(null); setOrderBulkInvoiceFile(null); setOrderBulkInvoiceUploading(false);
+                    setOrderSelectMode(false); setOrderSelectedIds(new Set());
+                    showToast(`${items.length}건 묶음 계산서발행 완료 + 매출관리 자동 등록됨`);
+                    void loadOrderViews();
+                  }catch(err){
+                    console.error(err);
+                    alert("처리 중 오류가 발생했습니다.");
+                    setOrderBulkInvoiceUploading(false);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-[#0f172a] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40"
+              >{orderBulkInvoiceUploading?"처리 중...":`${orderBulkInvoiceModal.length}건 묶음발행`}</button>
             </div>
           </div>
         </div>

@@ -220,7 +220,7 @@ const TIRE_ASSOCIATIONS = ["서울", "광주", "경북", "경남"] as const;
 
 const tabBase =
   "px-5 py-2.5 rounded-2xl text-sm font-semibold border transition-all";
-const tabActive = "bg-navy-900 text-white border-navy-900 shadow-sm";
+const tabActive = "bg-[#0f172a] text-white border-[#0f172a] shadow-sm";
 const tabInactive = "bg-white text-gray-500 border-gray-200 hover:border-gray-300";
 
 const typeBtnBase =
@@ -610,7 +610,7 @@ const CallManagementPage: React.FC = () => {
   const [listSearchVehicleNo, setListSearchVehicleNo] = useState("");
   const [listSearchTireSize, setListSearchTireSize] = useState("");
   const [listQuickScope, setListQuickScope] = useState<"all" | "followup">("all");
-  const [closingFilter, setClosingFilter] = useState<"all" | "Y" | "N">("N");
+  const [closingFilter, setClosingFilter] = useState<"all" | "Y" | "N">("all");
 
   const [followSearchName, setFollowSearchName] = useState("");
   const [followSearchPhone, setFollowSearchPhone] = useState("");
@@ -2311,6 +2311,71 @@ const CallManagementPage: React.FC = () => {
     }
   }, [location.state]);
 
+  // ─── 구글 캘린더 자동 동기화 (신규 상담건 등록 시 → 할일 스타일 이벤트) ───
+  const syncConsultToGcal = async (caseInfo: {
+    id: number;
+    customer_name: string;
+    work_type: string;
+  }) => {
+    if (!user) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const wtLbl: Record<string,string> = {tire_sales:"타이어",finance:"금융",forklift_sales:"지게차",battery_sales:"배터리",export:"수출",registration_insurance:"보험"};
+      const title = `${caseInfo.customer_name} (${wtLbl[caseInfo.work_type] ?? caseInfo.work_type}) 신규상담`;
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-sync`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session?.access_token ?? ""}`,
+          },
+          body: JSON.stringify({
+            action: "create_task",
+            user_id: user.id,
+            event: {
+              title,
+              description: null,
+              schedule_date: todayIso,
+              source_table: "consultation_cases",
+              source_id: caseInfo.id,
+            },
+          }),
+        }
+      );
+      const d = await res.json();
+      if (d?.task?.id) {
+        await supabase.from("consultation_cases").update({ gcal_task_id: d.task.id }).eq("id", caseInfo.id);
+      }
+    } catch (e) {
+      console.warn("[consult gcal task sync] 전송 실패:", e);
+    }
+  };
+
+  // 상담건이 종결(closed) 처리될 때 구글 할일도 완료 처리 (목록에서 사라짐)
+  const completeConsultGcalTask = async (caseId: number) => {
+    if (!user) return;
+    try {
+      const { data: row } = await supabase.from("consultation_cases").select("gcal_task_id").eq("id", caseId).maybeSingle();
+      if (!row?.gcal_task_id) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-sync`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session?.access_token ?? ""}`,
+          },
+          body: JSON.stringify({ action: "complete_task", user_id: user.id, event_id: row.gcal_task_id }),
+        }
+      );
+    } catch (e) {
+      console.warn("[consult gcal task complete] 전송 실패:", e);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (isSubmitting) return;
@@ -2757,6 +2822,19 @@ const CallManagementPage: React.FC = () => {
       }
     }
 
+    // 신규 등록 건만 구글 캘린더 자동 동기화 (할일로 등록) — 단, 등록과 동시에 종결이면 생략
+    if (!editingCaseId && savedCaseId && !isClosing) {
+      void syncConsultToGcal({
+        id: savedCaseId,
+        customer_name: casePayload.customer_name,
+        work_type: workType,
+      });
+    }
+    // 종결 처리된 건은 구글 할일도 완료 처리 (목록에서 사라짐)
+    if (isClosing && savedCaseId) {
+      void completeConsultGcalTask(savedCaseId);
+    }
+
     alert(editingCaseId ? "수정 완료" : "저장 완료");
     resetForm();
     await fetchConsultations();
@@ -3110,6 +3188,7 @@ const CallManagementPage: React.FC = () => {
                         className="px-3 py-1 rounded-lg bg-red-500 text-white text-xs font-semibold hover:bg-red-600"
                         onClick={async()=>{
                           await supabase.from("consultation_cases").update({status:"closed"}).eq("id",r.id);
+                          void completeConsultGcalTask(r.id);
                           setOverdueRows(prev=>prev.filter(x=>x.id!==r.id));
                           void fetchConsultations();
                         }}
@@ -3128,6 +3207,7 @@ const CallManagementPage: React.FC = () => {
                 className="flex-1 py-2 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600"
                 onClick={async()=>{
                   await Promise.all(overdueRows.map(r=>supabase.from("consultation_cases").update({status:"closed"}).eq("id",r.id)));
+                  overdueRows.forEach(r=>void completeConsultGcalTask(r.id));
                   setOverdueRows([]);
                   setShowOverdueModal(false);
                   void fetchConsultations();
