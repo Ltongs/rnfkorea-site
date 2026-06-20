@@ -2319,8 +2319,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       )}
 
       {/* 헤더 - PageHeader(64px) 바로 아래 sticky */}
-      <div ref={headerBarRef} className={`bg-white border-b border-gray-200 px-6 py-3 flex-shrink-0 fixed left-0 right-0 z-[200] shadow-sm ${isStandalone ? "top-0" : "top-16"}`}>
-        <div className="max-w-6xl mx-auto flex items-center justify-between gap-3 flex-wrap">
+      <div ref={headerBarRef} className={`bg-white border-b border-gray-200 flex-shrink-0 fixed left-0 right-0 z-[200] shadow-sm ${isStandalone ? "top-0" : "top-16"}`}>
+        <div className="max-w-6xl mx-auto px-6 pt-3 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-[#0f172a] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">AI</div>
             <div>
@@ -2352,43 +2352,37 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
             <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-600 font-medium">📦 {stats.newOrders}</span>
             {stats.newConsult>0&&<span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 font-medium">💬 오늘상담 {stats.newConsult}</span>}
           </div>
-          {/* 탭 - 가로 스크롤 한 줄 (화살표 버튼 + 드래그 지원) */}
-          <style>{`.hcm-tab-scroll::-webkit-scrollbar{display:none;}`}</style>
-          <div className="relative -mx-6 px-6 md:mx-0 md:px-0 flex items-center gap-1">
-            <button
-              type="button"
-              onClick={()=>tabScrollRef.current?.scrollBy({left:-160,behavior:"smooth"})}
-              className="hidden md:flex shrink-0 w-6 h-6 items-center justify-center rounded-full bg-white border border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-400 shadow-sm"
-              aria-label="왼쪽으로 스크롤"
-            >‹</button>
-            <div
-              ref={tabScrollRef}
-              className="hcm-tab-scroll flex items-center gap-1.5 flex-nowrap overflow-x-scroll pb-1"
-              style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}
-              onWheel={(e)=>{
-                if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && tabScrollRef.current) {
-                  tabScrollRef.current.scrollLeft += e.deltaY;
-                }
-              }}
-            >
-              {(["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo"] as TabKey[]).map(t=>(
-                <button key={t} className={`${TB} ${tab===t?TA:TI} shrink-0 whitespace-nowrap`} onClick={()=>setTabAndSave(t)}>
-                  {t==="email"
-                    ? <span className="flex items-center gap-1">📧 이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
-                    : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",hyundaicm:"🏗 현대CM",finance:"🏦 금융상담",narumi:"🚛 나르미",jinheung:"🔧 진흥주문",memo:"📝 메모"}[t as string]
-                  }
-                </button>
-              ))}
-              <button className={`${TB} ${TI} shrink-0 whitespace-nowrap`} onClick={()=>navigate("/work/finance-hub")}>💵 매출/매입</button>
-            </div>
-            <button
-              type="button"
-              onClick={()=>tabScrollRef.current?.scrollBy({left:160,behavior:"smooth"})}
-              className="hidden md:flex shrink-0 w-6 h-6 items-center justify-center rounded-full bg-white border border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-400 shadow-sm"
-              aria-label="오른쪽으로 스크롤"
-            >›</button>
-          </div>
+        </div>
 
+        {/* 탭 - 가로 스크롤 한 줄. flex-wrap 부모 바깥의 독립 full-width 블록 */}
+        <style>{`.hcm-tab-scroll{-ms-overflow-style:none;scrollbar-width:none;}.hcm-tab-scroll::-webkit-scrollbar{display:none;height:0;}`}</style>
+        <div className="w-full px-6 py-3" style={{minWidth:0}}>
+          <div
+            ref={tabScrollRef}
+            className="hcm-tab-scroll flex items-center gap-1.5"
+            style={{
+              overflowX: "scroll",
+              overflowY: "hidden",
+              WebkitOverflowScrolling: "touch",
+              touchAction: "pan-x",
+              minWidth: 0,
+            }}
+            onWheel={(e)=>{
+              if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && tabScrollRef.current) {
+                tabScrollRef.current.scrollLeft += e.deltaY;
+              }
+            }}
+          >
+            {(["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo"] as TabKey[]).map(t=>(
+              <button key={t} className={`${TB} ${tab===t?TA:TI}`} style={{flexShrink:0, whiteSpace:"nowrap"}} onClick={()=>setTabAndSave(t)}>
+                {t==="email"
+                  ? <span className="flex items-center gap-1">📧 이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
+                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",hyundaicm:"🏗 현대CM",finance:"🏦 금융상담",narumi:"🚛 나르미",jinheung:"🔧 진흥주문",memo:"📝 메모"}[t as string]
+                }
+              </button>
+            ))}
+            <button className={`${TB} ${TI}`} style={{flexShrink:0, whiteSpace:"nowrap"}} onClick={()=>navigate("/work/finance-hub")}>💵 매출/매입</button>
+          </div>
         </div>
       </div>
 
