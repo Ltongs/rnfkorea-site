@@ -22,6 +22,7 @@ type HCMTask = {
   customer_name: string;
   customer_phone: string | null;
   company_name: string | null;
+  ceo_name: string | null;             // 법인 대표자명
   equipment_ton: string | null;        // 톤수
   purchase_amount: number | null;      // 차량가격 (차량+어태치 합산)
   vehicle_amount: number | null;       // 차량가격 (순수 차량)
@@ -233,7 +234,7 @@ export default function HyundaiCMPage() {
   const [customerType,          setCustomerType]          = useState<CustomerType>("개인");
   const [customerName,          setCustomerName]          = useState("");
   const [customerPhone,         setCustomerPhone]         = useState("");
-  const [companyName,           setCompanyName]           = useState("");
+  const [ceoName,                setCeoName]                = useState("");
   const [equipmentTon,          setEquipmentTon]          = useState("");
   const [purchaseAmount,        setPurchaseAmount]        = useState("");
   const [installmentPrincipal,  setInstallmentPrincipal]  = useState("");
@@ -264,7 +265,7 @@ export default function HyundaiCMPage() {
   const [editCustomerType,          setEditCustomerType]          = useState<CustomerType>("개인");
   const [editCustomerName,          setEditCustomerName]          = useState("");
   const [editCustomerPhone,         setEditCustomerPhone]         = useState("");
-  const [editCompanyName,           setEditCompanyName]           = useState("");
+  const [editCeoName,               setEditCeoName]                = useState("");
   const [editEquipmentTon,          setEditEquipmentTon]          = useState("");
   const [editPurchaseAmount,        setEditPurchaseAmount]        = useState("");
   const [editInstallmentPrincipal,  setEditInstallmentPrincipal]  = useState("");
@@ -944,7 +945,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
   // ─── 신규 접수 ───────────────────────────────────────────
   const onReset = () => {
     setCustomerType("개인"); setCustomerName(""); setCustomerPhone("");
-    setCompanyName(""); setEquipmentTon(""); setPurchaseAmount("");
+    setCeoName(""); setEquipmentTon(""); setPurchaseAmount("");
     setInstallmentPrincipal(""); setFinanceCompany("NH캐피탈");
     setInterestRate(""); setIncentive("");
     setVatDeferred("N"); setVatDeferredAmount("");
@@ -953,19 +954,19 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
   const onAdd = async () => {
     if (!canCreate) { alert("신규 입력 권한이 없습니다."); return; }
-    if (customerType === "개인" && !customerName.trim()) { alert("고객명을 입력해주세요."); return; }
+    if (!customerName.trim()) { alert("고객명을 입력해주세요."); return; }
     if (!customerPhone.trim()) { alert("고객 전화번호를 입력해주세요."); return; }
     
     if (!salesRep.trim())      { alert("영업사원을 입력해주세요."); return; }
-    if (customerType === "법인" && !companyName.trim()) { alert("법인명을 입력해주세요."); return; }
 
     setSaving(true); setErr("");
     try {
       const payload = {
         customer_type:           customerType,
-        customer_name:           customerType === "법인" ? (customerName.trim() || companyName.trim()) : customerName.trim(),
+        customer_name:           customerName.trim(),
         customer_phone:          onlyDigits(customerPhone) || null,
-        company_name:            customerType === "법인" ? companyName.trim() : null,
+        company_name:            customerType === "법인" ? customerName.trim() : null,
+        ceo_name:                customerType === "법인" ? (ceoName.trim() || null) : null,
         equipment_ton:           equipmentTon.trim() || null,
         purchase_amount:         purchaseAmount.trim() ? parseInt(onlyDigits(purchaseAmount), 10) || null : null,
         installment_principal:   installmentPrincipal.trim() ? parseInt(onlyDigits(installmentPrincipal), 10) || null : null,
@@ -1278,7 +1279,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     setEditCustomerType(row.customer_type ?? "개인");
     setEditCustomerName(row.customer_name ?? "");
     setEditCustomerPhone(formatPhoneKR(row.customer_phone ?? ""));
-    setEditCompanyName(row.company_name ?? "");
+    setEditCeoName(row.ceo_name ?? "");
     setEditEquipmentTon(row.equipment_ton ?? "");
     setEditPurchaseAmount(row.purchase_amount != null ? String(row.purchase_amount) : "");
     setEditInstallmentPrincipal(row.installment_principal != null ? String(row.installment_principal) : "");
@@ -1296,14 +1297,15 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
   const saveEditRow = async () => {
     if (!editRow) return;
-    if (editCustomerType === "개인" && !editCustomerName.trim()) { alert("고객명을 입력해주세요."); return; }
+    if (!editCustomerName.trim()) { alert("고객명을 입력해주세요."); return; }
     setEditSaving(true);
     try {
       const patch = {
         customer_type:          editCustomerType,
-        customer_name:          editCustomerType === "법인" ? (editCustomerName.trim() || editCompanyName.trim()) : editCustomerName.trim(),
+        customer_name:          editCustomerName.trim(),
         customer_phone:         onlyDigits(editCustomerPhone) || null,
-        company_name:           editCustomerType === "법인" ? editCompanyName.trim() : null,
+        company_name:           editCustomerType === "법인" ? editCustomerName.trim() : null,
+        ceo_name:               editCustomerType === "법인" ? (editCeoName.trim() || null) : null,
         equipment_ton:          editEquipmentTon.trim() || null,
         purchase_amount:        editPurchaseAmount.trim() ? parseInt(onlyDigits(editPurchaseAmount), 10) || null : null,
         installment_principal:  editInstallmentPrincipal.trim() ? parseInt(onlyDigits(editInstallmentPrincipal), 10) || null : null,
@@ -1677,8 +1679,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                 </select>
               </div>
               <div>
-                <label className={labelClass}>{customerType === "법인" ? "담당자명 (선택)" : "고객명 *"}</label>
-                <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder={customerType === "법인" ? "비우면 대표로 처리" : "홍길동"} className={inputClass} />
+                <label className={labelClass}>고객명 *</label>
+                <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="홍길동" className={inputClass} />
               </div>
               <div>
                 <label className={labelClass}>전화번호 *</label>
@@ -1686,8 +1688,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               </div>
               {customerType === "법인" && (
                 <div>
-                  <label className={labelClass}>법인명 *</label>
-                  <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="(주)현대건설" className={inputClass} />
+                  <label className={labelClass}>대표자명</label>
+                  <input value={ceoName} onChange={(e) => setCeoName(e.target.value)} placeholder="홍길동" className={inputClass} />
                 </div>
               )}
               <div>
@@ -2284,9 +2286,9 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div><label className={labelClass}>고객 유형</label><select value={editCustomerType} onChange={(e) => setEditCustomerType(e.target.value as CustomerType)} className={inputClass} disabled={editSaving}><option value="개인">개인</option><option value="법인">법인</option></select></div>
-              <div><label className={labelClass}>{editCustomerType === "법인" ? "담당자명 (선택)" : "고객명 *"}</label><input value={editCustomerName} onChange={(e) => setEditCustomerName(e.target.value)} className={inputClass} disabled={editSaving} placeholder={editCustomerType === "법인" ? "비우면 대표로 처리" : "홍길동"} /></div>
+              <div><label className={labelClass}>고객명 *</label><input value={editCustomerName} onChange={(e) => setEditCustomerName(e.target.value)} className={inputClass} disabled={editSaving} placeholder="홍길동" /></div>
               <div><label className={labelClass}>전화번호</label><input value={editCustomerPhone} onChange={(e) => setEditCustomerPhone(formatPhoneKR(e.target.value))} className={inputClass} disabled={editSaving} inputMode="tel" /></div>
-              {editCustomerType === "법인" && <div><label className={labelClass}>법인명</label><input value={editCompanyName} onChange={(e) => setEditCompanyName(e.target.value)} className={inputClass} disabled={editSaving} /></div>}
+              {editCustomerType === "법인" && <div><label className={labelClass}>대표자명</label><input value={editCeoName} onChange={(e) => setEditCeoName(e.target.value)} className={inputClass} disabled={editSaving} placeholder="홍길동" /></div>}
               <div><label className={labelClass}>톤수</label><input value={editEquipmentTon} onChange={(e) => setEditEquipmentTon(e.target.value)} className={inputClass} disabled={editSaving} placeholder="예: 20톤" /></div>
               <div><label className={labelClass}>차량가격 (원)</label><input value={editPurchaseAmount} onChange={(e) => setEditPurchaseAmount(onlyDigits(e.target.value))} className={inputClass} disabled={editSaving} inputMode="numeric" /></div>
               <div><label className={labelClass}>할부원금 (원)</label><input value={editInstallmentPrincipal} onChange={(e) => setEditInstallmentPrincipal(onlyDigits(e.target.value))} className={inputClass} disabled={editSaving} inputMode="numeric" /></div>
