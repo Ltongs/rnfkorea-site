@@ -173,7 +173,7 @@ function SavedCard({actions,saved,onNav}:{actions:Record<string,unknown>[];saved
               <button className="text-xs text-emerald-600 hover:underline ml-2 flex-shrink-0" onClick={()=>window.open(`/work/call-management?id=${s.id}`,"_blank")}>상담내역→</button>
             )}
             {a.type==="hyundaicm_update"&&s?.id&&(
-              <button className="text-xs text-blue-600 hover:underline ml-2 flex-shrink-0" onClick={()=>window.open(`/work/hyundaicm?id=${s.id}`,"_blank")}>현대건설기계→</button>
+              <button className="text-xs text-blue-600 hover:underline ml-2 flex-shrink-0" onClick={()=>window.open(`/hyundaicm?id=${s.id}`,"_blank")}>현대건설기계→</button>
             )}
           </div>
         );
@@ -210,10 +210,11 @@ function StatusTabContent({
   const FINANCE_STAGE_LBL:Record<string,string> = {consulting:"상담",quote_submitted:"견적제출",approved:"승인",rejected:"부결",documents_requested:"서류징구",confirmed:"확정",received:"접수",credit_check:"신용조회",supplement:"보완",doc_registration:"서류등록",contract_sent:"전자계약",cancelled:"취소"};
   const getConsultDisplayStatus = (c:any) => {
     if(c.work_type==="finance" && c.finance_stage) return c.finance_stage;
+    if(["tire","tire_sales","battery","battery_sales","forklift","forklift_sales"].includes(c.work_type) && c.process_stage) return c.process_stage;
     return c.status;
   };
   const StsBadgeLocal = ({s,isFinance}:{s:string;isFinance?:boolean}) => {
-    const ALL_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",in_progress:"진행중",completed:"완료",done:"완료",closed:"완료",on_hold:"보류",waiting_customer:"고객대기",approved:"승인",confirmed:"확정",rejected:"거절",cancelled:"취소",supplement:"보완",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",credit_check:"신용조회",received:"접수",doc_registration:"서류등록",contract_sent:"전자계약"};
+    const ALL_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",in_progress:"진행중",completed:"완료",done:"완료",closed:"완료",on_hold:"보류",waiting_customer:"고객대기",approved:"승인",confirmed:"확정",rejected:"거절",cancelled:"취소",supplement:"보완",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",credit_check:"신용조회",received:"접수",doc_registration:"서류등록",contract_sent:"전자계약",contract:"계약",delivery:"납품",completed_order:"완결"};
     const lbl = isFinance ? (FINANCE_STAGE_LBL[s]??ALL_LBL[s]??s) : (ALL_LBL[s]??s);
     const cls = s==="approved"?"bg-emerald-50 text-emerald-700"
       :s==="confirmed"?"bg-[#0f172a] text-white"
@@ -292,7 +293,7 @@ function StatusTabContent({
         <div className={`${CARD} p-4`}>
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm font-semibold text-[#0f172a]">🏗 현대건설기계 심사 현황</p>
-            <button className={BTG} onClick={()=>onNavigate("/work/hyundaicm")}>전체 보기 →</button>
+            <button className={BTG} onClick={()=>onNavigate("/hyundaicm")}>전체 보기 →</button>
           </div>
           {statusLoading?<p className="text-xs text-gray-400">불러오는 중...</p>
           :hyundaiTasks.length===0?<p className="text-xs text-gray-400 py-4 text-center">데이터가 없습니다</p>
@@ -323,7 +324,7 @@ function StatusTabContent({
         <div className={`${CARD} p-4`}>
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm font-semibold text-[#0f172a]">🚛 나르미 딜 현황</p>
-            <button className={BTG} onClick={()=>onNavigate("/work/narumi")}>전체 보기 →</button>
+            <button className={BTG} onClick={()=>onNavigate("/narumi")}>전체 보기 →</button>
           </div>
           {statusLoading?<p className="text-xs text-gray-400">불러오는 중...</p>
           :narumiTasks.length===0?<p className="text-xs text-gray-400 py-4 text-center">데이터가 없습니다</p>
@@ -828,6 +829,7 @@ const SecretaryPage:React.FC = () => {
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const headerBarRef = useRef<HTMLDivElement>(null);
+  const tabScrollRef = useRef<HTMLDivElement>(null);
   const [headerBarHeight, setHeaderBarHeight] = useState(128);
 
   // 달력 데이터
@@ -1140,6 +1142,20 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
         void loadGcalEvents(calViewYear, calViewMonth);
       }
     }catch(e){console.error("gcal sync error",e);}
+  }
+
+  // 일정 삭제 시 구글 캘린더에서도 삭제
+  async function deleteFromGcal(gcalEventId: string | null | undefined){
+    if(!user || !gcalConnected || !gcalEventId) return;
+    try{
+      const {data:{session}} = await supabase.auth.getSession();
+      await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-calendar-sync`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.access_token??""}`},
+        body:JSON.stringify({action:"delete",user_id:user.id,event_id:gcalEventId}),
+      });
+      setGcalEvents(prev=>prev.filter(e=>e.id!==gcalEventId));
+    }catch(e){console.error("gcal delete error",e);}
   }
 
   // ─── 기존 항목 전체 구글 캘린더 일괄 동기화 ──────────────────────────────────
@@ -1493,12 +1509,26 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       const fdMap:Record<number,string|null> = {};
       if(fdr.data) fdr.data.forEach((f:any)=>{ fdMap[f.consultation_id]=f.finance_stage; });
       const FIN_LBL_S:Record<string,string> = {consulting:"상담중",received:"접수",credit_check:"신용조회",approved:"승인",supplement:"보완",rejected:"거절",doc_registration:"서류등록",contract_sent:"전자계약",confirmed:"확정",cancelled:"취소"};
+
+      // 타이어/배터리/지게차 process_stage 조회 (업무현황 탭 단계 표시 일치를 위함)
+      const cids = cr.data.map((c:any)=>c.id as number);
+      const [tireR, battR, forkR] = await Promise.all([
+        supabase.from("consultation_tire_details").select("consultation_id,process_status,process_stage").in("consultation_id",cids),
+        supabase.from("consultation_battery_details").select("consultation_id,process_stage").in("consultation_id",cids),
+        supabase.from("consultation_forklift_details").select("consultation_id,process_stage,forklift_status").in("consultation_id",cids),
+      ]);
+      const psMap:Record<number,string> = {};
+      (tireR.data??[]).forEach((d:any)=>{ psMap[d.consultation_id]=d.process_stage??d.process_status; });
+      (battR.data??[]).forEach((d:any)=>{ if(d.process_stage) psMap[d.consultation_id]=d.process_stage; });
+      (forkR.data??[]).forEach((d:any)=>{ if(d.process_stage||d.forklift_status) psMap[d.consultation_id]=d.process_stage??d.forklift_status; });
+
       setRecentC(cr.data.map((c:any)=>{
         const fs = fdMap[c.id];
         return {
           ...c,
           finance_stage: fs ?? null,
           display_status: c.work_type==="finance" && fs ? FIN_LBL_S[fs]??fs : null,
+          process_stage: psMap[c.id] ?? null,
         };
       }) as Consult[]);
     }
@@ -1550,6 +1580,36 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
     return ()=>subscription.unsubscribe();
   },[loadStats, loadChatHist, loadCalData]);
   const prevMsgLen = useRef(0);
+  // 탭 바 가로 스크롤 — 네이티브 non-passive 터치 리스너 (모바일에서 확실히 동작하도록)
+  useEffect(()=>{
+    const el = tabScrollRef.current;
+    if(!el) return;
+    let startX = 0;
+    let startScroll = 0;
+    let dragging = false;
+    const onStart = (e: TouchEvent) => {
+      dragging = true;
+      startX = e.touches[0].clientX;
+      startScroll = el.scrollLeft;
+    };
+    const onMove = (e: TouchEvent) => {
+      if(!dragging) return;
+      const dx = startX - e.touches[0].clientX;
+      if(Math.abs(dx) > 2){
+        e.preventDefault(); // non-passive라서 동작함
+        el.scrollLeft = startScroll + dx;
+      }
+    };
+    const onEnd = () => { dragging = false; };
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd, { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+    };
+  },[]);
   useEffect(()=>{
     if(msgs.length > 0 && msgs.length !== prevMsgLen.current){
       if(prevMsgLen.current > 0){
@@ -1729,7 +1789,10 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
   }
 
   async function delSched(id:number){
+    // 삭제 전 gcal_event_id 조회 → 구글 캘린더에서도 삭제
+    const { data: row } = await supabase.from("secretary_schedules").select("gcal_event_id").eq("id", id).maybeSingle();
     await supabase.from("secretary_schedules").delete().eq("id",id);
+    if (row?.gcal_event_id) void deleteFromGcal(row.gcal_event_id);
     setSchedules(p=>p.filter(s=>s.id!==id)); void loadStats();
   }
 
@@ -2159,7 +2222,10 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                 disabled={dupSelected.size===0}
                 onClick={async()=>{
                   if(dupSelected.size>0){
-                    await supabase.from("secretary_schedules").delete().in("id",[...dupSelected]);
+                    const ids=[...dupSelected];
+                    const { data: rows } = await supabase.from("secretary_schedules").select("gcal_event_id").in("id",ids);
+                    await supabase.from("secretary_schedules").delete().in("id",ids);
+                    (rows??[]).forEach(r=>{ if(r.gcal_event_id) void deleteFromGcal(r.gcal_event_id); });
                     void loadSchedules(); void loadCalData(calViewYear,calViewMonth);
                     showToast(`${dupSelected.size}건 삭제됨`);
                   }
@@ -2286,12 +2352,24 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
             <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-600 font-medium">📦 {stats.newOrders}</span>
             {stats.newConsult>0&&<span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 font-medium">💬 오늘상담 {stats.newConsult}</span>}
           </div>
-          {/* 탭 - 가로 스크롤 한 줄 */}
+          {/* 탭 - 가로 스크롤 한 줄 (화살표 버튼 + 드래그 지원) */}
           <style>{`.hcm-tab-scroll::-webkit-scrollbar{display:none;}`}</style>
-          <div className="-mx-6 px-6 md:mx-0 md:px-0">
+          <div className="relative -mx-6 px-6 md:mx-0 md:px-0 flex items-center gap-1">
+            <button
+              type="button"
+              onClick={()=>tabScrollRef.current?.scrollBy({left:-160,behavior:"smooth"})}
+              className="hidden md:flex shrink-0 w-6 h-6 items-center justify-center rounded-full bg-white border border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-400 shadow-sm"
+              aria-label="왼쪽으로 스크롤"
+            >‹</button>
             <div
+              ref={tabScrollRef}
               className="hcm-tab-scroll flex items-center gap-1.5 flex-nowrap overflow-x-scroll pb-1"
               style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}
+              onWheel={(e)=>{
+                if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && tabScrollRef.current) {
+                  tabScrollRef.current.scrollLeft += e.deltaY;
+                }
+              }}
             >
               {(["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo"] as TabKey[]).map(t=>(
                 <button key={t} className={`${TB} ${tab===t?TA:TI} shrink-0 whitespace-nowrap`} onClick={()=>setTabAndSave(t)}>
@@ -2303,6 +2381,12 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               ))}
               <button className={`${TB} ${TI} shrink-0 whitespace-nowrap`} onClick={()=>navigate("/work/finance-hub")}>💵 매출/매입</button>
             </div>
+            <button
+              type="button"
+              onClick={()=>tabScrollRef.current?.scrollBy({left:160,behavior:"smooth"})}
+              className="hidden md:flex shrink-0 w-6 h-6 items-center justify-center rounded-full bg-white border border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-400 shadow-sm"
+              aria-label="오른쪽으로 스크롤"
+            >›</button>
           </div>
 
         </div>
