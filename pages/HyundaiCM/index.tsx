@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Settings } from "lucide-react";
+import html2canvas from "html2canvas";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
@@ -23,6 +24,9 @@ type HCMTask = {
   customer_phone: string | null;
   company_name: string | null;
   ceo_name: string | null;             // 법인 대표자명
+  repayment_sent_at?: string | null;
+  repayment_sent_channel?: "sms" | null;
+  repayment_sent_to?: string | null;
   equipment_ton: string | null;        // 톤수
   purchase_amount: number | null;      // 차량가격 (차량+어태치 합산)
   vehicle_amount: number | null;       // 차량가격 (순수 차량)
@@ -191,7 +195,7 @@ const DOC_FIELDS: { key: keyof HCMTask; label: string; dbCol: string }[] = [
   { key: "doc_income",            label: "통장사본",              dbCol: "doc_income" },
   { key: "doc_estimate",          label: "견적서/계약서",         dbCol: "doc_estimate" },
   { key: "doc_excavator_license", label: "굴삭기조종면허증",      dbCol: "doc_excavator_license" },
-  { key: "doc_etc",               label: "기타서류",              dbCol: "doc_etc" },
+  // doc_etc는 hcm_etc_docs 테이블로 분리됨
 ];
 
 // ─── 스타일 상수 ──────────────────────────────────────────
@@ -317,6 +321,11 @@ export default function HyundaiCMPage() {
   const [vehicleRegUploading, setVehicleRegUploading] = useState<string | null>(null); // rowId
   const [vehicleRegFiles, setVehicleRegFiles] = useState<Record<string, { name: string; path: string; uploadedAt: string }[]>>({});
 
+  // ── 기타서류 다중 업로드 ──
+  const etcDocInputRef = useRef<HTMLInputElement | null>(null);
+  const [etcDocUploading, setEtcDocUploading] = useState<string | null>(null); // rowId
+  const [etcDocs, setEtcDocs] = useState<Record<string, { id: number; name: string; path: string; uploadedAt: string }[]>>({});
+
   // ── 세금계산서 업로드 (isHyundaiCM 전용, 72시간 자동삭제) ──
   const taxInvoiceInputRef = useRef<HTMLInputElement | null>(null);
   const [taxInvoiceUploading, setTaxInvoiceUploading] = useState<string | null>(null);
@@ -409,23 +418,36 @@ export default function HyundaiCMPage() {
   };
 
   // ── 원리금균등분납 상환스케줄 계산 ──
-  const calcAmortization = (principal: number, annualRate: number, months: number, startYM: string) => {
+  // 거치기간(gracePeriod) 동안은 이자만 납부, 이후 잔여기간(installmentMonths)에 대해 원리금균등분납
+  const calcAmortization = (principal: number, annualRate: number, months: number, startYM: string, gracePeriod: number = 0) => {
     const r = annualRate / 100 / 12;
-    const payment = r === 0
-      ? principal / months
-      : (principal * r * Math.pow(1+r, months)) / (Math.pow(1+r, months) - 1);
+    const grace = Math.max(0, Math.min(gracePeriod, months)); // 거치기간은 총 기간을 넘을 수 없음
+    const installmentMonths = months - grace; // 원리금균등분납 적용 기간
+    const payment = installmentMonths <= 0
+      ? 0
+      : r === 0
+        ? principal / installmentMonths
+        : (principal * r * Math.pow(1+r, installmentMonths)) / (Math.pow(1+r, installmentMonths) - 1);
     const rows: {no:number;date:string;payment:number;interest:number;principalPmt:number;balance:number}[] = [];
     let balance = principal;
     const [sy, sm] = startYM.split('-').map(Number);
     for (let i = 1; i <= months; i++) {
       const interest = balance * r;
-      const principalPmt = payment - interest;
-      balance = Math.max(0, balance - principalPmt);
-      const d = new Date(sy, sm - 1 + i, 1);
-      const date = `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.01`;
-      rows.push({ no:i, date, payment:Math.round(payment), interest:Math.round(interest), principalPmt:Math.round(principalPmt), balance:Math.round(balance) });
+      if (i <= grace) {
+        // 거치기간: 이자만 납부, 원금 변동 없음
+        const d = new Date(sy, sm - 1 + (i - 1), 1);
+        const date = `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.01`;
+        rows.push({ no:i, date, payment:Math.round(interest), interest:Math.round(interest), principalPmt:0, balance:Math.round(balance) });
+      } else {
+        // 거치 종료 후: 원리금균등분납
+        const principalPmt = payment - interest;
+        balance = Math.max(0, balance - principalPmt);
+        const d = new Date(sy, sm - 1 + (i - 1), 1);
+        const date = `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.01`;
+        rows.push({ no:i, date, payment:Math.round(payment), interest:Math.round(interest), principalPmt:Math.round(principalPmt), balance:Math.round(balance) });
+      }
     }
-    return { payment: Math.round(payment), rows };
+    return { payment: Math.round(payment), rows, gracePeriod: grace, installmentMonths };
   };
 
   // ── 상환스케줄 PDF 다운로드 ──
@@ -435,7 +457,7 @@ export default function HyundaiCMPage() {
     const months = task.loan_period ?? 0;
     if (!principal || !annualRate || !months) return;
 
-    const { payment, rows } = calcAmortization(principal, annualRate, months, startYM);
+    const { payment, rows } = calcAmortization(principal, annualRate, months, startYM, task.grace_period ?? 0);
     const fmt = (n:number) => n.toLocaleString('ko-KR');
     const displayName = task.company_name
       ? `${task.company_name}${task.customer_name !== task.company_name ? ` (${task.customer_name})` : ''}`
@@ -538,6 +560,10 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     const d = new Date(); d.setMonth(d.getMonth()+1); d.setDate(1);
     return d.toISOString().slice(0,7);
   });
+  // 상환표 발송 (SMS/MMS)
+  const [scheduleSendTarget,  setScheduleSendTarget]  = useState("");
+  const [scheduleSending,     setScheduleSending]     = useState(false);
+  const scheduleTableRef = useRef<HTMLDivElement>(null);
   const [confirmSaving,        setConfirmSaving]        = useState(false);
 
   // ─── 카카오 알림 ─────────────────────────────────────────
@@ -648,6 +674,60 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       map[key].push({ name: d.file_name, path: d.storage_path, uploadedAt: d.uploaded_at });
     });
     setVehicleRegFiles(map);
+  };
+
+  // ─── 기타서류 다중 업로드 ────────────────────────────────────
+  const fetchEtcDocs = async (rowIds: (string | number)[]) => {
+    if (rowIds.length === 0) return;
+    const { data } = await supabase
+      .from("hcm_etc_docs")
+      .select("id, task_id, file_name, storage_path, uploaded_at")
+      .in("task_id", rowIds.map(Number))
+      .order("uploaded_at", { ascending: true });
+    if (!data) return;
+    const map: Record<string, { id: number; name: string; path: string; uploadedAt: string }[]> = {};
+    data.forEach((d: any) => {
+      const key = String(d.task_id);
+      if (!map[key]) map[key] = [];
+      map[key].push({ id: d.id, name: d.file_name, path: d.storage_path, uploadedAt: d.uploaded_at });
+    });
+    setEtcDocs((prev) => ({ ...prev, ...map }));
+  };
+
+  const uploadEtcDoc = async (rowId: string | number, file: File) => {
+    if (!canUploadDoc) { alert("서류 업로드 권한이 없습니다."); return; }
+    setEtcDocUploading(String(rowId));
+    try {
+      const ext      = file.name.includes(".") ? file.name.split(".").pop() : "bin";
+      const safeName = `${Date.now()}.${ext}`;
+      const path     = `hyundaicm/${String(rowId)}/etc/${safeName}`;
+      const { error: upErr } = await supabase.storage
+        .from("hcm_docs")
+        .upload(path, file, { upsert: false, contentType: file.type || undefined });
+      if (upErr) throw upErr;
+      const { error: dbErr } = await supabase
+        .from("hcm_etc_docs")
+        .insert({ task_id: Number(rowId), storage_path: path, file_name: file.name, file_size: file.size });
+      if (dbErr) throw dbErr;
+      await fetchEtcDocs([rowId]);
+    } catch (e: any) { alert(`기타서류 업로드 실패: ${e?.message}`); }
+    finally {
+      setEtcDocUploading(null);
+      if (etcDocInputRef.current) etcDocInputRef.current.value = "";
+    }
+  };
+
+  const deleteEtcDoc = async (docId: number, storagePath: string, rowId: string | number) => {
+    if (!canUploadDoc) return;
+    if (!confirm("기타서류를 삭제하시겠습니까?")) return;
+    try {
+      await supabase.storage.from("hcm_docs").remove([storagePath]);
+      await supabase.from("hcm_etc_docs").delete().eq("id", docId);
+      setEtcDocs((prev) => ({
+        ...prev,
+        [String(rowId)]: (prev[String(rowId)] ?? []).filter((d) => d.id !== docId),
+      }));
+    } catch (e: any) { alert(`삭제 실패: ${e?.message}`); }
   };
 
   // ─── 차량등록증 업로드 실행 ──────────────────────────────────
@@ -842,6 +922,9 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
       // 세금계산서 파일 목록 조회 (전체)
       fetchTaxInvoiceFiles(nextRows.map((r) => r.id));
+
+      // 기타서류 목록 조회 (전체)
+      fetchEtcDocs(nextRows.map((r) => r.id));
 
       // 보류(재통화 예약) 목록 조회 — 미발송 건만
       {
@@ -1446,7 +1529,10 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       const target = rows.find((r) => String(r.id) === String(rowId));
       if (target) {
         const paths = DOC_FIELDS.map((f) => target[f.key] as string | null).filter(Boolean) as string[];
-        if (paths.length > 0) await supabase.storage.from("hcm_docs").remove(paths);
+        // 기타서류(hcm_etc_docs) storage 경로도 함께 삭제
+        const etcPaths = (etcDocs[String(rowId)] ?? []).map((d) => d.path);
+        const allPaths = [...paths, ...etcPaths];
+        if (allPaths.length > 0) await supabase.storage.from("hcm_docs").remove(allPaths);
       }
       // 삭제 전 gcal_task_id 조회 → 구글 할일도 삭제
       const { data: gcalRow } = await supabase.from("hyundaicm_tasks").select("gcal_task_id").eq("id", rowId as any).maybeSingle();
@@ -1486,6 +1572,17 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           if (!file || !rowId) return;
           e.target.value = "";
           await uploadVehicleRegDoc(rowId, file);
+        }}
+      />
+      {/* 기타서류 전용 숨겨진 파일 인풋 */}
+      <input
+        ref={etcDocInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.heic"
+        className="hidden"
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          const rowId = etcDocInputRef.current?.getAttribute("data-row-id");
+          if (!file || !rowId) return;
+          await uploadEtcDoc(rowId, file);
         }}
       />
       {/* 세금계산서 전용 숨겨진 파일 인풋 */}
@@ -1836,7 +1933,11 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                       {/* 상환스케줄 버튼: 원금+금리+기간 모두 있을 때 */}
                       {r.installment_principal && r.interest_rate && r.loan_period && (
                         <button
-                          onClick={() => { setScheduleModal(r); setScheduleRecipient(r.company_name ?? r.customer_name ?? ""); }}
+                          onClick={() => {
+                            setScheduleModal(r);
+                            setScheduleRecipient(r.company_name ?? r.customer_name ?? "");
+                            setScheduleSendTarget(r.customer_phone ? formatPhoneKR(r.customer_phone) : "");
+                          }}
                           className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50 text-xs font-medium text-blue-600 hover:bg-blue-100 transition-all"
                         >📄 상환표</button>
                       )}
@@ -2161,6 +2262,48 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                         );
                       })}
                     </div>
+
+                    {/* 기타서류 다중 업로드 */}
+                    <div className="mt-4 pt-4 border-t border-gray-100">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-gray-600">기타서류</span>
+                        {canUploadDoc && !docExpired && (
+                          <button
+                            onClick={() => {
+                              etcDocInputRef.current?.setAttribute("data-row-id", String(r.id));
+                              etcDocInputRef.current?.click();
+                            }}
+                            disabled={etcDocUploading === String(r.id)}
+                            className="px-3 py-1 rounded-2xl border border-orange-300 text-orange-600 text-xs font-medium hover:bg-orange-50 disabled:opacity-50 transition-all"
+                          >
+                            {etcDocUploading === String(r.id) ? "업로드중..." : "+ 추가"}
+                          </button>
+                        )}
+                      </div>
+                      {(etcDocs[String(r.id)] ?? []).length === 0 ? (
+                        <p className="text-xs text-gray-400">등록된 기타서류가 없습니다.</p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {(etcDocs[String(r.id)] ?? []).map((doc) => (
+                            <div key={doc.id} className="flex items-center justify-between gap-2 rounded-2xl border border-gray-100 bg-gray-50 px-3 py-2">
+                              <span className="text-xs text-gray-700 truncate min-w-0">{doc.name}</span>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  onClick={() => downloadDoc(doc.path, doc.name)}
+                                  className="px-2.5 py-1 rounded-2xl border border-gray-200 text-gray-600 text-xs font-medium hover:border-navy-900 hover:text-navy-900 transition-all"
+                                >다운로드</button>
+                                {canUploadDoc && (
+                                  <button
+                                    onClick={() => deleteEtcDoc(doc.id, doc.path, r.id)}
+                                    className="px-2.5 py-1 rounded-2xl border border-red-100 text-red-400 text-xs font-medium hover:border-red-300 hover:text-red-600 transition-all"
+                                  >삭제</button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
                 )}
@@ -2390,7 +2533,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         const principal = r.installment_principal ?? 0;
         const annualRate = r.interest_rate ?? 0;
         const months = r.loan_period ?? 0;
-        const { payment, rows } = calcAmortization(principal, annualRate, months, scheduleStartDate);
+        const { payment, rows } = calcAmortization(principal, annualRate, months, scheduleStartDate, r.grace_period ?? 0);
         const fmt = (n:number) => n.toLocaleString('ko-KR');
         return (
           <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 px-4">
@@ -2427,7 +2570,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                   />
                 </div>
                 <div className="flex gap-3 text-center bg-blue-50 rounded-xl p-3">
-                  <div className="flex-1"><p className="text-xs text-blue-500">월 납입액</p><p className="font-bold text-blue-700 text-sm">{fmt(payment)}원</p></div>
+                  <div className="flex-1"><p className="text-xs text-blue-500">{(r.grace_period ?? 0) > 0 ? "거치 후 월 납입액" : "월 납입액"}</p><p className="font-bold text-blue-700 text-sm">{fmt(payment)}원</p></div>
                   <div className="flex-1"><p className="text-xs text-blue-500">총 이자</p><p className="font-bold text-blue-700 text-sm">{fmt(rows.reduce((s,r)=>s+r.interest,0))}원</p></div>
                   <div className="flex-1"><p className="text-xs text-blue-500">총 납입</p><p className="font-bold text-blue-700 text-sm">{fmt(rows.reduce((s,r)=>s+r.payment,0))}원</p></div>
                 </div>
@@ -2456,8 +2599,98 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                   </tbody>
                 </table>
               </div>
+
+              {/* 발송 — SMS(MMS)로 상환표 이미지 전송 */}
+              <div className="px-5 py-4 border-t border-gray-100 space-y-3">
+                <label className="text-xs font-medium text-gray-500 block">수신 전화번호</label>
+                <input
+                  value={scheduleSendTarget}
+                  onChange={e => setScheduleSendTarget(formatPhoneKR(e.target.value))}
+                  placeholder="예: 010-1234-5678"
+                  inputMode="tel"
+                  className="w-full h-9 rounded-xl border border-gray-200 px-3 text-sm focus:outline-none focus:border-blue-400"
+                />
+                <button
+                  disabled={scheduleSending || !scheduleSendTarget.trim()}
+                  onClick={async () => {
+                    if (!scheduleTableRef.current) return;
+                    setScheduleSending(true);
+                    try {
+                      let canvas = await html2canvas(scheduleTableRef.current, { scale: 1.5, backgroundColor: "#ffffff" });
+
+                      // Solapi MMS 이미지 크기 제한(가로 1500px, 세로 1440px) 대응
+                      const MAX_W = 1500, MAX_H = 1440;
+                      if (canvas.width > MAX_W || canvas.height > MAX_H) {
+                        const ratio = Math.min(MAX_W / canvas.width, MAX_H / canvas.height);
+                        const resized = document.createElement("canvas");
+                        resized.width = Math.floor(canvas.width * ratio);
+                        resized.height = Math.floor(canvas.height * ratio);
+                        const ctx = resized.getContext("2d");
+                        ctx?.drawImage(canvas, 0, 0, resized.width, resized.height);
+                        canvas = resized;
+                      }
+
+                      // Solapi MMS 이미지 용량 제한(200KB) 대응: JPEG 품질을 단계적으로 낮춰 압축
+                      const MAX_BYTES = 200 * 1024;
+                      const base64SizeBytes = (dataUrl: string) => Math.ceil((dataUrl.length - dataUrl.indexOf(",") - 1) * 3 / 4);
+                      let quality = 0.9;
+                      let imageBase64 = canvas.toDataURL("image/jpeg", quality);
+                      while (base64SizeBytes(imageBase64) > MAX_BYTES && quality > 0.2) {
+                        quality -= 0.1;
+                        imageBase64 = canvas.toDataURL("image/jpeg", quality);
+                      }
+                      // 품질을 낮춰도 안 되면 캔버스 크기 자체를 추가 축소
+                      if (base64SizeBytes(imageBase64) > MAX_BYTES) {
+                        const shrink = document.createElement("canvas");
+                        const ratio = Math.sqrt(MAX_BYTES / base64SizeBytes(imageBase64)) * 0.9;
+                        shrink.width = Math.max(320, Math.floor(canvas.width * ratio));
+                        shrink.height = Math.max(200, Math.floor(canvas.height * ratio));
+                        const ctx = shrink.getContext("2d");
+                        ctx?.drawImage(canvas, 0, 0, shrink.width, shrink.height);
+                        imageBase64 = shrink.toDataURL("image/jpeg", 0.7);
+                      }
+                      if (base64SizeBytes(imageBase64) > MAX_BYTES) {
+                        alert("상환표 이미지 압축에 실패했습니다. 잠시 후 다시 시도해주세요.");
+                        setScheduleSending(false);
+                        return;
+                      }
+
+                      const { data: { session } } = await supabase.auth.getSession();
+                      const res = await fetch(
+                        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-hcm-repayment`,
+                        {
+                          method: "POST",
+                          headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${session?.access_token ?? ""}`,
+                          },
+                          body: JSON.stringify({
+                            recipientPhone: scheduleSendTarget.trim(),
+                            recipientName: scheduleRecipient || undefined,
+                            customerName: r.company_name ?? r.customer_name,
+                            imageBase64,
+                            taskId: r.id,
+                          }),
+                        }
+                      );
+                      const d = await res.json();
+                      if (!res.ok || d.error) {
+                        alert(`발송 실패: ${d.error ?? "알 수 없는 오류"}`);
+                      } else {
+                        alert("SMS 발송 완료되었습니다.");
+                      }
+                    } catch (e: any) {
+                      alert(`발송 중 오류: ${e?.message ?? e}`);
+                    } finally {
+                      setScheduleSending(false);
+                    }
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-40"
+                >{scheduleSending ? "발송 중..." : "📤 SMS로 발송"}</button>
+              </div>
+
               {/* 버튼 */}
-              <div className="px-5 py-4 border-t border-gray-100 flex gap-2">
+              <div className="px-5 pb-5 pt-1 border-t border-gray-100 flex gap-2">
                 <button
                   onClick={() => downloadSchedulePDF(r, scheduleStartDate, scheduleRecipient)}
                   className="flex-1 py-2.5 rounded-xl bg-[#0a192f] text-white text-sm font-semibold hover:opacity-90 transition-all"
@@ -2466,6 +2699,65 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                   onClick={() => setScheduleModal(null)}
                   className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-500 hover:bg-gray-50 transition-all"
                 >닫기</button>
+              </div>
+            </div>
+
+            {/* 발송용 캡처 전용 숨김 DOM — 전체 상환표를 깔끔하게 렌더링 */}
+            <div style={{ position: "fixed", left: "-9999px", top: 0, width: "560px" }}>
+              <div ref={scheduleTableRef} style={{ fontFamily: "'Malgun Gothic','맑은 고딕',sans-serif", background: "#fff", padding: "24px", color: "#1e293b" }}>
+                <h1 style={{ fontSize: "18px", fontWeight: 700, margin: "0 0 4px", color: "#0a192f" }}>원리금균등분납 상환스케줄</h1>
+                <p style={{ fontSize: "12px", color: "#64748b", marginBottom: "16px" }}>현대건설기계 할부금융</p>
+                {scheduleRecipient && (
+                  <p style={{ fontSize: "13px", marginBottom: "12px" }}>수신: <strong style={{ color: "#0a192f" }}>{scheduleRecipient}</strong> 귀중</p>
+                )}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", marginBottom: "16px", background: "#f8fafc", borderRadius: "8px", padding: "14px" }}>
+                  <div><div style={{ fontSize: "10px", color: "#94a3b8" }}>고객명</div><div style={{ fontWeight: 600, color: "#0a192f", fontSize: "13px" }}>{r.company_name ? `${r.company_name}${r.customer_name !== r.company_name ? ` (${r.customer_name})` : ''}` : r.customer_name}</div></div>
+                  <div><div style={{ fontSize: "10px", color: "#94a3b8" }}>할부원금</div><div style={{ fontWeight: 600, color: "#0a192f", fontSize: "13px" }}>{fmt(principal)}원</div></div>
+                  <div><div style={{ fontSize: "10px", color: "#94a3b8" }}>금리 (연)</div><div style={{ fontWeight: 600, color: "#0a192f", fontSize: "13px" }}>{annualRate}%</div></div>
+                  <div><div style={{ fontSize: "10px", color: "#94a3b8" }}>대출기간</div><div style={{ fontWeight: 600, color: "#0a192f", fontSize: "13px" }}>{months}개월{(r.grace_period ?? 0) > 0 ? ` (거치 ${r.grace_period}+할부 ${months - (r.grace_period ?? 0)})` : ""}</div></div>
+                  <div><div style={{ fontSize: "10px", color: "#94a3b8" }}>{(r.grace_period ?? 0) > 0 ? "거치 후 월 납입액" : "월 납입액"}</div><div style={{ fontWeight: 600, color: "#0a192f", fontSize: "13px" }}>{fmt(payment)}원</div></div>
+                  <div><div style={{ fontSize: "10px", color: "#94a3b8" }}>금융사</div><div style={{ fontWeight: 600, color: "#0a192f", fontSize: "13px" }}>{r.finance_company ?? "-"}</div></div>
+                </div>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      {['회차','납입일','월납입액','원금','이자','잔액'].map(h=>(
+                        <th key={h} style={{ background: "#0a192f", color: "#fff", padding: "7px 6px", textAlign: h === "회차" || h === "납입일" ? "center" : "right", fontSize: "10px" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(rows.length > 12 ? rows.slice(0, 6) : rows).map(row=>(
+                      <tr key={row.no} style={{ background: row.no % 2 === 0 ? "#f8fafc" : "#fff" }}>
+                        <td style={{ padding: "5px 6px", textAlign: "center", fontSize: "10.5px", borderBottom: "1px solid #f1f5f9" }}>{row.no}</td>
+                        <td style={{ padding: "5px 6px", textAlign: "center", fontSize: "10.5px", borderBottom: "1px solid #f1f5f9", color: "#64748b" }}>{row.date}</td>
+                        <td style={{ padding: "5px 6px", textAlign: "right", fontSize: "10.5px", borderBottom: "1px solid #f1f5f9", fontWeight: 600 }}>{fmt(row.payment)}</td>
+                        <td style={{ padding: "5px 6px", textAlign: "right", fontSize: "10.5px", borderBottom: "1px solid #f1f5f9" }}>{fmt(row.principalPmt)}</td>
+                        <td style={{ padding: "5px 6px", textAlign: "right", fontSize: "10.5px", borderBottom: "1px solid #f1f5f9", color: "#64748b" }}>{fmt(row.interest)}</td>
+                        <td style={{ padding: "5px 6px", textAlign: "right", fontSize: "10.5px", borderBottom: "1px solid #f1f5f9" }}>{fmt(row.balance)}</td>
+                      </tr>
+                    ))}
+                    {rows.length > 12 && (
+                      <tr>
+                        <td colSpan={6} style={{ padding: "8px 6px", textAlign: "center", fontSize: "11px", color: "#94a3b8", letterSpacing: "2px" }}>⋮ 중간 {rows.length - 12}회차 생략 ⋮</td>
+                      </tr>
+                    )}
+                    {rows.length > 12 && rows.slice(-6).map(row=>(
+                      <tr key={row.no} style={{ background: row.no % 2 === 0 ? "#f8fafc" : "#fff" }}>
+                        <td style={{ padding: "5px 6px", textAlign: "center", fontSize: "10.5px", borderBottom: "1px solid #f1f5f9" }}>{row.no}</td>
+                        <td style={{ padding: "5px 6px", textAlign: "center", fontSize: "10.5px", borderBottom: "1px solid #f1f5f9", color: "#64748b" }}>{row.date}</td>
+                        <td style={{ padding: "5px 6px", textAlign: "right", fontSize: "10.5px", borderBottom: "1px solid #f1f5f9", fontWeight: 600 }}>{fmt(row.payment)}</td>
+                        <td style={{ padding: "5px 6px", textAlign: "right", fontSize: "10.5px", borderBottom: "1px solid #f1f5f9" }}>{fmt(row.principalPmt)}</td>
+                        <td style={{ padding: "5px 6px", textAlign: "right", fontSize: "10.5px", borderBottom: "1px solid #f1f5f9", color: "#64748b" }}>{fmt(row.interest)}</td>
+                        <td style={{ padding: "5px 6px", textAlign: "right", fontSize: "10.5px", borderBottom: "1px solid #f1f5f9" }}>{fmt(row.balance)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p style={{ marginTop: "16px", fontSize: "10px", color: "#94a3b8", textAlign: "center" }}>
+                  ※ 실제 납입액은 금융사 기준일·계산방식에 따라 일부 다를 수 있습니다.
+                  {rows.length > 12 ? " 전체 회차 상세 내역은 별도 PDF로 요청해주세요." : ""}
+                </p>
               </div>
             </div>
           </div>

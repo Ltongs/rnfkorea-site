@@ -1839,9 +1839,9 @@ VIN: ${nextVin}`);
                         {/* 보험 */}
                         <button
                           type="button"
-                          disabled={isLocked || isHold || !canChangeStatus}
+                          disabled={isLocked || isHold || !canChangeStatus || r.has_insurance}
                           onClick={() => handleInsuranceButtonClick(r)}
-                          className={`${btnBase} ${isLocked || isHold ? btnDisabled : r.has_insurance ? btnOn : btnOff}`}
+                          className={`${btnBase} ${isLocked || isHold || r.has_insurance ? btnDisabled : btnOff}`}
                         >
                           보험
                         </button>
