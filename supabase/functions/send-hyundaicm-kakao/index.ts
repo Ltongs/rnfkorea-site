@@ -425,7 +425,9 @@ function buildMessage(body: Record<string, string>): string {
           body.creditIncentive ? `적용인센티브: ${body.creditIncentive}%` : "",
         ] : []),
         ...(nextStatus === "승인" ? [
-          body.loanLimit  ? `대출한도: ${Number(body.loanLimit).toLocaleString("ko-KR")}원` : "",
+          body.loanLimit && body.loanLimit !== "-"
+            ? `대출한도: ${isNaN(Number(body.loanLimit)) ? body.loanLimit : Number(body.loanLimit).toLocaleString("ko-KR") + "원"}`
+            : "",
           body.creditNote ? `특이사항: ${body.creditNote}` : "",
         ] : []),
         ...(nextStatus === "보완" ? [
@@ -467,7 +469,9 @@ function buildMessage(body: Record<string, string>): string {
       `영업: ${salesRep ?? "-"}`, "",
       "── 수정된 승인조건 ──",
       totalVehicle > 0 ? `차량가격: ${totalVehicle.toLocaleString("ko-KR")}원${v && a ? ` (차량 ${v.toLocaleString("ko-KR")} + 어태치 ${a.toLocaleString("ko-KR")})` : ""}` : null,
-      body.loanLimit ? `대출한도: ${Number(body.loanLimit).toLocaleString("ko-KR")}원` : null,
+      body.loanLimit && body.loanLimit !== "-"
+        ? `대출한도: ${isNaN(Number(body.loanLimit)) ? body.loanLimit : Number(body.loanLimit).toLocaleString("ko-KR") + "원"}`
+        : null,
       `대출기간: ${body.loanPeriod ?? "-"}개월${g && inst ? ` (거치 ${g} + 할부 ${inst})` : ""}`,
       `적용금리: ${body.creditRate ?? "-"}%`,
       body.creditIncentive ? `인센티브: ${body.creditIncentive}%` : null,
@@ -683,8 +687,11 @@ function buildHcmVariables(body: Record<string, string>): { templateKey: string;
         "#{NICE점수}":     body.niceScore        ?? "-",
         "#{적용금리}":     body.creditRate        ?? "-",
         "#{적용인센티브}": body.creditIncentive   ?? "-",
-        "#{대출한도}":     body.loanLimit
-          ? Number(body.loanLimit).toLocaleString("ko-KR") : "-",
+        "#{대출한도}":     body.loanLimit && body.loanLimit !== "-"
+          ? (isNaN(Number(body.loanLimit))
+              ? body.loanLimit  // 이미 "178,100,000원" 형태로 온 경우 그대로
+              : `${Number(body.loanLimit).toLocaleString("ko-KR")}원`)
+          : "-",
         "#{특이사항}":     body.creditNote  ?? "-",
         "#{영업사원}":     salesRep         ?? "-",
         "#{시간}":         now,
@@ -828,130 +835,146 @@ serve(async (req) => {
   try {
     const body = await req.json() as Record<string, string>;
 
-    // ── 타이어/배터리 발주 알림톡 (진흥 전용) ─────────────────
-    if (body.type === "order_forwarded") {
-      // 주문번호를 YYMMDD-순번 형식으로 변환
-      body.orderNo = await formatOrderNo(body.orderNo);
+    // ── Supabase 클라이언트 (큐 조작용) ──────────────────────────
+    const sbUrl = Deno.env.get("APP_SUPABASE_URL") ?? Deno.env.get("SUPABASE_URL") ?? "";
+    const sbKey = Deno.env.get("APP_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const db = createClient(sbUrl, sbKey);
 
-      // 쉼표로 구분된 여러 수신자 지원 (예: "01028378838,01050549006")
+    // ── 진흥 알림톡 실제 발송 헬퍼 (flush_queue에서도 재사용) ────
+    const sendJinheungNow = async (q: Record<string, string>) => {
+      q.orderNo = await formatOrderNo(q.orderNo);
       const JINHEUNG_PHONES = (Deno.env.get("JINHEUNG_PHONE") ?? "")
-        .split(",")
-        .map((n) => n.replace(/\D/g, ""))
-        .filter(Boolean);
-      const _PF_ID       = Deno.env.get("SOLAPI_PF_ID") ?? "";
-      const TEMPLATE_ID = Deno.env.get("SOLAPI_TEMPLATE_ID_ORDER") ?? "";
+        .split(",").map((n) => n.replace(/\D/g, "")).filter(Boolean);
+      if (JINHEUNG_PHONES.length === 0) throw new Error("JINHEUNG_PHONE 미설정");
 
-      if (JINHEUNG_PHONES.length === 0) {
-        return new Response(JSON.stringify({ error: "JINHEUNG_PHONE 미설정" }), {
-          status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-        });
+      if (q.type === "order_forwarded") {
+        const TEMPLATE_ID = Deno.env.get("SOLAPI_TEMPLATE_ID_ORDER") ?? "";
+        const variables = {
+          "#{주문번호}": q.orderNo      ?? "-",
+          "#{고객사}":   q.customerName ?? "-",
+          "#{품목}":     q.productSpec  ?? "-",
+          "#{수량}":     q.quantity     ?? "-",
+          "#{전달시간}": new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }),
+        };
+        const buttons = [
+          ...(q.deliveredUrl ? [{ buttonType:"WL", buttonName:"배송완료", linkMo:q.deliveredUrl, linkPc:q.deliveredUrl }] : []),
+          { buttonType:"WL", buttonName:"업무 페이지", linkMo:"https://rnfkorea.co.kr/work/secretary", linkPc:"https://rnfkorea.co.kr/work/secretary" },
+        ];
+        const results = await Promise.all(JINHEUNG_PHONES.map((to) => sendJinheungAlimtalk(to, TEMPLATE_ID, variables, buttons)));
+        const failedPhones = JINHEUNG_PHONES.filter((_, i) => !results[i].ok);
+        if (failedPhones.length > 0) await sendSms(buildMessage(q), failedPhones);
+        console.log("진흥 발주 알림톡 발송:", q.orderNo, "→", JINHEUNG_PHONES.join(","));
+
+      } else if (q.type === "wheel_return_request") {
+        const TEMPLATE_ID = Deno.env.get("SOLAPI_TEMPLATE_ID_WHEEL_REQUEST") ?? "";
+        const variables = {
+          "#{주문번호}": q.orderNo      ?? "-",
+          "#{고객사}":   q.customerName ?? "-",
+          "#{품목}":     q.productSpec  ?? "-",
+          "#{수량}":     q.quantity     ?? "-",
+          "#{전달시간}": new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }),
+        };
+        const buttons = [
+          ...(q.wheelReturnedUrl ? [{ buttonType:"WL", buttonName:"휠반납 확인", linkMo:q.wheelReturnedUrl, linkPc:q.wheelReturnedUrl }] : []),
+          { buttonType:"WL", buttonName:"업무 페이지", linkMo:"https://rnfkorea.co.kr/work/secretary", linkPc:"https://rnfkorea.co.kr/work/secretary" },
+        ];
+        const results = await Promise.all(JINHEUNG_PHONES.map((to) => sendJinheungAlimtalk(to, TEMPLATE_ID, variables, buttons)));
+        const failedPhones = JINHEUNG_PHONES.filter((_, i) => !results[i].ok);
+        if (failedPhones.length > 0) {
+          const smsText = ["[담당자님, 사내 업무용 메시지]","RNF 타이어 휠반납 요청 안내","",
+            `주문번호: ${q.orderNo ?? "-"}`,`고객사: ${q.customerName ?? "-"}`,
+            `품목: ${q.productSpec ?? "-"}`,`수량: ${q.quantity ?? "-"}`,
+            `시간: ${new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}`,
+          ].join("\n");
+          await sendSms(smsText, failedPhones);
+        }
+        console.log("휠반납 알림톡 발송:", q.orderNo, "→", JINHEUNG_PHONES.join(","));
+      }
+    };
+
+    // ── flush_queue: pg_cron이 09:00 KST에 호출 → 큐 일괄 발송 ──
+    if (body.type === "flush_queue") {
+      const { data: items, error } = await db
+        .from("pending_kakao_queue")
+        .select("*")
+        .order("created_at", { ascending: true });
+
+      if (error) throw new Error(`큐 조회 실패: ${error.message}`);
+      if (!items || items.length === 0) {
+        return new Response(
+          JSON.stringify({ flushed: 0, message: "큐 비어있음" }),
+          { headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+        );
       }
 
-      const variables = {
-        "#{주문번호}": body.orderNo      ?? "-",
-        "#{고객사}":   body.customerName ?? "-",
-        "#{품목}":     body.productSpec  ?? "-",
-        "#{수량}":     body.quantity     ?? "-",
-        "#{전달시간}": new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }),
-      };
-      const buttons = [
-        ...(body.deliveredUrl ? [{
-          buttonType: "WL",
-          buttonName: "배송완료",
-          linkMo:     body.deliveredUrl,
-          linkPc:     body.deliveredUrl,
-        }] : []),
-        {
-          buttonType: "WL",
-          buttonName: "업무 페이지",
-          linkMo:     "https://rnfkorea.co.kr/work/secretary",
-          linkPc:     "https://rnfkorea.co.kr/work/secretary",
-        },
-      ];
+      let flushed = 0;
+      for (const item of items) {
+        try {
+          const q = item.payload as Record<string, string>;
+          const qIsJinheung = q.type === "order_forwarded" || q.type === "wheel_return_request";
+          const qIsNarumi   = typeof q.type === "string" && q.type.startsWith("narumi");
 
-      const results = await Promise.all(
-        JINHEUNG_PHONES.map((to) => sendJinheungAlimtalk(to, TEMPLATE_ID, variables, buttons))
-      );
-
-      // 알림톡 실패한 번호는 SMS로 폴백
-      const failedPhones = JINHEUNG_PHONES.filter((_, i) => !results[i].ok);
-      if (failedPhones.length > 0) {
-        console.error("진흥 알림톡 실패 번호:", failedPhones.join(","));
-        const smsText = buildMessage(body);
-        await sendSms(smsText, failedPhones);
+          if (qIsJinheung) {
+            await sendJinheungNow(q);
+          } else if (qIsNarumi) {
+            if (q.type === "narumi_postal") {
+              await sendSms(buildMessage(q), NARUMI_RECIPIENTS);
+            } else {
+              try {
+                const { templateKey, variables } = buildNarumiVariables(q);
+                await sendNarumiAlimtalkToAll(templateKey, variables, buildMessage(q));
+              } catch {
+                await sendSms(buildMessage(q), NARUMI_RECIPIENTS);
+              }
+            }
+          } else {
+            const { templateKey, variables } = buildHcmVariables(q);
+            await sendHcmAlimtalkToAll(templateKey, variables, buildMessage(q));
+          }
+          await db.from("pending_kakao_queue").delete().eq("id", item.id);
+          flushed++;
+          console.log(`[큐 발송] id=${item.id} type=${q.type}`);
+        } catch (e) {
+          console.error(`[큐 발송 실패] id=${item.id}:`, (e as Error).message);
+        }
       }
-      console.log("진흥 알림톡 발송 처리 완료:", body.orderNo, "→", JINHEUNG_PHONES.join(","));
 
       return new Response(
-        JSON.stringify({ success: true, type: "order_forwarded", recipients: JINHEUNG_PHONES }),
+        JSON.stringify({ flushed, total: items.length }),
         { headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
       );
     }
 
-    // ── 휠반납 요청 알림톡 (배송완료 후 자동 발송) ───────────────
-    if (body.type === "wheel_return_request") {
-      // 주문번호를 YYMMDD-순번 형식으로 변환
-      body.orderNo = await formatOrderNo(body.orderNo);
+    // ── 업무시간 체크 (KST 09:00~19:00 외 → 큐에 저장) ─────────
+    // 모든 타입(진흥 발주·휠반납·HCM·나르미) 동일 적용
+    const nowKST  = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const hourKST = nowKST.getUTCHours(); // KST 기준 시각
+    const isOffHours = hourKST >= 19 || hourKST < 9; // 19시~익일 09시 보류
 
-      // 쉼표로 구분된 여러 수신자 지원 (예: "01028378838,01050549006")
-      const JINHEUNG_PHONES = (Deno.env.get("JINHEUNG_PHONE") ?? "")
-        .split(",")
-        .map((n) => n.replace(/\D/g, ""))
-        .filter(Boolean);
-      const _PF_ID       = Deno.env.get("SOLAPI_PF_ID") ?? "";
-      const TEMPLATE_ID = Deno.env.get("SOLAPI_TEMPLATE_ID_WHEEL_REQUEST") ?? "";
+    if (isOffHours) {
+      const { error: qErr } = await db
+        .from("pending_kakao_queue")
+        .insert({ payload: body });
 
-      if (JINHEUNG_PHONES.length === 0) {
-        return new Response(JSON.stringify({ error: "JINHEUNG_PHONE 미설정" }), {
-          status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-        });
+      if (qErr) {
+        console.error("[큐 저장 실패]:", qErr.message);
+        // 큐 저장 실패 시 아래 즉시 발송으로 fall-through
+      } else {
+        const sendAt = `${nowKST.getUTCFullYear()}-${String(nowKST.getUTCMonth()+1).padStart(2,"0")}-${String(nowKST.getUTCDate()).padStart(2,"0")} 09:00 KST`;
+        console.log(`[큐 저장] type=${body.type} → ${sendAt} 발송 예정`);
+        return new Response(
+          JSON.stringify({ queued: true, send_at: sendAt }),
+          { headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+        );
       }
+    }
 
-      const variables = {
-        "#{주문번호}": body.orderNo      ?? "-",
-        "#{고객사}":   body.customerName ?? "-",
-        "#{품목}":     body.productSpec  ?? "-",
-        "#{수량}":     body.quantity     ?? "-",
-        "#{전달시간}": new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }),
-      };
-      const buttons = [
-        ...(body.wheelReturnedUrl ? [{
-          buttonType: "WL",
-          buttonName: "휠반납 확인",
-          linkMo:     body.wheelReturnedUrl,
-          linkPc:     body.wheelReturnedUrl,
-        }] : []),
-        {
-          buttonType: "WL",
-          buttonName: "업무 페이지",
-          linkMo:     "https://rnfkorea.co.kr/work/secretary",
-          linkPc:     "https://rnfkorea.co.kr/work/secretary",
-        },
-      ];
-
-      const results = await Promise.all(
-        JINHEUNG_PHONES.map((to) => sendJinheungAlimtalk(to, TEMPLATE_ID, variables, buttons))
-      );
-
-      // 알림톡 실패한 번호는 SMS로 폴백
-      const failedPhones = JINHEUNG_PHONES.filter((_, i) => !results[i].ok);
-      if (failedPhones.length > 0) {
-        console.error("휠반납 알림톡 실패 번호:", failedPhones.join(","));
-        const smsText = [
-          "[담당자님, 사내 업무용 메시지]",
-          "RNF 타이어 휠반납 요청 안내", "",
-          `주문번호: ${body.orderNo ?? "-"}`,
-          `고객사: ${body.customerName ?? "-"}`,
-          `품목: ${body.productSpec ?? "-"}`,
-          `수량: ${body.quantity ?? "-"}`,
-          `시간: ${new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}`,
-        ].join("\n");
-        await sendSms(smsText, failedPhones);
-      }
-      console.log("휠반납 알림톡 발송 처리 완료:", body.orderNo, "→", JINHEUNG_PHONES.join(","));
-
+    // ── 업무시간 내 즉시 발송 ────────────────────────────────────
+    const isJinheung = body.type === "order_forwarded" || body.type === "wheel_return_request";
+    if (isJinheung) {
+      await sendJinheungNow(body);
       return new Response(
-        JSON.stringify({ success: true, type: "wheel_return_request", recipients: JINHEUNG_PHONES }),
+        JSON.stringify({ success: true, type: body.type }),
         { headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
       );
     }

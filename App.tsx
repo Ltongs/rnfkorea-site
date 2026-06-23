@@ -1516,7 +1516,10 @@ const AppRoutes = () => {
         </Routes>
       </main>
 
-      {!useLocation().pathname.startsWith("/work/") && <Footer />}
+      {!useLocation().pathname.startsWith("/work/")
+        && !useLocation().pathname.startsWith("/hyundaicm")
+        && !useLocation().pathname.startsWith("/narumi")
+        && <Footer />}
     </div>
   );
 };

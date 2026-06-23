@@ -1354,7 +1354,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         creditRate:       patch.credit_rate,
         creditIncentive:  patch.credit_incentive,
         bizHistory:       next !== "거절" ? creditBizHistory : undefined,
-        loanLimit:        patch.loan_limit ? String(patch.loan_limit) : undefined,
+        loanLimit:        patch.loan_limit ? String(patch.loan_limit) : "-",
         loanPeriod:       patch.loan_period ? String(patch.loan_period) : undefined,
         gracePeriod:      patch.grace_period ? String(patch.grace_period) : undefined,
         installmentPeriod: patch.installment_period ? String(patch.installment_period) : undefined,

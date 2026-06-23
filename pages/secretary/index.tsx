@@ -1276,9 +1276,24 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
     setSchedLoading(true);
     const d = new Date(schedDate); d.setDate(d.getDate()+1);
     const nextDay = d.toISOString().slice(0,10);
-    // 선택 날짜 기준 일정만 조회 (기한초과 항목 제외)
-    const r1 = await supabase.from("secretary_schedules").select("*").gte("schedule_date",schedDate).lte("schedule_date",nextDay).eq("is_done",false).order("schedule_date",{ascending:true}).order("start_time",{ascending:true});
-    const merged = (r1.data ?? []) as Schedule[];
+
+    // 선택 날짜 일정 (완료 여부 무관) + 과거 미완료 일정 병렬 조회
+    const [r1, r2] = await Promise.all([
+      // 선택 날짜 ~ 다음날 (완료된 것도 포함)
+      supabase.from("secretary_schedules").select("*")
+        .gte("schedule_date", schedDate).lte("schedule_date", nextDay)
+        .order("schedule_date", {ascending:true}).order("start_time", {ascending:true}),
+      // 선택 날짜 이전 미완료 일정
+      supabase.from("secretary_schedules").select("*")
+        .lt("schedule_date", schedDate).eq("is_done", false)
+        .order("schedule_date", {ascending:true}).order("start_time", {ascending:true}),
+    ]);
+
+    // 과거 미완료를 앞에, 선택 날짜 일정을 뒤에 합산
+    const merged = [
+      ...((r2.data ?? []) as Schedule[]),
+      ...((r1.data ?? []) as Schedule[]),
+    ];
 
     // consultation_id가 있는 일정의 진행단계 조회
     const cids = [...new Set(merged.filter(s=>s.consultation_id).map(s=>s.consultation_id as number))];
@@ -1537,22 +1552,17 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       if(fdr.data) fdr.data.forEach((f:any)=>{ fdMap[f.consultation_id]=f.finance_stage; });
       const FIN_LBL_S:Record<string,string> = {consulting:"상담중",received:"접수",credit_check:"신용조회",approved:"승인",supplement:"보완",rejected:"거절",doc_registration:"서류등록",contract_sent:"전자계약",confirmed:"확정",cancelled:"취소"};
 
-      // 타이어/배터리/지게차 process_stage + 보험 ins_process_status 조회
+      // 타이어/배터리/지게차 process_stage 조회 (업무현황 탭 단계 표시 일치를 위함)
       const cids = cr.data.map((c:any)=>c.id as number);
-      const [tireR, battR, forkR, insR2] = await Promise.all([
+      const [tireR, battR, forkR] = await Promise.all([
         supabase.from("consultation_tire_details").select("consultation_id,process_status,process_stage").in("consultation_id",cids),
         supabase.from("consultation_battery_details").select("consultation_id,process_stage").in("consultation_id",cids),
         supabase.from("consultation_forklift_details").select("consultation_id,process_stage,forklift_status").in("consultation_id",cids),
-        supabase.from("consultation_insurance_details").select("consultation_id,policy_issued,design_requested").in("consultation_id",cids),
       ]);
       const psMap:Record<number,string> = {};
       (tireR.data??[]).forEach((d:any)=>{ psMap[d.consultation_id]=d.process_stage??d.process_status; });
       (battR.data??[]).forEach((d:any)=>{ if(d.process_stage) psMap[d.consultation_id]=d.process_stage; });
       (forkR.data??[]).forEach((d:any)=>{ if(d.process_stage||d.forklift_status) psMap[d.consultation_id]=d.process_stage??d.forklift_status; });
-      const insStageMap2:Record<number,string> = {};
-      (insR2.data??[]).forEach((d:any)=>{
-        insStageMap2[d.consultation_id] = d.policy_issued ? "증권발급" : d.design_requested ? "설계요청" : "미진행";
-      });
 
       setRecentC(cr.data.map((c:any)=>{
         const fs = fdMap[c.id];
@@ -1561,7 +1571,6 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
           finance_stage: fs ?? null,
           display_status: c.work_type==="finance" && fs ? FIN_LBL_S[fs]??fs : null,
           process_stage: psMap[c.id] ?? null,
-          ins_process_status: insStageMap2[c.id] ?? null,
         };
       }) as Consult[]);
     }
@@ -1582,26 +1591,19 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
 
     if(rr.data && rr.data.length > 0){
       const cids = rr.data.map((c:any)=>c.id as number);
-      const [tireR, battR, forkR, insR] = await Promise.all([
+      const [tireR, battR, forkR] = await Promise.all([
         supabase.from("consultation_tire_details").select("consultation_id,process_status,process_stage").in("consultation_id",cids),
         supabase.from("consultation_battery_details").select("consultation_id,process_stage").in("consultation_id",cids),
         supabase.from("consultation_forklift_details").select("consultation_id,process_stage,forklift_status").in("consultation_id",cids),
-        supabase.from("consultation_insurance_details").select("consultation_id,policy_issued,design_requested").in("consultation_id",cids),
       ]);
       const psMap:Record<number,string> = {};
       (tireR.data??[]).forEach((d:any)=>{ psMap[d.consultation_id]=d.process_stage??d.process_status; });
       (battR.data??[]).forEach((d:any)=>{ if(d.process_stage) psMap[d.consultation_id]=d.process_stage; });
       (forkR.data??[]).forEach((d:any)=>{ if(d.process_stage||d.forklift_status) psMap[d.consultation_id]=d.process_stage??d.forklift_status; });
-      // 보험: policy_issued → "증권발급", design_requested → "설계요청", else → "미진행"
-      const insStageMap:Record<number,string> = {};
-      (insR.data??[]).forEach((d:any)=>{
-        insStageMap[d.consultation_id] = d.policy_issued ? "증권발급" : d.design_requested ? "설계요청" : "미진행";
-      });
       setRecentC(rr.data.map((c:any)=>({
         ...c,
         display_status: c.work_type==="finance" ? (fdMap[c.id] ?? null) : null,
         process_stage: psMap[c.id] ?? null,
-        ins_process_status: insStageMap[c.id] ?? null,
       })) as Consult[]);
     }
     setCLoading(false);
@@ -2595,6 +2597,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                     <CatDot c={s.category}/>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
+                        {s.schedule_date<schedDate&&!s.is_done&&<span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-500 font-medium flex-shrink-0">⚠ 미완료</span>}
                         {s.schedule_date>schedDate&&<span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium flex-shrink-0">내일</span>}
                         <span className={`text-sm font-semibold text-[#0f172a] ${s.is_done?"line-through":""}`}>{s.title}</span>
                         <span className="text-xs text-gray-400">{CAT_LBL[s.category]}</span>
@@ -2767,31 +2770,17 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                             ];
                             const isTireOrBattery = ["tire_sales","tire","battery_sales","battery","forklift_sales","forklift"].includes(c.work_type);
                             const isFinanceType   = c.work_type==="finance";
-                            const isInsurance     = c.work_type==="registration_insurance";
-                            // 보험 전용 단계 옵션
-                            const INS_STAGES = [
-                              {value:"미진행",  label:"미진행"},
-                              {value:"설계요청", label:"설계요청"},
-                              {value:"증권발급", label:"증권발급"},
-                            ];
                             // 표시할 현재 단계값
-                            const curStage = isInsurance
-                              ? ((c as any).ins_process_status ?? "미진행")
-                              : isTireOrBattery
-                              ? (c.process_stage??"contract")
-                              : isFinanceType
-                              ? ((c as any).display_status??"")
-                              : c.status;
-                            const stageOptions = isInsurance ? INS_STAGES : isTireOrBattery ? COMMON_STAGES : isFinanceType ? FIN_STAGES : COMMON_STAGES;
-                            // 단계별 색상
+                            const curStage = isTireOrBattery ? (c.process_stage??"contract") : isFinanceType ? ((c as any).display_status??"") : c.status;
+                            const stageOptions = isTireOrBattery ? COMMON_STAGES : isFinanceType ? FIN_STAGES : COMMON_STAGES;
+                            // 단계별 색상 (상담관리 progressColor와 동일)
                             const stageColor = (s:string) =>
-                              ["invoiced","completed_order","confirmed","delivered","증권발급"].includes(s) ? {bg:"#f0fdf4",fg:"#16a34a",bd:"#bbf7d0"}
-                              :["cancelled","rejected","미진행"].includes(s)                                ? {bg:"#f9fafb",fg:"#6b7280",bd:"#e5e7eb"}
-                              :["설계요청"].includes(s)                                                     ? {bg:"#eff6ff",fg:"#2563eb",bd:"#bfdbfe"}
-                              :["contract","contract_sent","approved"].includes(s)                         ? {bg:"#eff6ff",fg:"#2563eb",bd:"#bfdbfe"}
-                              :["delivery"].includes(s)                                                    ? {bg:"#fff7ed",fg:"#ea580c",bd:"#fed7aa"}
-                              :["completed_order"].includes(s)                                             ? {bg:"#f0fdf4",fg:"#16a34a",bd:"#bbf7d0"}
-                                                                                                          : {bg:"#f9fafb",fg:"#6b7280",bd:"#e5e7eb"};
+                              ["invoiced","completed_order","confirmed","delivered"].includes(s) ? {bg:"#f0fdf4",fg:"#16a34a",bd:"#bbf7d0"}
+                              :["cancelled","rejected"].includes(s)                              ? {bg:"#fef2f2",fg:"#ef4444",bd:"#fecaca"}
+                              :["contract","contract_sent","approved"].includes(s)               ? {bg:"#eff6ff",fg:"#2563eb",bd:"#bfdbfe"}
+                              :["delivery"].includes(s)                                          ? {bg:"#fff7ed",fg:"#ea580c",bd:"#fed7aa"}
+                              :["completed_order"].includes(s)                                   ? {bg:"#f0fdf4",fg:"#16a34a",bd:"#bbf7d0"}
+                                                                                                : {bg:"#f9fafb",fg:"#6b7280",bd:"#e5e7eb"};
                             const sc = stageColor(curStage);
                             return (
                             <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer" onClick={()=>navigate(`/work/call-management?id=${c.id}`)}>
@@ -2803,25 +2792,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                                   value={curStage}
                                   onChange={async e=>{
                                     const next = e.target.value;
-                                    if(isInsurance){
-                                      // 보험: consultation_insurance_details boolean 필드 업데이트 + consultation_cases.status 동기화
-                                      const policyIssued  = next==="증권발급";
-                                      const designReq     = next==="설계요청" || policyIssued;
-                                      const appIssued     = policyIssued;
-                                      const payComplete   = policyIssued;
-                                      const processStatus = policyIssued ? "policy_issued" : designReq ? "design_requested" : null;
-                                      const caseStatus    = policyIssued ? "closed" : designReq ? "in_progress" : "new";
-                                      const {error:e1} = await supabase.from("consultation_insurance_details").update({
-                                        design_requested: designReq,
-                                        application_issued: appIssued,
-                                        payment_completed: payComplete,
-                                        policy_issued: policyIssued,
-                                        process_status: processStatus,
-                                      }).eq("consultation_id",c.id);
-                                      if(e1){alert("단계 변경 실패: "+e1.message);return;}
-                                      await supabase.from("consultation_cases").update({status:caseStatus}).eq("id",c.id);
-                                      setRecentC(prev=>prev.map(x=>x.id===c.id?{...x,ins_process_status:next,status:caseStatus}:x));
-                                    } else if(isTireOrBattery){
+                                    if(isTireOrBattery){
                                       const detailTable = ["tire_sales","tire"].includes(c.work_type)
                                         ? "consultation_tire_details"
                                         : ["battery_sales","battery"].includes(c.work_type)
