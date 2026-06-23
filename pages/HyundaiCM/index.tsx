@@ -155,19 +155,17 @@ function canGoToStatus(current: HCMStatus, next: HCMStatus, isAdmin: boolean): b
   // 같은 단계: 불가
   if (nextIdx === currentIdx) return false;
 
-  // 신용조회 → 신용결과(승인/보완/거절): 허용
-  if (current === "신용조회" && CREDIT_STATUSES.includes(next)) return true;
+  // 접수 또는 신용조회 상태 → 신용결과(승인/보완/거절): 허용
+  if ((current === "접수" || current === "신용조회") && CREDIT_STATUSES.includes(next)) return true;
 
   // 신용결과 상태 → 서류등록: admin만 허용
   if (CREDIT_STATUSES.includes(current) && next === "서류등록") return isAdmin;
 
-  // 신용조회 상태에서 서류등록 이후로 바로 점프: 불가 (신용결과 먼저)
+  // 신용조회/신용결과 상태에서 서류등록 건너뛰고 점프: 불가
   if (current === "신용조회" && !CREDIT_STATUSES.includes(next)) return false;
-
-  // 신용결과 상태에서 서류등록 건너뛰고 점프: 불가
   if (CREDIT_STATUSES.includes(current) && next !== "서류등록") return false;
 
-  // 일반 순서: 바로 다음 단계만 허용
+  // 일반 순서: 접수 → 서류등록 → 전자계약발송 → 확정 (신용조회 생략 허용)
   const mainOrder: HCMStatus[] = ["접수", "신용조회", "서류등록", "전자계약발송", "확정"];
   const currentMainIdx = mainOrder.indexOf(CREDIT_STATUSES.includes(current) ? "서류등록" : current);
   const nextMainIdx    = mainOrder.indexOf(next);
