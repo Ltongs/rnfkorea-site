@@ -2018,9 +2018,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                         { label: "차량가격",   value: formatAmount(r.purchase_amount) },
                         {
                           label: "할부원금",
-                          // 승인 이후 loan_limit(대출한도)이 입력된 경우 해당 값 우선 표시, 없으면 접수 시 입력한 installment_principal
                           value: r.loan_limit != null
-                            ? formatAmount(r.loan_limit) + (r.installment_principal != null && r.loan_limit !== r.installment_principal ? ` (접수: ${formatAmount(r.installment_principal)})` : "")
+                            ? formatAmount(r.loan_limit)
                             : formatAmount(r.installment_principal),
                         },
                         { label: "선수율",     value: (() => {
