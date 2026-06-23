@@ -2247,7 +2247,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                                     다운로드
                                   </button>
                                   {canUploadDoc && (
-                                    <button disabled={isUploading} onClick={() => triggerDocUpload(r.id, f.key, f.dbCol, f.label)} className="px-3 py-1 rounded-2xl border border-gray-200 text-gray-400 text-xs font-medium hover:border-orange-200 hover:text-orange-600 disabled:opacity-50 transition-all">
+                                    <button disabled={isUploading} onClick={() => triggerDocUpload(r.id, f.key, f.dbCol, f.label)} className="px-3 py-1 rounded-2xl border border-orange-300 text-orange-600 text-xs font-semibold hover:bg-orange-50 hover:border-orange-400 disabled:opacity-50 transition-all">
                                       {isUploading ? "..." : "재업로드"}
                                     </button>
                                   )}
