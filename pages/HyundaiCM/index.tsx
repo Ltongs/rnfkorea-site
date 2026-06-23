@@ -1,6 +1,6 @@
 // pages/HyundaiCM/index.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Settings } from "lucide-react";
 import html2canvas from "html2canvas";
 import { supabase } from "../../lib/supabase";
@@ -223,6 +223,8 @@ const btnGhost =
 export default function HyundaiCMPage() {
   const { user, logout, isAdmin, isSubAdmin, isHyundaiCM, isNhCapital, isNhCapitalStaff } = useAuth() as any;
   const nav = useNavigate();
+  const [searchParams] = useSearchParams();
+  const focusId = searchParams.get("id"); // 업무현황에서 딜 클릭 시 전달되는 id
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches
     || (window.navigator as any).standalone === true;
   const isAdminLevel           = isAdmin || isSubAdmin;
@@ -970,6 +972,10 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
   // ─── 필터 ────────────────────────────────────────────────
   const filteredRows = useMemo(() => {
+    // 업무현황에서 특정 딜을 클릭해서 온 경우 → 해당 건만 표시
+    if (focusId) {
+      return rows.filter((r) => String(r.id) === String(focusId));
+    }
     let result = [...rows];
     const q = searchText.trim().toLowerCase();
     if (q) {
@@ -987,7 +993,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     }
     if (statusFilter !== "all") result = result.filter((r) => r.status === statusFilter);
     return result;
-  }, [rows, searchText, statusFilter]);
+  }, [rows, searchText, statusFilter, focusId]);
 
   const summaryCounts = useMemo(() =>
     STATUS_ORDER.reduce((acc, s) => {
@@ -1686,6 +1692,21 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
             </button>
           )}
         </div>
+
+        {/* ── focusId: 특정 딜 단독 뷰 배너 ── */}
+        {focusId && (
+          <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-blue-50 border border-blue-200">
+            <button
+              onClick={() => nav("/hyundaicm")}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-blue-200 text-blue-700 text-xs font-semibold hover:bg-blue-50 transition-all shrink-0"
+            >
+              ← 전체 목록
+            </button>
+            <p className="text-sm text-blue-700 font-medium">
+              AI비서에서 선택한 건만 표시 중입니다
+            </p>
+          </div>
+        )}
 
         {/* ── 액션 바 ── */}
         <div className="flex flex-wrap items-center gap-2">

@@ -189,6 +189,7 @@ function StatusTabContent({
   onRefresh, onNavigate,
   BTS, BTG, BTP, TA2, CARD, md2html, fmtDate,
 }:any) {
+  // onNavigate(path_or_tab, dealId?) — dealId가 있으면 탭 이동 + 딜 선택
   const thisMonth = new Date().getMonth();
   const thisYear  = new Date().getFullYear();
   const isMo = (d:string) => { const dt=new Date(d); return dt.getFullYear()===thisYear&&dt.getMonth()===thisMonth; };
@@ -302,7 +303,7 @@ function StatusTabContent({
               {hyundaiTasks.slice(0,6).map((t:any)=>{
                 const stsCls = HCM_STS_CLR_LOCAL[t.status]??"bg-gray-100 text-gray-500";
                 return (
-                  <div key={t.id} className="flex items-center gap-2 p-2.5 rounded-xl bg-gray-50 hover:bg-blue-50 transition-all">
+                  <div key={t.id} className="flex items-center gap-2 p-2.5 rounded-xl bg-gray-50 hover:bg-blue-50 transition-all cursor-pointer" onClick={()=>onNavigate(`/hyundaicm?id=${t.id}`)}>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium text-[#0f172a] truncate">{t.customer_name}{t.company_name?` (${t.company_name})`:""}</span>
@@ -335,7 +336,7 @@ function StatusTabContent({
                 const stsLbl = NARUMI_STS_LBL[t.status]??t.status??"진행중";
                 const stsCls = !t.status?"bg-gray-100 text-gray-500":["completed","registered","done"].includes(t.status)?"bg-emerald-50 text-emerald-700":["pending","docs"].includes(t.status)?"bg-amber-50 text-amber-700":"bg-blue-50 text-blue-700";
                 return (
-                  <div key={t.id} className={`flex items-center gap-2 p-2.5 rounded-xl transition-all ${t.is_urgent?"bg-red-50 hover:bg-red-100":"bg-gray-50 hover:bg-emerald-50"}`}>
+                  <div key={t.id} className={`flex items-center gap-2 p-2.5 rounded-xl transition-all cursor-pointer ${t.is_urgent?"bg-red-50 hover:bg-red-100":"bg-gray-50 hover:bg-emerald-50"}`} onClick={()=>onNavigate(`/narumi?id=${t.id}`)}>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         {t.is_urgent&&<span className="text-xs font-bold text-red-500 flex-shrink-0">긴급</span>}
@@ -771,10 +772,12 @@ const SecretaryPage:React.FC = () => {
   const [hcmLoading,setHcmLoading] = useState(false);
   const [hcmList,setHcmList] = useState<HyundaiTask[]>([]);
   const [hcmConsults,setHcmConsults] = useState<OrderView[]>([]);
+  const [hcmSelectedId,setHcmSelectedId] = useState<number|null>(null);
   // 나르미 탭
   const [narumiLoading2,setNarumiLoading2] = useState(false);
   const [narumiList,setNarumiList] = useState<NarumiTask[]>([]);
   const [narumiConsults,setNarumiConsults] = useState<OrderView[]>([]);
+  const [narumiSelectedId,setNarumiSelectedId] = useState<number|null>(null);
   // 진흥주문 탭
   const [jFilter,setJFilter] = useState<"active"|"all"|"done"|"wheel_pending">("active");
   const [jExpanded,setJExpanded] = useState<string|null>(null);
@@ -2649,7 +2652,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               statusLoading={statusLoading}
 
               onRefresh={()=>void loadStatusData()}
-              onNavigate={navigate}
+              onNavigate={(path:string)=>navigate(path)}
 
             />
           )}
@@ -2981,7 +2984,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                 return filtered.length===0?<div className={`${CARD} p-8 text-center text-gray-400 text-sm`}>해당 건이 없습니다</div>:(
                   <div className="space-y-2">
                     {filtered.map((t:any)=>(
-                      <div key={t.id} className={`${CARD} p-3.5`}>
+                      <div key={t.id} className={`${CARD} p-3.5 cursor-pointer hover:shadow-md transition-all`}
+                        onClick={()=>navigate(`/hyundaicm?id=${t.id}`)}>
                         <div className="flex items-start gap-2.5">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
@@ -3005,9 +3009,9 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                               </div>
                             )}
                           </div>
-                          <div className="flex flex-col gap-1 shrink-0">
+                          <div className="flex flex-col gap-1 shrink-0" onClick={e=>e.stopPropagation()}>
                             <button className={BTG} onClick={()=>setHcmExpanded(hcmExpanded===t.id?null:t.id)}>{hcmExpanded===t.id?"접기":"상세"}</button>
-                            <button className={BTO} onClick={()=>navigate("/hyundaicm")}>이동</button>
+                            <button className={BTO} onClick={()=>navigate(`/hyundaicm?id=${t.id}`)}>이동 →</button>
                           </div>
                         </div>
                       </div>
@@ -3093,7 +3097,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               {narumiLoading2?<p className="text-sm text-gray-400 p-4 text-center">불러오는 중...</p>:narumiList.length===0?<div className={`${CARD} p-8 text-center text-gray-400 text-sm`}>등록된 차량이 없습니다</div>:(
                 <div className="space-y-2">
                   {narumiList.map((t:any)=>(
-                    <div key={t.id} className={`${CARD} p-3.5`}>
+                    <div key={t.id} className={`${CARD} p-3.5 cursor-pointer hover:shadow-md transition-all`}
+                      onClick={()=>navigate(`/narumi?id=${t.id}`)}>
                       <div className="flex items-start gap-2.5">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
@@ -3114,8 +3119,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                             <span className="ml-auto text-gray-300">{String(t.created_at||"").slice(0,10)}</span>
                           </div>
                         </div>
-                        <div className="flex flex-col gap-1 shrink-0">
-                          <button className={BTO} onClick={()=>navigate("/narumi")}>이동</button>
+                        <div className="flex flex-col gap-1 shrink-0" onClick={e=>e.stopPropagation()}>
+                          <button className={BTO} onClick={()=>navigate(`/narumi?id=${t.id}`)}>이동 →</button>
                         </div>
                       </div>
                     </div>

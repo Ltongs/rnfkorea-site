@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 // 정책
 const UI_MASK_AFTER_HOURS = 120;
@@ -323,6 +323,8 @@ export default function NarumiPage() {
     canUploadVehicleDoc,
   } = useAuth() as any;
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const focusId = searchParams.get("id"); // AI비서에서 딜 클릭 시 전달되는 id
   const isPrivilegedManager = isAdmin || isInsuranceManager;
 
   const [vin, setVin] = useState("");
@@ -460,6 +462,10 @@ export default function NarumiPage() {
   }, [rows, searchText, isLotte]);
 
   const filteredRows = useMemo(() => {
+    // AI비서에서 특정 딜을 클릭해서 온 경우 → 해당 건만 표시
+    if (focusId) {
+      return rows.filter((r) => String(r.id) === String(focusId));
+    }
     let result = [...searchedRows];
 
     if (summaryFilter !== "all") {
@@ -474,7 +480,7 @@ export default function NarumiPage() {
     }
 
     return result;
-  }, [searchedRows, summaryFilter, statusFilter]);
+  }, [rows, searchedRows, summaryFilter, statusFilter, focusId]);
 
   const summaryCounts = useMemo(() => {
     return searchedRows.reduce(
@@ -1722,6 +1728,21 @@ VIN: ${nextVin}`);
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── focusId: 특정 딜 단독 뷰 배너 ── */}
+        {focusId && (
+          <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-blue-50 border border-blue-200">
+            <button
+              onClick={() => navigate("/narumi")}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-blue-200 text-blue-700 text-xs font-semibold hover:bg-blue-50 transition-all shrink-0"
+            >
+              ← 전체 목록
+            </button>
+            <p className="text-sm text-blue-700 font-medium">
+              AI비서에서 선택한 건만 표시 중입니다
+            </p>
           </div>
         )}
 
