@@ -454,12 +454,21 @@ export default function HyundaiCMPage() {
 
   // ── 상환스케줄 PDF 다운로드 ──
   const downloadSchedulePDF = (task: HCMTask, startYM: string, recipient: string) => {
-    const principal = task.installment_principal ?? 0;
+    // 승인 후 확정된 대출한도(loan_limit)가 있으면 우선 사용, 없으면 접수 시 입력한 할부원금
+    const principal = task.loan_limit ?? task.installment_principal ?? 0;
     const annualRate = task.interest_rate ?? 0;
     const months = task.loan_period ?? 0;
     if (!principal || !annualRate || !months) return;
 
-    const { payment, rows } = calcAmortization(principal, annualRate, months, startYM, task.grace_period ?? 0);
+    const gracePeriod = task.grace_period ?? 0;
+    const installmentPeriod = task.installment_period ?? 0;
+    const periodLabel = (gracePeriod > 0 && installmentPeriod > 0)
+      ? `${months}개월 (거치 ${gracePeriod} + 할부 ${installmentPeriod})`
+      : gracePeriod > 0
+        ? `${months}개월 (거치 ${gracePeriod})`
+        : `${months}개월`;
+
+    const { payment, rows } = calcAmortization(principal, annualRate, months, startYM, gracePeriod);
     const fmt = (n:number) => n.toLocaleString('ko-KR');
     const displayName = task.company_name
       ? `${task.company_name}${task.customer_name !== task.company_name ? ` (${task.customer_name})` : ''}`
@@ -508,7 +517,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
   <div class="meta-item"><label>고객명</label><span>${displayName}</span></div>
   <div class="meta-item"><label>할부원금</label><span>${fmt(principal)}원</span></div>
   <div class="meta-item"><label>금리 (연)</label><span>${annualRate}%</span></div>
-  <div class="meta-item"><label>대출기간</label><span>${months}개월</span></div>
+  <div class="meta-item"><label>대출기간</label><span>${periodLabel}</span></div>
   <div class="meta-item"><label>월 납입액</label><span>${fmt(payment)}원</span></div>
   <div class="meta-item"><label>금융사</label><span>${task.finance_company ?? '-'}</span></div>
 </div>
@@ -1011,7 +1020,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       return d.getFullYear().toString() + String(d.getMonth() + 1).padStart(2, "0") === ym;
     });
     const confirmed = thisMonth.filter((r) => r.status === "확정");
-    const totalAmount = confirmed.reduce((sum, r) => sum + (r.installment_principal ?? 0), 0);
+    const totalAmount = confirmed.reduce((sum, r) => sum + (r.loan_limit ?? r.installment_principal ?? 0), 0);
     return { total: thisMonth.length, confirmed: confirmed.length, amount: totalAmount };
   }, [rows]);
 
@@ -2007,14 +2016,33 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                         { label: "할부금융사", value: r.finance_company ?? "-" },
                         { label: "톤수",       value: r.equipment_ton ?? "-" },
                         { label: "차량가격",   value: formatAmount(r.purchase_amount) },
-                        { label: "할부원금",   value: formatAmount(r.installment_principal) },
-                        { label: "선수율",     value: (r.purchase_amount && r.installment_principal != null)
-                            ? `${(((r.purchase_amount - r.installment_principal) / r.purchase_amount) * 100).toFixed(1)}%`
-                            : "-" },
+                        {
+                          label: "할부원금",
+                          // 승인 이후 loan_limit(대출한도)이 입력된 경우 해당 값 우선 표시, 없으면 접수 시 입력한 installment_principal
+                          value: r.loan_limit != null
+                            ? formatAmount(r.loan_limit) + (r.installment_principal != null && r.loan_limit !== r.installment_principal ? ` (접수: ${formatAmount(r.installment_principal)})` : "")
+                            : formatAmount(r.installment_principal),
+                        },
+                        { label: "선수율",     value: (() => {
+                            const principal = r.loan_limit ?? r.installment_principal;
+                            return (r.purchase_amount && principal != null)
+                              ? `${(((r.purchase_amount - principal) / r.purchase_amount) * 100).toFixed(1)}%`
+                              : "-";
+                          })() },
                         { label: "금리",       value: r.interest_rate != null ? `${r.interest_rate}%` : "-" },
                         { label: "인센티브",   value: r.incentive != null ? `${r.incentive}%` : "-" },
                         { label: "부가세후불", value: r.vat_deferred ? `Y${r.vat_deferred_amount != null ? " / " + formatAmount(r.vat_deferred_amount) : ""}` : "N" },
-                        { label: "대출기간",   value: r.loan_period != null ? `${r.loan_period}개월` : "-" },
+                        {
+                          label: "대출기간",
+                          // 거치기간 + 할부기간 구분 표시
+                          value: r.loan_period != null
+                            ? (r.grace_period != null && r.installment_period != null)
+                              ? `${r.loan_period}개월 (거치 ${r.grace_period} + 할부 ${r.installment_period})`
+                              : r.grace_period != null
+                                ? `${r.loan_period}개월 (거치 ${r.grace_period})`
+                                : `${r.loan_period}개월`
+                            : "-",
+                        },
                         { label: "영업사원",   value: r.sales_rep ?? "-" },
                         { label: "접수일시",   value: formatCreatedAt(r.created_at) },
                       ].map(({ label, value }) => (
@@ -2075,8 +2103,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                       <p className="text-xs font-medium tracking-wide text-gray-400 uppercase">진행 단계</p>
                       {/* 1행: 진행단계 버튼 */}
                       <div className="flex flex-wrap gap-1.5 pb-1">
-                        {/* 접수, 신용조회 버튼 */}
-                        {["접수", "신용조회"].map((s) => {
+                        {/* 접수 버튼 */}
+                        {["접수"].map((s) => {
                           const canGo = canGoToStatus(r.status, s as HCMStatus, isAdminLevel);
                           return (
                           <button
@@ -2551,10 +2579,16 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       {/* ── 상환스케줄 PDF 모달 ── */}
       {scheduleModal && (() => {
         const r = scheduleModal;
-        const principal = r.installment_principal ?? 0;
+        // 승인 후 대출한도(loan_limit)가 있으면 우선, 없으면 접수 시 입력한 할부원금
+        const principal = r.loan_limit ?? r.installment_principal ?? 0;
         const annualRate = r.interest_rate ?? 0;
         const months = r.loan_period ?? 0;
-        const { payment, rows } = calcAmortization(principal, annualRate, months, scheduleStartDate, r.grace_period ?? 0);
+        const gracePeriod = r.grace_period ?? 0;
+        const installmentPeriod = r.installment_period ?? 0;
+        const periodLabel = (gracePeriod > 0 && installmentPeriod > 0)
+          ? `${months}개월 (거치 ${gracePeriod} + 할부 ${installmentPeriod})`
+          : gracePeriod > 0 ? `${months}개월 (거치 ${gracePeriod})` : `${months}개월`;
+        const { payment, rows } = calcAmortization(principal, annualRate, months, scheduleStartDate, gracePeriod);
         const fmt = (n:number) => n.toLocaleString('ko-KR');
         return (
           <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 px-4">
@@ -2567,7 +2601,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                 </div>
                 <p className="text-xs text-gray-500">
                   {r.company_name ? `${r.company_name}${r.customer_name !== r.company_name ? ` (${r.customer_name})` : ''}` : r.customer_name}
-                  {' · '}{fmt(principal)}원 · {annualRate}% · {months}개월
+                  {' · '}{fmt(principal)}원 · {annualRate}% · {periodLabel}
                 </p>
               </div>
               {/* 수신인 + 시작월 */}
