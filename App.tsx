@@ -1525,21 +1525,11 @@ const AppRoutes = () => {
 };
 
 // ── 스플래시 스크린 (PWA standalone 모드) ──────────────────────
-// index.html의 인라인 스플래시를 React 로드 후 자연스럽게 제거
+// index.html 인라인 스플래시는 타이머(2초)로 자동 제거됨 — 별도 처리 불필요
 const usePwaSplash = () => {
   useEffect(() => {
-    const isStandalone =
-      window.matchMedia("(display-mode: standalone)").matches ||
-      (window.navigator as any).standalone === true;
-    if (!isStandalone) return;
-
-    // React 마운트 완료 후 인라인 스플래시 페이드아웃
-    const t = setTimeout(() => {
-      if (typeof (window as any).__hidePwaSplash === "function") {
-        (window as any).__hidePwaSplash();
-      }
-    }, 300); // React 첫 렌더 안정화 후 제거
-    return () => clearTimeout(t);
+    // 혹시 __hidePwaSplash가 남아있으면 정리
+    return () => { (window as any).__hidePwaSplash = undefined; };
   }, []);
 };
 

@@ -146,24 +146,27 @@
 
         var el = document.getElementById('pwa-splash');
 
-        // root 숨김 + 스플래시 페이드인
+        // root 숨김
         document.body.classList.add('pwa-loading');
-        requestAnimationFrame(function() {
-          requestAnimationFrame(function() {
-            el.style.opacity = '1';
-          });
-        });
 
-        window.__hidePwaSplash = function() {
+        // 즉시 보이기 (opacity 0 → 1, 페이드인 0.5~1초)
+        el.style.display = 'flex';
+        el.style.opacity = '0';
+        el.style.transition = 'none';
+
+        // 0.05초 후 페이드인 시작 (브라우저 렌더 1프레임 대기)
+        setTimeout(function() {
+          el.style.transition = 'opacity 1s ease';  // 페이드인 1초
+          el.style.opacity = '1';
+        }, 50);
+
+        // 2초 후 앱 시작 (페이드아웃 0.4초)
+        setTimeout(function() {
+          el.style.transition = 'opacity 0.4s ease';
           el.style.opacity = '0';
           document.body.classList.remove('pwa-loading');
-          setTimeout(function() { el.style.display = 'none'; }, 450);
-        };
-
-        // 최대 5초 강제 제거
-        setTimeout(function() {
-          if (window.__hidePwaSplash) window.__hidePwaSplash();
-        }, 5000);
+          setTimeout(function() { el.style.display = 'none'; }, 400);
+        }, 2000);
       })();
     </script>
 
