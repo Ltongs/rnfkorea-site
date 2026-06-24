@@ -720,7 +720,6 @@ const CallManagementPage: React.FC = () => {
   const COMMON_STAGES = [
     { value: "contract",        label: "계약" },
     { value: "delivery",        label: "납품" },
-    { value: "completed_order", label: "완결" },
     { value: "invoiced",        label: "계산서발행" },
     { value: "cancelled",       label: "취소" },
   ] as const;
@@ -735,7 +734,7 @@ const CallManagementPage: React.FC = () => {
     if (value === "consulting" || value === "quote")                   return "계약";
     if (value === "waiting_order" || value === "waiting_payment")     return "계약";
     if (value === "delivery_or_replacement" || value === "delivered") return "납품";
-    if (value === "completed")                                        return "완결";
+    if (value === "completed" || value === "completed_order")         return "계산서발행"; // 완결 → 계산서발행으로 표시
     if (value === "invoiced")                                         return "계산서발행";
     if (value === "hold" || value === "cancelled")                    return "취소";
     return value || "-";
@@ -746,7 +745,7 @@ const CallManagementPage: React.FC = () => {
     if (!value) return "contract";
     if (["consulting", "quote", "contract", "inquiry_received", "size_confirming", "quote_sent", "proposal", "waiting_order", "waiting_payment"].includes(value)) return "contract";
     if (["delivery", "delivery_or_replacement", "delivered"].includes(value)) return "delivery";
-    if (["completed_order", "completed", "wheel_returned"].includes(value))   return "completed_order";
+    if (["completed_order", "completed", "wheel_returned"].includes(value))   return "invoiced"; // 완결 → 계산서발행으로 정규화
     if (["invoiced"].includes(value))                                          return "invoiced";
     if (["cancelled"].includes(value))                                         return "cancelled";
     return "contract";

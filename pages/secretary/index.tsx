@@ -215,7 +215,9 @@ function StatusTabContent({
     return c.status;
   };
   const StsBadgeLocal = ({s,isFinance}:{s:string;isFinance?:boolean}) => {
-    const ALL_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",in_progress:"진행중",completed:"완료",done:"완료",closed:"완료",on_hold:"보류",waiting_customer:"고객대기",approved:"승인",confirmed:"확정",rejected:"거절",cancelled:"취소",supplement:"보완",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",credit_check:"신용조회",received:"접수",doc_registration:"서류등록",contract_sent:"전자계약",contract:"계약",delivery:"납품",completed_order:"완결"};
+    const ALL_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",in_progress:"진행중",completed:"완료",done:"완료",closed:"완료",on_hold:"보류",waiting_customer:"고객대기",approved:"승인",confirmed:"확정",rejected:"거절",cancelled:"취소",supplement:"보완",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",credit_check:"신용조회",received:"접수",doc_registration:"서류등록",contract_sent:"전자계약",contract:"계약",delivery:"납품",completed_order:"완결",
+      // 보험 단계
+      design_request:"접수", policy_issued:"완료"};
     const lbl = isFinance ? (FINANCE_STAGE_LBL[s]??ALL_LBL[s]??s) : (ALL_LBL[s]??s);
     const cls = s==="approved"?"bg-emerald-50 text-emerald-700"
       :s==="confirmed"?"bg-[#0f172a] text-white"
@@ -1925,7 +1927,9 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
   const fmtProgress = (wt:string, stage:string|null):string => {
     if(!stage) return "-";
     // 공통 단계
-    const COMMON:Record<string,string> = {consulting:"상담",quote:"견적",contract:"계약",delivery:"납품",completed_order:"완결",invoiced:"계산서발행",cancelled:"취소"};
+    const COMMON:Record<string,string> = {consulting:"상담",quote:"견적",contract:"계약",delivery:"납품",invoiced:"계산서발행",cancelled:"취소",
+      // 보험
+      design_request:"접수(설계요청)", policy_issued:"완료(증권발급)"};
     if(COMMON[stage]) return COMMON[stage];
     // 타이어 레거시 — 나르미 formatCommonStage와 동일하게 맞춤
     const TIRE:Record<string,string> = {
@@ -2753,9 +2757,12 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                             const COMMON_STAGES = [
                               {value:"contract",       label:"계약"},
                               {value:"delivery",       label:"납품"},
-                              {value:"completed_order",label:"완결"},
                               {value:"invoiced",       label:"계산서발행"},
                               {value:"cancelled",      label:"취소"},
+                            ];
+                            const INS_STAGES = [
+                              {value:"design_request", label:"접수(설계요청)"},
+                              {value:"policy_issued",  label:"완료(증권발급)"},
                             ];
                             const FIN_STAGES = [
                               {value:"received",          label:"접수"},
@@ -2770,16 +2777,16 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                             ];
                             const isTireOrBattery = ["tire_sales","tire","battery_sales","battery","forklift_sales","forklift"].includes(c.work_type);
                             const isFinanceType   = c.work_type==="finance";
+                            const isInsurance     = c.work_type==="registration_insurance";
                             // 표시할 현재 단계값
-                            const curStage = isTireOrBattery ? (c.process_stage??"contract") : isFinanceType ? ((c as any).display_status??"") : c.status;
-                            const stageOptions = isTireOrBattery ? COMMON_STAGES : isFinanceType ? FIN_STAGES : COMMON_STAGES;
+                            const curStage = isTireOrBattery ? (c.process_stage??"contract") : isFinanceType ? ((c as any).display_status??"") : isInsurance ? (c.status??"design_request") : c.status;
+                            const stageOptions = isInsurance ? INS_STAGES : isTireOrBattery ? COMMON_STAGES : isFinanceType ? FIN_STAGES : COMMON_STAGES;
                             // 단계별 색상 (상담관리 progressColor와 동일)
                             const stageColor = (s:string) =>
-                              ["invoiced","completed_order","confirmed","delivered"].includes(s) ? {bg:"#f0fdf4",fg:"#16a34a",bd:"#bbf7d0"}
+                              ["invoiced","completed_order","confirmed","delivered","policy_issued"].includes(s) ? {bg:"#f0fdf4",fg:"#16a34a",bd:"#bbf7d0"}
                               :["cancelled","rejected"].includes(s)                              ? {bg:"#fef2f2",fg:"#ef4444",bd:"#fecaca"}
-                              :["contract","contract_sent","approved"].includes(s)               ? {bg:"#eff6ff",fg:"#2563eb",bd:"#bfdbfe"}
+                              :["contract","contract_sent","approved","design_request"].includes(s) ? {bg:"#eff6ff",fg:"#2563eb",bd:"#bfdbfe"}
                               :["delivery"].includes(s)                                          ? {bg:"#fff7ed",fg:"#ea580c",bd:"#fed7aa"}
-                              :["completed_order"].includes(s)                                   ? {bg:"#f0fdf4",fg:"#16a34a",bd:"#bbf7d0"}
                                                                                                 : {bg:"#f9fafb",fg:"#6b7280",bd:"#e5e7eb"};
                             const sc = stageColor(curStage);
                             return (
@@ -2805,6 +2812,10 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                                       const {error} = await supabase.from("consultation_finance_details").update({finance_stage:next}).eq("consultation_id",c.id);
                                       if(error){alert("단계 변경 실패: "+error.message);return;}
                                       setRecentC(prev=>prev.map(x=>x.id===c.id?{...x,display_status:next}:x));
+                                    } else if(isInsurance){
+                                      const {error} = await supabase.from("consultation_cases").update({status:next}).eq("id",c.id);
+                                      if(error){alert("단계 변경 실패: "+error.message);return;}
+                                      setRecentC(prev=>prev.map(x=>x.id===c.id?{...x,status:next}:x));
                                     } else {
                                       const {error} = await supabase.from("consultation_cases").update({status:next}).eq("id",c.id);
                                       if(error){alert("단계 변경 실패: "+error.message);return;}
@@ -2955,7 +2966,6 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                                   <option value="" disabled>단계 선택</option>
                                   <option value="contract">계약</option>
                                   <option value="delivery">납품</option>
-                                  <option value="completed_order">완결</option>
                                   <option value="invoiced">계산서발행</option>
                                   <option value="cancelled">취소</option>
                                 </select>
