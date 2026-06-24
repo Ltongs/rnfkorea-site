@@ -142,27 +142,19 @@
       (function() {
         var el = document.getElementById('pwa-splash');
 
-        // 갤럭시(Android)는 OS가 자체 스플래시를 보여주므로 제외
-        // iOS standalone 또는 일반 브라우저만 표시
-        var isAndroid = /Android/i.test(navigator.userAgent);
-        var isStandalone = window.matchMedia('(display-mode: standalone)').matches
-          || window.navigator.standalone === true;
-        if (isAndroid && isStandalone) return;
-
-        // root 숨김
         document.body.classList.add('pwa-loading');
-
         el.style.display = 'flex';
         el.style.opacity = '0';
-        el.style.transition = 'none';
+        el.style.transition = 'opacity 0.3s ease';
 
-        // 페이드인 0.3초 (빠르게)
-        setTimeout(function() {
-          el.style.transition = 'opacity 0.3s ease';
-          el.style.opacity = '1';
-        }, 50);
+        // 즉시 페이드인 (1프레임 대기)
+        requestAnimationFrame(function() {
+          requestAnimationFrame(function() {
+            el.style.opacity = '1';
+          });
+        });
 
-        // 2.7초 후 페이드아웃 (0.4초) → 앱 시작
+        // 2.7초 후 페이드아웃 → 앱 시작
         setTimeout(function() {
           el.style.transition = 'opacity 0.4s ease';
           el.style.opacity = '0';
