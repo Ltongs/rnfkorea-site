@@ -1018,7 +1018,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       return d.getFullYear().toString() + String(d.getMonth() + 1).padStart(2, "0") === ym;
     });
     const confirmed = thisMonth.filter((r) => r.status === "확정");
-    const totalAmount = confirmed.reduce((sum, r) => sum + (r.installment_principal ?? 0), 0);
+    const totalAmount = confirmed.reduce((sum, r) => sum + (r.loan_limit ?? r.installment_principal ?? 0), 0);
     return { total: thisMonth.length, confirmed: confirmed.length, amount: totalAmount };
   }, [rows]);
 
@@ -1975,10 +1975,11 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                         { label: "할부금융사", value: r.finance_company ?? "-" },
                         { label: "톤수",       value: r.equipment_ton ?? "-" },
                         { label: "차량가격",   value: formatAmount(r.purchase_amount) },
-                        { label: "할부원금",   value: formatAmount(r.installment_principal) },
+                        { label: "대출한도",   value: formatAmount(r.loan_limit ?? r.installment_principal) },
                         { label: "선수율",     value: (() => {
-                            return (r.purchase_amount && r.installment_principal != null)
-                              ? `${(((r.purchase_amount - r.installment_principal) / r.purchase_amount) * 100).toFixed(1)}%`
+                            const principal = r.loan_limit ?? r.installment_principal;
+                            return (r.purchase_amount && principal != null)
+                              ? `${(((r.purchase_amount - principal) / r.purchase_amount) * 100).toFixed(1)}%`
                               : "-";
                           })() },
                         { label: "금리",       value: r.interest_rate != null ? `${r.interest_rate}%` : "-" },
@@ -1994,8 +1995,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                                 : `${r.loan_period}개월`
                             : "-",
                         },
-                        // 승인 후 대출한도가 있을 때만 별도 행으로 표시
-                        ...(r.loan_limit != null ? [{ label: "승인대출한도", value: formatAmount(r.loan_limit) }] : []),
                         { label: "영업사원",   value: r.sales_rep ?? "-" },
                         { label: "접수일시",   value: formatCreatedAt(r.created_at) },
                       ].map(({ label, value }) => (
@@ -3227,8 +3226,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                 <div className="space-y-2">
                   {r.installment_principal != null && (
                     <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-500">할부원금</span>
-                      <span className="text-sm font-medium text-gray-800">{fmtAmt(r.installment_principal)}</span>
+                      <span className="text-sm text-gray-500">대출한도</span>
+                      <span className="text-sm font-medium text-gray-800">{fmtAmt(r.loan_limit ?? r.installment_principal)}</span>
                     </div>
                   )}
                   {r.vat_deferred && r.vat_deferred_amount != null && (
@@ -3238,11 +3237,11 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                     </div>
                   )}
                   
-                  {purchaseDisplay > 0 && r.installment_principal != null && (
+                  {purchaseDisplay > 0 && (r.loan_limit ?? r.installment_principal) != null && (
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-gray-500">선수율</span>
                       <span className="text-sm font-semibold text-emerald-600">
-                        {(((purchaseDisplay - r.installment_principal) / purchaseDisplay) * 100).toFixed(1)}%
+                        {(((purchaseDisplay - (r.loan_limit ?? r.installment_principal ?? 0)) / purchaseDisplay) * 100).toFixed(1)}%
                       </span>
                     </div>
                   )}
