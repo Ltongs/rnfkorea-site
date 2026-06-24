@@ -140,27 +140,23 @@
     </div>
     <script>
       (function() {
-        var isStandalone = window.matchMedia('(display-mode: standalone)').matches
-          || window.navigator.standalone === true;
-        if (!isStandalone) return;
-
         var el = document.getElementById('pwa-splash');
 
         // root 숨김
         document.body.classList.add('pwa-loading');
 
-        // 즉시 보이기 (opacity 0 → 1, 페이드인 0.5~1초)
+        // 즉시 보이기
         el.style.display = 'flex';
         el.style.opacity = '0';
         el.style.transition = 'none';
 
-        // 0.05초 후 페이드인 시작 (브라우저 렌더 1프레임 대기)
+        // 50ms 후 페이드인 시작 (1초)
         setTimeout(function() {
-          el.style.transition = 'opacity 1s ease';  // 페이드인 1초
+          el.style.transition = 'opacity 1s ease';
           el.style.opacity = '1';
         }, 50);
 
-        // 2초 후 앱 시작 (페이드아웃 0.4초)
+        // 2초 후 페이드아웃 (0.4초) → 앱 시작
         setTimeout(function() {
           el.style.transition = 'opacity 0.4s ease';
           el.style.opacity = '0';
