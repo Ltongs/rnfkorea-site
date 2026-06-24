@@ -689,8 +689,9 @@ function buildHcmVariables(body: Record<string, string>): { templateKey: string;
         "#{적용인센티브}": body.creditIncentive   ?? "-",
         "#{대출한도}":     body.loanLimit && body.loanLimit !== "-"
           ? (isNaN(Number(body.loanLimit))
-              ? body.loanLimit  // 이미 "178,100,000원" 형태로 온 경우 그대로
-              : `${Number(body.loanLimit).toLocaleString("ko-KR")}원`)
+              // 이미 "174,240,000원" 형태 → 끝에 "원" 제거 후 반환 (템플릿에 원이 있는 경우 대비)
+              ? body.loanLimit.replace(/원+$/, "")
+              : Number(body.loanLimit).toLocaleString("ko-KR"))
           : "-",
         "#{특이사항}":     body.creditNote  ?? "-",
         "#{영업사원}":     salesRep         ?? "-",
