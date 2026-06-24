@@ -98,9 +98,11 @@ const WL:Record<string,string> = {
 const CAT_LBL:Record<string,string> = {meeting:"미팅",call:"통화",task:"업무",followup:"사후관리"};
 const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료",closed:"종결",waiting_customer:"고객대기",on_hold:"보류",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",confirmed:"확정",approved:"승인",rejected:"거절",supplement:"보완",credit_check:"신용조회",received:"접수",doc_registration:"서류등록",contract_sent:"전자계약",cancelled:"취소",
   // 보험 단계
-  design_request:"접수(설계요청)", policy_issued:"완료(증권발급)",
-  // 레거시 완결 → 계산서발행 표시
-  completed_order:"계산서발행"};
+  design_request:"접수(설계요청)", design_requested:"접수(설계요청)", policy_issued:"완료(증권발급)",
+  // 레거시 완결 → 계산서발행
+  completed_order:"계산서발행",
+  // 레거시 상담/견적 단계
+  consulting:"계약", quote:"계약", quote_submitted:"신용조회", documents_requested:"서류등록"};
 const PRI_LBL:Record<string,string> = {urgent:"긴급",normal:"일반",low:"낮음"};
 const ACT_LBL:Record<string,string> = {todo:"✅ 할일",schedule:"📅 일정",order:"📦 주문",consult_update:"🔄 상담 업데이트",hyundaicm_update:"🏗 현대건설기계 변경",narumi_update:"🚛 나르미 단계 변경",schedule_update:"📅 일정 업데이트",schedule_edit:"✏️ 일정 수정",order_update:"📦 주문 상태 변경",memo:"📝 메모 저장",todo_edit:"✏️ 할일 수정"};
 const CAT_CLR:Record<string,string> = {meeting:"#60a5fa",call:"#fb923c",followup:"#c084fc",task:"#34d399"};
@@ -221,7 +223,10 @@ function StatusTabContent({
   const StsBadgeLocal = ({s,isFinance}:{s:string;isFinance?:boolean}) => {
     const ALL_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",in_progress:"진행중",completed:"완료",done:"완료",closed:"완료",on_hold:"보류",waiting_customer:"고객대기",approved:"승인",confirmed:"확정",rejected:"거절",cancelled:"취소",supplement:"보완",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",credit_check:"신용조회",received:"접수",doc_registration:"서류등록",contract_sent:"전자계약",contract:"계약",delivery:"납품",
       // 레거시 완결 → 계산서발행, 보험 단계
-      completed_order:"계산서발행", design_request:"접수(설계요청)", policy_issued:"완료(증권발급)"};
+      completed_order:"계산서발행", design_request:"접수(설계요청)", policy_issued:"완료(증권발급)",
+      // 레거시 상담/견적 단계
+      consulting:"계약", quote:"계약", quote_submitted:"신용조회", documents_requested:"서류등록",
+      design_requested:"접수(설계요청)"};
     const lbl = isFinance ? (FINANCE_STAGE_LBL[s]??ALL_LBL[s]??s) : (ALL_LBL[s]??s);
     const cls = s==="approved"?"bg-emerald-50 text-emerald-700"
       :s==="confirmed"?"bg-[#0f172a] text-white"
@@ -1283,11 +1288,12 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
     const d = new Date(schedDate); d.setDate(d.getDate()+1);
     const nextDay = d.toISOString().slice(0,10);
 
-    // 선택 날짜 일정 (완료 여부 무관) + 과거 미완료 일정 병렬 조회
+    // 선택 날짜 미완료 일정 + 과거 미완료 일정 병렬 조회
     const [r1, r2] = await Promise.all([
-      // 선택 날짜 ~ 다음날 (완료된 것도 포함)
+      // 선택 날짜 ~ 다음날 (미완료만)
       supabase.from("secretary_schedules").select("*")
         .gte("schedule_date", schedDate).lte("schedule_date", nextDay)
+        .eq("is_done", false)
         .order("schedule_date", {ascending:true}).order("start_time", {ascending:true}),
       // 선택 날짜 이전 미완료 일정
       supabase.from("secretary_schedules").select("*")

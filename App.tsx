@@ -1524,12 +1524,69 @@ const AppRoutes = () => {
   );
 };
 
+// ── 스플래시 스크린 (PWA standalone 모드) ──────────────────────
+const SplashScreen: React.FC<{ onDone: () => void }> = ({ onDone }) => {
+  const [fadeOut, setFadeOut] = useState(false);
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setFadeOut(true), 1600);  // 1.6초 후 페이드아웃 시작
+    const t2 = setTimeout(() => onDone(),          2100);  // 0.5초 페이드아웃 후 제거
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [onDone]);
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 9999,
+      background: "#EEF0FF",
+      display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center", gap: 20,
+      opacity: fadeOut ? 0 : 1,
+      transition: "opacity 0.5s ease",
+    }}>
+      <img
+        src="/icons/icon-180.png"
+        alt="RNF KOREA"
+        style={{
+          width: 120, height: 120,
+          borderRadius: 28,
+          boxShadow: "0 8px 32px rgba(10,25,47,0.15)",
+          animation: "rnfFadeIn 0.7s ease-out forwards",
+        }}
+      />
+      <div style={{
+        textAlign: "center",
+        animation: "rnfFadeIn 0.7s ease-out 0.25s forwards",
+        opacity: 0,
+      }}>
+        <div style={{ fontSize: 28, fontWeight: 800, color: "#0a192f", letterSpacing: 2 }}>
+          RNF KOREA
+        </div>
+        <div style={{ fontSize: 11, color: "#64748b", letterSpacing: 1.5, marginTop: 4 }}>
+          BATTERY &amp; PARTS · FINANCIAL SERVICE
+        </div>
+      </div>
+      <style>{`
+        @keyframes rnfFadeIn {
+          from { opacity: 0; transform: translateY(14px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+    </div>
+  );
+};
+
 const App = () => {
   const [lang, setLang] = useState<Lang>(() => {
     if (typeof window === "undefined") return "ko";
     const saved = window.localStorage.getItem("lang");
     return saved === "en" || saved === "ko" ? saved : "ko";
   });
+
+  // PWA standalone 모드에서만 스플래시 표시
+  const [showSplash, setShowSplash] = useState(() =>
+    typeof window !== "undefined" &&
+    window.matchMedia("(display-mode: standalone)").matches
+  );
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -1540,10 +1597,10 @@ const App = () => {
   const t = (key: CopyKey) => COPY[lang][key];
 
   return (
-    // ✅ HelmetProvider로 전체 앱 감싸기 (react-helmet-async 필수)
     <HelmetProvider>
       <LangContext.Provider value={{ lang, setLang, t }}>
         <AuthProvider>
+          {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
           <AppRoutes />
         </AuthProvider>
       </LangContext.Provider>
