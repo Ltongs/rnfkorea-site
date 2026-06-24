@@ -145,22 +145,22 @@
         document.body.classList.add('pwa-loading');
         el.style.display = 'flex';
         el.style.opacity = '0';
-        el.style.transition = 'opacity 0.3s ease';
+        el.style.transition = 'opacity 1s ease';
 
-        // 즉시 페이드인 (1프레임 대기)
+        // 즉시 페이드인 (1초)
         requestAnimationFrame(function() {
           requestAnimationFrame(function() {
             el.style.opacity = '1';
           });
         });
 
-        // 2.7초 후 페이드아웃 → 앱 시작
+        // 2초 후 페이드아웃 (1초) → 앱 시작
         setTimeout(function() {
-          el.style.transition = 'opacity 0.4s ease';
+          el.style.transition = 'opacity 1s ease';
           el.style.opacity = '0';
           document.body.classList.remove('pwa-loading');
-          setTimeout(function() { el.style.display = 'none'; }, 400);
-        }, 2700);
+          setTimeout(function() { el.style.display = 'none'; }, 1000);
+        }, 2000);
       })();
     </script>
 
