@@ -833,6 +833,7 @@ const CallManagementPage: React.FC = () => {
     if (value === "doc_registration")  return "서류등록";
     if (value === "contract_sent")     return "전자계약발송";
     if (value === "confirmed")         return "확정";
+    if (value === "cancelled")         return "취소";
     // 레거시 값 호환
     if (value === "consulting")           return "접수";
     if (value === "quote_submitted")      return "신용조회";
