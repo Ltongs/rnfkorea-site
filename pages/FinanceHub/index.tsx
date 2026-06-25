@@ -576,16 +576,19 @@ const FinanceHubPage: React.FC = () => {
         total_amount: parsed.total_amount != null ? String(Math.round(parsed.total_amount)) : "",
         items: parsed.items || "",
       });
-      setMatchSelectedIds(new Set()); setMatchSearch(parsed.customer_name || "");
-      setShowMatchModal(true); loadMatchCandidates(parsed.customer_name || "");
+      const cleanName = (parsed.customer_name || "").replace(/^\(유\)|^\(주\)|^\(재\)|^\(사\)/g, "").trim();
+      setMatchSelectedIds(new Set()); setMatchSearch(cleanName);
+      setShowMatchModal(true); loadMatchCandidates(cleanName);
     } catch (err: any) { setError("계산서 인식 실패: " + (err?.message || "")); }
     finally { setParsingSalesInv(false); if (salesInvRef.current) salesInvRef.current.value = ""; }
   }
 
   async function loadMatchCandidates(q: string) {
     setLoadingCandidates(true);
-    let query = supabase.from("sales_records").select("*").is("invoice_id", null).order("sale_date", { ascending: false }).limit(100);
-    if (q.trim()) query = query.ilike("customer_name", `%${q.trim()}%`);
+    // (유), (주) 등 법인 접두어 제거한 핵심 키워드로 검색
+    const cleanQ = q.trim().replace(/^\(유\)|^\(주\)|^\(재\)|^\(사\)/g, "").trim();
+    let query = supabase.from("sales_records").select("*").order("sale_date", { ascending: false }).limit(100);
+    if (cleanQ) query = query.ilike("customer_name", `%${cleanQ}%`);
     const { data } = await query;
     setMatchCandidates((data || []) as SalesRecord[]);
     setLoadingCandidates(false);
@@ -1661,8 +1664,9 @@ const FinanceHubPage: React.FC = () => {
                 <div className="py-8 text-center text-sm text-gray-400">미매칭 매출건이 없습니다.</div>
               ) : matchCandidates.map(c => {
                 const checked = matchSelectedIds.has(c.id);
+                const alreadyMatched = c.invoice_id != null;
                 return (
-                  <label key={c.id} className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${checked ? "bg-orange-50" : "hover:bg-gray-50"}`}>
+                  <label key={c.id} className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${checked ? "bg-orange-50" : alreadyMatched ? "bg-blue-50" : "hover:bg-gray-50"}`}>
                     <div onClick={e => { e.preventDefault(); setMatchSelectedIds(prev => { const n = new Set(prev); checked ? n.delete(c.id) : n.add(c.id); return n; }); }}
                       className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 ${checked ? "bg-orange-500 border-orange-500" : "bg-white border-gray-300"}`}>
                       {checked && <Check className="w-3 h-3 text-white" />}
@@ -1671,6 +1675,7 @@ const FinanceHubPage: React.FC = () => {
                     <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium shrink-0 ${CAT_COLOR[c.category] || "bg-gray-100 text-gray-600"}`}>{c.category}</span>
                     <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">{c.customer_name}</span>
                     <span className="text-xs text-gray-500 truncate flex-1">{[c.maker, c.spec].filter(Boolean).join(" / ") || "-"}</span>
+                    {alreadyMatched && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-600 font-medium shrink-0">재매칭</span>}
                     <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">{fmt(c.total_revenue || 0)}</span>
                   </label>
                 );

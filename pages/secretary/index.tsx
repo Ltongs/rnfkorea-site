@@ -2810,12 +2810,18 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                                   onChange={async e=>{
                                     const next = e.target.value;
                                     if(isTireOrBattery){
-                                      const detailTable = ["tire_sales","tire"].includes(c.work_type)
+                                      const isTire = ["tire_sales","tire"].includes(c.work_type);
+                                      const isBatt = ["battery_sales","battery"].includes(c.work_type);
+                                      const detailTable = isTire
                                         ? "consultation_tire_details"
-                                        : ["battery_sales","battery"].includes(c.work_type)
+                                        : isBatt
                                         ? "consultation_battery_details"
                                         : "consultation_forklift_details";
-                                      const {error} = await supabase.from(detailTable).update({process_stage:next,process_status:next}).eq("consultation_id",c.id);
+                                      // 타이어만 process_status 컬럼 있음
+                                      const updatePayload = isTire
+                                        ? {process_stage:next, process_status:next}
+                                        : {process_stage:next};
+                                      const {error} = await supabase.from(detailTable).update(updatePayload).eq("consultation_id",c.id);
                                       if(error){alert("단계 변경 실패: "+error.message);return;}
                                       setRecentC(prev=>prev.map(x=>x.id===c.id?{...x,process_stage:next}:x));
                                     } else if(isFinanceType){
