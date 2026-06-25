@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 
 // ─── 타입 ─────────────────────────────────────────────────────
@@ -81,6 +81,7 @@ const stageInfo = (key: OrderStatus) => STAGES.find(s => s.key === key)!;
 // ─── 컴포넌트 ─────────────────────────────────────────────────
 export default function OrdersPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [orders, setOrders] = useState<TbOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"active" | "all" | "done">("active");
@@ -109,6 +110,18 @@ export default function OrdersPage() {
   }, []);
 
   useEffect(() => { void loadOrders(); }, [loadOrders]);
+
+  // ?id= 파라미터로 진입 시 해당 주문 자동 펼침 + 전체 보기로 필터 전환
+  useEffect(() => {
+    const id = searchParams.get("id");
+    if (!id || orders.length === 0) return;
+    setExpandedId(id);
+    setFilter("all"); // 완료 건도 포함해서 반드시 보이도록
+    // 해당 카드로 스크롤
+    setTimeout(() => {
+      document.getElementById(`order-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
+  }, [orders, searchParams]);
 
   // ─── 필터 ───────────────────────────────────────────────────
   const filtered = orders.filter(o => {
@@ -252,7 +265,7 @@ export default function OrdersPage() {
                 const isExp = expandedId === order.id;
 
                 return (
-                  <div key={order.id} className={`${CARD} overflow-hidden`}>
+                  <div key={order.id} id={`order-${order.id}`} className={`${CARD} overflow-hidden ${expandedId === order.id ? "ring-2 ring-orange-400" : ""}`}>
                     {/* 메인 행 */}
                     <div className="p-3.5">
                       <div className="flex items-start gap-2.5">

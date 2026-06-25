@@ -1,11 +1,12 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Plus as FhPlus, Search as FhSearch, Check as FhCheck, X as FhX, Pencil as FhPencil, Trash2 as FhTrash2, Loader2 as FhLoader2, PackageCheck as FhPackageCheck, AlertCircle as FhAlertCircle, Upload as FhUpload, FileText as FhFileText, Link2 as FhLink2, FileSpreadsheet as FhFileSpreadsheet } from "lucide-react";
 import ReactDOM from "react-dom";
 import { Navigate, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
-type TabKey = "chat"|"schedule"|"status"|"orders"|"hyundaicm"|"finance"|"narumi"|"jinheung"|"email"|"memo";
+type TabKey = "chat"|"schedule"|"status"|"orders"|"hyundaicm"|"finance"|"narumi"|"jinheung"|"email"|"memo"|"financehub";
 type EmailReport = {
   id:number; created_at:string; report_date:string;
   title:string; content:string; source:string; is_read:boolean;
@@ -89,6 +90,53 @@ type ChatMsg = {
   pendingHyundaiUpdates?:PendingHyundaiUpdate[];
 };
 
+// ─── FinanceHub 타입 ──────────────────────────────────────────────────────────
+type FH_SalesRecord = {
+  id: number; sale_date: string; customer_name: string; business_no: string | null;
+  category: string; trade_type: string; maker: string | null; spec: string | null;
+  quantity: number; unit_price: number; unit_cost: number;
+  total_revenue: number; total_cost: number; margin: number;
+  tax_invoice: boolean; payment_confirmed: boolean; payment_date: string | null;
+  delivery_date: string | null; delivery_confirmed: boolean;
+  wheel_returned: boolean; closing: boolean; note: string | null;
+  invoice_id: number | null; is_confirmed: boolean;
+};
+type FH_PurchaseRecord = {
+  id: number; purchase_date: string; supplier_name: string; business_no: string | null;
+  category: string; trade_type: string; maker: string | null; spec: string | null;
+  quantity: number; unit_price: number; total_cost: number;
+  tax_invoice: boolean; payment_confirmed: boolean; payment_date: string | null;
+  invoice_id: number | null; note: string | null; is_confirmed: boolean;
+};
+type FH_Customer = { id: string; name: string; business_no: string | null; };
+type FH_SalesFormData = {
+  sale_date: string; customer_name: string; business_no: string;
+  category: string; trade_type: "내수" | "수출"; maker: string; spec: string;
+  quantity: string; unit_price: string; unit_cost: string;
+  tax_invoice: boolean; payment_confirmed: boolean; payment_date: string;
+  delivery_date: string; delivery_confirmed: boolean;
+  wheel_returned: boolean; closing: boolean; note: string;
+};
+type FH_PurchaseFormData = {
+  purchase_date: string; supplier_name: string; business_no: string;
+  category: string; trade_type: "국내" | "수입"; maker: string; spec: string;
+  quantity: string; unit_price: string;
+  tax_invoice: boolean; payment_confirmed: boolean; payment_date: string; note: string;
+};
+type FH_ParsedInvoice = {
+  invoice_no?: string | null; sale_date?: string | null;
+  customer_name?: string | null; business_no?: string | null;
+  supply_amount?: number | null; tax_amount?: number | null;
+  total_amount?: number | null; items?: string | null;
+};
+type FH_InvoiceForm = {
+  invoice_no: string; issue_date: string; customer_name: string;
+  business_no: string; supply_amount: string; tax_amount: string;
+  total_amount: string; items: string;
+};
+type FH_Period = "월간" | "분기" | "반기" | "연간";
+
+
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
 const WL:Record<string,string> = {
   insurance:"보험",tire:"타이어",finance:"금융",forklift:"지게차",battery:"배터리",
@@ -96,7 +144,7 @@ const WL:Record<string,string> = {
   finance_hcm:"현대CM금융",narumi:"나르미",
 };
 const CAT_LBL:Record<string,string> = {meeting:"미팅",call:"통화",task:"업무",followup:"사후관리"};
-const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료",closed:"종결",waiting_customer:"고객대기",on_hold:"보류",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",confirmed:"확정",approved:"승인",rejected:"거절",supplement:"보완",credit_check:"신용조회",received:"접수",doc_registration:"서류등록",contract_sent:"전자계약",cancelled:"취소",
+const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료",closed:"종결",waiting_customer:"고객대기",on_hold:"보류",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",confirmed:"확정",approved:"승인",rejected:"거절",supplement:"보완",credit_check:"신용조회",received:"접수",doc_registration:"서류등록",contract_sent:"전자계약",cancelled:"취소",registered:"등록완료",docs:"서류준비",insurance:"보험확인",
   // 보험 단계
   design_request:"접수(설계요청)", design_requested:"접수(설계요청)", policy_issued:"완료(증권발급)",
   // 레거시 완결 → 계산서발행
@@ -130,6 +178,53 @@ const BTO = "px-3 py-1.5 rounded-xl bg-orange-500 text-white text-xs font-semibo
 const BTG = "px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-600 hover:border-gray-300 transition-all";
 const BTE = "px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-all";
 
+
+// ─── FinanceHub 상수/유틸 ────────────────────────────────────────────────────
+const FH_CATEGORIES = ["타이어","렌탈","지게차렌탈","건설기계수출","배터리(LFP)","배터리(납산)","기타판매","기타"];
+const FH_CAT_COLOR:Record<string,string> = {
+  "타이어":"bg-blue-100 text-blue-700","렌탈":"bg-orange-100 text-orange-700","지게차렌탈":"bg-purple-100 text-purple-700",
+  "건설기계수출":"bg-amber-100 text-amber-700","배터리(LFP)":"bg-emerald-100 text-emerald-700",
+  "배터리(납산)":"bg-teal-100 text-teal-700","기타판매":"bg-indigo-100 text-indigo-700",
+  "기타":"bg-gray-100 text-gray-600",
+};
+const FH_PERIODS = ["월간","분기","반기","연간"] as const;
+const FH_EMPTY_SALES:FH_SalesFormData = {
+  sale_date:new Date().toISOString().split("T")[0],customer_name:"",business_no:"",
+  category:"타이어",trade_type:"내수",maker:"",spec:"",quantity:"",unit_price:"",unit_cost:"",
+  tax_invoice:false,payment_confirmed:false,payment_date:"",
+  delivery_date:"",delivery_confirmed:false,wheel_returned:false,closing:false,note:"",
+};
+const FH_EMPTY_PURCHASE:FH_PurchaseFormData = {
+  purchase_date:new Date().toISOString().split("T")[0],supplier_name:"",business_no:"",
+  category:"기타",trade_type:"국내",maker:"",spec:"",quantity:"1",unit_price:"",
+  tax_invoice:true,payment_confirmed:false,payment_date:"",note:"",
+};
+const FH_EMPTY_INV:FH_InvoiceForm = {
+  invoice_no:"",issue_date:new Date().toISOString().split("T")[0],
+  customer_name:"",business_no:"",supply_amount:"",tax_amount:"",total_amount:"",items:"",
+};
+const fhFmt = (v:number) => `${Math.round(v||0).toLocaleString("ko-KR")}원`;
+const fhFmtAbs = (v:number) => `${Math.round(Math.abs(v||0)).toLocaleString("ko-KR")}원`;
+function fhGuessCategory(spec:string):string {
+  const s=spec.toLowerCase();
+  if(/타이어|tyre|tire|솔리드|우레탄|튜브|휠|림/.test(s)) return "타이어";
+  if(/배터리|battery|lfp|리튬|납산|agm|충전기/.test(s)){if(/납산|agm/.test(s))return "배터리(납산)";return "배터리(LFP)";}
+  if(/지게차|forklift|리프트|마스트|포크/.test(s)) return "지게차렌탈";
+  if(/굴삭기|굴착기|excavator|크레인|건설기계|덤프|로더/.test(s)) return "건설기계수출";
+  if(/렌탈|리스|임대|월사용료|월납|관리비|수수료/.test(s)) return "렌탈";
+  return "기타";
+}
+function fhFileToBase64(file:File):Promise<string>{
+  return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res((r.result as string).split(",")[1]||"");r.onerror=()=>rej(new Error("파일 읽기 실패"));r.readAsDataURL(file);});
+}
+function fhGetDateRange(year:number,month:number,period:FH_Period){
+  const pad=(n:number)=>String(n).padStart(2,"0");
+  if(period==="월간"){const from=`${year}-${pad(month)}-01`;const to=new Date(year,month,0).toISOString().split("T")[0];return{from,to};}
+  if(period==="분기"){const q=Math.ceil(month/3);const fm=(q-1)*3+1;const tm=q*3;return{from:`${year}-${pad(fm)}-01`,to:new Date(year,tm,0).toISOString().split("T")[0]};}
+  if(period==="반기"){const h=month<=6?1:2;const fm=h===1?1:7;const tm=h===1?6:12;return{from:`${year}-${pad(fm)}-01`,to:new Date(year,tm,0).toISOString().split("T")[0]};}
+  return{from:`${year}-01-01`,to:`${year}-12-31`};
+}
+
 // ─── 작은 컴포넌트들 ───────────────────────────────────────────────────────────
 const PriBadge = ({p}:{p:string}) => {
   const c = p==="urgent"?"bg-red-50 text-red-600":p==="normal"?"bg-blue-50 text-blue-600":"bg-gray-100 text-gray-500";
@@ -141,7 +236,8 @@ const StsBadge = ({s}:{s:string}) => {
     :s==="processing"||s==="in_progress"||s==="waiting_customer"?"bg-orange-50 text-orange-600"
     :s==="completed"||s==="closed"||s==="done"||s==="invoiced"||s==="confirmed"?"bg-emerald-50 text-emerald-600"
     :s==="rejected"||s==="cancelled"?"bg-red-50 text-red-500"
-    :s==="approved"?"bg-blue-50 text-blue-600"
+    :s==="approved"||s==="registered"?"bg-blue-50 text-blue-600"
+    :s==="docs"?"bg-purple-50 text-purple-600"
     :"bg-gray-50 text-gray-500";
   return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${c}`}>{STS_LBL[s]??s}</span>;
 };
@@ -154,6 +250,1024 @@ const LinkBadge = ({id,onClick}:{id:number|null;onClick:()=>void}) => id ? (
     🔗 상담#{id}
   </button>
 ) : null;
+
+
+// ─── FinanceHub 탭 컴포넌트 ──────────────────────────────────────────────────
+function FinanceHubTab() {
+  const today = new Date();
+  const [year, setYear] = React.useState(today.getFullYear());
+  const [month, setMonth] = React.useState(today.getMonth()+1);
+  const [period, setPeriod] = React.useState<FH_Period>("월간");
+  const [activeSubTab, setActiveSubTab] = React.useState<"sales"|"purchases"|"incomplete">("sales");
+  const [filterCategory, setFilterCategory] = React.useState("전체");
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [sales, setSales] = React.useState<FH_SalesRecord[]>([]);
+  const [purchases, setPurchases] = React.useState<FH_PurchaseRecord[]>([]);
+  const [allSales, setAllSales] = React.useState<FH_SalesRecord[]>([]);
+  const [allPurchases, setAllPurchases] = React.useState<FH_PurchaseRecord[]>([]);
+  const [customers, setCustomers] = React.useState<FH_Customer[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [fhError, setFhError] = React.useState<string|null>(null);
+  const [incompleteSales, setIncompleteSales] = React.useState<FH_SalesRecord[]>([]);
+  const [incompletePurchases, setIncompletePurchases] = React.useState<FH_PurchaseRecord[]>([]);
+  const [loadingIncomplete, setLoadingIncomplete] = React.useState(false);
+  const [inlineEdits, setInlineEdits] = React.useState<Record<string,string>>({});
+  const [showSalesForm, setShowSalesForm] = React.useState(false);
+  const [salesEditId, setSalesEditId] = React.useState<number|null>(null);
+  const [salesForm, setSalesForm] = React.useState<FH_SalesFormData>(FH_EMPTY_SALES);
+  const [customerQuery, setCustomerQuery] = React.useState("");
+  const [showCustDrop, setShowCustDrop] = React.useState(false);
+  const custRef = React.useRef<HTMLDivElement>(null);
+  const [savingSales, setSavingSales] = React.useState(false);
+  const [showPurchaseForm, setShowPurchaseForm] = React.useState(false);
+  const [purchaseEditId, setPurchaseEditId] = React.useState<number|null>(null);
+  const [purchaseForm, setPurchaseForm] = React.useState<FH_PurchaseFormData>(FH_EMPTY_PURCHASE);
+  const [savingPurchase, setSavingPurchase] = React.useState(false);
+  const salesInvRef = React.useRef<HTMLInputElement>(null);
+  const [parsingSalesInv, setParsingSalesInv] = React.useState(false);
+  const [showMatchModal, setShowMatchModal] = React.useState(false);
+  const [invForm, setInvForm] = React.useState<FH_InvoiceForm>(FH_EMPTY_INV);
+  const [matchCandidates, setMatchCandidates] = React.useState<FH_SalesRecord[]>([]);
+  const [matchSearch, setMatchSearch] = React.useState("");
+  const [matchSelectedIds, setMatchSelectedIds] = React.useState<Set<number>>(new Set());
+  const [matchSaving, setMatchSaving] = React.useState(false);
+  const [loadingCandidates, setLoadingCandidates] = React.useState(false);
+  const purchInvRef = React.useRef<HTMLInputElement>(null);
+  const [parsingPurchInv, setParsingPurchInv] = React.useState(false);
+  const excelRef = React.useRef<HTMLInputElement>(null);
+  const [importingExcel, setImportingExcel] = React.useState(false);
+  const [importResult, setImportResult] = React.useState<{success:number;skipped:number;errors:string[];type?:string}|null>(null);
+  const [showUncategorized, setShowUncategorized] = React.useState(false);
+  const [uncatSales, setUncatSales] = React.useState<FH_SalesRecord[]>([]);
+  const [uncatPurchases, setUncatPurchases] = React.useState<FH_PurchaseRecord[]>([]);
+  const [loadingUncat, setLoadingUncat] = React.useState(false);
+  const [editingCategoryId, setEditingCategoryId] = React.useState<{id:number;table:"sales"|"purchases"}|null>(null);
+  const [detailSales, setDetailSales] = React.useState<FH_SalesRecord|null>(null);
+  const [detailPurchase, setDetailPurchase] = React.useState<FH_PurchaseRecord|null>(null);
+
+  const {from,to} = React.useMemo(()=>fhGetDateRange(year,month,period),[year,month,period]);
+
+  React.useEffect(()=>{
+    (async()=>{
+      const{data}=await supabase.from("sales_records").select("sale_date").order("sale_date",{ascending:false}).limit(1).maybeSingle();
+      if(data?.sale_date){const d=new Date(data.sale_date);setYear(d.getFullYear());setMonth(d.getMonth()+1);}
+    })();
+    loadFhCustomers();
+    loadFhIncomplete();
+  },[]);
+  React.useEffect(()=>{loadFhAll();},[from,to]);
+  React.useEffect(()=>{if(showUncategorized)loadFhUncategorized();},[year]);
+
+  async function loadFhAll(){
+    setLoading(true);setFhError(null);
+    const[s,p,sa,pa]=await Promise.all([
+      supabase.from("sales_records").select("*").gte("sale_date",from).lte("sale_date",to).order("sale_date",{ascending:false}),
+      supabase.from("purchase_records").select("*").gte("purchase_date",from).lte("purchase_date",to).order("purchase_date",{ascending:false}),
+      supabase.from("sales_records").select("*").order("sale_date",{ascending:false}),
+      supabase.from("purchase_records").select("*").order("purchase_date",{ascending:false}),
+    ]);
+    if(s.error)setFhError(s.error.message);else setSales((s.data||[])as FH_SalesRecord[]);
+    if(p.error)setFhError(p.error.message);else setPurchases((p.data||[])as FH_PurchaseRecord[]);
+    setAllSales((sa.data||[])as FH_SalesRecord[]);
+    setAllPurchases((pa.data||[])as FH_PurchaseRecord[]);
+    setLoading(false);
+  }
+  async function loadFhIncomplete(){
+    setLoadingIncomplete(true);
+    const[s,p]=await Promise.all([
+      supabase.from("sales_records").select("*").eq("category","기타").eq("is_confirmed",false).order("sale_date",{ascending:false}),
+      supabase.from("purchase_records").select("*").eq("category","기타").eq("is_confirmed",false).order("purchase_date",{ascending:false}),
+    ]);
+    setIncompleteSales((s.data||[])as FH_SalesRecord[]);
+    setIncompletePurchases((p.data||[])as FH_PurchaseRecord[]);
+    setLoadingIncomplete(false);
+  }
+  function setInlineEdit(id:number,table:string,field:string,value:string){setInlineEdits(prev=>({...prev,[`${table}-${id}-${field}`]:value}));}
+  function getInlineEdit(id:number,table:string,field:string,fallback:string){return inlineEdits[`${table}-${id}-${field}`]??fallback;}
+  async function saveInlineSales(r:FH_SalesRecord){
+    const category=getInlineEdit(r.id,"sales","category",r.category);
+    const maker=getInlineEdit(r.id,"sales","maker",r.maker||"");
+    const spec=getInlineEdit(r.id,"sales","spec",r.spec||"");
+    await supabase.from("sales_records").update({category,maker:maker||null,spec:spec||null,is_confirmed:true}).eq("id",r.id);
+    setInlineEdits(prev=>{const next={...prev};delete next[`sales-${r.id}-category`];delete next[`sales-${r.id}-maker`];delete next[`sales-${r.id}-spec`];return next;});
+    loadFhIncomplete();loadFhAll();
+  }
+  async function saveInlinePurchase(r:FH_PurchaseRecord){
+    const category=getInlineEdit(r.id,"purchases","category",r.category);
+    const spec=getInlineEdit(r.id,"purchases","spec",r.spec||"");
+    await supabase.from("purchase_records").update({category,spec:spec||null,is_confirmed:true}).eq("id",r.id);
+    setInlineEdits(prev=>{const next={...prev};delete next[`purchases-${r.id}-category`];delete next[`purchases-${r.id}-spec`];return next;});
+    loadFhIncomplete();loadFhAll();
+  }
+  async function loadFhCustomers(){const{data}=await supabase.from("customers").select("id,name,business_no").eq("is_active",true).order("name");setCustomers((data||[])as FH_Customer[]);}
+  async function loadFhUncategorized(){
+    setLoadingUncat(true);
+    const fromYear=`${year}-01-01`;const toYear=`${year}-12-31`;
+    const[s,p]=await Promise.all([
+      supabase.from("sales_records").select("*").eq("category","기타").gte("sale_date",fromYear).lte("sale_date",toYear).order("sale_date",{ascending:false}),
+      supabase.from("purchase_records").select("*").eq("category","기타").gte("purchase_date",fromYear).lte("purchase_date",toYear).order("purchase_date",{ascending:false}),
+    ]);
+    setUncatSales((s.data||[])as FH_SalesRecord[]);setUncatPurchases((p.data||[])as FH_PurchaseRecord[]);setLoadingUncat(false);
+  }
+  function toggleUncategorized(){if(!showUncategorized)loadFhUncategorized();setShowUncategorized(v=>!v);}
+  async function updateFhCategory(id:number,table:"sales"|"purchases",newCategory:string){
+    const tableName=table==="sales"?"sales_records":"purchase_records";
+    await supabase.from(tableName).update({category:newCategory}).eq("id",id);
+    setEditingCategoryId(null);
+    if(showUncategorized)loadFhUncategorized();else loadFhAll();
+  }
+
+  const kpi=React.useMemo(()=>{
+    const totalRevenue=sales.reduce((s,r)=>s+(r.total_revenue||0),0);
+    const totalCost=purchases.reduce((s,r)=>s+(r.total_cost||0),0);
+    const totalMargin=sales.reduce((s,r)=>s+(r.margin||0),0);
+    const netProfit=totalRevenue-totalCost;
+    const unpaidSales=sales.filter(r=>!r.payment_confirmed).reduce((s,r)=>s+(r.total_revenue||0),0);
+    const unpaidPurch=purchases.filter(r=>!r.payment_confirmed).reduce((s,r)=>s+(r.total_cost||0),0);
+    const profitRate=totalRevenue>0?(netProfit/totalRevenue)*100:0;
+    return{totalRevenue,totalCost,totalMargin,netProfit,unpaidSales,unpaidPurch,profitRate};
+  },[sales,purchases]);
+
+  const displaySales=showUncategorized?uncatSales:sales;
+  const displayPurchases=showUncategorized?uncatPurchases:purchases;
+  const filteredSales=React.useMemo(()=>{
+    const base=searchQuery?allSales:displaySales;
+    return base.filter(r=>{
+      if(filterCategory!=="전체"&&r.category!==filterCategory)return false;
+      if(searchQuery){const q=searchQuery.toLowerCase();return r.customer_name.toLowerCase().includes(q)||(r.spec||"").toLowerCase().includes(q)||(r.maker||"").toLowerCase().includes(q);}
+      return true;
+    });
+  },[displaySales,allSales,filterCategory,searchQuery]);
+  const filteredPurchases=React.useMemo(()=>{
+    const base=searchQuery?allPurchases:displayPurchases;
+    return base.filter(r=>{
+      if(filterCategory!=="전체"&&r.category!==filterCategory)return false;
+      if(searchQuery){const q=searchQuery.toLowerCase();return r.supplier_name.toLowerCase().includes(q)||(r.spec||"").toLowerCase().includes(q)||(r.maker||"").toLowerCase().includes(q);}
+      return true;
+    });
+  },[displayPurchases,allPurchases,filterCategory,searchQuery]);
+  const filteredCustomers=React.useMemo(()=>{
+    if(!customerQuery)return customers;
+    const q=customerQuery.toLowerCase();
+    return customers.filter(c=>c.name.toLowerCase().includes(q)||(c.business_no||"").includes(q));
+  },[customers,customerQuery]);
+  React.useEffect(()=>{
+    const handler=(e:MouseEvent)=>{if(custRef.current&&!custRef.current.contains(e.target as Node))setShowCustDrop(false);};
+    document.addEventListener("mousedown",handler);return()=>document.removeEventListener("mousedown",handler);
+  },[]);
+
+  function openNewSales(){setSalesEditId(null);setSalesForm(FH_EMPTY_SALES);setCustomerQuery("");setShowSalesForm(true);}
+  function openEditSales(r:FH_SalesRecord){
+    setSalesEditId(r.id);
+    setSalesForm({sale_date:r.sale_date,customer_name:r.customer_name,business_no:r.business_no||"",category:r.category,trade_type:r.trade_type==="수출"?"수출":"내수",maker:r.maker||"",spec:r.spec||"",quantity:String(r.quantity),unit_price:String(r.unit_price),unit_cost:String(r.unit_cost),tax_invoice:r.tax_invoice,payment_confirmed:r.payment_confirmed,payment_date:r.payment_date||"",delivery_date:r.delivery_date||"",delivery_confirmed:r.delivery_confirmed,wheel_returned:r.wheel_returned,closing:r.closing,note:r.note||""});
+    setCustomerQuery(r.customer_name);setShowSalesForm(true);
+  }
+  async function saveSales(){
+    if(!salesForm.customer_name||!salesForm.quantity||!salesForm.unit_price){setFhError("거래처, 수량, 단가를 입력해주세요.");return;}
+    setSavingSales(true);setFhError(null);
+    const qty=parseFloat(salesForm.quantity)||0;const price=parseFloat(salesForm.unit_price)||0;const cost=parseFloat(salesForm.unit_cost)||0;
+    const vat=salesForm.trade_type==="수출"?1:1.1;
+    const payload={sale_date:salesForm.sale_date,customer_name:salesForm.customer_name,business_no:salesForm.business_no||null,category:salesForm.category,trade_type:salesForm.trade_type,maker:salesForm.maker||null,spec:salesForm.spec||null,quantity:qty,unit_price:price,unit_cost:cost,total_revenue:qty*price*vat,total_cost:qty*cost*vat,margin:qty*(price-cost)*vat,tax_invoice:salesForm.tax_invoice,payment_confirmed:salesForm.payment_confirmed,payment_date:salesForm.payment_date||null,delivery_date:salesForm.delivery_date||null,delivery_confirmed:salesForm.delivery_confirmed,wheel_returned:salesForm.wheel_returned,closing:salesForm.closing,note:salesForm.note||null};
+    const{error}=salesEditId!==null?await supabase.from("sales_records").update(payload).eq("id",salesEditId):await supabase.from("sales_records").insert(payload);
+    if(error)setFhError(error.message);else{setShowSalesForm(false);loadFhAll();}
+    setSavingSales(false);
+  }
+  async function deleteSales(id:number){if(!confirm("삭제하시겠습니까?"))return;await supabase.from("sales_records").delete().eq("id",id);loadFhAll();}
+  async function quickToggleSales(id:number,field:string,current:boolean){
+    const upd:Record<string,unknown>={[field]:!current};
+    if(field==="payment_confirmed"&&!current)upd.payment_date=new Date().toISOString().split("T")[0];
+    await supabase.from("sales_records").update(upd).eq("id",id);loadFhAll();
+  }
+  function openEditPurchase(r:FH_PurchaseRecord){
+    setPurchaseEditId(r.id);
+    setPurchaseForm({purchase_date:r.purchase_date,supplier_name:r.supplier_name,business_no:r.business_no||"",category:r.category,trade_type:r.trade_type==="수입"?"수입":"국내",maker:r.maker||"",spec:r.spec||"",quantity:String(r.quantity),unit_price:String(r.unit_price),tax_invoice:r.tax_invoice,payment_confirmed:r.payment_confirmed,payment_date:r.payment_date||"",note:r.note||""});
+    setShowPurchaseForm(true);
+  }
+  async function savePurchase(){
+    if(!purchaseForm.supplier_name||!purchaseForm.unit_price){setFhError("매입처와 단가를 입력해주세요.");return;}
+    setSavingPurchase(true);setFhError(null);
+    const payload={purchase_date:purchaseForm.purchase_date,supplier_name:purchaseForm.supplier_name,business_no:purchaseForm.business_no||null,category:purchaseForm.category,trade_type:purchaseForm.trade_type,maker:purchaseForm.maker||null,spec:purchaseForm.spec||null,quantity:parseFloat(purchaseForm.quantity)||0,unit_price:parseFloat(purchaseForm.unit_price)||0,tax_invoice:purchaseForm.tax_invoice,payment_confirmed:purchaseForm.payment_confirmed,payment_date:purchaseForm.payment_date||null,note:purchaseForm.note||null};
+    const{error}=purchaseEditId!==null?await supabase.from("purchase_records").update(payload).eq("id",purchaseEditId):await supabase.from("purchase_records").insert(payload);
+    if(error)setFhError(error.message);else{setShowPurchaseForm(false);loadFhAll();}
+    setSavingPurchase(false);
+  }
+  async function deletePurchase(id:number){if(!confirm("삭제하시겠습니까?"))return;await supabase.from("purchase_records").delete().eq("id",id);loadFhAll();}
+  async function quickTogglePurchase(id:number,current:boolean){const upd:Record<string,unknown>={payment_confirmed:!current};if(!current)upd.payment_date=new Date().toISOString().split("T")[0];await supabase.from("purchase_records").update(upd).eq("id",id);loadFhAll();}
+
+  async function handleSalesInvFile(e:React.ChangeEvent<HTMLInputElement>){
+    const file=e.target.files?.[0];if(!file)return;
+    setParsingSalesInv(true);setFhError(null);
+    try{
+      const base64=await fhFileToBase64(file);
+      const{data,error:fnErr}=await supabase.functions.invoke("parse-tax-invoice",{body:{image_base64:base64,media_type:file.type||"image/png",direction:"sales"}});
+      if(fnErr)throw fnErr;
+      const parsed=(data||{})as FH_ParsedInvoice;
+      setInvForm({invoice_no:parsed.invoice_no?String(parsed.invoice_no):"",issue_date:parsed.sale_date||FH_EMPTY_INV.issue_date,customer_name:parsed.customer_name||"",business_no:parsed.business_no?String(parsed.business_no).replace(/[^0-9]/g,""):"",supply_amount:parsed.supply_amount!=null?String(Math.round(parsed.supply_amount)):"",tax_amount:parsed.tax_amount!=null?String(Math.round(parsed.tax_amount)):"",total_amount:parsed.total_amount!=null?String(Math.round(parsed.total_amount)):"",items:parsed.items||""});
+      const cleanName=(parsed.customer_name||"").replace(/^\(유\)|^\(주\)|^\(재\)|^\(사\)/g,"").trim();
+      setMatchSelectedIds(new Set());setMatchSearch(cleanName);setShowMatchModal(true);loadMatchCandidates(cleanName);
+    }catch(err:any){setFhError("계산서 인식 실패: "+(err?.message||""));}
+    finally{setParsingSalesInv(false);if(salesInvRef.current)salesInvRef.current.value="";}
+  }
+  async function loadMatchCandidates(q:string){
+    setLoadingCandidates(true);
+    const cleanQ=q.trim().replace(/^\(유\)|^\(주\)|^\(재\)|^\(사\)/g,"").trim();
+    let query=supabase.from("sales_records").select("*").order("sale_date",{ascending:false}).limit(100);
+    if(cleanQ)query=query.ilike("customer_name",`%${cleanQ}%`);
+    const{data}=await query;setMatchCandidates((data||[])as FH_SalesRecord[]);setLoadingCandidates(false);
+  }
+  const matchSelectedSum=React.useMemo(()=>matchCandidates.filter(c=>matchSelectedIds.has(c.id)).reduce((s,c)=>s+(c.total_revenue||0),0),[matchCandidates,matchSelectedIds]);
+  const matchTotal=parseFloat(invForm.total_amount)||0;
+  const matchIsClose=Math.abs(matchTotal-matchSelectedSum)<1;
+  async function confirmMatch(){
+    if(matchSelectedIds.size===0){setFhError("매칭할 매출건을 선택해주세요.");return;}
+    setMatchSaving(true);setFhError(null);
+    const{data:invRow,error:invErr}=await supabase.from("tax_invoices").insert({direction:"sales",invoice_no:invForm.invoice_no||null,issue_date:invForm.issue_date||null,customer_name:invForm.customer_name||null,business_no:invForm.business_no||null,supply_amount:invForm.supply_amount?parseFloat(invForm.supply_amount):null,tax_amount:invForm.tax_amount?parseFloat(invForm.tax_amount):null,total_amount:invForm.total_amount?parseFloat(invForm.total_amount):null,items:invForm.items||null,matched_total:matchSelectedSum}).select().single();
+    if(invErr||!invRow){setFhError(invErr?.message||"계산서 등록 실패");setMatchSaving(false);return;}
+    const invoiceSupply=invForm.supply_amount?parseFloat(invForm.supply_amount):null;
+    const selectedRecords=matchCandidates.filter(c=>matchSelectedIds.has(c.id));
+    if(invoiceSupply!=null&&invoiceSupply>0&&selectedRecords.length>0){
+      if(selectedRecords.length===1){const rec=selectedRecords[0];const newUnitPrice=rec.quantity>0?Math.round(invoiceSupply/rec.quantity):rec.unit_price;await supabase.from("sales_records").update({unit_price:newUnitPrice,tax_invoice:true,invoice_id:invRow.id}).eq("id",rec.id);}
+      else{const totalExisting=selectedRecords.reduce((s,r)=>s+(r.total_revenue||0),0);for(const rec of selectedRecords){const ratio=totalExisting>0?(rec.total_revenue||0)/totalExisting:1/selectedRecords.length;const allocSupply=Math.round(invoiceSupply*ratio);const newUnitPrice=rec.quantity>0?Math.round(allocSupply/rec.quantity):rec.unit_price;await supabase.from("sales_records").update({unit_price:newUnitPrice,tax_invoice:true,invoice_id:invRow.id}).eq("id",rec.id);}}
+    }else{await supabase.from("sales_records").update({tax_invoice:true,invoice_id:invRow.id}).in("id",Array.from(matchSelectedIds));}
+    setShowMatchModal(false);setInvForm(FH_EMPTY_INV);setMatchSelectedIds(new Set());loadFhAll();setMatchSaving(false);
+  }
+  // 매칭할 기존 매출건 없을 때 → 계산서 정보로 신규 매출 생성 후 즉시 매칭
+  async function createAndMatch(){
+    setMatchSaving(true);setFhError(null);
+    try{
+      // 1) tax_invoices 등록
+      const{data:invRow,error:invErr}=await supabase.from("tax_invoices").insert({
+        direction:"sales",invoice_no:invForm.invoice_no||null,issue_date:invForm.issue_date||null,
+        customer_name:invForm.customer_name||null,business_no:invForm.business_no||null,
+        supply_amount:invForm.supply_amount?parseFloat(invForm.supply_amount):null,
+        tax_amount:invForm.tax_amount?parseFloat(invForm.tax_amount):null,
+        total_amount:invForm.total_amount?parseFloat(invForm.total_amount):null,
+        items:invForm.items||null,matched_total:0,
+      }).select().single();
+      if(invErr||!invRow)throw new Error(invErr?.message||"계산서 등록 실패");
+      // 2) sales_records 신규 생성
+      const supplyAmt=invForm.supply_amount?parseFloat(invForm.supply_amount):0;
+      const taxAmt=invForm.tax_amount?parseFloat(invForm.tax_amount):null;
+      const tradeType=(taxAmt===0)?"수출":"내수";
+      const vat=tradeType==="수출"?1:1.1;
+      const unitPrice=Math.round(supplyAmt);
+      await supabase.from("sales_records").insert({
+        sale_date:invForm.issue_date||new Date().toISOString().split("T")[0],
+        customer_name:invForm.customer_name||"거래처 미입력",
+        business_no:invForm.business_no||null,
+        category:fhGuessCategory(invForm.items||invForm.customer_name||""),
+        trade_type:tradeType,maker:null,
+        spec:invForm.items||null,
+        quantity:1,unit_price:unitPrice,unit_cost:0,
+        total_revenue:unitPrice*vat,total_cost:0,margin:unitPrice*vat,
+        tax_invoice:true,payment_confirmed:false,payment_date:null,
+        delivery_date:null,delivery_confirmed:false,wheel_returned:false,closing:false,
+        invoice_id:invRow.id,
+        note:`계산서 업로드 자동생성${invForm.invoice_no?` (#${invForm.invoice_no})`:""} — 수량·매입단가 확인 필요`,
+      });
+      setShowMatchModal(false);setInvForm(FH_EMPTY_INV);setMatchSelectedIds(new Set());
+      await loadFhAll();
+      setActiveSubTab("sales");
+    }catch(err:any){setFhError("신규 생성 실패: "+(err?.message||""));}
+    finally{setMatchSaving(false);}
+  }
+  async function handlePurchInvFile(e:React.ChangeEvent<HTMLInputElement>){
+    const file=e.target.files?.[0];if(!file)return;
+    setParsingPurchInv(true);setFhError(null);
+    try{
+      const base64=await fhFileToBase64(file);
+      const{data,error:fnErr}=await supabase.functions.invoke("parse-tax-invoice",{body:{image_base64:base64,media_type:file.type||"image/png",direction:"purchase"}});
+      if(fnErr)throw fnErr;
+      const parsed=(data||{})as FH_ParsedInvoice;
+      if(!parsed.customer_name&&!parsed.total_amount)throw new Error("인식 실패. 더 선명한 이미지로 다시 시도해주세요.");
+      const tradeType:"국내"|"수입"=(parsed.tax_amount??null)===0?"수입":"국내";
+      const{data:invRow,error:invErr}=await supabase.from("tax_invoices").insert({direction:"purchase",invoice_no:parsed.invoice_no||null,issue_date:parsed.sale_date||new Date().toISOString().split("T")[0],customer_name:parsed.customer_name||null,business_no:parsed.business_no?String(parsed.business_no).replace(/[^0-9]/g,""):null,supply_amount:parsed.supply_amount??null,tax_amount:parsed.tax_amount??null,total_amount:parsed.total_amount??null,items:parsed.items||null}).select().single();
+      if(invErr||!invRow)throw new Error(invErr?.message||"계산서 등록 실패");
+      const{data:newRec}=await supabase.from("purchase_records").insert({purchase_date:parsed.sale_date||new Date().toISOString().split("T")[0],supplier_name:parsed.customer_name||"거래처 미입력",business_no:parsed.business_no?String(parsed.business_no).replace(/[^0-9]/g,""):null,category:fhGuessCategory(parsed.items||""),trade_type:tradeType,maker:null,spec:parsed.items||null,quantity:1,unit_price:Math.round(parsed.supply_amount??0),tax_invoice:true,payment_confirmed:false,payment_date:null,invoice_id:invRow.id,note:`계산서 업로드 자동등록${parsed.invoice_no?` (#${parsed.invoice_no})`:""} — 수량 확인 필요`}).select().single();
+      await loadFhAll();
+      if(newRec){setActiveSubTab("purchases");openEditPurchase(newRec as FH_PurchaseRecord);}
+    }catch(err:any){setFhError("계산서 인식/등록 실패: "+(err?.message||""));}
+    finally{setParsingPurchInv(false);if(purchInvRef.current)purchInvRef.current.value="";}
+  }
+  async function handleExcelImport(e:React.ChangeEvent<HTMLInputElement>){
+    const file=e.target.files?.[0];if(!file)return;
+    setImportingExcel(true);setImportResult(null);setFhError(null);
+    try{
+      const XLSX=await import("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm" as any);
+      const arrayBuffer=await file.arrayBuffer();
+      const wb=XLSX.read(arrayBuffer,{type:"array",cellDates:true});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows:any[][]=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
+      const fullText=rows.slice(0,6).map((r:any)=>r.join(" ")).join(" ");
+      const isSales=fullText.includes("매출 전자");
+      const direction=isSales?"sales":"purchase";
+      let headerRow=-1;
+      for(let i=0;i<Math.min(10,rows.length);i++){if(String(rows[i][0]).includes("작성일자")){headerRow=i;break;}}
+      if(headerRow===-1)throw new Error("홈택스 전자세금계산서 목록 형식이 아닙니다.");
+      const dataRows=rows.slice(headerRow+1).filter((r:any)=>r[0]&&String(r[0]).trim()!=="");
+      let success=0,skipped=0;const errors:string[]=[];
+      for(const r of dataRows){
+        try{
+          const invoice_no=String(r[1]||"").trim();
+          const issue_date=r[0]instanceof Date?r[0].toISOString().split("T")[0]:String(r[0]).trim().slice(0,10);
+          const counterpart_name=isSales?String(r[11]||"").trim():String(r[6]||"").trim();
+          const counterpart_biz=isSales?String(r[9]||"").replace(/[^0-9]/g,""):String(r[4]||"").replace(/[^0-9]/g,"");
+          const total_amount=parseFloat(String(r[14]).replace(/[^0-9,.-]/g,"").replace(/,/g,""))||0;
+          const supply_amount=parseFloat(String(r[15]).replace(/[^0-9,.-]/g,"").replace(/,/g,""))||0;
+          const tax_amount=parseFloat(String(r[16]).replace(/[^0-9,.-]/g,"").replace(/,/g,""))||0;
+          const invoiceType=String(r[18]||"").trim();
+          const isAmendment=supply_amount<0||invoiceType.includes("수정");
+          const itemName=String(r[26]||"").trim();
+          const itemSpec=String(r[27]||"").trim();
+          const itemQty=parseFloat(String(r[28]||"1").replace(/[^0-9.-]/g,""))||1;
+          const itemUnitPrice=parseFloat(String(r[29]||"0").replace(/[^0-9,.-]/g,"").replace(/,/g,""))||0;
+          const spec=[itemName,itemSpec].filter(Boolean).join(" / ");
+          if(!counterpart_name||!issue_date){skipped++;continue;}
+          if(invoice_no){const{data:existing}=await supabase.from("tax_invoices").select("id").eq("invoice_no",invoice_no).eq("direction",direction).maybeSingle();if(existing){skipped++;continue;}}
+          const{data:invRow,error:invErr}=await supabase.from("tax_invoices").insert({direction,invoice_no:invoice_no||null,issue_date,customer_name:counterpart_name,business_no:counterpart_biz||null,supply_amount,tax_amount,total_amount,items:spec||null}).select().single();
+          if(invErr||!invRow)throw new Error(invErr?.message||"계산서 저장 실패");
+          if(isSales){
+            const trade_type=Math.abs(tax_amount)===0?"수출":"내수";
+            const vat=trade_type==="수출"?1:1.1;
+            const unit_price=Math.round(Math.abs(itemUnitPrice||supply_amount));
+            const qty=Math.abs(itemQty);
+            const category=fhGuessCategory(spec);
+            const{error:recErr}=await supabase.from("sales_records").insert({sale_date:issue_date,customer_name:counterpart_name,business_no:counterpart_biz||null,category,trade_type,maker:null,spec:spec||null,quantity:qty,unit_price,unit_cost:0,total_revenue:qty*unit_price*vat,total_cost:0,margin:qty*unit_price*vat,tax_invoice:true,payment_confirmed:false,payment_date:null,delivery_date:null,delivery_confirmed:false,wheel_returned:false,closing:false,invoice_id:invRow.id,note:`엑셀 일괄등록${isAmendment?" [수정세금계산서]":""}${invoice_no?` (#${invoice_no})`:""}`});
+            if(recErr)throw new Error(recErr.message);
+          }else{
+            const trade_type:"국내"|"수입"=Math.abs(tax_amount)===0?"수입":"국내";
+            const category=fhGuessCategory(spec);
+            const{error:recErr}=await supabase.from("purchase_records").insert({purchase_date:issue_date,supplier_name:counterpart_name,business_no:counterpart_biz||null,category,trade_type,maker:null,spec:spec||null,quantity:1,unit_price:Math.round(supply_amount),tax_invoice:true,payment_confirmed:false,payment_date:null,invoice_id:invRow.id,note:`엑셀 일괄등록${isAmendment?" [수정세금계산서]":""}${invoice_no?` (#${invoice_no})`:""}`});
+            if(recErr)throw new Error(recErr.message);
+          }
+          success++;
+        }catch(rowErr:any){errors.push(`${r[isSales?11:6]||r[0]}: ${rowErr.message}`);}
+      }
+      setImportResult({success,skipped,errors,type:isSales?"매출":"매입"});
+      await loadFhAll();
+      if(isSales)setActiveSubTab("sales");else setActiveSubTab("purchases");
+    }catch(err:any){setFhError("엑셀 처리 실패: "+(err?.message||""));}
+    finally{setImportingExcel(false);if(excelRef.current)excelRef.current.value="";}
+  }
+
+  const periodLabel=React.useMemo(()=>{
+    if(period==="월간")return `${year}년 ${month}월`;
+    if(period==="분기")return `${year}년 ${Math.ceil(month/3)}분기`;
+    if(period==="반기")return `${year}년 ${month<=6?"상반기":"하반기"}`;
+    return `${year}년`;
+  },[year,month,period]);
+
+  // ── 스타일 (AI비서 통일) ──────────────────────────────────────────────────
+  const fhCard="border border-gray-200 rounded-2xl bg-white shadow-sm";
+  const fhInp="w-full h-[44px] rounded-xl border border-gray-200 px-3 text-sm font-medium text-[#0f172a] bg-white focus:outline-none focus:border-orange-400 transition-all";
+  const fhInpSm="w-full h-[38px] rounded-xl border border-gray-200 px-3 text-sm font-medium text-[#0f172a] bg-white focus:outline-none focus:border-orange-400 transition-all";
+  const fhLbl="block text-xs font-medium text-gray-500 mb-1";
+  const fhBtnP="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-all disabled:opacity-50";
+  const fhBtnS="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-all";
+  const fhBtnG="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-gray-200 text-xs text-gray-600 hover:border-gray-300 transition-all";
+
+  return (
+    <div className="space-y-3 pb-4">
+      {/* ── KPI 헤더 ── */}
+      <div className={`${fhCard} p-4`}>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <p className="text-sm font-semibold text-[#0f172a]">💵 매출 / 매입 관리</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex rounded-xl overflow-hidden border border-gray-200">
+              {FH_PERIODS.map(p=>(
+                <button key={p} onClick={()=>setPeriod(p)}
+                  className={`px-2.5 py-1 text-xs font-semibold transition-all ${period===p?"bg-[#0f172a] text-white":"bg-white text-gray-500 hover:bg-gray-50"}`}>{p}</button>
+              ))}
+            </div>
+            <select value={year} onChange={e=>setYear(Number(e.target.value))}
+              className="h-8 rounded-xl border border-gray-200 bg-white px-2 text-xs text-[#0f172a] focus:outline-none focus:border-orange-400">
+              {[today.getFullYear()-1,today.getFullYear(),today.getFullYear()+1].map(y=>
+                <option key={y} value={y}>{y}년</option>)}
+            </select>
+            {period==="월간"&&(
+              <select value={month} onChange={e=>setMonth(Number(e.target.value))}
+                className="h-8 rounded-xl border border-gray-200 bg-white px-2 text-xs text-[#0f172a] focus:outline-none focus:border-orange-400">
+                {Array.from({length:12}).map((_,i)=><option key={i+1} value={i+1}>{i+1}월</option>)}
+              </select>
+            )}
+            {period==="분기"&&(
+              <select value={Math.ceil(month/3)} onChange={e=>setMonth((Number(e.target.value)-1)*3+1)}
+                className="h-8 rounded-xl border border-gray-200 bg-white px-2 text-xs text-[#0f172a] focus:outline-none focus:border-orange-400">
+                {[1,2,3,4].map(q=><option key={q} value={q}>{q}분기</option>)}
+              </select>
+            )}
+            {period==="반기"&&(
+              <select value={month<=6?1:7} onChange={e=>setMonth(Number(e.target.value))}
+                className="h-8 rounded-xl border border-gray-200 bg-white px-2 text-xs text-[#0f172a] focus:outline-none focus:border-orange-400">
+                <option value={1}>상반기</option><option value={7}>하반기</option>
+              </select>
+            )}
+          </div>
+        </div>
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+          {[
+            {label:"매출",value:fhFmt(kpi.totalRevenue),clr:"text-[#0f172a]"},
+            {label:"매입",value:fhFmt(kpi.totalCost),clr:"text-[#0f172a]"},
+            {label:"손익",value:fhFmt(kpi.netProfit),clr:kpi.netProfit>=0?"text-emerald-600":"text-red-500"},
+            {label:"매출이익",value:fhFmt(kpi.totalMargin),clr:"text-sky-600"},
+            {label:"이익률",value:`${kpi.profitRate.toFixed(1)}%`,clr:kpi.profitRate>=0?"text-emerald-600":"text-red-500"},
+            {label:"미수/미지급",value:`${Math.round(kpi.unpaidSales/10000)}만/${Math.round(kpi.unpaidPurch/10000)}만`,clr:"text-amber-600"},
+          ].map(k=>(
+            <div key={k.label} className="bg-gray-50 rounded-xl px-2.5 py-2 border border-gray-100">
+              <p className="text-[10px] text-gray-400 font-medium">{k.label}</p>
+              <p className={`text-sm font-bold mt-0.5 ${k.clr}`}>{k.value}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-[10px] text-gray-400 mt-1.5">{periodLabel} 기준</p>
+      </div>
+
+      {/* ── 에러 / 엑셀 결과 ── */}
+      {fhError&&(
+        <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+          <FhAlertCircle className="w-4 h-4 shrink-0"/>{fhError}
+          <button onClick={()=>setFhError(null)} className="ml-auto"><FhX className="w-4 h-4"/></button>
+        </div>
+      )}
+      {importResult&&(
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800 flex items-center justify-between gap-3">
+          <span>✅ {importResult.type||""} 엑셀 등록 — <strong>{importResult.success}건</strong>{importResult.skipped>0&&`, ${importResult.skipped}건 중복`}</span>
+          <button onClick={()=>setImportResult(null)}><FhX className="w-4 h-4"/></button>
+        </div>
+      )}
+
+      {/* ── 서브탭 + 액션 버튼 ── */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+            {(["sales","purchases","incomplete"] as const).map(t=>(
+              <button key={t} onClick={()=>{setActiveSubTab(t);setFilterCategory("전체");setSearchQuery("");setShowUncategorized(false);if(t==="incomplete")loadFhIncomplete();}}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${activeSubTab===t?"bg-white text-[#0f172a] shadow-sm":"text-gray-500 hover:text-gray-700"}`}>
+                {t==="sales"?`매출 (${sales.length}건)`:t==="purchases"?`매입 (${purchases.length}건)`:(
+                  <span className={(incompleteSales.length+incompletePurchases.length)>0?"text-amber-600":""}>
+                    ⚠ 보완 ({incompleteSales.length+incompletePurchases.length}건)
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+          <button onClick={toggleUncategorized}
+            className={`px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${showUncategorized?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-amber-600 border-amber-300 hover:bg-amber-50"}`}>
+            {loadingUncat?<FhLoader2 className="w-3 h-3 animate-spin inline"/>:null}
+            {showUncategorized?"▶ 기간별 보기":` ⚠ ${year}년 미분류`}
+          </button>
+        </div>
+        <div className="flex gap-1.5 flex-wrap">
+          <input ref={excelRef} type="file" accept=".xls,.xlsx" className="hidden" onChange={handleExcelImport}/>
+          <button onClick={()=>excelRef.current?.click()} disabled={importingExcel} className={fhBtnG}>
+            {importingExcel?<FhLoader2 className="w-3.5 h-3.5 animate-spin"/>:<FhFileSpreadsheet className="w-3.5 h-3.5"/>}
+            {importingExcel?"처리중":"엑셀등록"}
+          </button>
+          {activeSubTab==="sales"?(
+            <>
+              <input ref={salesInvRef} type="file" accept="image/*" className="hidden" onChange={handleSalesInvFile}/>
+              <button onClick={()=>salesInvRef.current?.click()} disabled={parsingSalesInv} className={fhBtnG}>
+                {parsingSalesInv?<FhLoader2 className="w-3.5 h-3.5 animate-spin"/>:<FhUpload className="w-3.5 h-3.5"/>}
+                {parsingSalesInv?"인식중":"계산서"}
+              </button>
+              <button onClick={openNewSales} className={fhBtnG}>
+                <FhPlus className="w-3.5 h-3.5"/>매출입력
+              </button>
+            </>
+          ):(
+            activeSubTab==="purchases"&&(
+              <>
+                <input ref={purchInvRef} type="file" accept="image/*" className="hidden" onChange={handlePurchInvFile}/>
+                <button onClick={()=>purchInvRef.current?.click()} disabled={parsingPurchInv} className={fhBtnG}>
+                  {parsingPurchInv?<FhLoader2 className="w-3.5 h-3.5 animate-spin"/>:<FhUpload className="w-3.5 h-3.5"/>}
+                  {parsingPurchInv?"인식중":"계산서"}
+                </button>
+              </>
+            )
+          )}
+        </div>
+      </div>
+
+      {/* ── 검색 + 카테고리 필터 ── */}
+      {activeSubTab!=="incomplete"&&(
+        <div className={`${fhCard} px-3 py-2.5 flex flex-wrap gap-2 items-center`}>
+          <div className="relative flex-1 min-w-[160px]">
+            <FhSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400"/>
+            <input value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}
+              placeholder={activeSubTab==="sales"?"거래처·Maker·규격 검색":"매입처·Maker·규격 검색"}
+              className="w-full h-8 pl-8 pr-3 rounded-xl border border-gray-200 text-xs focus:outline-none focus:border-orange-400"/>
+            {searchQuery&&<span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-orange-500 font-medium whitespace-nowrap">전 기간</span>}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {["전체",...FH_CATEGORIES].map(cat=>(
+              <button key={cat} onClick={()=>setFilterCategory(cat)}
+                className={`px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${filterCategory===cat?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
+                {cat}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── 매출 목록 ── */}
+      {activeSubTab==="sales"&&(
+        loading?<div className={`${fhCard} p-8 text-center text-sm text-gray-400`}><FhLoader2 className="w-5 h-5 animate-spin text-orange-500 mx-auto mb-2"/>불러오는 중...</div>
+        :filteredSales.length===0?<div className={`${fhCard} p-8 text-center text-gray-400 text-sm`}>매출 데이터가 없습니다.</div>:(
+          <div className={`${fhCard} overflow-hidden`}>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50">
+                    {["날짜","거래처","종류","구분","Maker/규격","수량","매출","이익","계산서","입금",""].map(h=>(
+                      <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {filteredSales.map(r=>(
+                    <React.Fragment key={r.id}>
+                    <tr className={`transition-colors cursor-pointer ${detailSales?.id===r.id?"bg-orange-50":"hover:bg-orange-50/40"}`} onClick={()=>setDetailSales(prev=>prev?.id===r.id?null:r)}>
+                      <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">{r.sale_date}</td>
+                      <td className="px-3 py-2.5">
+                        <p className="font-semibold text-[#0f172a] whitespace-nowrap text-xs">{r.customer_name}</p>
+                        {r.business_no&&<p className="text-[10px] text-gray-400">{r.business_no}</p>}
+                      </td>
+                      <td className="px-3 py-2.5" onClick={e=>e.stopPropagation()}>
+                        {editingCategoryId?.id===r.id&&editingCategoryId?.table==="sales"?(
+                          <select autoFocus defaultValue={r.category} onChange={e=>updateFhCategory(r.id,"sales",e.target.value)} onBlur={()=>setEditingCategoryId(null)}
+                            className="h-7 rounded-lg border border-orange-400 px-1.5 text-xs bg-white focus:outline-none">
+                            {FH_CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
+                          </select>
+                        ):(
+                          <button onClick={()=>setEditingCategoryId({id:r.id,table:"sales"})} title="클릭하여 변경"
+                            className={`text-[11px] px-2 py-0.5 rounded-full font-medium whitespace-nowrap hover:ring-2 hover:ring-orange-300 transition-all ${FH_CAT_COLOR[r.category]||"bg-gray-100 text-gray-600"}`}>
+                            {r.category}
+                          </button>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${r.trade_type==="수출"?"bg-amber-50 text-amber-600":"bg-gray-100 text-gray-500"}`}>{r.trade_type}</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap">{[r.maker,r.spec].filter(Boolean).join(" / ")||"-"}</td>
+                      <td className="px-3 py-2.5 text-xs font-medium text-gray-700 text-right whitespace-nowrap">{r.quantity}</td>
+                      <td className="px-3 py-2.5 text-xs font-semibold text-[#0f172a] text-right whitespace-nowrap">{fhFmt(r.total_revenue||0)}</td>
+                      <td className={`px-3 py-2.5 text-xs font-semibold text-right whitespace-nowrap ${(r.margin||0)>=0?"text-emerald-600":"text-red-500"}`}>{fhFmt(r.margin||0)}</td>
+                      <td className="px-3 py-2.5 text-center">
+                        <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-medium ${r.tax_invoice?"bg-emerald-100 text-emerald-700":"bg-gray-100 text-gray-400"}`}>
+                          {r.invoice_id&&<FhLink2 className="w-3 h-3"/>}{r.tax_invoice?"완료":"-"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-center" onClick={e=>e.stopPropagation()}>
+                        <button onClick={()=>quickToggleSales(r.id,"payment_confirmed",r.payment_confirmed)}
+                          className={`text-[11px] px-2 py-0.5 rounded-full font-medium transition-colors ${r.payment_confirmed?"bg-emerald-100 text-emerald-700 hover:bg-emerald-200":"bg-red-100 text-red-600 hover:bg-red-200"}`}>
+                          {r.payment_confirmed?"입금":"미수"}
+                        </button>
+                      </td>
+                      <td className="px-3 py-2.5" onClick={e=>e.stopPropagation()}>
+                        <div className="flex items-center gap-1">
+                          <button onClick={()=>openEditSales(r)} className="p-1 text-gray-400 hover:text-orange-500 rounded-lg hover:bg-orange-50 transition-all"><FhPencil className="w-3.5 h-3.5"/></button>
+                          <button onClick={()=>deleteSales(r.id)} className="p-1 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-all"><FhTrash2 className="w-3.5 h-3.5"/></button>
+                        </div>
+                      </td>
+                    </tr>
+                    {detailSales?.id===r.id&&(
+                      <tr>
+                        <td colSpan={11} className="px-3 pb-3 pt-0 bg-orange-50">
+                          <div className="rounded-xl border border-orange-100 bg-white shadow-sm p-3">
+                            <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+                              {(()=>{const isExport=r.trade_type==="수출";const supply=Math.round(r.total_revenue||0);const vat=isExport?0:Math.round(supply*0.1);const total=supply+vat;return(<>
+                                <div><p className="text-[11px] text-gray-400 mb-0.5">공급가액</p><p className="font-semibold text-[#0f172a] text-xs">{fhFmt(supply)}</p></div>
+                                <div><p className="text-[11px] text-gray-400 mb-0.5">부가세</p><p className="font-semibold text-gray-500 text-xs">{fhFmt(vat)}</p></div>
+                                <div><p className="text-[11px] text-orange-500 mb-0.5">합계(VAT포함)</p><p className="font-bold text-orange-600 text-sm">{fhFmt(total)}</p></div>
+                                <div><p className="text-[11px] text-gray-400 mb-0.5">계산서</p><p className={`font-semibold text-xs ${r.tax_invoice?"text-emerald-600":"text-gray-400"}`}>{r.tax_invoice?"✅ 발행":"미발행"}</p></div>
+                                <div><p className="text-[11px] text-gray-400 mb-0.5">입금일</p><p className={`font-semibold text-xs ${r.payment_confirmed?"text-emerald-600":"text-red-500"}`}>{r.payment_confirmed?`✅ ${r.payment_date||"완료"}`:"미수"}</p></div>
+                                {r.note&&<div className="w-full"><p className="text-[11px] text-gray-400 mb-0.5">비고</p><p className="text-xs text-gray-600">{r.note}</p></div>}
+                              </>);})()}
+                            </div>
+                            <div className="flex justify-end mt-2 pt-2 border-t border-gray-100">
+                              <button onClick={e=>{e.stopPropagation();openEditSales(r);setDetailSales(null);}} className={fhBtnP}><FhPencil className="w-3.5 h-3.5"/>수정</button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      )}
+
+      {/* ── 매입 목록 ── */}
+      {activeSubTab==="purchases"&&(
+        loading?<div className={`${fhCard} p-8 text-center text-sm text-gray-400`}><FhLoader2 className="w-5 h-5 animate-spin text-orange-500 mx-auto mb-2"/>불러오는 중...</div>
+        :filteredPurchases.length===0?<div className={`${fhCard} p-8 text-center text-gray-400 text-sm`}>매입 데이터가 없습니다.</div>:(
+          <div className={`${fhCard} overflow-hidden`}>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50">
+                    {["날짜","매입처","종류","구분","Maker/규격","수량","매입액","계산서","지급",""].map(h=>(
+                      <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {filteredPurchases.map(r=>(
+                    <React.Fragment key={r.id}>
+                    <tr className={`transition-colors cursor-pointer ${detailPurchase?.id===r.id?"bg-blue-50":"hover:bg-orange-50/40"}`} onClick={()=>setDetailPurchase(prev=>prev?.id===r.id?null:r)}>
+                      <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">{r.purchase_date}</td>
+                      <td className="px-3 py-2.5">
+                        <p className="font-semibold text-[#0f172a] whitespace-nowrap text-xs">{r.supplier_name}</p>
+                        {r.business_no&&<p className="text-[10px] text-gray-400">{r.business_no}</p>}
+                      </td>
+                      <td className="px-3 py-2.5" onClick={e=>e.stopPropagation()}>
+                        {editingCategoryId?.id===r.id&&editingCategoryId?.table==="purchases"?(
+                          <select autoFocus defaultValue={r.category} onChange={e=>updateFhCategory(r.id,"purchases",e.target.value)} onBlur={()=>setEditingCategoryId(null)}
+                            className="h-7 rounded-lg border border-orange-400 px-1.5 text-xs bg-white focus:outline-none">
+                            {FH_CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
+                          </select>
+                        ):(
+                          <button onClick={()=>setEditingCategoryId({id:r.id,table:"purchases"})} title="클릭하여 변경"
+                            className={`text-[11px] px-2 py-0.5 rounded-full font-medium whitespace-nowrap hover:ring-2 hover:ring-orange-300 transition-all ${FH_CAT_COLOR[r.category]||"bg-gray-100 text-gray-600"}`}>
+                            {r.category}
+                          </button>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${r.trade_type==="수입"?"bg-amber-50 text-amber-600":"bg-gray-100 text-gray-500"}`}>{r.trade_type}</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap">{[r.maker,r.spec].filter(Boolean).join(" / ")||"-"}</td>
+                      <td className="px-3 py-2.5 text-xs font-medium text-gray-700 text-right whitespace-nowrap">{r.quantity}</td>
+                      <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                        <span className={`text-xs font-semibold ${(r.total_cost||0)<0?"text-red-500":"text-[#0f172a]"}`}>
+                          {(r.total_cost||0)<0&&"▼ "}{fhFmtAbs(r.total_cost||0)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-center">
+                        <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${r.tax_invoice?"bg-emerald-100 text-emerald-700":"bg-gray-100 text-gray-400"}`}>{r.tax_invoice?"완료":"-"}</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-center" onClick={e=>e.stopPropagation()}>
+                        <button onClick={()=>quickTogglePurchase(r.id,r.payment_confirmed)}
+                          className={`text-[11px] px-2 py-0.5 rounded-full font-medium transition-colors ${r.payment_confirmed?"bg-emerald-100 text-emerald-700 hover:bg-emerald-200":"bg-red-100 text-red-600 hover:bg-red-200"}`}>
+                          {r.payment_confirmed?"지급":"미납"}
+                        </button>
+                      </td>
+                      <td className="px-3 py-2.5" onClick={e=>e.stopPropagation()}>
+                        <div className="flex items-center gap-1">
+                          <button onClick={()=>openEditPurchase(r)} className="p-1 text-gray-400 hover:text-orange-500 rounded-lg hover:bg-orange-50 transition-all"><FhPencil className="w-3.5 h-3.5"/></button>
+                          <button onClick={()=>deletePurchase(r.id)} className="p-1 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-all"><FhTrash2 className="w-3.5 h-3.5"/></button>
+                        </div>
+                      </td>
+                    </tr>
+                    {detailPurchase?.id===r.id&&(
+                      <tr>
+                        <td colSpan={10} className="px-3 pb-3 pt-0 bg-blue-50">
+                          <div className="rounded-xl border border-blue-100 bg-white shadow-sm p-3">
+                            <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+                              {(()=>{const isImport=r.trade_type==="수입";const supply=Math.round(Math.abs(r.total_cost||0));const vat=isImport?0:Math.round(supply*0.1);const total=supply+vat;return(<>
+                                <div><p className="text-[11px] text-gray-400 mb-0.5">공급가액</p><p className="font-semibold text-[#0f172a] text-xs">{fhFmt(supply)}</p></div>
+                                <div><p className="text-[11px] text-gray-400 mb-0.5">부가세</p><p className="font-semibold text-gray-500 text-xs">{fhFmt(vat)}</p></div>
+                                <div><p className="text-[11px] text-blue-500 mb-0.5">합계(VAT포함)</p><p className="font-bold text-blue-700 text-sm">{fhFmt(total)}</p></div>
+                                <div><p className="text-[11px] text-gray-400 mb-0.5">계산서</p><p className={`font-semibold text-xs ${r.tax_invoice?"text-emerald-600":"text-gray-400"}`}>{r.tax_invoice?"✅ 수취":"미수취"}</p></div>
+                                <div><p className="text-[11px] text-gray-400 mb-0.5">지급일</p><p className={`font-semibold text-xs ${r.payment_confirmed?"text-emerald-600":"text-red-500"}`}>{r.payment_confirmed?`✅ ${r.payment_date||"완료"}`:"미납"}</p></div>
+                                {r.note&&<div className="w-full"><p className="text-[11px] text-gray-400 mb-0.5">비고</p><p className="text-xs text-gray-600">{r.note}</p></div>}
+                              </>);})()}
+                            </div>
+                            <div className="flex justify-end mt-2 pt-2 border-t border-gray-100">
+                              <button onClick={e=>{e.stopPropagation();openEditPurchase(r);setDetailPurchase(null);}} className={fhBtnP}><FhPencil className="w-3.5 h-3.5"/>수정</button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      )}
+
+      {/* ── 보완필요 탭 ── */}
+      {activeSubTab==="incomplete"&&(
+        loadingIncomplete?<div className={`${fhCard} p-8 text-center text-sm text-gray-400`}><FhLoader2 className="w-5 h-5 animate-spin text-orange-500 mx-auto mb-2"/>불러오는 중...</div>
+        :(incompleteSales.length+incompletePurchases.length)===0?(
+          <div className={`${fhCard} p-10 flex flex-col items-center text-gray-400 gap-2`}>
+            <FhPackageCheck className="w-8 h-8 text-emerald-300"/>
+            <p className="text-sm font-medium">보완이 필요한 건이 없습니다 🎉</p>
+          </div>
+        ):(
+          <div className="space-y-3">
+            {incompleteSales.length>0&&(()=>{
+              const groups:Record<string,FH_SalesRecord[]>={};
+              incompleteSales.forEach(r=>{if(!groups[r.customer_name])groups[r.customer_name]=[];groups[r.customer_name].push(r);});
+              const bulkSave=async(customerName:string,records:FH_SalesRecord[])=>{
+                const firstId=records[0].id;const category=getInlineEdit(firstId,"sales","category",records[0].category);const maker=getInlineEdit(firstId,"sales","maker",records[0].maker||"");
+                await Promise.all(records.map(r=>supabase.from("sales_records").update({category,maker:maker||null,is_confirmed:true}).eq("id",r.id)));
+                setInlineEdits(prev=>{const next={...prev};records.forEach(r=>{delete next[`sales-${r.id}-category`];delete next[`sales-${r.id}-maker`];});return next;});
+                loadFhIncomplete();loadFhAll();
+              };
+              return(
+                <div className={`${fhCard} overflow-hidden`}>
+                  <div className="px-3 py-2.5 border-b border-gray-100 bg-amber-50">
+                    <p className="text-xs font-semibold text-amber-700">매출 확인 필요 ({incompleteSales.length}건, {Object.keys(groups).length}개 거래처)</p>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {Object.entries(groups).map(([cname,records])=>{
+                      const firstId=records[0].id;const currentCategory=getInlineEdit(firstId,"sales","category",records[0].category);const currentMaker=getInlineEdit(firstId,"sales","maker",records[0].maker||"");const totalAmt=records.reduce((s,r)=>s+(r.total_revenue||0),0);
+                      return(
+                        <div key={cname} className="px-3 py-2.5 hover:bg-amber-50/30 transition-colors">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="min-w-[140px]"><p className="text-xs font-semibold text-[#0f172a]">{cname}</p><p className="text-[10px] text-gray-400">{records.length}건 · {fhFmt(totalAmt)}</p></div>
+                            <select value={currentCategory} onChange={e=>{records.forEach(r=>setInlineEdit(r.id,"sales","category",e.target.value));}}
+                              className="h-7 rounded-lg border border-gray-200 px-2 text-xs bg-white focus:outline-none focus:border-orange-400 w-28">
+                              {FH_CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
+                            </select>
+                            <input value={currentMaker} onChange={e=>records.forEach(r=>setInlineEdit(r.id,"sales","maker",e.target.value))} placeholder="Maker"
+                              className="h-7 rounded-lg border border-gray-200 px-2 text-xs bg-white focus:outline-none focus:border-orange-400 w-24"/>
+                            <span className="text-[10px] text-gray-400">{records[records.length-1].sale_date}~{records[0].sale_date}</span>
+                            <button onClick={()=>bulkSave(cname,records)} className="ml-auto px-3 py-1 rounded-lg bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 transition-colors whitespace-nowrap">{records.length}건 저장</button>
+                          </div>
+                          <div className="mt-1.5 ml-1 space-y-0.5">
+                            {records.map(r=>(
+                              <div key={r.id} className="flex items-center gap-3 text-[10px] text-gray-500">
+                                <span className="w-20 shrink-0">{r.sale_date}</span>
+                                <span className="truncate flex-1">{r.spec||"-"}</span>
+                                <span className="shrink-0 font-medium text-gray-700">{fhFmt(r.total_revenue||0)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+            {incompletePurchases.length>0&&(()=>{
+              const groups:Record<string,FH_PurchaseRecord[]>={};
+              incompletePurchases.forEach(r=>{if(!groups[r.supplier_name])groups[r.supplier_name]=[];groups[r.supplier_name].push(r);});
+              const bulkSave=async(records:FH_PurchaseRecord[])=>{
+                const firstId=records[0].id;const category=getInlineEdit(firstId,"purchases","category",records[0].category);
+                await Promise.all(records.map(r=>supabase.from("purchase_records").update({category,is_confirmed:true}).eq("id",r.id)));
+                setInlineEdits(prev=>{const next={...prev};records.forEach(r=>{delete next[`purchases-${r.id}-category`];});return next;});
+                loadFhIncomplete();loadFhAll();
+              };
+              return(
+                <div className={`${fhCard} overflow-hidden`}>
+                  <div className="px-3 py-2.5 border-b border-gray-100 bg-blue-50">
+                    <p className="text-xs font-semibold text-blue-700">매입 확인 필요 ({incompletePurchases.length}건, {Object.keys(groups).length}개 매입처)</p>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {Object.entries(groups).map(([sname,records])=>{
+                      const firstId=records[0].id;const currentCategory=getInlineEdit(firstId,"purchases","category",records[0].category);const totalAmt=records.reduce((s,r)=>s+Math.abs(r.total_cost||0),0);
+                      return(
+                        <div key={sname} className={`px-3 py-2.5 transition-colors ${records.some(r=>(r.total_cost||0)<0)?"bg-red-50/20":"hover:bg-blue-50/20"}`}>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="min-w-[140px]"><p className="text-xs font-semibold text-[#0f172a]">{sname}</p><p className="text-[10px] text-gray-400">{records.length}건 · {fhFmt(totalAmt)}</p></div>
+                            <select value={currentCategory} onChange={e=>records.forEach(r=>setInlineEdit(r.id,"purchases","category",e.target.value))}
+                              className="h-7 rounded-lg border border-amber-300 px-2 text-xs bg-white focus:outline-none focus:border-orange-400 w-28">
+                              {FH_CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
+                            </select>
+                            <span className="text-[10px] text-gray-400">{records[records.length-1].purchase_date}~{records[0].purchase_date}</span>
+                            <button onClick={()=>bulkSave(records)} className="ml-auto px-3 py-1 rounded-lg bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 transition-colors whitespace-nowrap">{records.length}건 저장</button>
+                          </div>
+                          <div className="mt-1.5 ml-1 space-y-0.5">
+                            {records.map(r=>(
+                              <div key={r.id} className="flex items-center gap-3 text-[10px] text-gray-500">
+                                <span className="w-20 shrink-0">{r.purchase_date}</span>
+                                <span className="truncate flex-1">{r.spec||"-"}</span>
+                                <span className={`shrink-0 font-medium ${(r.total_cost||0)<0?"text-red-500":"text-gray-700"}`}>{(r.total_cost||0)<0&&"▼ "}{fhFmtAbs(r.total_cost||0)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )
+      )}
+
+      {/* ── 매출 입력/수정 모달 ── */}
+      {showSalesForm&&ReactDOM.createPortal(
+        <div className="fixed inset-0 z-[200] flex items-start justify-center bg-black/40 backdrop-blur-sm overflow-y-auto pt-[140px] pb-8 px-4">
+          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h2 className="text-sm font-semibold text-[#0f172a]">{salesEditId?"매출 수정":"새 매출 입력"}</h2>
+              <button onClick={()=>setShowSalesForm(false)} className="text-gray-400 hover:text-gray-600"><FhX className="w-5 h-5"/></button>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <div className="grid grid-cols-3 gap-2">
+                <div><label className={fhLbl}>날짜</label><input type="date" value={salesForm.sale_date} onChange={e=>setSalesForm(f=>({...f,sale_date:e.target.value}))} className={fhInp}/></div>
+                <div><label className={fhLbl}>종류</label>
+                  <select value={salesForm.category} onChange={e=>setSalesForm(f=>({...f,category:e.target.value}))} className={fhInp}>
+                    {FH_CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div><label className={fhLbl}>구분</label>
+                  <select value={salesForm.trade_type} onChange={e=>setSalesForm(f=>({...f,trade_type:e.target.value as "내수"|"수출"}))} className={fhInp}>
+                    <option value="내수">내수 (VAT 10%)</option><option value="수출">수출 (영세율)</option>
+                  </select>
+                </div>
+              </div>
+              <div ref={custRef}>
+                <label className={fhLbl}>거래처</label>
+                <div className="relative">
+                  <input value={customerQuery} onChange={e=>{setCustomerQuery(e.target.value);setSalesForm(f=>({...f,customer_name:e.target.value,business_no:""}));setShowCustDrop(true);}}
+                    onFocus={()=>setShowCustDrop(true)} placeholder="거래처명 또는 사업자번호" className={fhInp}/>
+                  {showCustDrop&&filteredCustomers.length>0&&(
+                    <div className="absolute z-10 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                      {filteredCustomers.map(c=>(
+                        <button key={c.id} type="button" onClick={()=>{setSalesForm(f=>({...f,customer_name:c.name,business_no:c.business_no||""}));setCustomerQuery(c.name);setShowCustDrop(false);}}
+                          className="w-full text-left px-3 py-2 hover:bg-orange-50 border-b border-gray-50 last:border-0">
+                          <p className="text-xs font-semibold text-[#0f172a]">{c.name}</p>
+                          <p className="text-[10px] text-gray-400">{c.business_no||"-"}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div><label className={fhLbl}>Maker</label><input value={salesForm.maker} onChange={e=>setSalesForm(f=>({...f,maker:e.target.value}))} placeholder="예: MAXAM" className={fhInp}/></div>
+                <div><label className={fhLbl}>규격</label><input value={salesForm.spec} onChange={e=>setSalesForm(f=>({...f,spec:e.target.value}))} placeholder="예: 815-15" className={fhInp}/></div>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div><label className={fhLbl}>수량</label><input type="number" value={salesForm.quantity} onChange={e=>setSalesForm(f=>({...f,quantity:e.target.value}))} className={fhInp}/></div>
+                <div><label className={fhLbl}>판매단가</label><input type="number" value={salesForm.unit_price} onChange={e=>setSalesForm(f=>({...f,unit_price:e.target.value}))} className={fhInp}/></div>
+                <div><label className={fhLbl}>매입단가</label><input type="number" value={salesForm.unit_cost} onChange={e=>setSalesForm(f=>({...f,unit_cost:e.target.value}))} className={fhInp}/></div>
+              </div>
+              <div><label className={fhLbl}>입금일자</label><input type="date" value={salesForm.payment_date} onChange={e=>setSalesForm(f=>({...f,payment_date:e.target.value}))} className="h-10 rounded-xl border border-gray-200 px-3 text-sm text-[#0f172a] bg-white focus:outline-none focus:border-orange-400 transition-all w-48"/></div>
+              <div className="flex gap-4">
+                {([["tax_invoice","계산서"],["payment_confirmed","입금확인"]] as [keyof FH_SalesFormData,string][]).map(([k,label])=>(
+                  <label key={k} className="flex items-center gap-2 cursor-pointer">
+                    <div onClick={()=>setSalesForm(f=>({...f,[k]:!f[k]}))}
+                      className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${salesForm[k]?"bg-orange-500 border-orange-500":"bg-white border-gray-300"}`}>
+                      {salesForm[k]&&<FhCheck className="w-3 h-3 text-white"/>}
+                    </div>
+                    <span className="text-xs font-medium text-gray-700">{label}</span>
+                  </label>
+                ))}
+              </div>
+              <div><label className={fhLbl}>비고</label><textarea value={salesForm.note} onChange={e=>setSalesForm(f=>({...f,note:e.target.value}))} rows={2} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-[#0f172a] bg-white focus:outline-none focus:border-orange-400 resize-none transition-all"/></div>
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-4 border-t border-gray-100">
+              <button onClick={()=>setShowSalesForm(false)} className={fhBtnS}>취소</button>
+              <button onClick={saveSales} disabled={savingSales} className={fhBtnP}>
+                {savingSales?<FhLoader2 className="w-4 h-4 animate-spin"/>:<FhCheck className="w-4 h-4"/>}
+                {salesEditId?"수정 저장":"저장"}
+              </button>
+            </div>
+          </div>
+        </div>, document.body
+      )}
+
+      {/* ── 매입 수정 모달 ── */}
+      {showPurchaseForm&&ReactDOM.createPortal(
+        <div className="fixed inset-0 z-[200] flex items-start justify-center bg-black/40 backdrop-blur-sm overflow-y-auto pt-[140px] pb-8 px-4">
+          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h2 className="text-sm font-semibold text-[#0f172a]">매입 정보 확인/수정</h2>
+              <button onClick={()=>setShowPurchaseForm(false)} className="text-gray-400 hover:text-gray-600"><FhX className="w-5 h-5"/></button>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div><label className={fhLbl}>종류</label>
+                  <select value={purchaseForm.category} onChange={e=>setPurchaseForm(f=>({...f,category:e.target.value}))} className={fhInp}>
+                    {FH_CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div><label className={fhLbl}>구분</label>
+                  <select value={purchaseForm.trade_type} onChange={e=>setPurchaseForm(f=>({...f,trade_type:e.target.value as "국내"|"수입"}))} className={fhInp}>
+                    <option value="국내">국내 (VAT 10%)</option><option value="수입">수입 (영세율)</option>
+                  </select>
+                </div>
+              </div>
+              <div><label className={fhLbl}>매입처</label>
+                <input value={purchaseForm.supplier_name} onChange={e=>setPurchaseForm(f=>({...f,supplier_name:e.target.value}))} className={fhInp}/>
+                {purchaseForm.business_no&&<p className="mt-0.5 text-[10px] text-gray-400">사업자번호: {purchaseForm.business_no}</p>}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div><label className={fhLbl}>Maker</label><input value={purchaseForm.maker} onChange={e=>setPurchaseForm(f=>({...f,maker:e.target.value}))} className={fhInp}/></div>
+                <div><label className={fhLbl}>규격</label><input value={purchaseForm.spec} onChange={e=>setPurchaseForm(f=>({...f,spec:e.target.value}))} className={fhInp}/></div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div><label className={fhLbl}>수량</label><input type="number" value={purchaseForm.quantity} onChange={e=>setPurchaseForm(f=>({...f,quantity:e.target.value}))} className={fhInp}/></div>
+                <div><label className={fhLbl}>매입단가 (VAT 제외)</label><input type="number" value={purchaseForm.unit_price} onChange={e=>setPurchaseForm(f=>({...f,unit_price:e.target.value}))} className={fhInp}/></div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div><label className={fhLbl}>발행일자</label><input type="date" value={purchaseForm.purchase_date} onChange={e=>setPurchaseForm(f=>({...f,purchase_date:e.target.value}))} className={fhInp}/></div>
+                <div><label className={fhLbl}>지급일자</label><input type="date" value={purchaseForm.payment_date} onChange={e=>setPurchaseForm(f=>({...f,payment_date:e.target.value}))} className={fhInp}/></div>
+              </div>
+              <div className="flex gap-4">
+                {([["tax_invoice","계산서 수취"],["payment_confirmed","지급완료"]] as [keyof FH_PurchaseFormData,string][]).map(([k,label])=>(
+                  <label key={k} className="flex items-center gap-2 cursor-pointer">
+                    <div onClick={()=>setPurchaseForm(f=>({...f,[k]:!f[k]}))}
+                      className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${purchaseForm[k]?"bg-orange-500 border-orange-500":"bg-white border-gray-300"}`}>
+                      {purchaseForm[k]&&<FhCheck className="w-3 h-3 text-white"/>}
+                    </div>
+                    <span className="text-xs font-medium text-gray-700">{label}</span>
+                  </label>
+                ))}
+              </div>
+              <div><label className={fhLbl}>비고</label><textarea value={purchaseForm.note} onChange={e=>setPurchaseForm(f=>({...f,note:e.target.value}))} rows={2} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-[#0f172a] bg-white focus:outline-none focus:border-orange-400 resize-none transition-all"/></div>
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-4 border-t border-gray-100">
+              <button onClick={()=>setShowPurchaseForm(false)} className={fhBtnS}>취소</button>
+              <button onClick={savePurchase} disabled={savingPurchase} className={fhBtnP}>
+                {savingPurchase?<FhLoader2 className="w-4 h-4 animate-spin"/>:<FhCheck className="w-4 h-4"/>}저장
+              </button>
+            </div>
+          </div>
+        </div>, document.body
+      )}
+
+      {/* ── 계산서 매칭 모달 ── */}
+      {showMatchModal&&ReactDOM.createPortal(
+        <div className="fixed inset-0 z-[200] flex items-start justify-center bg-black/40 backdrop-blur-sm overflow-y-auto pt-[140px] pb-8 px-4">
+          <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h2 className="text-sm font-semibold text-[#0f172a]">계산서 매칭</h2>
+              <button onClick={()=>setShowMatchModal(false)} className="text-gray-400 hover:text-gray-600"><FhX className="w-5 h-5"/></button>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 space-y-2">
+                <p className="text-xs font-semibold text-gray-500 flex items-center gap-1.5"><FhFileText className="w-3.5 h-3.5"/>계산서 정보</p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {([{label:"작성일자",key:"issue_date" as const,type:"date"},{label:"계산서번호",key:"invoice_no" as const,type:"text"},{label:"거래처명",key:"customer_name" as const,type:"text"},{label:"사업자번호",key:"business_no" as const,type:"text"},{label:"공급가액",key:"supply_amount" as const,type:"number"},{label:"합계금액",key:"total_amount" as const,type:"number"}]).map(f=>(
+                    <div key={f.key}><label className={fhLbl}>{f.label}</label>
+                      <input type={f.type} value={invForm[f.key]} onChange={e=>setInvForm(p=>({...p,[f.key]:e.target.value}))} className={fhInpSm}/>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <FhSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"/>
+                  <input value={matchSearch} onChange={e=>setMatchSearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&loadMatchCandidates(matchSearch)}
+                    placeholder="거래처명으로 미매칭 매출건 검색" className="w-full h-9 pl-9 pr-3 rounded-xl border border-gray-200 text-xs focus:outline-none focus:border-orange-400"/>
+                </div>
+                <button onClick={()=>loadMatchCandidates(matchSearch)} className={fhBtnS}><FhSearch className="w-4 h-4"/>검색</button>
+              </div>
+              <div className="border border-gray-100 rounded-xl overflow-hidden max-h-56 overflow-y-auto divide-y divide-gray-50">
+                {loadingCandidates?(
+                  <div className="flex items-center justify-center py-6 text-gray-400 text-xs gap-2"><FhLoader2 className="w-4 h-4 animate-spin text-orange-500"/>불러오는 중...</div>
+                ):matchCandidates.length===0?(
+                  <div className="py-6 text-center text-xs text-gray-400 space-y-1">
+                    <p>미매칭 매출건이 없습니다.</p>
+                    <p className="text-emerald-600 font-medium">↓ 아래 '신규 생성 후 매칭'으로 계산서 기반 매출을 자동 생성할 수 있습니다.</p>
+                  </div>
+                ):matchCandidates.map(c=>{
+                  const checked=matchSelectedIds.has(c.id);const alreadyMatched=c.invoice_id!=null;
+                  return(
+                    <label key={c.id} className={`flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors ${checked?"bg-orange-50":alreadyMatched?"bg-blue-50":"hover:bg-gray-50"}`}>
+                      <div onClick={e=>{e.preventDefault();setMatchSelectedIds(prev=>{const n=new Set(prev);checked?n.delete(c.id):n.add(c.id);return n;});}}
+                        className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 ${checked?"bg-orange-500 border-orange-500":"bg-white border-gray-300"}`}>
+                        {checked&&<FhCheck className="w-3 h-3 text-white"/>}
+                      </div>
+                      <span className="text-[10px] text-gray-400 w-20 shrink-0">{c.sale_date}</span>
+                      <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium shrink-0 ${FH_CAT_COLOR[c.category]||"bg-gray-100 text-gray-600"}`}>{c.category}</span>
+                      <span className="text-xs font-semibold text-[#0f172a] whitespace-nowrap">{c.customer_name}</span>
+                      <span className="text-[10px] text-gray-500 truncate flex-1">{[c.maker,c.spec].filter(Boolean).join(" / ")||"-"}</span>
+                      {alreadyMatched&&<span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-600 font-medium shrink-0">재매칭</span>}
+                      <span className="text-xs font-semibold text-[#0f172a] whitespace-nowrap">{fhFmt(c.total_revenue||0)}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <div className={`rounded-xl border px-3 py-2.5 flex flex-wrap items-center justify-between gap-3 ${matchIsClose&&matchTotal>0?"border-emerald-200 bg-emerald-50":"border-gray-100 bg-gray-50"}`}>
+                <div><p className="text-[10px] text-gray-400">선택 합계</p><p className="text-xs font-semibold text-[#0f172a] mt-0.5">{fhFmt(matchSelectedSum)} ({matchSelectedIds.size}건)</p></div>
+                <div><p className="text-[10px] text-gray-400">계산서 합계</p><p className="text-xs font-semibold text-[#0f172a] mt-0.5">{fhFmt(matchTotal)}</p></div>
+                <div><p className="text-[10px] text-gray-400">차이</p><p className={`text-xs font-semibold mt-0.5 ${matchIsClose?"text-emerald-600":"text-red-500"}`}>{fhFmt(matchTotal-matchSelectedSum)}{matchIsClose&&matchTotal>0?" · 일치":""}</p></div>
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-2 px-5 py-4 border-t border-gray-100">
+              <button onClick={createAndMatch} disabled={matchSaving} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-300 text-emerald-700 text-sm font-semibold hover:bg-emerald-50 transition-all disabled:opacity-50">
+                {matchSaving?<FhLoader2 className="w-4 h-4 animate-spin"/>:<FhPlus className="w-4 h-4"/>}
+                신규 생성 후 매칭
+              </button>
+              <div className="flex gap-2">
+                <button onClick={()=>setShowMatchModal(false)} className={fhBtnS}>취소</button>
+                <button onClick={confirmMatch} disabled={matchSaving||matchSelectedIds.size===0} className={fhBtnP}>
+                  {matchSaving?<FhLoader2 className="w-4 h-4 animate-spin"/>:<FhLink2 className="w-4 h-4"/>}
+                  매칭 확정 ({matchSelectedIds.size}건)
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>, document.body
+      )}
+    </div>
+  );
+}
 
 // ─── 저장 결과 카드 ────────────────────────────────────────────────────────────
 function SavedCard({actions,saved,onNav}:{actions:Record<string,unknown>[];saved:{type:string;id:number;consultation_id?:number}[];onNav:(p:string)=>void}) {
@@ -2429,15 +3543,14 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               }
             }}
           >
-            {(["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo"] as TabKey[]).map(t=>(
+            {(["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo","financehub"] as TabKey[]).map(t=>(
               <button key={t} className={`${TB} ${tab===t?TA:TI}`} style={{flexShrink:0, whiteSpace:"nowrap"}} onClick={()=>setTabAndSave(t)}>
                 {t==="email"
                   ? <span className="flex items-center gap-1">📧 이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
-                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",hyundaicm:"🏗 현대CM",finance:"🏦 금융상담",narumi:"🚛 나르미",jinheung:"🔧 진흥주문",memo:"📝 메모"}[t as string]
+                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",hyundaicm:"🏗 현대CM",finance:"🏦 금융상담",narumi:"🚛 나르미",jinheung:"🔧 진흥주문",memo:"📝 메모",financehub:"💵 매출/매입"}[t as string]
                 }
               </button>
             ))}
-            <button className={`${TB} ${TI}`} style={{flexShrink:0, whiteSpace:"nowrap"}} onClick={()=>navigate("/work/finance-hub")}>💵 매출/매입</button>
           </div>
         </div>
       </div>
@@ -2527,7 +3640,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               <div className="flex items-center gap-2 flex-wrap">
                 {/* 뷰모드 토글 */}
                 {(["day","week","all"] as const).map(m=>(
-                  <button key={m} className={`px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${schedViewMode===m?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200 hover:border-orange-300"}`}
+                  <button key={m} className={`px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${schedViewMode===m?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}
                     onClick={()=>{
                       setSchedViewMode(m);
                       if(m==="day") void loadSchedules();
@@ -2694,19 +3807,19 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               {followups.length>0&&(
                 <div className={`${CARD} p-4`}>
                   <div className="flex items-center justify-between mb-3">
-                    <p className="text-sm font-semibold text-purple-700 flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-purple-500 inline-block animate-pulse"/>
+                    <p className="text-sm font-semibold text-[#0f172a] flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-orange-500 inline-block animate-pulse"/>
                       📞 오늘 사후관리 — {followups.length}건
                     </p>
                     <button className={BTG} onClick={()=>navigate("/work/call-management?tab=followups")}>전체 보기 →</button>
                   </div>
                   <div className="space-y-2">
                     {followups.map(c=>(
-                      <div key={c.id} className="flex items-center gap-3 p-3 rounded-xl bg-purple-50 border border-purple-100 cursor-pointer hover:bg-purple-100 transition-all" onClick={()=>navigate(`/work/call-management?id=${c.id}`)}>
+                      <div key={c.id} className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100 cursor-pointer hover:bg-gray-100 transition-all" onClick={()=>navigate(`/work/call-management?id=${c.id}`)}>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-sm font-semibold text-[#0f172a]">{c.customer_name}</span>
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-white text-purple-600 border border-purple-200">{WL[c.work_type]??c.work_type}</span>
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100">{WL[c.work_type]??c.work_type}</span>
                             <StsBadge s={c.status}/>
                           </div>
                           <p className="text-xs text-gray-600 mt-0.5 truncate">{c.summary}</p>
@@ -3146,13 +4259,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="text-sm font-semibold text-[#0f172a]">{t.customer_name||"미확인"}</span>
                             {t.vin&&<span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100 font-mono">{t.vin}</span>}
-                            <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${
-                              t.status==="completed"?"bg-emerald-50 text-emerald-600 border-emerald-100":
-                              t.status==="registered"?"bg-blue-50 text-blue-600 border-blue-100":
-                              t.status==="docs"?"bg-purple-50 text-purple-600 border-purple-100":
-                              "bg-orange-50 text-orange-600 border-orange-100"}`}>
-                              {t.status==="completed"?"완료":t.status==="registered"?"등록완료":t.status==="docs"?"서류준비":t.status==="insurance"?"보험확인":"진행중"}
-                            </span>
+                            <StsBadge s={t.status}/>
                           </div>
                           <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-gray-500">
                             {t.sales_rep&&<span>영업: {t.sales_rep}</span>}
@@ -3171,7 +4278,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               )}
               {narumiConsults.length>0&&(
                 <div className={`${CARD} p-3.5`}>
-                  <p className="text-xs font-semibold text-gray-400 mb-2">📋 나르미 상담내역 ({narumiConsults.length}건)</p>
+                  <p className="text-xs font-semibold text-gray-500 mb-2">📋 나르미 상담내역 ({narumiConsults.length}건)</p>
                   <div className="space-y-2">
                     {narumiConsults.map((c:any)=>(
                       <div key={c.id} className={`${CARD} p-3.5`}>
@@ -3222,7 +4329,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               {/* 타이어 상담내역 */}
               {jConsultsLoading?<p className="text-xs text-gray-400">상담내역 불러오는 중...</p>:jConsults.length>0&&(
                 <div className={`${CARD} p-3.5`}>
-                  <p className="text-xs font-semibold text-gray-400 mb-2">📋 타이어 상담내역 ({jConsults.length}건)</p>
+                  <p className="text-xs font-semibold text-gray-500 mb-2">📋 타이어 상담내역 ({jConsults.length}건)</p>
                   <div className="space-y-2">
                     {jConsults.map((c:any)=>(
                       <div key={c.id} className={`${CARD} p-3.5`}>
@@ -3262,7 +4369,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                 const cost=tm.reduce((s:number,o:any)=>s+(o.price_from_jinheung??0),0);
                 return tm.length>0?(
                   <div className={`${CARD} p-3`}>
-                    <p className="text-xs text-gray-400 mb-2">{now.getMonth()+1}월 실적 — {tm.length}건</p>
+                    <p className="text-xs text-gray-500 mb-2">{now.getMonth()+1}월 실적 — {tm.length}건</p>
                     <div className="grid grid-cols-3 gap-2 text-center text-xs">
                       <div><p className="text-gray-400">매출</p><p className="font-bold text-orange-600">{rev?`${(rev/10000).toFixed(0)}만원`:"-"}</p></div>
                       <div><p className="text-gray-400">매입</p><p className="font-bold text-gray-600">{cost?`${(cost/10000).toFixed(0)}만원`:"-"}</p></div>
@@ -3297,7 +4404,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className="text-sm font-semibold text-[#0f172a]">{o.customer_name_raw||"미확인"}</span>
-                                  <span className={`text-[11px] px-2 py-0.5 rounded-full border font-medium ${SCLR[o.status]||"bg-gray-100 text-gray-600"}`}>{SLBL[o.status]||o.status}</span>
+                                  <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${SCLR[o.status]||"bg-gray-100 text-gray-600"}`}>{SLBL[o.status]||o.status}</span>
                                 </div>
                                 {o.product_spec&&<p className="text-xs text-gray-600 mt-0.5 font-medium">{o.product_spec}{o.quantity?` × ${o.quantity}개`:""}</p>}
                                 {/* 5단계 진행 바 */}
@@ -3380,7 +4487,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                                     reload();
                                   }} className="px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-400 hover:border-red-200 hover:text-red-400 transition-all">↩ {SLBL[PREV[o.status]!]||PREV[o.status]}</button>
                                 )}
-                                <button className={BTG} onClick={()=>setJExpanded(isExp?null:o.id)}>{isExp?"접기":"상세"}</button>
+                                <button className={BTO} onClick={e=>{e.stopPropagation();navigate(`/work/orders?id=${o.id}`);}}>이동 →</button>
+                                <button className={BTG} onClick={e=>{e.stopPropagation();setJExpanded(isExp?null:o.id);}}>{isExp?"접기":"상세"}</button>
                               </div>
                             </div>
                           </div>
@@ -3406,10 +4514,10 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                   <button className={BTG} onClick={()=>void loadMemos()}>새로고침</button>
                   <button
                     onClick={()=>{setShowNotesImport(p=>!p);setNotesRawText("");setNotesImportResult(null);}}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${showNotesImport?"bg-[#0f172a] text-white border-[#0f172a]":"bg-amber-50 text-amber-700 border-amber-200 hover:border-amber-400"}`}>
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${showNotesImport?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
                     🍎 Apple Notes 가져오기
                   </button>
-                  <button className={`${BTG} bg-orange-500 text-white border-orange-500 hover:bg-orange-600`} onClick={()=>setShowMemoForm(true)}>+ 메모 작성</button>
+                  <button className={BTO} onClick={()=>setShowMemoForm(true)}>+ 메모 작성</button>
                 </div>
               </div>
 
@@ -3482,7 +4590,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               <div className="flex flex-wrap gap-2 items-center">
                 {(["all","meeting","call","visit","note"] as const).map(cat=>(
                   <button key={cat} onClick={()=>setMemoFilter(cat)}
-                    className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${memoFilter===cat?"bg-orange-500 text-white border-orange-500":"bg-white text-gray-500 border-gray-200 hover:border-orange-300"}`}>
+                    className={`px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${memoFilter===cat?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
                     {cat==="all"?"전체":cat==="meeting"?"미팅":cat==="call"?"통화":cat==="visit"?"방문":"기타"}
                   </button>
                 ))}
@@ -3582,7 +4690,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                     return catOk&&kwOk;
                   }).length===0&&(
                     <div className={`${CARD} p-10 flex flex-col items-center gap-3 text-center`}>
-                      <span className="text-4xl">📭</span>
+                      <span className="text-3xl">📭</span>
                       <p className="text-sm font-medium text-gray-500">저장된 메모가 없습니다</p>
                       <p className="text-xs text-gray-400">AI 채팅에서 미팅 내용을 입력하거나 직접 작성하세요</p>
                     </div>
@@ -3738,6 +4846,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               </div>
             </div>
           )}
+
+          {tab==="financehub"&&<FinanceHubTab/>}
 
           {/* ══ 입력창 (항상 하단 고정) ══ */}
           <div className="flex-shrink-0 pt-2">
