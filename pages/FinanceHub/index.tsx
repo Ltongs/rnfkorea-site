@@ -610,7 +610,38 @@ const FinanceHubPage: React.FC = () => {
       items: invForm.items || null, matched_total: matchSelectedSum,
     }).select().single();
     if (invErr || !invRow) { setError(invErr?.message || "계산서 등록 실패"); setMatchSaving(false); return; }
-    await supabase.from("sales_records").update({ tax_invoice: true, invoice_id: invRow.id }).in("id", Array.from(matchSelectedIds));
+
+    // ── 계산서 금액을 sales_records에 반영 ──────────────────────
+    const invoiceSupply = invForm.supply_amount ? parseFloat(invForm.supply_amount) : null;
+    const selectedRecords = matchCandidates.filter(c => matchSelectedIds.has(c.id));
+
+    if (invoiceSupply != null && invoiceSupply > 0 && selectedRecords.length > 0) {
+      if (selectedRecords.length === 1) {
+        // 1건: 계산서 공급가액을 그대로 반영 (unit_price 역산)
+        const rec = selectedRecords[0];
+        const newUnitPrice = rec.quantity > 0 ? Math.round(invoiceSupply / rec.quantity) : rec.unit_price;
+        await supabase.from("sales_records")
+          .update({ unit_price: newUnitPrice, tax_invoice: true, invoice_id: invRow.id })
+          .eq("id", rec.id);
+      } else {
+        // 복수건: 기존 비율대로 계산서 금액 배분
+        const totalExisting = selectedRecords.reduce((s, r) => s + (r.total_revenue || 0), 0);
+        for (const rec of selectedRecords) {
+          const ratio = totalExisting > 0 ? (rec.total_revenue || 0) / totalExisting : 1 / selectedRecords.length;
+          const allocSupply = Math.round(invoiceSupply * ratio);
+          const newUnitPrice = rec.quantity > 0 ? Math.round(allocSupply / rec.quantity) : rec.unit_price;
+          await supabase.from("sales_records")
+            .update({ unit_price: newUnitPrice, tax_invoice: true, invoice_id: invRow.id })
+            .eq("id", rec.id);
+        }
+      }
+    } else {
+      // 금액 없으면 매칭 표시만
+      await supabase.from("sales_records")
+        .update({ tax_invoice: true, invoice_id: invRow.id })
+        .in("id", Array.from(matchSelectedIds));
+    }
+
     setShowMatchModal(false); setInvForm(EMPTY_INVOICE_FORM); setMatchSelectedIds(new Set());
     loadAll(); setMatchSaving(false);
   }
@@ -1083,7 +1114,23 @@ const FinanceHubPage: React.FC = () => {
                                 <div className="w-full border-t border-dashed border-gray-200 my-0.5"/>
                                 <div>
                                   <p className="text-[11px] text-gray-400 mb-0.5">계산서</p>
-                                  <p className={`font-semibold text-xs ${r.tax_invoice ? "text-emerald-600" : "text-gray-400"}`}>{r.tax_invoice ? "✅ 발행완료" : "미발행"}</p>
+                                  <div className="flex items-center gap-1.5">
+                                    <p className={`font-semibold text-xs ${r.tax_invoice ? "text-emerald-600" : "text-gray-400"}`}>{r.tax_invoice ? "✅ 발행완료" : "미발행"}</p>
+                                    {r.invoice_id && (
+                                      <button
+                                        onClick={async () => {
+                                          if (!confirm("계산서 매칭을 해제하고 금액을 0으로 초기화하시겠습니까?")) return;
+                                          await supabase.from("sales_records")
+                                            .update({ tax_invoice: false, invoice_id: null, unit_price: 0 })
+                                            .eq("id", r.id);
+                                          loadAll();
+                                        }}
+                                        className="text-[10px] px-1.5 py-0.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 border border-red-200 transition-all"
+                                      >
+                                        해제
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
                                 <div>
                                   <p className="text-[11px] text-gray-400 mb-0.5">납품일</p>
