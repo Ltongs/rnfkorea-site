@@ -793,7 +793,7 @@ const CallManagementPage: React.FC = () => {
   const resolvedBatteryStatus = (detail?: BatteryDetailRow | null) => {
     const raw = String(detail?.note || "");
     const matched = raw.match(/\[status:([^\]]+)\]/);
-    return matched?.[1] || null;
+    return matched?.[1] || (detail as any)?.process_stage || null;
   };
 
   const formatStatus = (value: string) => {
@@ -2756,6 +2756,7 @@ const CallManagementPage: React.FC = () => {
               forklift_status: progressStage || "contract",
               forklift_option_note: forkliftOptionNote.trim() || null,
               forklift_sale_method: forkliftSaleMethod || null,
+              process_stage: progressStage || "contract", // secretary와 동일 컬럼
               note: forkliftNote.trim() || null,
             },
           ],
@@ -2773,6 +2774,12 @@ const CallManagementPage: React.FC = () => {
     }
 
     if (workType === "battery_sales") {
+      // note에 [status:...] 패턴으로 단계 저장 (기존 note 내용 보존)
+      const baseNote = batteryNote.trim().replace(/\[status:[^\]]*\]/g, "").trim();
+      const noteWithStatus = progressStage
+        ? `${baseNote ? baseNote + " " : ""}[status:${progressStage}]`
+        : baseNote || null;
+
       const { error: batteryError } = await supabase
         .from("consultation_battery_details")
         .upsert(
@@ -2781,7 +2788,7 @@ const CallManagementPage: React.FC = () => {
               consultation_id: savedCaseId,
               battery_vehicle_type: batteryVehicleType || null,
               battery_drive_type: batteryDriveType || null,
-                            battery_voltage: batteryVoltage ? Number(batteryVoltage) : null,
+              battery_voltage: batteryVoltage ? Number(batteryVoltage) : null,
               battery_capacity_ah: batteryCapacityAh ? Number(batteryCapacityAh) : null,
               battery_total_capacity_kwh: batteryTotalCapacityKwh || null,
               battery_size_l: batterySizeL ? Number(batterySizeL) : null,
@@ -2792,7 +2799,8 @@ const CallManagementPage: React.FC = () => {
               battery_unit_sale_price: batteryUnitSalePrice ? Number(batteryUnitSalePrice.replace(/,/g,"")) : null,
               battery_quantity: batteryQuantity ? Number(batteryQuantity) : null,
               battery_sale_price: batterySalePrice ? Math.round(batterySalePrice) : null,
-              note: batteryNote.trim() || null,
+              process_stage: progressStage || "contract", // secretary와 동일 컬럼
+              note: noteWithStatus,
             },
           ],
           { onConflict: "consultation_id" }
