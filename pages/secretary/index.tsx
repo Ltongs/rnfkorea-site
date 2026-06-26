@@ -445,7 +445,24 @@ function ExportShopTab({ onNavigate }: { onNavigate:(path:string)=>void }) {
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-slate-100 text-slate-500">SOLD</span>
                 )}
               </div>
-              <button onClick={closeModal} className="text-gray-400 hover:text-gray-700 text-lg leading-none">✕</button>
+              <div className="flex items-center gap-2">
+                {/* URL 공유 버튼 */}
+                <button
+                  onClick={()=>{
+                    const url = `${window.location.origin}/export-shop?id=${selected.id}`;
+                    if(navigator.share){
+                      navigator.share({ title:`${selected.brand} ${selected.model??""} 수출 매물`, url });
+                    } else {
+                      navigator.clipboard.writeText(url).then(()=>alert("링크가 복사됐습니다.\nSMS·카카오톡에 붙여넣기 하세요."));
+                    }
+                  }}
+                  className="text-xs flex items-center gap-1 px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-800 transition-all"
+                  title="링크 공유"
+                >
+                  🔗 공유
+                </button>
+                <button onClick={closeModal} className="text-gray-400 hover:text-gray-700 text-lg leading-none">✕</button>
+              </div>
             </div>
 
             {/* 이미지 갤러리 */}
@@ -526,7 +543,7 @@ function ExportShopTab({ onNavigate }: { onNavigate:(path:string)=>void }) {
                 </button>
                 {canManage&&(
                   <button className={BTG}
-                    onClick={()=>{ closeModal(); onNavigate(`/export-shop/listing/edit/${selected.id}`);}}>
+                    onClick={()=>{ closeModal(); window.location.href=`/export-shop/listing/edit/${selected.id}`;}}>
                     수정
                   </button>
                 )}
@@ -2186,6 +2203,14 @@ const SecretaryPage:React.FC = () => {
   const [financeConsults,setFinanceConsults] = useState<OrderView[]>([]);
   const [financeLoading,setFinanceLoading] = useState(false);
   const [financeFilter,setFinanceFilter] = useState<"active"|"all"|"done">("active");
+  const [showRepayModal,setShowRepayModal] = useState(false);
+  const [repayForm,setRepayForm] = useState({
+    recipientName:"", recipientPhone:"", recipientEmail:"", customerName:"", vehicleModel:"",
+    vehiclePrice:"", downPaymentRate:"20",
+    principal:"", gracePeriod:"3", installmentPeriod:"36", interestRate:"",
+    sendMethod:"kakao" as "kakao"|"email"|"sms",
+  });
+  const [repaySending,setRepaySending] = useState(false);
 
   // 현대CM 탭
   const [hcmFilter,setHcmFilter] = useState<"active"|"all"|"done">("active");
@@ -4488,6 +4513,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                       {{active:"진행중",all:"전체",done:"완료"}[f]}
                     </button>
                   ))}
+                  <button className={BTG} onClick={()=>setShowRepayModal(true)}>📋 상환스케줄 송부</button>
                   <button className={BTG} onClick={()=>{
                     setFinanceLoading(true);
                     supabase.from("consultation_cases").select("id,customer_name,work_type,status,summary,created_at,phone,sub_type").eq("work_type","finance").order("created_at",{ascending:false}).limit(60)
@@ -4496,6 +4522,192 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                   <button className={BTO} onClick={()=>navigate("/work/call-management?work_type=finance")}>전체 보기 →</button>
                 </div>
               </div>
+
+              {/* 상환스케줄 송부 모달 */}
+              {showRepayModal&&ReactDOM.createPortal(
+                <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 px-4" onClick={()=>setShowRepayModal(false)}>
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
+                    <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                      <p className="font-bold text-[#0f172a]">📋 상환스케줄 송부</p>
+                      <button onClick={()=>setShowRepayModal(false)} className="text-gray-400 hover:text-gray-700 text-lg">✕</button>
+                    </div>
+                    <div className="px-5 py-4 space-y-4">
+
+                      {/* 발송 방법 */}
+                      <div>
+                        <p className="text-xs font-semibold text-gray-500 mb-1.5">발송 방법</p>
+                        <div className="flex gap-2">
+                          {(["kakao","email","sms"] as const).map(m=>(
+                            <button key={m} onClick={()=>setRepayForm(p=>({...p,sendMethod:m}))}
+                              className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-all ${repayForm.sendMethod===m?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200"}`}>
+                              {m==="kakao"?"💬 카카오":m==="email"?"📧 이메일":"📱 SMS"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 수신자 */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs font-semibold text-gray-500 block mb-1">수신자 이름</label>
+                          <input value={repayForm.recipientName} onChange={e=>setRepayForm(p=>({...p,recipientName:e.target.value}))}
+                            placeholder="홍길동" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-orange-400"/>
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-gray-500 block mb-1">
+                            {repayForm.sendMethod==="email"?"이메일 주소":"전화번호"}
+                          </label>
+                          {repayForm.sendMethod==="email"
+                            ? <input value={repayForm.recipientEmail} onChange={e=>setRepayForm(p=>({...p,recipientEmail:e.target.value}))}
+                                placeholder="example@email.com" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-orange-400"/>
+                            : <input value={repayForm.recipientPhone} onChange={e=>setRepayForm(p=>({...p,recipientPhone:e.target.value}))}
+                                placeholder="010-0000-0000" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-orange-400"/>
+                          }
+                        </div>
+                      </div>
+
+                      {/* 고객명 / 차종 */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs font-semibold text-gray-500 block mb-1">고객 이름</label>
+                          <input value={repayForm.customerName} onChange={e=>setRepayForm(p=>({...p,customerName:e.target.value}))}
+                            placeholder="홍길동" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-orange-400"/>
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-gray-500 block mb-1">구매 차종 (메이커)</label>
+                          <input value={repayForm.vehicleModel} onChange={e=>setRepayForm(p=>({...p,vehicleModel:e.target.value}))}
+                            placeholder="현대 45D-9" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-orange-400"/>
+                        </div>
+                      </div>
+
+                      {/* 차량가격 / 선수율 → 원금 자동계산 */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs font-semibold text-gray-500 block mb-1">차량 가격 (원)</label>
+                          <input type="number" value={repayForm.vehiclePrice}
+                            onChange={e=>{
+                              const vp = e.target.value;
+                              const dp = Number(repayForm.downPaymentRate)||0;
+                              const auto = vp ? String(Math.round(Number(vp)*(1-dp/100))) : "";
+                              setRepayForm(p=>({...p,vehiclePrice:vp,principal:auto}));
+                            }}
+                            placeholder="50000000" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-orange-400"/>
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-gray-500 block mb-1">선수율 (%)</label>
+                          <input type="number" value={repayForm.downPaymentRate}
+                            onChange={e=>{
+                              const dp = e.target.value;
+                              const vp = Number(repayForm.vehiclePrice)||0;
+                              const auto = vp ? String(Math.round(vp*(1-Number(dp)/100))) : "";
+                              setRepayForm(p=>({...p,downPaymentRate:dp,principal:auto}));
+                            }}
+                            placeholder="20" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-orange-400"/>
+                        </div>
+                      </div>
+
+                      {/* 할부 원금 (자동계산 결과, 직접 수정 가능) */}
+                      <div>
+                        <label className="text-xs font-semibold text-gray-500 block mb-1">
+                          할부 원금 (원)
+                          {repayForm.vehiclePrice&&repayForm.downPaymentRate&&(
+                            <span className="ml-1.5 text-orange-500 font-normal">← 자동계산됨 (직접 수정 가능)</span>
+                          )}
+                        </label>
+                        <input type="number" value={repayForm.principal} onChange={e=>setRepayForm(p=>({...p,principal:e.target.value}))}
+                          placeholder="40000000" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-orange-400"/>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-xs font-semibold text-gray-500 block mb-1">거치기간 (개월)</label>
+                          <input type="number" value={repayForm.gracePeriod} onChange={e=>setRepayForm(p=>({...p,gracePeriod:e.target.value}))}
+                            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-orange-400"/>
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-gray-500 block mb-1">할부기간 (개월)</label>
+                          <input type="number" value={repayForm.installmentPeriod} onChange={e=>setRepayForm(p=>({...p,installmentPeriod:e.target.value}))}
+                            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-orange-400"/>
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-gray-500 block mb-1">이자율 (%)</label>
+                          <input type="number" step="0.1" value={repayForm.interestRate} onChange={e=>setRepayForm(p=>({...p,interestRate:e.target.value}))}
+                            placeholder="4.5" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-orange-400"/>
+                        </div>
+                      </div>
+
+                      {/* 미리보기 요약 */}
+                      {repayForm.principal&&repayForm.interestRate&&(()=>{
+                        const P = Number(repayForm.principal);
+                        const VP = Number(repayForm.vehiclePrice)||0;
+                        const DP = Number(repayForm.downPaymentRate)||0;
+                        const grace = Number(repayForm.gracePeriod)||0;
+                        const inst = Number(repayForm.installmentPeriod)||36;
+                        const r = Number(repayForm.interestRate)/100/12;
+                        const gracePayment = Math.round(P * r);
+                        const instPayment = r===0 ? Math.round(P/inst) : Math.round(P * r * Math.pow(1+r,inst) / (Math.pow(1+r,inst)-1));
+                        const totalInterest = gracePayment*grace + instPayment*inst - P;
+                        const downAmt = VP ? Math.round(VP*DP/100) : 0;
+                        return (
+                          <div className="bg-violet-50 border border-violet-100 rounded-xl p-3.5 text-xs space-y-1">
+                            <p className="font-semibold text-violet-700 mb-2">📊 스케줄 미리보기</p>
+                            {VP>0&&<div className="flex justify-between"><span className="text-gray-500">차량가격</span><span className="font-semibold">{VP.toLocaleString()}원</span></div>}
+                            {VP>0&&<div className="flex justify-between"><span className="text-gray-500">선수금 ({DP}%)</span><span className="font-semibold">{downAmt.toLocaleString()}원</span></div>}
+                            <div className="flex justify-between"><span className="text-gray-500">할부원금</span><span className="font-semibold">{P.toLocaleString()}원</span></div>
+                            <div className="flex justify-between border-t border-violet-200 pt-1 mt-1"><span className="text-gray-500">거치기 이자</span><span className="font-semibold">{gracePayment.toLocaleString()}원/월 × {grace}개월</span></div>
+                            <div className="flex justify-between"><span className="text-gray-500">할부 납입금</span><span className="font-semibold">{instPayment.toLocaleString()}원/월 × {inst}개월</span></div>
+                            <div className="flex justify-between border-t border-violet-200 pt-1 mt-1"><span className="text-gray-500">총 이자</span><span className="font-semibold text-violet-700">{totalInterest.toLocaleString()}원</span></div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* 발송 버튼 */}
+                      <button
+                        disabled={repaySending||(!repayForm.recipientPhone&&!repayForm.recipientEmail)||!repayForm.principal||!repayForm.interestRate}
+                        onClick={async()=>{
+                          setRepaySending(true);
+                          try {
+                            const P = Number(repayForm.principal);
+                            const VP = Number(repayForm.vehiclePrice)||0;
+                            const DP = Number(repayForm.downPaymentRate)||0;
+                            const grace = Number(repayForm.gracePeriod)||0;
+                            const inst = Number(repayForm.installmentPeriod)||36;
+                            const r = Number(repayForm.interestRate)/100/12;
+                            const gracePayment = Math.round(P * r);
+                            const instPayment = r===0 ? Math.round(P/inst) : Math.round(P * r * Math.pow(1+r,inst) / (Math.pow(1+r,inst)-1));
+                            const totalInterest = gracePayment*grace + instPayment*inst - P;
+                            const downAmt = VP ? Math.round(VP*DP/100) : 0;
+                            const msg = `[RNF KOREA] 상환스케줄 안내\n\n고객명: ${repayForm.customerName||repayForm.recipientName}\n차종: ${repayForm.vehicleModel}${VP?`\n차량가격: ${VP.toLocaleString()}원`:""}\n${VP?`선수금(${DP}%): ${downAmt.toLocaleString()}원\n`:""}\n할부원금: ${P.toLocaleString()}원\n이자율: ${repayForm.interestRate}%\n\n▶ 거치기(${grace}개월): ${gracePayment.toLocaleString()}원/월\n▶ 할부기(${inst}개월): ${instPayment.toLocaleString()}원/월\n▶ 총이자: ${totalInterest.toLocaleString()}원\n\n문의: 1551-1873`;
+
+                            if(repayForm.sendMethod==="email"){
+                              const { error } = await supabase.functions.invoke("send-email", {
+                                body: {
+                                  to: repayForm.recipientEmail,
+                                  subject: `[RNF KOREA] ${repayForm.customerName||repayForm.recipientName}님 상환스케줄 안내`,
+                                  text: msg,
+                                }
+                              });
+                              if(error) throw error;
+                            } else {
+                              const { error } = await supabase.functions.invoke("send-solapi", {
+                                body: { to: repayForm.recipientPhone.replace(/-/g,""), text: msg, type: repayForm.sendMethod==="kakao"?"kakao":"sms" }
+                              });
+                              if(error) throw error;
+                            }
+                            alert(`${repayForm.sendMethod==="kakao"?"카카오톡":repayForm.sendMethod==="email"?"이메일":"SMS"} 발송 완료!`);
+                            setShowRepayModal(false);
+                            setRepayForm({recipientName:"",recipientPhone:"",recipientEmail:"",customerName:"",vehicleModel:"",vehiclePrice:"",downPaymentRate:"20",principal:"",gracePeriod:"3",installmentPeriod:"36",interestRate:"",sendMethod:"kakao"});
+                          } catch(e:any) {
+                            alert(`발송 실패: ${e?.message??"다시 시도해주세요."}`);
+                          } finally { setRepaySending(false); }
+                        }}
+                        className={`w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all ${repaySending||(!repayForm.recipientPhone&&!repayForm.recipientEmail)||!repayForm.principal||!repayForm.interestRate?"bg-gray-100 text-gray-400 cursor-not-allowed":"bg-[#0f172a] text-white hover:bg-[#1e293b]"}`}>
+                        {repaySending ? <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>발송 중...</> : `${repayForm.sendMethod==="kakao"?"💬 카카오톡":repayForm.sendMethod==="email"?"📧 이메일":"📱 SMS"}으로 발송`}
+                      </button>
+                    </div>
+                  </div>
+                </div>,
+                document.body
+              )}
               {financeLoading?<p className="text-sm text-gray-400 p-4 text-center">불러오는 중...</p>:(()=>{
                 const DONE_STAGES = ["confirmed","cancelled","rejected"];
                 const filtered=financeConsults.filter((c:any)=>
