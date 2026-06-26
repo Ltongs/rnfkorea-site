@@ -3097,6 +3097,14 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
   const prevMsgLen = useRef(0);
   // 탭 바 가로 스크롤 — 모바일 터치 스와이프
   useEffect(()=>{
+    // 초기 위치: 중간 벌(2번째 세트) 시작 지점으로 설정
+    const el = tabScrollRef.current;
+    if(el) {
+      setTimeout(()=>{ el.scrollLeft = el.scrollWidth / 3; }, 50);
+    }
+  },[]);
+
+  useEffect(()=>{
     const el = tabScrollRef.current;
     if(!el) return;
     let startX = 0;
@@ -3890,33 +3898,37 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
           </div>
         </div>
 
-        {/* 탭 - 가로 스크롤 한 줄 */}
+        {/* 탭 - 무한 순환 가로 스크롤 */}
         <style>{`
-          .hcm-tab-scroll{
-            -ms-overflow-style:none;
-            scrollbar-width:none;
-            -webkit-overflow-scrolling:touch;
-          }
+          .hcm-tab-scroll{-ms-overflow-style:none;scrollbar-width:none;}
           .hcm-tab-scroll::-webkit-scrollbar{display:none;}
         `}</style>
         <div className="w-full px-4 py-3" style={{minWidth:0}}>
           <div
             ref={tabScrollRef}
             className="hcm-tab-scroll flex items-center gap-1.5"
-            style={{
-              overflowX: "scroll",
-              overflowY: "hidden",
-              minWidth: 0,
+            style={{overflowX:"scroll",overflowY:"hidden",minWidth:0}}
+            onScroll={()=>{
+              const el = tabScrollRef.current;
+              if(!el) return;
+              const third = el.scrollWidth / 3;
+              if(el.scrollLeft < third * 0.3){
+                el.scrollLeft += third;
+              } else if(el.scrollLeft > third * 1.7){
+                el.scrollLeft -= third;
+              }
             }}
             onWheel={(e)=>{
-              if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && tabScrollRef.current) {
+              if(Math.abs(e.deltaY)>Math.abs(e.deltaX)&&tabScrollRef.current){
                 e.preventDefault();
                 tabScrollRef.current.scrollLeft += e.deltaY;
               }
             }}
           >
-            {(["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo","financehub","exportshop"] as TabKey[]).map(t=>(
-              <button key={t} className={`${TB} ${tab===t?TA:TI}`} style={{flexShrink:0, whiteSpace:"nowrap"}} onClick={()=>setTabAndSave(t)}>
+            {([...["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo","financehub","exportshop"],
+               ...["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo","financehub","exportshop"],
+               ...["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo","financehub","exportshop"]] as TabKey[]).map((t,i)=>(
+              <button key={`${t}-${i}`} className={`${TB} ${tab===t?TA:TI}`} style={{flexShrink:0,whiteSpace:"nowrap"}} onClick={()=>setTabAndSave(t)}>
                 {t==="email"
                   ? <span className="flex items-center gap-1">📧 이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
                   : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",hyundaicm:"🏗 현대CM",finance:"🏦 금융상담",narumi:"🚛 나르미",jinheung:"🔧 진흥주문",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비"}[t as string]
