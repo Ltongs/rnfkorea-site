@@ -218,28 +218,21 @@ const LIFE_INSURERS = [
 const TIRE_INFLOW_CHANNELS = ["association", "gotruck", "etc"] as const;
 const TIRE_ASSOCIATIONS = ["서울", "광주", "경북", "경남"] as const;
 
-const tabBase =
-  "px-5 py-2.5 rounded-2xl text-sm font-semibold border transition-all";
-const tabActive = "bg-[#0f172a] text-white border-[#0f172a] shadow-sm";
-const tabInactive = "bg-white text-gray-500 border-gray-200 hover:border-gray-300";
+const tabBase   = "px-3 py-1.5 rounded-xl text-sm font-semibold border transition-all";
+const tabActive  = "bg-[#0f172a] text-white border-[#0f172a]";
+const tabInactive = "bg-gray-100 text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-700 hover:bg-gray-200";
 
-const typeBtnBase =
-  "px-4 py-2 rounded-2xl text-sm font-semibold border transition-all";
-const typeBtnActive =
-  "bg-orange-500 text-white border-orange-500 shadow-sm";
-const typeBtnInactive =
-  "bg-white text-gray-600 border-gray-200 hover:border-orange-300 hover:text-orange-600";
+const typeBtnBase    = "px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all";
+const typeBtnActive  = "bg-orange-500 text-white border-orange-500";
+const typeBtnInactive = "bg-white text-gray-600 border-gray-200 hover:border-orange-300 hover:text-orange-600";
 
-const card =
-  "border border-gray-200 rounded-2xl bg-white p-6 shadow-sm hover:shadow-md transition-all";
-const dashboardCard =
-  "border border-gray-200 rounded-2xl bg-white p-5 shadow-sm";
-const compactCard =
-  "border border-gray-200 rounded-2xl bg-gray-50 p-3";
+const card         = "border border-gray-200 rounded-2xl bg-white shadow-sm";
+const dashboardCard = "border border-gray-200 rounded-2xl bg-white p-3.5 shadow-sm";
+const compactCard  = "border border-gray-200 rounded-2xl bg-gray-50 p-3";
 
 const controlClass =
-  "w-full h-[48px] rounded-2xl border border-gray-200 px-4 text-sm font-medium text-navy-900 bg-white " +
-  "focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 transition-all";
+  "w-full h-10 rounded-xl border border-gray-200 px-3 text-sm text-[#0f172a] bg-white " +
+  "focus:outline-none focus:border-orange-400 transition-all";
 const insuranceEqualFieldStyle = {
   width: "100%",
   minWidth: 0,
@@ -252,11 +245,11 @@ const insuranceEqualDateFieldStyle = {
   WebkitAppearance: "none" as const,
 };
 const compactControlClass =
-  "w-full h-9 rounded-xl border border-gray-200 px-3 text-xs font-medium text-navy-900 bg-white " +
-  "focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-200/50 focus:border-orange-400 transition-all";
+  "w-full h-9 rounded-xl border border-gray-200 px-3 text-xs text-[#0f172a] bg-white " +
+  "focus:outline-none focus:border-orange-400 transition-all";
 const textareaClass =
-  "w-full min-h-[104px] rounded-2xl border border-gray-200 px-4 py-3 text-sm font-medium text-navy-900 bg-white " +
-  "focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 transition-all";
+  "w-full min-h-[96px] rounded-xl border border-gray-200 px-3 py-2 text-sm text-[#0f172a] bg-white resize-none " +
+  "focus:outline-none focus:border-orange-400 transition-all";
 
 const labelClass = "block text-sm font-medium text-navy-900 mb-2";
 const compactLabelClass = "block text-xs font-medium text-gray-600 mb-1";
@@ -267,9 +260,9 @@ const tdClass =
   "px-3 py-2.5 text-sm text-gray-700 border-b border-gray-100 align-middle whitespace-nowrap";
 
 const actionBtnClass =
-  "px-3 py-1.5 rounded-2xl text-xs font-semibold border border-gray-200 text-gray-700 hover:border-gray-300 hover:shadow-sm whitespace-nowrap transition-all";
+  "px-3 py-1.5 rounded-xl text-xs font-semibold border border-gray-200 text-gray-700 hover:border-gray-300 whitespace-nowrap transition-all";
 const completeBtnClass =
-  "px-3 py-1.5 rounded-2xl text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 whitespace-nowrap transition-all";
+  "px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 whitespace-nowrap transition-all";
 const sectionTitleClass =
   "text-sm font-semibold text-orange-500 mr-3";
 
@@ -2939,7 +2932,7 @@ const CallManagementPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
 
       {/* 매출 등록(계산서 매칭) 모달 */}
       {showInvoiceRegModal && (
@@ -3230,31 +3223,22 @@ const CallManagementPage: React.FC = () => {
         </div>
       )}
 
-      {/* ── 다크 네이비 헤더 (현대CM 스타일과 동일) ── */}
-      <div className="call-mgmt-app-header bg-[#0a192f] text-white px-4 py-3 flex items-center justify-between gap-3 sticky top-0 z-30">
-        <div className="flex items-center gap-3">
+      {/* ── 헤더 (AI비서 스타일) ── */}
+      <div className="bg-white border-b border-gray-200 px-4 py-2.5 flex items-center justify-between gap-3 sticky top-0 z-30">
+        <div className="flex items-center gap-2.5">
           <button
             onClick={() => navigate("/work/secretary")}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-semibold hover:bg-white/20 transition-all"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-semibold hover:border-gray-300 hover:text-gray-700 transition-all"
           >
             ← AI비서
           </button>
-          <span className="text-sm font-semibold text-white">📋 상담관리</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            title="설정 (준비 중)"
-            disabled
-            className="inline-flex items-center justify-center w-8 h-8 rounded-xl border border-white/20 bg-white/10 text-white/50 cursor-not-allowed"
-          >
-            <Settings size={15} />
-          </button>
+          <span className="text-sm font-semibold text-[#0f172a]">📋 상담관리</span>
         </div>
       </div>
 
-      {/* ── 탭 헤더 (경량화) ── */}
-      <div className="border-b border-gray-200 bg-white">
-        <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-3 flex flex-wrap items-center gap-2">
+      {/* ── 탭 헤더 ── */}
+      <div className="border-b border-gray-100 bg-white">
+        <div className="px-4 py-2 flex flex-wrap items-center gap-1.5">
           <button
             type="button"
             className={`${tabBase} ${tab === "new" ? tabActive : tabInactive}`}
@@ -3279,7 +3263,7 @@ const CallManagementPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-8 space-y-6">
+      <div className="px-4 py-3 space-y-3">
 
 
 
@@ -3398,8 +3382,8 @@ const CallManagementPage: React.FC = () => {
         </div>
 
         {tab === "new" && (
-          <div className="space-y-6">
-            <form ref={newFormTopRef} className="space-y-6" onSubmit={handleSubmit}>
+          <div className="space-y-3">
+            <form ref={newFormTopRef} className="space-y-3" onSubmit={handleSubmit}>
             {editingCaseId && (
               <div className="flex items-center justify-between rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3">
                 <div className="text-sm font-medium text-orange-700">

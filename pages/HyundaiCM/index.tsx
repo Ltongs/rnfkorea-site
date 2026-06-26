@@ -1174,7 +1174,13 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
     // 확정 버튼 클릭 시 → 최종확정 팝업 (승인 시 입력한 값 pre-fill)
     if (next === "확정") {
-      setConfirmLoanPrincipal(row.installment_principal != null ? Number(row.installment_principal).toLocaleString("ko-KR") : "");
+      setConfirmLoanPrincipal(
+        row.loan_limit != null
+          ? Number(row.loan_limit).toLocaleString("ko-KR")
+          : row.installment_principal != null
+            ? Number(row.installment_principal).toLocaleString("ko-KR")
+            : ""
+      );
       setConfirmLoanPeriod(row.loan_period != null ? String(row.loan_period) : "");
       setConfirmInterestRate(row.interest_rate != null ? String(row.interest_rate) : "");
       setConfirmIncentive(row.incentive != null ? String(row.incentive) : "");
@@ -2566,8 +2572,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                   {' · '}{fmt(principal)}원 · {annualRate}% · {periodLabel}
                 </p>
               </div>
-              {/* 수신인 + 시작월 */}
-              <div className="px-5 py-4 border-b border-gray-100 space-y-3">
+              {/* 수신인 + 시작월 + 비교설명 조건 — 스크롤 가능 */}
+              <div className="px-5 py-4 border-b border-gray-100 space-y-3 overflow-y-auto max-h-[45vh]">
                 <div>
                   <label className="text-xs font-medium text-gray-500 mb-1 block">수신인</label>
                   <input
@@ -2648,7 +2654,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                 </div>
               </div>
               {/* 미리보기 테이블 */}
-              <div className="flex-1 overflow-y-auto px-5 py-3">
+              <div className="flex-1 overflow-y-auto px-5 py-3 min-h-[120px]">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-gray-200">
