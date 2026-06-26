@@ -3095,31 +3095,50 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
     return ()=>subscription.unsubscribe();
   },[loadStats, loadChatHist, loadCalData]);
   const prevMsgLen = useRef(0);
-  // 탭 바 가로 스크롤 — 네이티브 non-passive 터치 리스너 (모바일에서 확실히 동작하도록)
+  // 탭 바 가로 스크롤 — 모바일 터치 스와이프
   useEffect(()=>{
     const el = tabScrollRef.current;
     if(!el) return;
     let startX = 0;
     let startScroll = 0;
-    let dragging = false;
+    let velocityX = 0;
+    let lastX = 0;
+    let lastTime = 0;
+    let rafId = 0;
+
     const onStart = (e: TouchEvent) => {
-      dragging = true;
+      cancelAnimationFrame(rafId);
       startX = e.touches[0].clientX;
+      lastX = startX;
       startScroll = el.scrollLeft;
+      lastTime = Date.now();
+      velocityX = 0;
     };
     const onMove = (e: TouchEvent) => {
-      if(!dragging) return;
+      const now = Date.now();
       const dx = startX - e.touches[0].clientX;
-      if(Math.abs(dx) > 2){
-        e.preventDefault(); // non-passive라서 동작함
-        el.scrollLeft = startScroll + dx;
-      }
+      velocityX = (e.touches[0].clientX - lastX) / (now - lastTime || 1);
+      lastX = e.touches[0].clientX;
+      lastTime = now;
+      el.scrollLeft = startScroll + dx;
+      e.preventDefault();
     };
-    const onEnd = () => { dragging = false; };
+    const onEnd = () => {
+      // 모멘텀 스크롤
+      let vel = -velocityX * 12;
+      const momentum = () => {
+        if(Math.abs(vel) < 0.5) return;
+        el.scrollLeft += vel;
+        vel *= 0.92;
+        rafId = requestAnimationFrame(momentum);
+      };
+      rafId = requestAnimationFrame(momentum);
+    };
     el.addEventListener("touchstart", onStart, { passive: true });
     el.addEventListener("touchmove", onMove, { passive: false });
     el.addEventListener("touchend", onEnd, { passive: true });
     return () => {
+      cancelAnimationFrame(rafId);
       el.removeEventListener("touchstart", onStart);
       el.removeEventListener("touchmove", onMove);
       el.removeEventListener("touchend", onEnd);
