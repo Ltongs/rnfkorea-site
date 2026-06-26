@@ -1,6 +1,6 @@
 // pages/Export/ExportListingNewPage.tsx
-import React, { useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { Loader2, Sparkles, Upload, X, Plus } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
@@ -8,25 +8,24 @@ import { useAuth } from "../../lib/auth";
 // ====================================================
 // 상수
 // ====================================================
-type Category = "excavator" | "mini_excavator" | "forklift";
+type Category = "excavator" | "forklift" | "aerial";
 
 const CATEGORY_OPTIONS: { value: Category; label: string }[] = [
-  { value: "excavator",      label: "굴삭기 (Excavator)" },
-  { value: "mini_excavator", label: "미니 굴삭기 (Mini Excavator)" },
-  { value: "forklift",       label: "지게차 (Forklift)" },
+  { value: "excavator", label: "굴삭기 (Excavator)" },
+  { value: "forklift",  label: "지게차 (Forklift)" },
+  { value: "aerial",    label: "고소작업대 (Aerial Work Platform)" },
 ];
 
 const BRANDS_BY_CATEGORY: Record<Category, string[]> = {
-  excavator:      ["Hyundai", "Volvo", "Doosan", "Komatsu", "Caterpillar", "Hitachi", "Kobelco", "Liebherr"],
-  mini_excavator: ["Hyundai", "Doosan", "Komatsu", "Kubota", "Yanmar", "Caterpillar"],
-  forklift:       ["Hyundai", "Toyota", "Doosan", "Nichiyu", "Komatsu", "Yale", "Jungheinrich", "Linde"],
+  excavator: ["Hyundai", "Volvo", "Doosan", "Komatsu", "Caterpillar", "Hitachi", "Kobelco", "Liebherr"],
+  forklift:  ["Hyundai", "Toyota", "Doosan", "Nichiyu", "Komatsu", "Yale", "Jungheinrich", "Linde"],
+  aerial:    ["Genie", "JLG", "Skyjack", "Dingli", "기타(유럽)", "기타(중국)"],
 };
 
-// 지게차는 diesel/electric/LPG 선택 가능, 굴삭기 계열은 diesel 고정
 const ENGINE_OPTIONS: Record<Category, string[] | null> = {
-  excavator:      null, // null = 고정 diesel
-  mini_excavator: null,
-  forklift:       ["diesel", "electric", "LPG"],
+  excavator: null,
+  forklift:  ["diesel", "electric", "LPG"],
+  aerial:    ["diesel", "electric", "LPG"],
 };
 
 const KRW_TO_USD_RATE = 1500;
@@ -193,20 +192,76 @@ function PhotoSlotUploader({ slots, onChange }: {
 }
 
 // ====================================================
-// 메인 컴포넌트
+// 메인 컴포넌트 (신규 등록 + 수정 겸용)
 // ====================================================
 const ExportListingNewPage: React.FC = () => {
   const { user, isHyundaiCM, isAdmin, isSubAdmin } = useAuth();
   const navigate = useNavigate();
+  const { id: editId } = useParams<{ id?: string }>(); // edit 모드: id 존재
+  const isEditMode = !!editId;
   const canAccess = isHyundaiCM || isAdmin || isSubAdmin;
 
   const [form, setForm] = useState<FormData>(INITIAL);
   const [photos, setPhotos] = useState<PhotoSlotFile[]>(
     PHOTO_SLOTS.map((s) => ({ key: s.key, label: s.label, file: null, preview: null }))
   );
+  const [existingImages, setExistingImages] = useState<string[]>([]); // edit 모드: 기존 이미지 경로
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [translating, setTranslating] = useState(false);
+  const [loadingEdit, setLoadingEdit] = useState(isEditMode);
+
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+  const STORAGE_BASE = `${SUPABASE_URL}/storage/v1/object/public/export-listings`;
+
+  // edit 모드: 기존 데이터 로드
+  useEffect(() => {
+    if (!isEditMode || !editId) return;
+    (async () => {
+      setLoadingEdit(true);
+      const { data, error } = await supabase
+        .from("export_listings")
+        .select("*")
+        .eq("id", editId)
+        .single();
+      if (error || !data) {
+        setErrors({ _global: "매물 정보를 불러오지 못했습니다." });
+        setLoadingEdit(false);
+        return;
+      }
+      // 폼 채우기
+      setForm({
+        category:         (data.category as Category) ?? "excavator",
+        brand:            data.brand ?? "",
+        model:            data.model ?? "",
+        year:             data.year ? String(data.year) : "",
+        tonnage:          data.tonnage ? String(data.tonnage) : "",
+        engine_type:      data.engine_type ?? "diesel",
+        condition_grade:  (data.condition_grade as ConditionGrade) ?? "",
+        price_krw:        data.price_usd ? String(Math.round(data.price_usd * KRW_TO_USD_RATE)) : "",
+        price_usd:        data.price_usd ?? null,
+        price_negotiable: data.price_negotiable ?? true,
+        stock_qty:        data.stock_qty ? String(data.stock_qty) : "1",
+        available_date:   data.available_date ?? "",
+        description_ko:   data.description_ko ?? "",
+        description_en:   data.description_en ?? "",
+        status:           data.status === "draft" ? "draft" : "active",
+      });
+      // 기존 이미지 미리보기 세팅
+      if (data.images?.length > 0) {
+        setExistingImages(data.images);
+        // PHOTO_SLOTS 순서대로 매칭
+        setPhotos(PHOTO_SLOTS.map((s) => {
+          const matched = (data.images as string[]).find((p: string) => p.includes(`/${s.key}.`));
+          return {
+            key: s.key, label: s.label, file: null,
+            preview: matched ? `${STORAGE_BASE}/${matched}` : null,
+          };
+        }));
+      }
+      setLoadingEdit(false);
+    })();
+  }, [editId, isEditMode]);
 
   if (!canAccess) {
     return (
@@ -217,6 +272,15 @@ const ExportListingNewPage: React.FC = () => {
             Go back to shop
           </button>
         </div>
+      </div>
+    );
+  }
+
+  if (loadingEdit) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-slate-400 gap-2">
+        <Loader2 className="animate-spin" size={20} />
+        <span>매물 정보를 불러오는 중...</span>
       </div>
     );
   }
@@ -279,7 +343,6 @@ const ExportListingNewPage: React.FC = () => {
 
     setSubmitting(true);
     try {
-      // 영문 설명이 비어있으면 자동번역
       let descEn = form.description_en.trim();
       if (!descEn && form.description_ko.trim()) {
         try {
@@ -291,36 +354,62 @@ const ExportListingNewPage: React.FC = () => {
         }
       }
 
-      const { data: inserted, error: insertErr } = await supabase
-        .from("export_listings")
-        .insert({
-          created_by:       user.id,
-          category:         form.category,
-          brand:            form.brand,
-          model:            form.model.trim() || null,
-          year:             form.year ? parseInt(form.year) : null,
-          tonnage:          form.tonnage ? parseFloat(form.tonnage) : null,
-          engine_type:      ENGINE_OPTIONS[form.category] ? form.engine_type : "diesel",
-          condition_grade:  form.condition_grade || null,
-          price_usd:        form.price_usd,
-          price_negotiable: form.price_negotiable,
-          stock_qty:        parseInt(form.stock_qty) || 1,
-          available_date:   form.available_date || null,
-          description_ko:   form.description_ko.trim(),
-          description_en:   descEn,
-          status:           form.status,
-          images:           [],
-        })
-        .select("id")
-        .single();
+      const payload = {
+        category:         form.category,
+        brand:            form.brand,
+        model:            form.model.trim() || null,
+        year:             form.year ? parseInt(form.year) : null,
+        tonnage:          form.tonnage ? parseFloat(form.tonnage) : null,
+        engine_type:      ENGINE_OPTIONS[form.category] ? form.engine_type : "diesel",
+        condition_grade:  form.condition_grade || null,
+        price_usd:        form.price_usd,
+        price_negotiable: form.price_negotiable,
+        stock_qty:        parseInt(form.stock_qty) || 1,
+        available_date:   form.available_date || null,
+        description_ko:   form.description_ko.trim(),
+        description_en:   descEn,
+        status:           form.status,
+      };
 
-      if (insertErr) throw insertErr;
+      let listingId: string;
 
-      const imageUrls = await uploadPhotos(inserted.id);
-      if (imageUrls.length > 0) {
+      if (isEditMode && editId) {
+        // ── 수정 모드 ──
         const { error: updErr } = await supabase
-          .from("export_listings").update({ images: imageUrls }).eq("id", inserted.id);
+          .from("export_listings")
+          .update(payload)
+          .eq("id", editId);
         if (updErr) throw updErr;
+        listingId = editId;
+
+        // 새로 업로드한 사진만 처리 (file이 있는 슬롯만)
+        const newUrls = await uploadPhotos(listingId);
+
+        if (newUrls.length > 0) {
+          // 기존 이미지 중 새로 올린 슬롯 key와 겹치는 것은 교체, 나머지 유지
+          const newKeys = photos.filter(s => s.file).map(s => s.key);
+          const kept = existingImages.filter(p => !newKeys.some(k => p.includes(`/${k}.`)));
+          const merged = [...kept, ...newUrls];
+          const { error: imgErr } = await supabase
+            .from("export_listings").update({ images: merged }).eq("id", listingId);
+          if (imgErr) throw imgErr;
+        }
+      } else {
+        // ── 신규 등록 모드 ──
+        const { data: inserted, error: insertErr } = await supabase
+          .from("export_listings")
+          .insert({ created_by: user.id, ...payload, images: [] })
+          .select("id")
+          .single();
+        if (insertErr) throw insertErr;
+        listingId = inserted.id;
+
+        const imageUrls = await uploadPhotos(listingId);
+        if (imageUrls.length > 0) {
+          const { error: updErr } = await supabase
+            .from("export_listings").update({ images: imageUrls }).eq("id", listingId);
+          if (updErr) throw updErr;
+        }
       }
 
       navigate("/export-shop/listing/manage");
@@ -343,7 +432,9 @@ const ExportListingNewPage: React.FC = () => {
             ← Back
           </button>
           <div className="h-4 w-px bg-slate-200" />
-          <h1 className="text-2xl font-bold text-slate-900">장비 매물 등록</h1>
+          <h1 className="text-2xl font-bold text-slate-900">
+            {isEditMode ? "매물 수정" : "장비 매물 등록"}
+          </h1>
         </div>
 
         {errors._global && (
@@ -595,7 +686,7 @@ const ExportListingNewPage: React.FC = () => {
               className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-orange-500 text-white font-bold hover:bg-orange-600 transition-all disabled:opacity-60"
             >
               {submitting ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-              {submitting ? "저장 중..." : "매물 등록"}
+              {submitting ? "저장 중..." : isEditMode ? "수정 완료" : "매물 등록"}
             </button>
             <button
               type="button" onClick={() => navigate("/export-shop/listing/manage")}

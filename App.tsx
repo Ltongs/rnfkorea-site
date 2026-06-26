@@ -1411,6 +1411,7 @@ const AppRoutes = () => {
           <Route path="/export-shop" element={<ExportShopPage />} />
           <Route path="/export-shop/inquiry" element={<ExportInquiryPage />} />
           <Route path="/export-shop/listing/new" element={<ExportListingNewPage />} />
+          <Route path="/export-shop/listing/edit/:id" element={<ExportListingNewPage />} />
           <Route path="/export-shop/listing/manage" element={<ExportListingManagePage />} />
           <Route path="/finance" element={<FinancePage />} />
           <Route path="/cargo-finance" element={<IndividualCargoFinancePage />} />
