@@ -3871,23 +3871,19 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
           </div>
         </div>
 
-        {/* 탭 - 가로 스크롤 한 줄. flex-wrap 부모 바깥의 독립 full-width 블록 */}
+        {/* 탭 - 가로 스크롤 한 줄 */}
         <style>{`.hcm-tab-scroll{-ms-overflow-style:none;scrollbar-width:none;}.hcm-tab-scroll::-webkit-scrollbar{display:none;height:0;}`}</style>
-        <div className="w-full px-3 py-3 flex items-center gap-1" style={{minWidth:0}}>
-          {/* 왼쪽 화살표 */}
-          <button
-            className="flex-shrink-0 w-7 h-7 rounded-full bg-white border border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-300 flex items-center justify-center text-sm transition-all shadow-sm"
-            onClick={()=>tabScrollRef.current&&(tabScrollRef.current.scrollLeft-=120)}
-          >‹</button>
+        <div className="w-full px-4 py-3" style={{minWidth:0}}>
           <div
             ref={tabScrollRef}
-            className="hcm-tab-scroll flex items-center gap-1.5 flex-1"
+            className="hcm-tab-scroll flex items-center gap-1.5"
             style={{
-              overflowX: "scroll",
+              overflowX: "auto",
               overflowY: "hidden",
               WebkitOverflowScrolling: "touch",
               touchAction: "pan-x",
               minWidth: 0,
+              scrollBehavior: "smooth",
             }}
             onWheel={(e)=>{
               if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && tabScrollRef.current) {
@@ -3904,11 +3900,6 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               </button>
             ))}
           </div>
-          {/* 오른쪽 화살표 */}
-          <button
-            className="flex-shrink-0 w-7 h-7 rounded-full bg-white border border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-300 flex items-center justify-center text-sm transition-all shadow-sm"
-            onClick={()=>tabScrollRef.current&&(tabScrollRef.current.scrollLeft+=120)}
-          >›</button>
         </div>
       </div>
 
