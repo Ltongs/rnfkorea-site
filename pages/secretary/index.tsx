@@ -3872,21 +3872,26 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
         </div>
 
         {/* 탭 - 가로 스크롤 한 줄 */}
-        <style>{`.hcm-tab-scroll{-ms-overflow-style:none;scrollbar-width:none;}.hcm-tab-scroll::-webkit-scrollbar{display:none;height:0;}`}</style>
+        <style>{`
+          .hcm-tab-scroll{
+            -ms-overflow-style:none;
+            scrollbar-width:none;
+            -webkit-overflow-scrolling:touch;
+          }
+          .hcm-tab-scroll::-webkit-scrollbar{display:none;}
+        `}</style>
         <div className="w-full px-4 py-3" style={{minWidth:0}}>
           <div
             ref={tabScrollRef}
             className="hcm-tab-scroll flex items-center gap-1.5"
             style={{
-              overflowX: "auto",
+              overflowX: "scroll",
               overflowY: "hidden",
-              WebkitOverflowScrolling: "touch",
-              touchAction: "pan-x",
               minWidth: 0,
-              scrollBehavior: "smooth",
             }}
             onWheel={(e)=>{
               if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && tabScrollRef.current) {
+                e.preventDefault();
                 tabScrollRef.current.scrollLeft += e.deltaY;
               }
             }}
