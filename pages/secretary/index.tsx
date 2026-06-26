@@ -258,7 +258,7 @@ const EXPORT_STORAGE_BASE = `${SUPABASE_STORAGE_URL}/storage/v1/object/public/ex
 
 type ExportListing = {
   id: string;
-  category: "forklift"|"mini_excavator"|"excavator";
+  category: "forklift"|"excavator"|"aerial";
   brand: string;
   model: string|null;
   year: number|null;
@@ -274,7 +274,7 @@ type ExportListing = {
 };
 
 const EXPORT_CAT_LBL: Record<string,string> = {
-  excavator: "굴삭기", mini_excavator: "미니굴삭기", forklift: "지게차",
+  excavator: "굴삭기", forklift: "지게차", aerial: "고소작업대",
 };
 const EXPORT_GRADE_CLS: Record<string,string> = {
   A: "bg-emerald-100 text-emerald-700",
@@ -293,25 +293,43 @@ function ExportShopTab({ onNavigate }: { onNavigate:(path:string)=>void }) {
   const canManage = isAdmin || isSubAdmin || isHyundaiCM;
   const [items, setItems] = React.useState<ExportListing[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [catFilter, setCatFilter] = React.useState<"all"|"excavator"|"mini_excavator"|"forklift">("all");
+  const [catFilter, setCatFilter] = React.useState<"all"|"excavator"|"forklift"|"aerial">("all");
+  const [selected, setSelected] = React.useState<ExportListing|null>(null);
+  const [imgIdx, setImgIdx] = React.useState(0);
 
   React.useEffect(()=>{
     setLoading(true);
     supabase
       .from("export_listings")
       .select("*")
-      .in("category",["excavator","mini_excavator","forklift"])
+      .in("category",["excavator","forklift","aerial"])
       .in("status",["active","sold"])
       .order("created_at",{ascending:false})
       .then(({data})=>{ setItems((data as ExportListing[])??[]); setLoading(false); });
   },[]);
 
+  // 모달 열릴 때 이미지 인덱스 초기화
+  const openModal = (item: ExportListing) => { setSelected(item); setImgIdx(0); };
+  const closeModal = () => setSelected(null);
+
+  // 키보드 ESC/화살표
+  React.useEffect(()=>{
+    if(!selected) return;
+    const handler = (e: KeyboardEvent) => {
+      if(e.key==="Escape") closeModal();
+      if(e.key==="ArrowRight") setImgIdx(i=>Math.min(i+1,(selected.images.length||1)-1));
+      if(e.key==="ArrowLeft")  setImgIdx(i=>Math.max(i-1,0));
+    };
+    window.addEventListener("keydown", handler);
+    return ()=>window.removeEventListener("keydown", handler);
+  },[selected]);
+
   const filtered = catFilter==="all" ? items : items.filter(i=>i.category===catFilter);
   const counts = {
     all: items.length,
     excavator: items.filter(i=>i.category==="excavator").length,
-    mini_excavator: items.filter(i=>i.category==="mini_excavator").length,
     forklift: items.filter(i=>i.category==="forklift").length,
+    aerial: items.filter(i=>i.category==="aerial").length,
   };
 
   return (
@@ -329,10 +347,10 @@ function ExportShopTab({ onNavigate }: { onNavigate:(path:string)=>void }) {
 
       {/* 카테고리 필터 */}
       <div className="flex gap-1.5 flex-wrap">
-        {(["all","excavator","mini_excavator","forklift"] as const).map(c=>(
+        {(["all","excavator","forklift","aerial"] as const).map(c=>(
           <button key={c} onClick={()=>setCatFilter(c)}
             className={`px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${catFilter===c?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
-            {c==="all"?"전체":`${EXPORT_CAT_LBL[c]}`}
+            {c==="all"?"전체":EXPORT_CAT_LBL[c]}
             <span className={`ml-1 ${catFilter===c?"text-white/60":"text-gray-400"}`}>({counts[c]})</span>
           </button>
         ))}
@@ -362,7 +380,10 @@ function ExportShopTab({ onNavigate }: { onNavigate:(path:string)=>void }) {
           {filtered.map(item=>{
             const thumb = item.images[0] ? exImgUrl(item.images[0]) : null;
             return (
-              <div key={item.id} className={`${CARD} p-3.5 flex gap-3`}>
+              <div key={item.id}
+                className={`${CARD} p-3.5 flex gap-3 cursor-pointer hover:border-orange-300 hover:shadow-md transition-all`}
+                onClick={()=>openModal(item)}
+              >
                 {/* 썸네일 */}
                 <div className="w-20 h-20 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0 relative">
                   {thumb
@@ -402,6 +423,118 @@ function ExportShopTab({ onNavigate }: { onNavigate:(path:string)=>void }) {
             );
           })}
         </div>
+      )}
+
+      {/* ── 상세 모달 ── */}
+      {selected&&ReactDOM.createPortal(
+        <div className="fixed inset-0 z-[99998] flex items-center justify-center bg-black/60 px-4"
+          onClick={closeModal}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+            onClick={e=>e.stopPropagation()}>
+
+            {/* 모달 헤더 */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-orange-500 uppercase">{EXPORT_CAT_LBL[selected.category]}</span>
+                {selected.condition_grade&&(
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${EXPORT_GRADE_CLS[selected.condition_grade]}`}>
+                    Grade {selected.condition_grade}
+                  </span>
+                )}
+                {selected.status==="sold"&&(
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-slate-100 text-slate-500">SOLD</span>
+                )}
+              </div>
+              <button onClick={closeModal} className="text-gray-400 hover:text-gray-700 text-lg leading-none">✕</button>
+            </div>
+
+            {/* 이미지 갤러리 */}
+            {selected.images.length>0&&(
+              <div className="relative bg-gray-100">
+                <img
+                  src={exImgUrl(selected.images[imgIdx])}
+                  alt=""
+                  className="w-full h-64 object-cover"
+                />
+                {selected.status==="sold"&&(
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                    <span className="text-white font-bold text-2xl tracking-widest">SOLD</span>
+                  </div>
+                )}
+                {selected.images.length>1&&(
+                  <>
+                    <button onClick={()=>setImgIdx(i=>Math.max(i-1,0))}
+                      className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white rounded-full w-8 h-8 flex items-center justify-center text-gray-700 shadow">‹</button>
+                    <button onClick={()=>setImgIdx(i=>Math.min(i+1,selected.images.length-1))}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white rounded-full w-8 h-8 flex items-center justify-center text-gray-700 shadow">›</button>
+                    <p className="absolute bottom-2 right-3 text-white/80 text-xs">{imgIdx+1}/{selected.images.length}</p>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* 썸네일 스트립 */}
+            {selected.images.length>1&&(
+              <div className="flex gap-1.5 px-4 pt-3 overflow-x-auto">
+                {selected.images.map((img,i)=>(
+                  <button key={i} onClick={()=>setImgIdx(i)}
+                    className={`w-14 h-14 rounded-lg border-2 overflow-hidden flex-shrink-0 transition-all ${i===imgIdx?"border-orange-500":"border-transparent"}`}>
+                    <img src={exImgUrl(img)} alt="" className="w-full h-full object-cover"/>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* 정보 */}
+            <div className="px-5 py-4 space-y-4">
+              <div>
+                <h3 className="text-lg font-bold text-[#0f172a]">
+                  {selected.brand}{selected.model?` ${selected.model}`:""}{selected.year?` (${selected.year})`:""}
+                </h3>
+                <p className="text-xl font-bold text-orange-500 mt-1">
+                  {selected.price_usd ? `USD ${selected.price_usd.toLocaleString()}${selected.price_negotiable?" (협의)":""}` : "가격 문의"}
+                </p>
+              </div>
+
+              {/* 스펙 */}
+              <dl className="border-t pt-3 space-y-2">
+                {selected.tonnage&&(
+                  <div className="flex justify-between text-sm">
+                    <dt className="text-gray-500">톤수</dt>
+                    <dd className="font-semibold text-[#0f172a]">{selected.tonnage}T</dd>
+                  </div>
+                )}
+                {selected.engine_type&&(
+                  <div className="flex justify-between text-sm">
+                    <dt className="text-gray-500">엔진</dt>
+                    <dd className="font-semibold text-[#0f172a] capitalize">{selected.engine_type}</dd>
+                  </div>
+                )}
+                {selected.stock_qty>1&&(
+                  <div className="flex justify-between text-sm">
+                    <dt className="text-gray-500">수량</dt>
+                    <dd className="font-semibold text-[#0f172a]">{selected.stock_qty}대</dd>
+                  </div>
+                )}
+              </dl>
+
+              {/* 버튼 */}
+              <div className="flex gap-2 pt-1">
+                <button className={`${BTP} flex-1`}
+                  onClick={()=>{ closeModal(); onNavigate(`/export-shop/inquiry?ref=${selected.id}&model=${encodeURIComponent(`${selected.brand} ${selected.model??""}`)}`);}}>
+                  견적 문의 →
+                </button>
+                {canManage&&(
+                  <button className={BTG}
+                    onClick={()=>{ closeModal(); onNavigate(`/export-shop/listing/edit/${selected.id}`);}}>
+                    수정
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
