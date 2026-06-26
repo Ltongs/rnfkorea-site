@@ -198,24 +198,24 @@ const DOC_FIELDS: { key: keyof HCMTask; label: string; dbCol: string }[] = [
 
 // ─── 스타일 상수 ──────────────────────────────────────────
 const inputClass =
-  "h-[48px] w-full px-4 rounded-2xl border border-gray-200 bg-white text-sm " +
-  "font-medium text-navy-900 placeholder:text-gray-400 " +
-  "focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 " +
+  "h-10 w-full px-3 rounded-xl border border-gray-200 bg-white text-sm " +
+  "text-[#0f172a] placeholder:text-gray-400 " +
+  "focus:outline-none focus:border-orange-400 " +
   "disabled:opacity-50 disabled:bg-gray-50 transition-all";
 
-const labelClass = "block text-sm font-medium text-navy-900 mb-2";
+const labelClass = "block text-xs font-medium text-gray-500 mb-1";
 
 const btnPrimary =
-  "inline-flex items-center justify-center px-5 py-2.5 rounded-2xl bg-orange-500 " +
+  "inline-flex items-center justify-center px-3 py-1.5 rounded-xl bg-orange-500 " +
   "text-white font-semibold text-sm hover:bg-orange-600 transition-all disabled:opacity-50";
 
 const btnSecondary =
-  "inline-flex items-center justify-center px-5 py-2.5 rounded-2xl border border-gray-300 " +
-  "bg-white text-navy-900 font-semibold text-sm hover:shadow-md transition-all disabled:opacity-50";
+  "inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-gray-200 " +
+  "bg-white text-[#0f172a] font-semibold text-sm hover:border-gray-300 transition-all disabled:opacity-50";
 
 const btnGhost =
-  "inline-flex items-center justify-center px-4 py-2 rounded-2xl border border-gray-200 " +
-  "bg-white text-sm font-medium text-gray-600 hover:border-gray-300 hover:shadow-sm transition-all disabled:opacity-50";
+  "inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-gray-200 " +
+  "bg-white text-sm font-medium text-gray-600 hover:border-gray-300 transition-all disabled:opacity-50";
 
 // ─── 메인 컴포넌트 ────────────────────────────────────────
 export default function HyundaiCMPage() {
@@ -1541,7 +1541,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
   // ─── JSX ─────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       {/* 숨겨진 파일 인풋 */}
       <input
         ref={docInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.heic"
@@ -1583,71 +1583,28 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         }}
       />
 
-      {/* ── 히어로 헤더 ── */}
-      {isStandalone ? (
-        /* ── PWA 앱 모드: 컴팩트 헤더 ── */
-        <div className="hyundaicm-app-header bg-[#0a192f] text-white px-4 py-3 flex items-center justify-between gap-3 sticky top-0 z-30">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => nav("/work/secretary")}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-semibold hover:bg-white/20 transition-all"
-            >
-              ← AI비서
-            </button>
-            <span className="text-sm font-semibold text-white">🏗 현대건설기계</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => nav("/hyundaicm/kakao-connect")}
-              title="카카오톡 알림 설정"
-              className="inline-flex items-center justify-center w-8 h-8 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/20 transition-all"
-            >
-              <Settings size={15} />
-            </button>
-          </div>
+      {/* ── 헤더 (AI비서 스타일) ── */}
+      <div className="bg-white border-b border-gray-200 px-3 py-1.5 flex items-center justify-between gap-3 sticky top-0 z-30">
+        <div className="flex items-center gap-2.5">
+          <button onClick={() => nav("/work/secretary")}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-semibold hover:border-gray-300 hover:text-gray-700 transition-all">
+            ← AI비서
+          </button>
+          <span className="text-sm font-semibold text-[#0f172a]">🏗 현대건설기계</span>
         </div>
-      ) : (
-        /* ── 일반 브라우저: 기존 풀 헤더 ── */
-        <section className="relative bg-[#0a192f] text-white overflow-hidden">
-          <div
-            className="absolute inset-0 opacity-[0.04]" aria-hidden="true"
-            style={{
-              backgroundImage: "repeating-linear-gradient(45deg, white 0, white 1px, transparent 0, transparent 50%)",
-              backgroundSize: "24px 24px",
-            }}
-          />
-          <div className="relative max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-12 md:py-16">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-400">Business</p>
-                <h1 className="mt-3 text-3xl md:text-4xl font-semibold leading-[1.15] text-white break-keep">
-                  현대건설기계 업무
-                </h1>
-                <p className="mt-3 text-base leading-7 text-white/75 break-keep">
-                  건설기계 할부금융 신용조회 및 서류관리
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => nav("/hyundaicm/kakao-connect")}
-                  title="카카오톡 알림 설정"
-                  className="inline-flex items-center justify-center w-10 h-10 rounded-2xl border border-white/20 bg-white/10 text-white hover:bg-white/20 transition-all"
-                >
-                  <Settings size={18} />
-                </button>
-                <button
-                  onClick={() => { if (window.confirm("로그아웃 하시겠습니까?")) logout(); }}
-                  className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl border border-white/20 bg-white/10 text-white text-sm font-medium hover:bg-white/20 transition-all"
-                >
-                  로그아웃
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
+        <div className="flex items-center gap-1.5">
+          <button onClick={() => nav("/hyundaicm/kakao-connect")} title="카카오톡 알림 설정"
+            className="inline-flex items-center justify-center w-7 h-7 rounded-xl border border-gray-200 text-gray-400 hover:border-gray-300 hover:text-gray-600 transition-all">
+            <Settings size={13} />
+          </button>
+          <button onClick={() => { if (window.confirm("로그아웃 하시겠습니까?")) logout(); }}
+            className="inline-flex items-center px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-medium hover:border-gray-300 transition-all">
+            로그아웃
+          </button>
+        </div>
+      </div>
 
-      <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-8 space-y-6">
+      <div className="px-4 py-3 space-y-3">
 
         {/* ── 상태 요약 뱃지 ── */}
         <div className="flex flex-wrap gap-2">
@@ -1655,7 +1612,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
             <button
               key={s}
               onClick={() => setStatusFilter((prev) => prev === s ? "all" : s)}
-              className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-2xl border text-xs font-semibold transition-all
+              className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl border text-xs font-semibold transition-all
                 ${statusStyle(s)}
                 ${statusFilter === s ? "ring-2 ring-offset-2 ring-orange-300/60 shadow-sm" : "hover:shadow-sm"}`}
             >
@@ -1665,7 +1622,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           {statusFilter !== "all" && (
             <button
               onClick={() => setStatusFilter("all")}
-              className="px-4 py-1.5 rounded-2xl border border-gray-200 bg-white text-xs font-semibold text-gray-500 hover:shadow-sm transition-all"
+              className="px-4 py-1.5 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-500 hover:shadow-sm transition-all"
             >
               전체 보기
             </button>
@@ -1674,7 +1631,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
         {/* ── focusId: 특정 딜 단독 뷰 배너 ── */}
         {focusId && (
-          <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-blue-50 border border-blue-200">
+          <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-50 border border-blue-200">
             <button
               onClick={() => nav("/hyundaicm")}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-blue-200 text-blue-700 text-xs font-semibold hover:bg-blue-50 transition-all shrink-0"
@@ -1698,16 +1655,16 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           {isAdmin && (
             <button
               onClick={() => setShowClosed((v) => !v)}
-              className={`inline-flex items-center justify-center px-4 py-2.5 rounded-2xl border text-sm font-medium transition-all
+              className={`inline-flex items-center justify-center px-3 py-1.5 rounded-xl border text-sm font-medium transition-all
                 ${showClosed ? "bg-orange-50 border-orange-200 text-orange-700" : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"}`}
             >
               {showClosed ? "종료 건 숨기기" : "종료 건 포함"}
             </button>
           )}
           <div className="ml-auto flex items-center gap-2">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-2xl border border-gray-200 bg-white text-xs font-medium text-gray-600">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-gray-200 bg-white text-xs font-medium text-gray-600">
               <span className="text-gray-400">당월 접수</span>
-              <span className="font-bold text-navy-900">{monthlyStats.total}건</span>
+              <span className="font-bold text-[#0f172a]">{monthlyStats.total}건</span>
               <span className="text-gray-300">|</span>
               <span className="text-gray-400">확정</span>
               <span className="font-bold text-emerald-600">{monthlyStats.confirmed}건</span>
@@ -1726,7 +1683,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
         {/* ── 검색 패널 ── */}
         {showSearchPanel && (
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className={labelClass}>통합 검색</label>
@@ -1755,15 +1712,15 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
         {/* ── 신규 접수 패널 ── */}
         {showCreatePanel && (
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-6">
+          <div className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
               <div>
                 <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">New</p>
-                <h2 className="mt-1 text-xl font-semibold text-navy-900">신규 접수</h2>
+                <h2 className="mt-1 text-sm font-semibold text-[#0f172a]">신규 접수</h2>
               </div>
               <button
                 onClick={() => { setShowCreatePanel(false); onReset(); }}
-                className="h-9 w-9 rounded-2xl border border-gray-200 text-gray-500 hover:border-gray-300 text-xl font-bold transition-all"
+                className="h-9 w-9 rounded-xl border border-gray-200 text-gray-500 hover:border-gray-300 text-sm font-bold transition-all"
               >×</button>
             </div>
 
@@ -1847,7 +1804,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                       placeholder={vatDeferred === "Y" ? "15,000,000" : "-"}
                       inputMode="numeric"
                       disabled={vatDeferred === "N"}
-                      className={`h-[38px] w-full px-3 rounded-xl border text-xs font-medium transition-all focus:outline-none focus:border-orange-400 ${vatDeferred === "N" ? "bg-gray-50 border-gray-200 text-gray-300" : "bg-white border-gray-200 text-navy-900"}`}
+                      className={`h-[38px] w-full px-3 rounded-xl border text-xs font-medium transition-all focus:outline-none focus:border-orange-400 ${vatDeferred === "N" ? "bg-gray-50 border-gray-200 text-gray-300" : "bg-white border-gray-200 text-[#0f172a]"}`}
                     />
                   </div>
                   <div>
@@ -1856,7 +1813,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                       value={salesRep}
                       onChange={(e) => setSalesRep(e.target.value)}
                       placeholder="홍길동"
-                      className="h-[38px] w-full px-3 rounded-xl border border-gray-200 bg-white text-xs font-medium text-navy-900 placeholder:text-gray-400 focus:outline-none focus:border-orange-400 transition-all"
+                      className="h-[38px] w-full px-3 rounded-xl border border-gray-200 bg-white text-xs font-medium text-[#0f172a] placeholder:text-gray-400 focus:outline-none focus:border-orange-400 transition-all"
                     />
                   </div>
                 </div>
@@ -1870,12 +1827,12 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                 value={specialNote}
                 onChange={(e) => setSpecialNote(e.target.value)}
                 placeholder="고객 요청사항, 특이사항, 신용조회 관련 메모..."
-                className="w-full min-h-[80px] px-4 py-3 rounded-2xl border border-gray-200 bg-white text-sm text-navy-900 placeholder:text-gray-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 resize-none transition-all"
+                className="w-full min-h-[80px] px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm text-[#0f172a] placeholder:text-gray-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 resize-none transition-all"
               />
             </div>
 
             {err && (
-              <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm font-medium">{err}</div>
+              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm font-medium">{err}</div>
             )}
 
             <div className="mt-5 flex justify-end gap-3">
@@ -1886,10 +1843,10 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         )}
 
         {/* ── 카드 목록 ── */}
-        {loading && <div className="py-12 text-center text-sm text-gray-400">로딩 중...</div>}
+        {loading && <div className="py-3 text-center text-sm text-gray-400">로딩 중...</div>}
 
         {!loading && filteredRows.length === 0 && (
-          <div className="rounded-2xl border border-gray-200 bg-white px-6 py-12 text-center text-sm text-gray-500">
+          <div className="rounded-xl border border-gray-200 bg-white px-3.5 py-3 text-center text-sm text-gray-500">
             조회 결과가 없습니다.
           </div>
         )}
@@ -1905,19 +1862,19 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
             const isExpanded   = expandedIds.has(String(r.id));
 
             return (
-              <div key={r.id} className={`rounded-2xl border bg-white shadow-sm transition-all overflow-hidden ${
+              <div key={r.id} className={`rounded-xl border bg-white shadow-sm transition-all overflow-hidden ${
                 r.status === "거절" ? "border-red-200" :
                 r.status === "확정" ? "border-emerald-200" :
                 "border-gray-200 hover:shadow-md"
               }`}>
 
                 {/* 카드 헤더 */}
-                <div className="px-4 md:px-6 pt-4 pb-3 border-b border-gray-100">
+                <div className="px-4 md:px-3.5 pt-4 pb-3 border-b border-gray-100">
                   {/* 1행: 케이스번호+이름 / 버튼 */}
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 min-w-0">
                       <span className="text-xs font-semibold text-gray-400 font-mono shrink-0">{caseNoMap[String(r.id)] ?? "-"}</span>
-                      <span className="text-base font-semibold text-navy-900 break-all">
+                      <span className="text-base font-semibold text-[#0f172a] break-all">
                         {r.company_name ? `${r.company_name}${r.customer_name !== r.company_name ? ` (${r.customer_name})` : ""}` : r.customer_name}
                       </span>
                     </div>
@@ -1974,7 +1931,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
                 {/* 카드 바디 — 확정 상태면 펼쳤을 때만 표시 */}
                 {(!isConfirmed || isExpanded) && (
-                <div className="px-4 md:px-6 py-5 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="px-4 md:px-3.5 py-5 grid grid-cols-1 md:grid-cols-2 gap-3">
                   {/* 왼쪽: 기본 정보 */}
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-3">
@@ -1984,7 +1941,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                         {!shouldMaskPhone(r) && r.customer_phone ? (
                           <a href={`tel:${onlyDigits(r.customer_phone)}`} className="mt-1 text-sm font-semibold text-orange-500 underline underline-offset-2 break-all">{getDisplayPhone(r)}</a>
                         ) : (
-                          <p className="mt-1 text-sm font-semibold text-navy-900 break-all">{getDisplayPhone(r)}</p>
+                          <p className="mt-1 text-sm font-semibold text-[#0f172a] break-all">{getDisplayPhone(r)}</p>
                         )}
                       </div>
                       {[
@@ -2016,14 +1973,14 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                       ].map(({ label, value }) => (
                         <div key={label}>
                           <p className="text-xs font-medium tracking-wide text-gray-400 uppercase">{label}</p>
-                          <p className="mt-1 text-sm font-semibold text-navy-900 break-all">{value}</p>
+                          <p className="mt-1 text-sm font-semibold text-[#0f172a] break-all">{value}</p>
                         </div>
                       ))}
                     </div>
 
                     {/* 신용결과 상세 */}
                     {(r.nice_score != null || r.credit_rate != null || r.credit_incentive != null || r.biz_history || CREDIT_STATUSES.includes(r.status as any) || creditResults[String(r.id)]) && (
-                      <div className="rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3 grid grid-cols-2 gap-2">
+                      <div className="rounded-xl border border-orange-100 bg-orange-50 px-4 py-3 grid grid-cols-2 gap-2">
                         <div className="col-span-2 flex items-center justify-between mb-1">
                           <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide">신용결과 상세</p>
                           {/* 판정결과 배지 */}
@@ -2033,7 +1990,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                               : creditResults[String(r.id)];
                             if (!creditStatus) return null;
                             return (
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-2xl border text-xs font-bold ${statusStyle(creditStatus as HCMStatus)}`}>
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-xl border text-xs font-bold ${statusStyle(creditStatus as HCMStatus)}`}>
                                 판정: {creditStatus}
                               </span>
                             );
@@ -2042,25 +1999,25 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                         {r.nice_score != null && (
                           <div>
                             <p className="text-xs text-gray-400">NICE 점수</p>
-                            <p className="text-sm font-semibold text-navy-900">{r.nice_score}점</p>
+                            <p className="text-sm font-semibold text-[#0f172a]">{r.nice_score}점</p>
                           </div>
                         )}
                         {r.credit_rate != null && (
                           <div>
                             <p className="text-xs text-gray-400">적용금리</p>
-                            <p className="text-sm font-semibold text-navy-900">{r.credit_rate}%</p>
+                            <p className="text-sm font-semibold text-[#0f172a]">{r.credit_rate}%</p>
                           </div>
                         )}
                         {r.credit_incentive != null && (
                           <div>
                             <p className="text-xs text-gray-400">적용인센티브</p>
-                            <p className="text-sm font-semibold text-navy-900">{r.credit_incentive}%</p>
+                            <p className="text-sm font-semibold text-[#0f172a]">{r.credit_incentive}%</p>
                           </div>
                         )}
                         {r.biz_history && (
                           <div>
                             <p className="text-xs text-gray-400">업력</p>
-                            <p className="text-sm font-semibold text-navy-900">{r.biz_history}</p>
+                            <p className="text-sm font-semibold text-[#0f172a]">{r.biz_history}</p>
                           </div>
                         )}
                       </div>
@@ -2079,7 +2036,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                             key={s}
                             disabled={!canChangeStatus || r.status === s || !canGo}
                             onClick={() => changeStatus(r, s as HCMStatus)}
-                            className={`px-3 py-1 rounded-2xl border text-xs font-semibold transition-all
+                            className={`px-3 py-1 rounded-xl border text-xs font-semibold transition-all
                               ${r.status === s
                                 ? statusStyle(s as HCMStatus) + " ring-2 ring-offset-1 ring-orange-200/60"
                                 : canGo && canChangeStatus
@@ -2114,7 +2071,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                               key={s}
                               disabled={!canChangeStatus || !canGo}
                               onClick={openCreditModal}
-                              className={`px-3 py-1 rounded-2xl border text-xs font-semibold transition-all
+                              className={`px-3 py-1 rounded-xl border text-xs font-semibold transition-all
                                 ${isCurrent
                                   ? statusStyle(s) + " ring-2 ring-offset-1 ring-orange-200/60"
                                   : canGo && canChangeStatus
@@ -2133,7 +2090,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                             key={s}
                             disabled={!canChangeStatus || r.status === s || !canGo}
                             onClick={() => changeStatus(r, s as HCMStatus)}
-                            className={`px-3 py-1 rounded-2xl border text-xs font-semibold transition-all
+                            className={`px-3 py-1 rounded-xl border text-xs font-semibold transition-all
                               ${r.status === s
                                 ? statusStyle(s as HCMStatus) + " ring-2 ring-offset-1 ring-orange-200/60"
                                 : canGo && canChangeStatus
@@ -2148,7 +2105,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                         {canChangeStatus && r.status !== "확정" && r.status !== "거절" && (
                           <button
                             onClick={() => openHoldModal(r)}
-                            className={`px-3 py-1 rounded-2xl border text-xs font-semibold transition-all
+                            className={`px-3 py-1 rounded-xl border text-xs font-semibold transition-all
                               ${holdMap[String(r.id)]
                                 ? "bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100"
                                 : "bg-white border-gray-200 text-gray-500 hover:border-amber-300 hover:text-amber-700"
@@ -2161,7 +2118,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                         {(r.credit_rate != null || r.loan_limit != null || r.vehicle_amount != null || r.attach_amount != null) && (
                           <button
                             onClick={() => setApprovalModal(r)}
-                            className="px-3 py-1 rounded-2xl border text-xs font-semibold transition-all bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+                            className="px-3 py-1 rounded-xl border text-xs font-semibold transition-all bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
                           >
                             📋 승인조건
                           </button>
@@ -2181,7 +2138,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                                 vehicleRegInputRef.current?.setAttribute("data-row-id", String(r.id));
                                 vehicleRegInputRef.current?.click();
                               }}
-                              className="px-3 py-1 rounded-2xl border border-emerald-300 bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                              className="px-3 py-1 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                             >
                               {vehicleRegUploading === String(r.id)
                                 ? "업로드중..."
@@ -2200,7 +2157,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                                 taxInvoiceInputRef.current?.setAttribute("data-row-id", String(r.id));
                                 taxInvoiceInputRef.current?.click();
                               }}
-                              className="px-3 py-1 rounded-2xl border border-blue-300 bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                              className="px-3 py-1 rounded-xl border border-blue-300 bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                             >
                               {taxInvoiceUploading === String(r.id)
                                 ? "업로드중..."
@@ -2225,7 +2182,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                                 });
                                 setIncentivePaidIds((prev) => new Set([...prev, String(r.id)]));
                               }}
-                              className="px-3 py-1 rounded-2xl border border-purple-300 bg-purple-50 text-purple-700 text-xs font-semibold hover:bg-purple-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                              className="px-3 py-1 rounded-xl border border-purple-300 bg-purple-50 text-purple-700 text-xs font-semibold hover:bg-purple-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                             >
                               {incentivePaidIds.has(String(r.id)) ? "✓ 인센티브 지급" : "💰 인센티브 지급"}
                             </button>
@@ -2240,7 +2197,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                     <div className="flex items-center justify-between mb-3">
                       <p className="text-xs font-medium tracking-wide text-gray-400 uppercase">증빙서류</p>
                       {docExpired && (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-2xl bg-gray-100 border border-gray-200 text-gray-400 text-xs font-semibold">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-xl bg-gray-100 border border-gray-200 text-gray-400 text-xs font-semibold">
                           확정 후 24시간 경과 — 파일 삭제됨
                         </span>
                       )}
@@ -2257,20 +2214,20 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                                 <span className="text-xs text-gray-400 font-medium">삭제됨</span>
                               ) : path ? (
                                 <>
-                                  <span className="inline-flex items-center px-2.5 py-1 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
+                                  <span className="inline-flex items-center px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
                                     ✓ 완료
                                   </span>
-                                  <button onClick={() => downloadDoc(path, f.label)} className="px-3 py-1 rounded-2xl border border-gray-200 text-gray-600 text-xs font-medium hover:border-navy-900 hover:text-navy-900 transition-all">
+                                  <button onClick={() => downloadDoc(path, f.label)} className="px-3 py-1 rounded-xl border border-gray-200 text-gray-600 text-xs font-medium hover:border-navy-900 hover:text-[#0f172a] transition-all">
                                     다운로드
                                   </button>
                                   {canUploadDoc && (
-                                    <button disabled={isUploading} onClick={() => triggerDocUpload(r.id, f.key, f.dbCol, f.label)} className="px-3 py-1 rounded-2xl border border-orange-300 text-orange-600 text-xs font-semibold hover:bg-orange-50 hover:border-orange-400 disabled:opacity-50 transition-all">
+                                    <button disabled={isUploading} onClick={() => triggerDocUpload(r.id, f.key, f.dbCol, f.label)} className="px-3 py-1 rounded-xl border border-orange-300 text-orange-600 text-xs font-semibold hover:bg-orange-50 hover:border-orange-400 disabled:opacity-50 transition-all">
                                       {isUploading ? "..." : "재업로드"}
                                     </button>
                                   )}
                                 </>
                               ) : (
-                                <button disabled={isUploading || !canUploadDoc} onClick={() => triggerDocUpload(r.id, f.key, f.dbCol, f.label)} className="px-3 py-1 rounded-2xl border border-gray-200 text-gray-500 text-xs font-medium hover:border-orange-300 hover:text-orange-600 disabled:opacity-50 transition-all">
+                                <button disabled={isUploading || !canUploadDoc} onClick={() => triggerDocUpload(r.id, f.key, f.dbCol, f.label)} className="px-3 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-medium hover:border-orange-300 hover:text-orange-600 disabled:opacity-50 transition-all">
                                   {isUploading ? "업로드중..." : "+ 업로드"}
                                 </button>
                               )}
@@ -2291,7 +2248,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                               etcDocInputRef.current?.click();
                             }}
                             disabled={etcDocUploading === String(r.id)}
-                            className="px-3 py-1 rounded-2xl border border-orange-300 text-orange-600 text-xs font-medium hover:bg-orange-50 disabled:opacity-50 transition-all"
+                            className="px-3 py-1 rounded-xl border border-orange-300 text-orange-600 text-xs font-medium hover:bg-orange-50 disabled:opacity-50 transition-all"
                           >
                             {etcDocUploading === String(r.id) ? "업로드중..." : "+ 추가"}
                           </button>
@@ -2302,17 +2259,17 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                       ) : (
                         <div className="space-y-1.5">
                           {(etcDocs[String(r.id)] ?? []).map((doc) => (
-                            <div key={doc.id} className="flex items-center justify-between gap-2 rounded-2xl border border-gray-100 bg-gray-50 px-3 py-2">
+                            <div key={doc.id} className="flex items-center justify-between gap-2 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
                               <span className="text-xs text-gray-700 truncate min-w-0">{doc.name}</span>
                               <div className="flex items-center gap-1.5 shrink-0">
                                 <button
                                   onClick={() => downloadDoc(doc.path, doc.name)}
-                                  className="px-2.5 py-1 rounded-2xl border border-gray-200 text-gray-600 text-xs font-medium hover:border-navy-900 hover:text-navy-900 transition-all"
+                                  className="px-2.5 py-1 rounded-xl border border-gray-200 text-gray-600 text-xs font-medium hover:border-navy-900 hover:text-[#0f172a] transition-all"
                                 >다운로드</button>
                                 {canUploadDoc && (
                                   <button
                                     onClick={() => deleteEtcDoc(doc.id, doc.path, r.id)}
-                                    className="px-2.5 py-1 rounded-2xl border border-red-100 text-red-400 text-xs font-medium hover:border-red-300 hover:text-red-600 transition-all"
+                                    className="px-2.5 py-1 rounded-xl border border-red-100 text-red-400 text-xs font-medium hover:border-red-300 hover:text-red-600 transition-all"
                                   >삭제</button>
                                 )}
                               </div>
@@ -2327,7 +2284,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
                 {/* 차량등록증 파일 목록 — 확정 상태이고 펼쳐진 경우에만 표시 */}
                 {r.status === "확정" && (!isConfirmed || isExpanded) && canUploadVehicleRegDoc && (
-                <div className="px-4 md:px-6 pb-5 border-t border-emerald-100 pt-4">
+                <div className="px-4 md:px-3.5 pb-5 border-t border-emerald-100 pt-4">
                   <div className="mb-3">
                     <p className="text-xs font-medium tracking-wide text-emerald-600 uppercase">차량등록증</p>
                     <p className="text-xs text-gray-400 mt-0.5">업로드 후 72시간 뒤 자동 삭제됩니다</p>
@@ -2341,7 +2298,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                         const expiresDate  = new Date(uploadedDate.getTime() + 72 * 60 * 60 * 1000);
                         const hoursLeft    = Math.max(0, Math.round((expiresDate.getTime() - Date.now()) / (1000 * 60 * 60)));
                         return (
-                          <div key={idx} className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-2.5">
+                          <div key={idx} className="flex items-center justify-between gap-3 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-1.5">
                             <div className="min-w-0">
                               <p className="text-sm font-medium text-emerald-800 truncate">{f.name}</p>
                               <p className="text-xs text-gray-400 mt-0.5">
@@ -2354,7 +2311,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                             {(isAdmin || isSubAdmin || isNhCapital || isNhCapitalStaff) && (
                             <button
                               onClick={() => downloadVehicleRegDoc(f.path, f.name)}
-                              className="shrink-0 px-3 py-1 rounded-2xl border border-emerald-200 text-emerald-700 text-xs font-medium hover:border-emerald-400 transition-all"
+                              className="shrink-0 px-3 py-1 rounded-xl border border-emerald-200 text-emerald-700 text-xs font-medium hover:border-emerald-400 transition-all"
                             >다운로드</button>
                             )}
                           </div>
@@ -2369,7 +2326,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
                 {/* 세금계산서 — 확정 상태이고 펼쳐진 경우에만 표시 */}
                 {r.status === "확정" && (!isConfirmed || isExpanded) && (
-                <div className="px-4 md:px-6 pb-5 border-t border-blue-100 pt-4">
+                <div className="px-4 md:px-3.5 pb-5 border-t border-blue-100 pt-4">
                   <div className="mb-3">
                     <p className="text-xs font-medium tracking-wide text-blue-600 uppercase">세금계산서</p>
                     <p className="text-xs text-gray-400 mt-0.5">업로드 후 72시간 뒤 자동 삭제됩니다</p>
@@ -2382,7 +2339,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                         const expiresDate  = new Date(uploadedDate.getTime() + 72 * 60 * 60 * 1000);
                         const hoursLeft    = Math.max(0, Math.round((expiresDate.getTime() - Date.now()) / (1000 * 60 * 60)));
                         return (
-                          <div key={idx} className="flex items-center justify-between gap-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-2.5">
+                          <div key={idx} className="flex items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-1.5">
                             <div className="min-w-0">
                               <p className="text-sm font-medium text-blue-800 truncate">{f.name}</p>
                               <p className="text-xs text-gray-400 mt-0.5">
@@ -2394,7 +2351,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                             </div>
                             <button
                               onClick={() => downloadTaxInvoice(f.path, f.name)}
-                              className="shrink-0 px-3 py-1 rounded-2xl border border-blue-200 text-blue-700 text-xs font-medium hover:border-blue-400 transition-all"
+                              className="shrink-0 px-3 py-1 rounded-xl border border-blue-200 text-blue-700 text-xs font-medium hover:border-blue-400 transition-all"
                             >다운로드</button>
                           </div>
                         );
@@ -2408,7 +2365,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
                 {/* 메모 — 확정 시 펼쳤을 때만 표시 */}
                 {(!isConfirmed || isExpanded) && (
-                <div className="px-6 pb-5 border-t border-gray-100 pt-4">
+                <div className="px-3.5 pb-5 border-t border-gray-100 pt-4">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium tracking-wide text-gray-400 uppercase">특이사항 / 메모</p>
                     {memoChanged && (
@@ -2421,7 +2378,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                     value={memoVal}
                     onChange={(e) => setMemoDrafts((prev) => ({ ...prev, [String(r.id)]: e.target.value }))}
                     placeholder="신용조회 결과, 금융사 조건, 특이사항 입력..."
-                    className="w-full h-[72px] text-sm text-gray-700 rounded-2xl bg-gray-50 border border-gray-200 px-4 py-2.5 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 resize-none transition-all"
+                    className="w-full h-[72px] text-sm text-gray-700 rounded-xl bg-gray-50 border border-gray-200 px-3 py-1.5 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 resize-none transition-all"
                   />
                 </div>
                 )}
@@ -2434,14 +2391,14 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       {/* ── 수정 모달 ── */}
       {editRow && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-2xl rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-start justify-between gap-3 mb-6">
+          <div className="w-full max-w-2xl rounded-xl border border-gray-200 bg-white p-3.5 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-3 mb-3">
               <div>
                 <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500">Edit</p>
-                <h2 className="mt-1 text-xl font-semibold text-navy-900">기본정보 수정</h2>
+                <h2 className="mt-1 text-sm font-semibold text-[#0f172a]">기본정보 수정</h2>
                 <p className="mt-1 text-sm text-gray-500">고객 정보 및 장비/금융 정보를 수정합니다.</p>
               </div>
-              <button onClick={closeEditModal} disabled={editSaving} className="h-9 w-9 rounded-2xl border border-gray-200 text-xl font-bold text-gray-500 hover:border-gray-300 disabled:opacity-50 transition-all">×</button>
+              <button onClick={closeEditModal} disabled={editSaving} className="h-9 w-9 rounded-xl border border-gray-200 text-sm font-bold text-gray-500 hover:border-gray-300 disabled:opacity-50 transition-all">×</button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -2484,7 +2441,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                       inputMode="numeric"
                       disabled={editSaving || editVatDeferred === "N"}
                       className={`h-[38px] w-full px-3 rounded-xl border text-xs font-medium transition-all focus:outline-none focus:border-orange-400 ${
-                        editVatDeferred === "N" ? "bg-gray-50 border-gray-200 text-gray-300" : "bg-white border-gray-200 text-navy-900"
+                        editVatDeferred === "N" ? "bg-gray-50 border-gray-200 text-gray-300" : "bg-white border-gray-200 text-[#0f172a]"
                       }`}
                     />
                   </div>
@@ -2495,14 +2452,14 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                       value={editLoanPeriod}
                       onChange={(e) => setEditLoanPeriod(e.target.value)}
                       placeholder="예: 60"
-                      className="h-[38px] w-full px-3 rounded-xl border border-gray-200 bg-white text-xs font-medium text-navy-900 placeholder:text-gray-400 focus:outline-none focus:border-orange-400 transition-all"
+                      className="h-[38px] w-full px-3 rounded-xl border border-gray-200 bg-white text-xs font-medium text-[#0f172a] placeholder:text-gray-400 focus:outline-none focus:border-orange-400 transition-all"
                       disabled={editSaving}
                     />
                   </div>
                   <div>
                     <label className={labelClass}>영업사원</label>
                     <input value={editSalesRep} onChange={(e) => setEditSalesRep(e.target.value)}
-                      className="h-[38px] w-full px-3 rounded-xl border border-gray-200 bg-white text-xs font-medium text-navy-900 placeholder:text-gray-400 focus:outline-none focus:border-orange-400 transition-all"
+                      className="h-[38px] w-full px-3 rounded-xl border border-gray-200 bg-white text-xs font-medium text-[#0f172a] placeholder:text-gray-400 focus:outline-none focus:border-orange-400 transition-all"
                       disabled={editSaving} />
                   </div>
                 </div>
@@ -2512,10 +2469,10 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
             <div className="mt-4">
               <label className={labelClass}>특이사항</label>
-              <textarea value={editSpecialNote} onChange={(e) => setEditSpecialNote(e.target.value)} placeholder="신용조회 결과, 금융사 조건, 특이사항..." className="min-h-[90px] w-full px-4 py-3 rounded-2xl border border-gray-200 bg-white text-sm text-navy-900 placeholder:text-gray-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 resize-none transition-all" disabled={editSaving} />
+              <textarea value={editSpecialNote} onChange={(e) => setEditSpecialNote(e.target.value)} placeholder="신용조회 결과, 금융사 조건, 특이사항..." className="min-h-[90px] w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm text-[#0f172a] placeholder:text-gray-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 resize-none transition-all" disabled={editSaving} />
             </div>
 
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-3 flex justify-end gap-3">
               <button onClick={closeEditModal} disabled={editSaving} className={btnSecondary}>취소</button>
               <button onClick={saveEditRow} disabled={editSaving} className={btnPrimary}>{editSaving ? "저장중..." : "저장"}</button>
             </div>
@@ -2526,18 +2483,18 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       {/* ── 삭제 확인 모달 ── */}
       {deleteConfirmId != null && (
         <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
+          <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-3.5 shadow-2xl">
             <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500 mb-2">Delete</p>
-            <h2 className="text-xl font-semibold text-navy-900 mb-3">건 삭제 확인</h2>
+            <h2 className="text-sm font-semibold text-[#0f172a] mb-3">건 삭제 확인</h2>
             <p className="text-sm leading-6 text-gray-600">
               이 건의 <strong>모든 데이터 및 서류 파일이 영구 삭제</strong>됩니다.<br />삭제 후 복구가 불가능합니다.
             </p>
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-3 flex justify-end gap-3">
               <button onClick={() => setDeleteConfirmId(null)} disabled={deleting} className={btnSecondary}>취소</button>
               <button
                 onClick={() => deleteRow(deleteConfirmId)}
                 disabled={deleting}
-                className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl bg-red-600 text-white font-semibold text-sm hover:bg-red-700 transition-all disabled:opacity-50"
+                className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl bg-red-600 text-white font-semibold text-sm hover:bg-red-700 transition-all disabled:opacity-50"
               >{deleting ? "삭제중..." : "영구 삭제"}</button>
             </div>
           </div>
@@ -2560,9 +2517,9 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         const fmt = (n:number) => n.toLocaleString('ko-KR');
         return (
           <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 px-4">
-            <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-2xl flex flex-col max-h-[90vh]">
-              {/* 헤더 */}
-              <div className="px-5 pt-5 pb-4 border-b border-gray-100">
+            <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white shadow-2xl flex flex-col max-h-[90vh]">
+              {/* 헤더 — 고정 */}
+              <div className="px-3 pt-5 pb-4 border-b border-gray-100 shrink-0">
                 <div className="flex items-center justify-between mb-1">
                   <p className="text-sm font-semibold text-[#0a192f]">📄 원리금균등 상환스케줄</p>
                   <button onClick={() => setScheduleModal(null)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
@@ -2572,8 +2529,11 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                   {' · '}{fmt(principal)}원 · {annualRate}% · {periodLabel}
                 </p>
               </div>
-              {/* 수신인 + 시작월 + 비교설명 조건 — 스크롤 가능 */}
-              <div className="px-5 py-4 border-b border-gray-100 space-y-3 overflow-y-auto max-h-[45vh]">
+
+              {/* 전체 스크롤 영역 */}
+              <div className="flex-1 overflow-y-auto">
+              {/* 수신인 + 시작월 + 비교설명 조건 */}
+              <div className="px-3 py-4 border-b border-gray-100 space-y-3">
                 <div>
                   <label className="text-xs font-medium text-gray-500 mb-1 block">수신인</label>
                   <input
@@ -2654,7 +2614,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                 </div>
               </div>
               {/* 미리보기 테이블 */}
-              <div className="flex-1 overflow-y-auto px-5 py-3 min-h-[120px]">
+              <div className="px-3 py-3">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-gray-200">
@@ -2679,7 +2639,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               </div>
 
               {/* 발송 — SMS(MMS)로 상환표 이미지 전송 */}
-              <div className="px-5 py-4 border-t border-gray-100 space-y-3">
+              <div className="px-3 py-4 border-t border-gray-100 space-y-3">
                 <label className="text-xs font-medium text-gray-500 block">수신 전화번호</label>
                 <input
                   value={scheduleSendTarget}
@@ -2766,9 +2726,10 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                   className="w-full py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-40"
                 >{scheduleSending ? "발송 중..." : "📤 SMS로 발송"}</button>
               </div>
+              </div>{/* 전체 스크롤 영역 닫기 */}
 
-              {/* 버튼 */}
-              <div className="px-5 pb-5 pt-1 border-t border-gray-100 flex gap-2">
+              {/* PDF/닫기 버튼 — 고정 하단 */}
+              <div className="px-3 pb-5 pt-3 border-t border-gray-100 flex gap-2 shrink-0">
                 <button
                   onClick={() => downloadSchedulePDF(
                     { ...r,
@@ -2782,11 +2743,11 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                     scheduleStartDate,
                     scheduleRecipient
                   )}
-                  className="flex-1 py-2.5 rounded-xl bg-[#0a192f] text-white text-sm font-semibold hover:opacity-90 transition-all"
+                  className="flex-1 py-2.5 rounded-xl bg-[#0f172a] text-white text-sm font-semibold hover:opacity-90 transition-all"
                 >🖨️ PDF 인쇄 / 저장</button>
                 <button
                   onClick={() => setScheduleModal(null)}
-                  className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-500 hover:bg-gray-50 transition-all"
+                  className="px-3 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-500 hover:bg-gray-50 transition-all"
                 >닫기</button>
               </div>
             </div>
@@ -2856,38 +2817,38 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       {/* ── 확정 처리 모달 (간소화: 승인 시 입력한 값 확인 + 대출원금만 수정 가능) ── */}
       {confirmModal && (
         <div className="fixed inset-0 z-[125] flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
+          <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-3.5 shadow-2xl">
             <p className="text-sm font-medium tracking-[0.12em] uppercase text-emerald-600 mb-2">확정 처리</p>
-            <h2 className="text-xl font-semibold text-navy-900 mb-1">최종 확정</h2>
+            <h2 className="text-sm font-semibold text-[#0f172a] mb-1">최종 확정</h2>
             <p className="text-sm text-gray-500 mb-1">
               {confirmModal.company_name ? `${confirmModal.company_name}${confirmModal.customer_name !== confirmModal.company_name ? ` (${confirmModal.customer_name})` : ""}` : confirmModal.customer_name} ({confirmModal.customer_type})
             </p>
             <p className="text-xs text-gray-400 mb-4">승인 처리 시 입력한 값이 자동 반영됩니다. 필요 시 수정하세요.</p>
 
             {/* 승인 시 입력된 값 요약 표시 */}
-            <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 mb-4 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+            <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 mb-4 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
               <div>
                 <span className="text-gray-400">금리</span>
-                <span className="ml-2 font-semibold text-navy-900">
+                <span className="ml-2 font-semibold text-[#0f172a]">
                   {confirmModal.interest_rate != null ? `${confirmModal.interest_rate}%` : "-"}
                 </span>
               </div>
               <div>
                 <span className="text-gray-400">인센티브</span>
-                <span className="ml-2 font-semibold text-navy-900">
+                <span className="ml-2 font-semibold text-[#0f172a]">
                   {confirmModal.incentive != null ? `${confirmModal.incentive}%` : "-"}
                 </span>
               </div>
               <div>
                 <span className="text-gray-400">대출기간</span>
-                <span className="ml-2 font-semibold text-navy-900">
+                <span className="ml-2 font-semibold text-[#0f172a]">
                   {confirmLoanPeriod ? `${confirmLoanPeriod}개월` : "-"}
                 </span>
               </div>
               {confirmModal.vat_deferred && (
                 <div>
                   <span className="text-gray-400">부가세후불</span>
-                  <span className="ml-2 font-semibold text-navy-900">
+                  <span className="ml-2 font-semibold text-[#0f172a]">
                     {confirmVatAmount ? `${confirmVatAmount}원` : "-"}
                   </span>
                 </div>
@@ -2955,9 +2916,9 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               )}
             </div>
 
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-3 flex justify-end gap-3">
               <button onClick={() => setConfirmModal(null)} disabled={confirmSaving} className={btnSecondary}>취소</button>
-              <button onClick={saveConfirmModal} disabled={confirmSaving} className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl bg-emerald-600 text-white font-semibold text-sm hover:bg-emerald-700 transition-all disabled:opacity-50">
+              <button onClick={saveConfirmModal} disabled={confirmSaving} className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold text-sm hover:bg-emerald-700 transition-all disabled:opacity-50">
                 {confirmSaving ? "처리중..." : "확정 완료"}
               </button>
             </div>
@@ -2967,11 +2928,11 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
       {/* ── 신용결과 상세 입력 모달 ── */}
       {creditModal && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 px-4 py-6">
-          <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white shadow-2xl flex flex-col max-h-full overflow-hidden">
-            <div className="overflow-y-auto flex-1 p-6">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 px-4 py-3">
+          <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white shadow-2xl flex flex-col max-h-full overflow-hidden">
+            <div className="overflow-y-auto flex-1 p-3.5">
             <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500 mb-2">신용결과</p>
-            <h2 className="text-xl font-semibold text-navy-900 mb-1">
+            <h2 className="text-sm font-semibold text-[#0f172a] mb-1">
               {creditModal.next} 처리
             </h2>
             <p className="text-sm text-gray-500 mb-5">
@@ -3003,7 +2964,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                       key={v}
                       type="button"
                       onClick={() => setCreditBizHistory(v)}
-                      className={`flex-1 py-2.5 rounded-2xl border text-sm font-semibold transition-all ${
+                      className={`flex-1 py-2.5 rounded-xl border text-sm font-semibold transition-all ${
                         creditBizHistory === v
                           ? "bg-orange-500 border-orange-500 text-white"
                           : "bg-white border-gray-200 text-gray-600 hover:border-orange-300"
@@ -3233,7 +3194,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
             </div>
             </div>
             {/* 하단 버튼 — sticky */}
-            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 shrink-0">
+            <div className="px-3.5 py-4 border-t border-gray-100 flex justify-end gap-3 shrink-0">
               <button
                 onClick={() => setCreditModal(null)}
                 disabled={creditSaving}
@@ -3260,10 +3221,10 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         const totalPeriod = r.loan_period ?? (gracePeriod + installmentPeriod);
         const fmtAmt = (v: number | null) => v != null ? `${v.toLocaleString("ko-KR")}원` : "-";
         return (
-          <div className="fixed inset-0 z-[136] flex items-center justify-center bg-black/60 px-4 py-6" style={{backdropFilter:"blur(2px)"}} onClick={() => setApprovalModal(null)}>
-            <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+          <div className="fixed inset-0 z-[136] flex items-center justify-center bg-black/60 px-4 py-3" style={{backdropFilter:"blur(2px)"}} onClick={() => setApprovalModal(null)}>
+            <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
               {/* 헤더 */}
-              <div className="bg-blue-600 px-5 py-4">
+              <div className="bg-blue-600 px-3 py-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs font-medium text-blue-200 uppercase tracking-wide">승인조건 확인</p>
@@ -3280,7 +3241,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               </div>
 
               {/* 차량가격 섹션 */}
-              <div className="px-5 py-4 border-b border-gray-100">
+              <div className="px-3 py-4 border-b border-gray-100">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">차량가격</p>
                 <div className="space-y-2">
                   {vehicleAmt > 0 && (
@@ -3303,7 +3264,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               </div>
 
               {/* 할부 조건 섹션 */}
-              <div className="px-5 py-4 border-b border-gray-100">
+              <div className="px-3 py-4 border-b border-gray-100">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">할부 승인조건</p>
                 <div className="space-y-2">
                   {r.installment_principal != null && (
@@ -3331,7 +3292,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               </div>
 
               {/* 금리 & 기간 섹션 */}
-              <div className="px-5 py-4 border-b border-gray-100">
+              <div className="px-3 py-4 border-b border-gray-100">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">금리 / 기간</p>
                 <div className="space-y-2">
                   {r.credit_rate != null && (
@@ -3366,14 +3327,14 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
               {/* 특이사항 */}
               {r.credit_note && (
-                <div className="px-5 py-4 border-b border-gray-100">
+                <div className="px-3 py-4 border-b border-gray-100">
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">특이사항</p>
                   <p className="text-sm text-gray-700 whitespace-pre-wrap">{r.credit_note}</p>
                 </div>
               )}
 
-              <div className="px-5 py-3">
-                <button onClick={() => setApprovalModal(null)} className="w-full py-2.5 rounded-2xl bg-gray-100 text-sm font-semibold text-gray-600 hover:bg-gray-200 transition-all">닫기</button>
+              <div className="px-3 py-3">
+                <button onClick={() => setApprovalModal(null)} className="w-full py-2.5 rounded-xl bg-gray-100 text-sm font-semibold text-gray-600 hover:bg-gray-200 transition-all">닫기</button>
               </div>
             </div>
           </div>
@@ -3381,11 +3342,11 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       })()}
       {/* ── 보류(재통화 예약) 모달 ── */}
       {holdModal && (
-        <div className="fixed inset-0 z-[135] flex items-center justify-center bg-black/40 px-4 py-6">
-          <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white shadow-2xl flex flex-col max-h-full overflow-hidden">
-            <div className="overflow-y-auto flex-1 p-6">
+        <div className="fixed inset-0 z-[135] flex items-center justify-center bg-black/40 px-4 py-3">
+          <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white shadow-2xl flex flex-col max-h-full overflow-hidden">
+            <div className="overflow-y-auto flex-1 p-3.5">
               <p className="text-sm font-medium tracking-[0.12em] uppercase text-amber-600 mb-2">보류 / 재통화 예약</p>
-              <h2 className="text-xl font-semibold text-navy-900 mb-1">알림 예약</h2>
+              <h2 className="text-sm font-semibold text-[#0f172a] mb-1">알림 예약</h2>
               <p className="text-sm text-gray-500 mb-5">
                 {holdModal.company_name ? `${holdModal.company_name}${holdModal.customer_name !== holdModal.company_name ? ` (${holdModal.customer_name})` : ""}` : holdModal.customer_name} ({holdModal.customer_type})
               </p>
@@ -3414,7 +3375,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                         type="button"
                         onClick={() => setHoldTime(t)}
                         disabled={holdSaving}
-                        className={`px-3 py-1.5 rounded-2xl border text-xs font-semibold transition-all ${
+                        className={`px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
                           holdTime === t
                             ? "bg-amber-500 border-amber-500 text-white"
                             : "bg-white border-gray-200 text-gray-600 hover:border-amber-300"
@@ -3426,7 +3387,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                       value={holdTime}
                       onChange={(e) => setHoldTime(e.target.value)}
                       disabled={holdSaving}
-                      className="h-[34px] px-3 rounded-2xl border border-gray-200 text-xs font-medium text-navy-900 focus:outline-none focus:border-amber-400 transition-all"
+                      className="h-[34px] px-3 rounded-xl border border-gray-200 text-xs font-medium text-[#0f172a] focus:outline-none focus:border-amber-400 transition-all"
                     />
                   </div>
                 </div>
@@ -3449,7 +3410,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                             );
                           }}
                           disabled={holdSaving}
-                          className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl border text-sm font-medium transition-all ${
+                          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-sm font-medium transition-all ${
                             checked
                               ? "bg-amber-50 border-amber-400 text-amber-800"
                               : "bg-white border-gray-200 text-gray-600 hover:border-amber-200"
@@ -3480,7 +3441,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
                 {/* 예약 요약 */}
                 {holdDate && holdRecipients.length > 0 && (
-                  <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+                  <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-800">
                     <p className="font-semibold mb-1">📋 예약 요약</p>
                     <p>일시: {holdDate} {holdTime}</p>
                     <p>수신: {holdRecipients.map((id) => KAKAO_RECIPIENTS.find((r) => r.id === id)?.label ?? id).join(", ")}</p>
@@ -3490,7 +3451,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               </div>
             </div>
 
-            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 shrink-0">
+            <div className="px-3.5 py-4 border-t border-gray-100 flex justify-end gap-3 shrink-0">
               <button
                 onClick={() => setHoldModal(null)}
                 disabled={holdSaving}
@@ -3499,7 +3460,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               <button
                 onClick={saveHold}
                 disabled={holdSaving}
-                className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl bg-amber-500 text-white font-semibold text-sm hover:bg-amber-600 transition-all disabled:opacity-50"
+                className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl bg-amber-500 text-white font-semibold text-sm hover:bg-amber-600 transition-all disabled:opacity-50"
               >{holdSaving ? "저장중..." : "⏰ 보류 예약"}</button>
             </div>
           </div>

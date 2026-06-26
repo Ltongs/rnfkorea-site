@@ -204,13 +204,13 @@ function formatCreatedAt(s?: string) {
 
 // ─── 디자인 시스템 (타이어 페이지 기준) ──────────────────────
 const pillBase =
-  "inline-flex items-center px-3 py-1 rounded-2xl text-xs font-semibold border";
+  "inline-flex items-center px-3 py-1 rounded-xl text-xs font-semibold border";
 const pillDone = "bg-emerald-50 text-emerald-700 border-emerald-200";
 const pillProg = "bg-orange-50 text-orange-700 border-orange-200";
 const pillGray = "bg-gray-100 text-gray-500 border-gray-200";
 
 const btnBase =
-  "w-[88px] h-[40px] inline-flex items-center justify-center px-2 py-1 rounded-2xl text-xs font-semibold border transition-all text-center whitespace-nowrap shrink-0";
+  "w-[88px] h-[40px] inline-flex items-center justify-center px-2 py-1 rounded-xl text-xs font-semibold border transition-all text-center whitespace-nowrap shrink-0";
 const btnOn = "bg-navy-900 text-white border-navy-900";
 const btnOff =
   "bg-white text-navy-900 border-gray-200 hover:border-orange-300 hover:text-orange-600";
@@ -218,21 +218,21 @@ const btnDisabled = "bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-50";
 
 const labelClass = "block text-sm font-medium text-navy-900 mb-2";
 const compactInputClass =
-  "h-[48px] w-full px-4 rounded-2xl border border-gray-200 bg-white " +
+  "h-[48px] w-full px-4 rounded-xl border border-gray-200 bg-white " +
   "text-sm font-medium text-navy-900 placeholder:text-gray-400 " +
   "focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 " +
   "disabled:opacity-50 transition-all";
 
 const compactButtonClass =
-  "h-[48px] w-full px-4 rounded-2xl border border-gray-200 bg-white " +
+  "h-[48px] w-full px-4 rounded-xl border border-gray-200 bg-white " +
   "text-sm font-medium text-navy-900 hover:border-orange-300 disabled:opacity-60 transition-all";
 
-const cardClass = "border border-gray-200 rounded-2xl bg-white shadow-sm hover:shadow-md transition-all";
+const cardClass = "border border-gray-200 rounded-xl bg-white shadow-sm hover:shadow-md transition-all";
 
 const infoLabel = "text-xs font-medium tracking-wide text-gray-400 uppercase";
 const infoValue = "mt-1 text-sm font-semibold text-navy-900 break-all";
 const summaryBadgeBase =
-  "inline-flex items-center gap-1.5 rounded-2xl border px-3 py-1 text-xs font-semibold whitespace-nowrap";
+  "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1 text-xs font-semibold whitespace-nowrap";
 
 type SummaryFilter = "all" | "hold" | "insurance_waiting" | "docs_waiting" | "register_waiting" | "completed";
 
@@ -1450,80 +1450,47 @@ VIN: ${nextVin}`);
 
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
 
       {/* ── 숨겨진 파일 인풋 ── */}
       <input ref={fileInputRef} type="file" accept="image/*,.pdf" className="hidden" onChange={onFilePicked} />
       <input ref={manufactureInputRef} type="file" accept="image/*" className="hidden" onChange={onManufacturePicked} />
 
-      {/* ── 히어로 헤더 ── */}
-      <section className="relative bg-[#0a192f] text-white overflow-hidden">
-        <div
-          className="absolute inset-0 opacity-[0.04]" aria-hidden="true"
-          style={{
-            backgroundImage: "repeating-linear-gradient(45deg, white 0, white 1px, transparent 0, transparent 50%)",
-            backgroundSize: "24px 24px",
-          }}
-        />
-        <div className="relative max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-12 md:py-16">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-400">Business</p>
-              <h1 className="mt-3 text-3xl md:text-4xl font-semibold leading-[1.15] text-white break-keep">
-                Narumi 업무 관리
-              </h1>
-              <p className="mt-3 text-base leading-7 text-white/75 break-keep">
-                차량 출고 · 보험 · 등록 진행 상태 관리
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={fetchRows}
-                className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl border border-white/20 bg-white/10 text-white text-sm font-medium hover:bg-white/20 transition-all"
-              >
-                새로고침
-              </button>
-              <button
-                type="button"
-                onClick={logout}
-                className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl border border-red-400/40 bg-red-500/20 text-white text-sm font-medium hover:bg-red-500/30 transition-all"
-              >
-                로그아웃
-              </button>
-            </div>
-          </div>
-
-          {/* 로그인 계정 정보 */}
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <span className="text-xs font-medium text-white/50">로그인:</span>
-            <span className={`text-xs font-semibold px-2.5 py-1 rounded-2xl border ${
-              isAdmin ? "bg-emerald-500/20 border-emerald-400/30 text-emerald-300" :
-              isInsuranceManager ? "bg-purple-500/20 border-purple-400/30 text-purple-300" :
-              isNarumi ? "bg-orange-500/20 border-orange-400/30 text-orange-300" :
-              isLotte ? "bg-blue-500/20 border-blue-400/30 text-blue-300" :
-              "bg-white/10 border-white/20 text-white/70"
-            }`}>
-              {loginRoleLabel}
-            </span>
-            {user?.email && (
-              <span className="text-xs text-white/40">{user.email}</span>
-            )}
-          </div>
+      {/* ── 헤더 (AI비서 스타일) ── */}
+      <div className="bg-white border-b border-gray-200 px-3 py-1.5 flex items-center justify-between gap-3 sticky top-0 z-30">
+        <div className="flex items-center gap-2.5">
+          <span className="text-sm font-semibold text-[#0f172a]">🚛 나르미 업무 관리</span>
+          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${
+            isAdmin ? "bg-emerald-50 border-emerald-100 text-emerald-600" :
+            isInsuranceManager ? "bg-purple-50 border-purple-100 text-purple-600" :
+            isNarumi ? "bg-orange-50 border-orange-100 text-orange-600" :
+            isLotte ? "bg-blue-50 border-blue-100 text-blue-600" :
+            "bg-gray-50 border-gray-200 text-gray-500"
+          }`}>{loginRoleLabel}</span>
         </div>
-      </section>
+        <div className="flex items-center gap-1.5">
+          <button type="button" onClick={fetchRows}
+            className="inline-flex items-center px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-medium hover:border-gray-300 transition-all">
+            새로고침
+          </button>
+          <button type="button" onClick={logout}
+            className="inline-flex items-center px-2.5 py-1 rounded-xl border border-red-200 text-red-500 text-xs font-medium hover:border-red-300 transition-all">
+            로그아웃
+          </button>
+        </div>
+      </div>
 
-      <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-8 space-y-6">
+      <div className="px-4 py-3 space-y-3">
 
         {/* ── 오류 메시지 ── */}
         {!!err && (
-          <div className="rounded-2xl border border-red-200 bg-red-50 text-red-700 px-5 py-3 text-sm font-medium">
+          <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-3 py-3 text-sm font-medium">
             {err}
           </div>
         )}
 
         {/* ── 안내문 ── */}
-        <div className="rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 text-xs text-orange-700/90 leading-relaxed space-y-0.5">
+        <div className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-4 text-xs text-orange-700/90 leading-relaxed space-y-0.5">
           <p>* 고객명/전화번호는 입력 후 {UI_MASK_AFTER_HOURS}시간 경과 시 화면에서 마스킹됩니다.</p>
           <p>* 고객명은 전체 마스킹, 고객 전화번호는 뒷 4자리가 마스킹됩니다.</p>
           <p>* 고객 전화번호는 입력 후 {DB_SCRUB_AFTER_HOURS}시간(5일) 경과 시 DB에서 뒷 4자리가 영구 마스킹(삭제)됩니다.</p>
@@ -1566,7 +1533,7 @@ VIN: ${nextVin}`);
             <button
               type="button"
               onClick={() => { setSummaryFilter("all"); setStatusFilter("all"); }}
-              className="inline-flex items-center gap-1.5 rounded-2xl border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-500 hover:shadow-sm transition-all"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-500 hover:shadow-sm transition-all"
             >
               전체 보기
             </button>
@@ -1574,7 +1541,7 @@ VIN: ${nextVin}`);
         </div>
 
         {/* ── 검색/필터 패널 ── */}
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm">
           <div className="flex items-center justify-between gap-3 mb-4">
             <p className="text-xs font-medium tracking-[0.12em] uppercase text-orange-500">Search</p>
             <button
@@ -1617,7 +1584,7 @@ VIN: ${nextVin}`);
                   <button
                     type="button"
                     onClick={() => setShowOldUploaded((v) => !v)}
-                    className={`w-full h-[48px] px-4 rounded-2xl border text-sm font-medium transition-all ${
+                    className={`w-full h-[48px] px-4 rounded-xl border text-sm font-medium transition-all ${
                       showOldUploaded
                         ? "bg-orange-50 border-orange-200 text-orange-700"
                         : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
@@ -1633,16 +1600,16 @@ VIN: ${nextVin}`);
 
         {/* ── 신규 입력 패널 ── */}
         {((isAdmin || isNarumi) || canViewAll) && (isPrivilegedManager || isNarumi) && (
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm">
             <div className="flex items-center justify-between mb-5">
               <div>
                 <p className="text-xs font-medium tracking-[0.12em] uppercase text-orange-500">New</p>
-                <h2 className="mt-1 text-xl font-semibold text-navy-900">신규 입력</h2>
+                <h2 className="mt-1 text-sm font-semibold text-navy-900">신규 입력</h2>
               </div>
               <button
                 type="button"
                 onClick={() => setShowCreatePanel((prev) => !prev)}
-                className="h-9 w-9 shrink-0 rounded-2xl border border-gray-200 bg-white text-xl font-semibold text-gray-500 hover:border-gray-300 transition-all"
+                className="h-9 w-9 shrink-0 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-500 hover:border-gray-300 transition-all"
                 aria-label={showCreatePanel ? "신규입력 접기" : "신규입력 펼치기"}
               >
                 {showCreatePanel ? "−" : "+"}
@@ -1686,7 +1653,7 @@ VIN: ${nextVin}`);
                   </div>
                   <div>
                     <label className={labelClass}>롯데오토리스</label>
-                    <div className="h-[48px] w-full rounded-2xl border border-gray-200 bg-white flex items-center gap-4 px-4">
+                    <div className="h-[48px] w-full rounded-xl border border-gray-200 bg-white flex items-center gap-4 px-4">
                       <label className="inline-flex items-center gap-1.5 text-sm font-medium text-navy-900 cursor-pointer">
                         <input type="radio" name="lotte" checked={lotte === true} onChange={() => setLotte(true)} className="h-4 w-4 accent-orange-500" disabled={!canCreate} /> Y
                       </label>
@@ -1715,14 +1682,14 @@ VIN: ${nextVin}`);
                 {/* 특이사항 */}
                 <div>
                   <label className={labelClass}>특이사항</label>
-                  <textarea value={specialNote} onChange={(e) => setSpecialNote(e.target.value)} placeholder="고객 요청사항 / 특이사항 / 보험사 정보..." className="w-full min-h-[80px] px-4 py-3 rounded-2xl border border-gray-200 bg-white text-sm text-navy-900 placeholder:text-gray-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 resize-none transition-all" disabled={!canCreate} />
+                  <textarea value={specialNote} onChange={(e) => setSpecialNote(e.target.value)} placeholder="고객 요청사항 / 특이사항 / 보험사 정보..." className="w-full min-h-[80px] px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm text-navy-900 placeholder:text-gray-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 resize-none transition-all" disabled={!canCreate} />
                 </div>
 
                 <div className="flex justify-end gap-3">
-                  <button type="button" onClick={onReset} disabled={saving || !canCreate} className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl border border-gray-300 bg-white text-navy-900 font-semibold text-sm hover:shadow-md transition-all disabled:opacity-50">
+                  <button type="button" onClick={onReset} disabled={saving || !canCreate} className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl border border-gray-300 bg-white text-navy-900 font-semibold text-sm hover:shadow-md transition-all disabled:opacity-50">
                     초기화
                   </button>
-                  <button type="button" onClick={onAdd} disabled={saving || !canCreate} className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl bg-orange-500 text-white font-semibold text-sm hover:bg-orange-600 transition-all disabled:opacity-50">
+                  <button type="button" onClick={onAdd} disabled={saving || !canCreate} className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl bg-orange-500 text-white font-semibold text-sm hover:bg-orange-600 transition-all disabled:opacity-50">
                     {saving ? "저장중..." : "접수 등록"}
                   </button>
                 </div>
@@ -1733,7 +1700,7 @@ VIN: ${nextVin}`);
 
         {/* ── focusId: 특정 딜 단독 뷰 배너 ── */}
         {focusId && (
-          <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-blue-50 border border-blue-200">
+          <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-50 border border-blue-200">
             <button
               onClick={() => navigate("/narumi")}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-blue-200 text-blue-700 text-xs font-semibold hover:bg-blue-50 transition-all shrink-0"
@@ -1748,7 +1715,7 @@ VIN: ${nextVin}`);
 
         {/* ── 카드 목록 ── */}
         {loading && (
-          <div className="py-12 text-center text-sm text-gray-400">로딩 중...</div>
+          <div className="py-3 text-center text-sm text-gray-400">로딩 중...</div>
         )}
 
         <div className="space-y-4">
@@ -1765,10 +1732,10 @@ VIN: ${nextVin}`);
             const dialable     = getDialablePhone(r);
 
             return (
-              <div key={r.id} className={`rounded-2xl border bg-white shadow-sm hover:shadow-md transition-all overflow-hidden ${isHold ? "border-gray-300 opacity-75" : isLocked ? "border-emerald-200" : "border-gray-200"}`}>
+              <div key={r.id} className={`rounded-xl border bg-white shadow-sm hover:shadow-md transition-all overflow-hidden ${isHold ? "border-gray-300 opacity-75" : isLocked ? "border-emerald-200" : "border-gray-200"}`}>
 
                 {/* 카드 헤더 */}
-                <div className="flex items-start justify-between gap-3 px-4 md:px-6 pt-5 pb-4 border-b border-gray-100">
+                <div className="flex items-start justify-between gap-3 px-4 md:px-3.5 pt-5 pb-4 border-b border-gray-100">
                   <div className="flex flex-wrap items-center gap-2">
                     {/* 상태 뱃지 */}
                     <span className={`${pillBase} ${
@@ -1782,19 +1749,19 @@ VIN: ${nextVin}`);
                       {isLocked ? "차량등록증 완료" : isHold ? "보류" : statusLabel(deriveStatus(r))}
                     </span>
                     {r.is_lotte_autolease && (
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-2xl border border-blue-200 bg-blue-50 text-blue-700 text-xs font-semibold">롯데</span>
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-xs font-semibold">롯데</span>
                     )}
                     <span className="text-base font-semibold text-navy-900">
                       {r.vin_last6 ?? r.vin?.slice(-6) ?? "-"}
                     </span>
                     <span className="text-xs text-gray-400">#{String(r.id)}</span>
                     {r.vehicle_use_type && (
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-2xl border border-gray-200 bg-gray-50 text-gray-600 text-xs font-medium">{r.vehicle_use_type}</span>
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-xl border border-gray-200 bg-gray-50 text-gray-600 text-xs font-medium">{r.vehicle_use_type}</span>
                     )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {canEditExisting && (
-                      <button type="button" onClick={() => openEditModal(r)} className="inline-flex items-center justify-center px-4 py-2 rounded-2xl border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:border-gray-300 hover:shadow-sm transition-all">
+                      <button type="button" onClick={() => openEditModal(r)} className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:border-gray-300 hover:shadow-sm transition-all">
                         수정
                       </button>
                     )}
@@ -1802,7 +1769,7 @@ VIN: ${nextVin}`);
                 </div>
 
                 {/* 카드 바디 */}
-                <div className="px-4 md:px-6 py-5 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="px-4 md:px-3.5 py-2.5 grid grid-cols-1 md:grid-cols-2 gap-3">
 
                   {/* 왼쪽: 기본 정보 + 단계 버튼 */}
                   <div className="space-y-4">
@@ -1923,7 +1890,7 @@ VIN: ${nextVin}`);
                         <a
                           href={`${supabase.storage.from("vehicle_docs").getPublicUrl(r.manufacture_doc_path).data.publicUrl}`}
                           target="_blank" rel="noopener noreferrer"
-                          className="inline-flex items-center justify-center px-4 py-2 rounded-2xl border border-gray-300 bg-white text-navy-900 font-semibold text-xs hover:shadow-md transition-all"
+                          className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-gray-300 bg-white text-navy-900 font-semibold text-xs hover:shadow-md transition-all"
                         >
                           제작증 보기
                         </a>
@@ -1932,7 +1899,7 @@ VIN: ${nextVin}`);
                         <a
                           href={`${supabase.storage.from("vehicle_docs").getPublicUrl(r.vehicle_doc_path).data.publicUrl}`}
                           target="_blank" rel="noopener noreferrer"
-                          className="inline-flex items-center justify-center px-4 py-2 rounded-2xl border border-emerald-200 bg-emerald-50 text-emerald-700 font-semibold text-xs hover:shadow-md transition-all"
+                          className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 font-semibold text-xs hover:shadow-md transition-all"
                         >
                           차량등록증 보기
                         </a>
@@ -1944,7 +1911,7 @@ VIN: ${nextVin}`);
                   <div className="space-y-4">
                     {/* 우편 발송 */}
                     {r.is_registered && (
-                      <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                         <div className="flex items-center justify-between mb-3">
                           <p className={`${infoLabel}`}>우편 발송</p>
                         </div>
@@ -1980,8 +1947,8 @@ VIN: ${nextVin}`);
                               <input type="date" value={postalSentDate} onChange={(e) => setPostalSentDate(e.target.value)} className={compactInputClass} />
                             </div>
                             <div className="flex justify-end gap-2">
-                              <button type="button" onClick={closePostalForm} className="inline-flex items-center justify-center px-4 py-2 rounded-2xl border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:shadow-sm transition-all">취소</button>
-                              <button type="button" onClick={() => savePostalInfo(r)} disabled={postalSavingId === r.id} className="inline-flex items-center justify-center px-4 py-2 rounded-2xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-all disabled:opacity-50">
+                              <button type="button" onClick={closePostalForm} className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:shadow-sm transition-all">취소</button>
+                              <button type="button" onClick={() => savePostalInfo(r)} disabled={postalSavingId === r.id} className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-all disabled:opacity-50">
                                 {postalSavingId === r.id ? "저장중..." : "저장"}
                               </button>
                             </div>
@@ -1999,7 +1966,7 @@ VIN: ${nextVin}`);
                             type="button"
                             disabled={memoSavingId === r.id}
                             onClick={() => saveMemo(r.id)}
-                            className="inline-flex items-center justify-center px-3 py-1 rounded-2xl bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 transition-all disabled:opacity-50"
+                            className="inline-flex items-center justify-center px-3 py-1 rounded-xl bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 transition-all disabled:opacity-50"
                           >
                             {memoSavingId === r.id ? "저장중..." : "저장"}
                           </button>
@@ -2011,10 +1978,10 @@ VIN: ${nextVin}`);
                           value={memoValue}
                           onChange={(e) => setMemoDrafts((prev) => ({ ...prev, [String(r.id)]: e.target.value }))}
                           placeholder="관리자/보험전담 계정만 메모 입력/수정 가능"
-                          className="w-full h-[88px] text-sm text-gray-700 rounded-2xl bg-white border border-gray-200 px-4 py-3 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 resize-none transition-all"
+                          className="w-full h-[88px] text-sm text-gray-700 rounded-xl bg-white border border-gray-200 px-4 py-3 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 resize-none transition-all"
                         />
                       ) : (
-                        <div className="h-[88px] overflow-y-auto text-sm text-gray-700 rounded-2xl bg-gray-50 border border-gray-200 px-4 py-3">
+                        <div className="h-[88px] overflow-y-auto text-sm text-gray-700 rounded-xl bg-gray-50 border border-gray-200 px-4 py-3">
                           {r.special_note?.trim() ? r.special_note : <span className="text-gray-400">-</span>}
                         </div>
                       )}
@@ -2026,7 +1993,7 @@ VIN: ${nextVin}`);
           })}
 
           {!loading && filteredRows.length === 0 && (
-            <div className="rounded-2xl border border-gray-200 bg-white px-6 py-12 text-center text-sm text-gray-500">
+            <div className="rounded-xl border border-gray-200 bg-white px-3.5 py-3 text-center text-sm text-gray-500">
               조회 결과가 없습니다.
             </div>
           )}
@@ -2036,14 +2003,14 @@ VIN: ${nextVin}`);
       {/* ── 수정 모달 ── */}
       {editRow && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-2xl rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-start justify-between gap-3 mb-6">
+          <div className="w-full max-w-2xl rounded-xl border border-gray-200 bg-white p-3.5 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-3 mb-3">
               <div>
                 <p className="text-xs font-medium tracking-[0.12em] uppercase text-orange-500">Edit</p>
-                <h2 className="mt-1 text-xl font-semibold text-navy-900">기본정보 수정</h2>
+                <h2 className="mt-1 text-sm font-semibold text-navy-900">기본정보 수정</h2>
                 <p className="mt-1 text-sm text-gray-500">차대번호, 고객명, 전화번호, 영업사원 정보를 수정합니다.</p>
               </div>
-              <button type="button" onClick={closeEditModal} disabled={editSaving} className="h-9 w-9 rounded-2xl border border-gray-200 text-xl font-bold text-gray-500 hover:border-gray-300 disabled:opacity-50 transition-all">×</button>
+              <button type="button" onClick={closeEditModal} disabled={editSaving} className="h-9 w-9 rounded-xl border border-gray-200 text-sm font-bold text-gray-500 hover:border-gray-300 disabled:opacity-50 transition-all">×</button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -2084,12 +2051,12 @@ VIN: ${nextVin}`);
 
             <div className="mt-4">
               <label className={labelClass}>특이사항</label>
-              <textarea value={editSpecialNote} onChange={(e) => setEditSpecialNote(e.target.value)} placeholder="고객 요청사항 / 특이사항 / 보험사 정보 / 등록 관련 메모..." className="min-h-[90px] w-full px-4 py-3 rounded-2xl border border-gray-200 bg-white text-sm text-navy-900 placeholder:text-gray-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 resize-none transition-all" disabled={editSaving} />
+              <textarea value={editSpecialNote} onChange={(e) => setEditSpecialNote(e.target.value)} placeholder="고객 요청사항 / 특이사항 / 보험사 정보 / 등록 관련 메모..." className="min-h-[90px] w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm text-navy-900 placeholder:text-gray-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 resize-none transition-all" disabled={editSaving} />
             </div>
 
-            <div className="mt-6 flex justify-end gap-3">
-              <button type="button" onClick={closeEditModal} disabled={editSaving} className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:shadow-md transition-all disabled:opacity-50">취소</button>
-              <button type="button" onClick={saveEditRow} disabled={editSaving} className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-all disabled:opacity-50">{editSaving ? "저장중..." : "저장"}</button>
+            <div className="mt-3 flex justify-end gap-3">
+              <button type="button" onClick={closeEditModal} disabled={editSaving} className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:shadow-md transition-all disabled:opacity-50">취소</button>
+              <button type="button" onClick={saveEditRow} disabled={editSaving} className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-all disabled:opacity-50">{editSaving ? "저장중..." : "저장"}</button>
             </div>
           </div>
         </div>
@@ -2098,17 +2065,17 @@ VIN: ${nextVin}`);
       {/* ── 보험 모달 ── */}
       {insuranceModalRow && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
+          <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-3.5 shadow-2xl">
             <p className="text-xs font-medium tracking-[0.12em] uppercase text-orange-500 mb-2">Insurance</p>
-            <h2 className="text-xl font-semibold text-navy-900 mb-3">당사에서 가입하나요?</h2>
+            <h2 className="text-sm font-semibold text-navy-900 mb-3">당사에서 가입하나요?</h2>
             <p className="text-sm leading-6 text-gray-600">
               Y를 선택하면 상담관리 페이지의 보험 상담등록 화면으로 이동합니다.<br />
               N을 선택하면 현재 업무목록에서 보험 단계가 즉시 완료됩니다.
             </p>
-            <div className="mt-6 flex justify-end gap-3">
-              <button type="button" onClick={() => setInsuranceModalRow(null)} className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:shadow-md transition-all">취소</button>
-              <button type="button" onClick={completeInsuranceAsN} className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl border border-emerald-600 bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition-all">N</button>
-              <button type="button" onClick={moveToCallManagementForInsurance} className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-all">Y</button>
+            <div className="mt-3 flex justify-end gap-3">
+              <button type="button" onClick={() => setInsuranceModalRow(null)} className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:shadow-md transition-all">취소</button>
+              <button type="button" onClick={completeInsuranceAsN} className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl border border-emerald-600 bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition-all">N</button>
+              <button type="button" onClick={moveToCallManagementForInsurance} className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-all">Y</button>
             </div>
           </div>
         </div>
