@@ -467,11 +467,26 @@ function ExportShopTab({ onNavigate }: { onNavigate:(path:string)=>void }) {
 
             {/* 이미지 갤러리 */}
             {selected.images.length>0&&(
-              <div className="relative bg-gray-100">
+              <div className="relative bg-gray-100"
+                onTouchStart={(e)=>{
+                  const t = e.touches[0];
+                  (e.currentTarget as any)._touchStartX = t.clientX;
+                }}
+                onTouchEnd={(e)=>{
+                  const startX = (e.currentTarget as any)._touchStartX ?? 0;
+                  const endX = e.changedTouches[0].clientX;
+                  const diff = startX - endX;
+                  if(Math.abs(diff)>40){
+                    if(diff>0) setImgIdx(i=>Math.min(i+1,selected.images.length-1));
+                    else setImgIdx(i=>Math.max(i-1,0));
+                  }
+                }}
+              >
                 <img
                   src={exImgUrl(selected.images[imgIdx])}
                   alt=""
-                  className="w-full h-64 object-cover"
+                  className="w-full h-64 object-cover select-none"
+                  draggable={false}
                 />
                 {selected.status==="sold"&&(
                   <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
@@ -484,7 +499,14 @@ function ExportShopTab({ onNavigate }: { onNavigate:(path:string)=>void }) {
                       className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white rounded-full w-8 h-8 flex items-center justify-center text-gray-700 shadow">‹</button>
                     <button onClick={()=>setImgIdx(i=>Math.min(i+1,selected.images.length-1))}
                       className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white rounded-full w-8 h-8 flex items-center justify-center text-gray-700 shadow">›</button>
-                    <p className="absolute bottom-2 right-3 text-white/80 text-xs">{imgIdx+1}/{selected.images.length}</p>
+                    {/* 도트 인디케이터 */}
+                    <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
+                      {selected.images.map((_,i)=>(
+                        <button key={i} onClick={()=>setImgIdx(i)}
+                          className={`w-1.5 h-1.5 rounded-full transition-all ${i===imgIdx?"bg-white scale-125":"bg-white/50"}`}/>
+                      ))}
+                    </div>
+                    <p className="absolute bottom-2 right-3 text-white/70 text-xs">{imgIdx+1}/{selected.images.length}</p>
                   </>
                 )}
               </div>
@@ -2222,6 +2244,7 @@ const SecretaryPage:React.FC = () => {
   // 나르미 탭
   const [narumiLoading2,setNarumiLoading2] = useState(false);
   const [narumiList,setNarumiList] = useState<NarumiTask[]>([]);
+  const [narumiFilter,setNarumiFilter] = useState<"active"|"all"|"done">("active");
   const [narumiConsults,setNarumiConsults] = useState<OrderView[]>([]);
   const [narumiSelectedId,setNarumiSelectedId] = useState<number|null>(null);
   // 진흥주문 탭
@@ -3850,10 +3873,15 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
 
         {/* 탭 - 가로 스크롤 한 줄. flex-wrap 부모 바깥의 독립 full-width 블록 */}
         <style>{`.hcm-tab-scroll{-ms-overflow-style:none;scrollbar-width:none;}.hcm-tab-scroll::-webkit-scrollbar{display:none;height:0;}`}</style>
-        <div className="w-full px-6 py-3" style={{minWidth:0}}>
+        <div className="w-full px-3 py-3 flex items-center gap-1" style={{minWidth:0}}>
+          {/* 왼쪽 화살표 */}
+          <button
+            className="flex-shrink-0 w-7 h-7 rounded-full bg-white border border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-300 flex items-center justify-center text-sm transition-all shadow-sm"
+            onClick={()=>tabScrollRef.current&&(tabScrollRef.current.scrollLeft-=120)}
+          >‹</button>
           <div
             ref={tabScrollRef}
-            className="hcm-tab-scroll flex items-center gap-1.5"
+            className="hcm-tab-scroll flex items-center gap-1.5 flex-1"
             style={{
               overflowX: "scroll",
               overflowY: "hidden",
@@ -3876,6 +3904,11 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               </button>
             ))}
           </div>
+          {/* 오른쪽 화살표 */}
+          <button
+            className="flex-shrink-0 w-7 h-7 rounded-full bg-white border border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-300 flex items-center justify-center text-sm transition-all shadow-sm"
+            onClick={()=>tabScrollRef.current&&(tabScrollRef.current.scrollLeft+=120)}
+          >›</button>
         </div>
       </div>
 
@@ -4504,22 +4537,26 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
           {/* ══ 금융상담 ══ */}
           {tab==="finance"&&(
             <div className="space-y-3 pb-4">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <p className="text-sm font-semibold text-[#0f172a]">🏦 금융 상담내역</p>
-                <div className="flex gap-1.5 flex-wrap">
-                  {(["active","all","done"] as const).map(f=>(
-                    <button key={f} onClick={()=>setFinanceFilter(f)}
-                      className={`px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${financeFilter===f?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
-                      {{active:"진행중",all:"전체",done:"완료"}[f]}
-                    </button>
-                  ))}
-                  <button className={BTG} onClick={()=>setShowRepayModal(true)}>📋 상환스케줄 송부</button>
-                  <button className={BTG} onClick={()=>{
-                    setFinanceLoading(true);
-                    supabase.from("consultation_cases").select("id,customer_name,work_type,status,summary,created_at,phone,sub_type").eq("work_type","finance").order("created_at",{ascending:false}).limit(60)
-                      .then(({data})=>{setFinanceConsults((data??[]).map((c:any)=>({...c,progress_stage:null,product_detail:null})));setFinanceLoading(false);});
-                  }}>새로고침</button>
-                  <button className={BTO} onClick={()=>navigate("/work/call-management?work_type=finance")}>전체 보기 →</button>
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm font-semibold text-[#0f172a] shrink-0 pt-1">🏦 금융 상담내역</p>
+                <div className="flex flex-col gap-1.5 items-end">
+                  <div className="flex gap-1.5 flex-wrap justify-end">
+                    {(["active","all","done"] as const).map(f=>(
+                      <button key={f} onClick={()=>setFinanceFilter(f)}
+                        className={`px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${financeFilter===f?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
+                        {{active:"진행중",all:"전체",done:"완료"}[f]}
+                      </button>
+                    ))}
+                    <button className={BTG} onClick={()=>setShowRepayModal(true)}>📋 상환스케줄</button>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <button className={BTG} onClick={()=>{
+                      setFinanceLoading(true);
+                      supabase.from("consultation_cases").select("id,customer_name,work_type,status,summary,created_at,phone,sub_type").eq("work_type","finance").order("created_at",{ascending:false}).limit(60)
+                        .then(({data})=>{setFinanceConsults((data??[]).map((c:any)=>({...c,progress_stage:null,product_detail:null})));setFinanceLoading(false);});
+                    }}>새로고침</button>
+                    <button className={BTO} onClick={()=>navigate("/work/call-management?work_type=finance")}>전체 보기 →</button>
+                  </div>
                 </div>
               </div>
 
@@ -4752,6 +4789,12 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <p className="text-sm font-semibold text-[#0f172a]">🚛 나르미 업무</p>
                 <div className="flex gap-1.5 flex-wrap">
+                  {(["active","all","done"] as const).map(f=>(
+                    <button key={f} onClick={()=>setNarumiFilter(f)}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${narumiFilter===f?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
+                      {{active:"진행중",all:"전체",done:"완료/보류"}[f]}
+                    </button>
+                  ))}
                   <button className={BTG} onClick={()=>{
                     setNarumiLoading2(true);
                     supabase.from("narumi_tasks").select("*").order("created_at",{ascending:false}).limit(60)
@@ -4760,9 +4803,17 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                   <button className={BTO} onClick={()=>navigate("/narumi")}>전체 페이지 →</button>
                 </div>
               </div>
-              {narumiLoading2?<p className="text-sm text-gray-400 p-4 text-center">불러오는 중...</p>:narumiList.length===0?<div className={`${CARD} p-8 text-center text-gray-400 text-sm`}>등록된 차량이 없습니다</div>:(
+              {narumiLoading2?<p className="text-sm text-gray-400 p-4 text-center">불러오는 중...</p>:(()=>{
+                const DONE_STS = ["completed","registered","done","cancelled","on_hold"];
+                const filtered = narumiFilter==="active"
+                  ? narumiList.filter(t=>!DONE_STS.includes(t.status??""))
+                  : narumiFilter==="done"
+                  ? narumiList.filter(t=>DONE_STS.includes(t.status??""))
+                  : narumiList;
+                if(filtered.length===0) return <div className={`${CARD} p-8 text-center text-gray-400 text-sm`}>해당 차량이 없습니다</div>;
+                return (
                 <div className="space-y-2">
-                  {narumiList.map((t:any)=>(
+                  {filtered.map((t:any)=>(
                     <div key={t.id} className={`${CARD} p-3.5 cursor-pointer hover:shadow-md transition-all`}
                       onClick={()=>navigate(`/narumi?id=${t.id}`)}>
                       <div className="flex items-start gap-2.5">
@@ -4786,7 +4837,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                     </div>
                   ))}
                 </div>
-              )}
+                );
+              })()}
               {narumiConsults.length>0&&(
                 <div className={`${CARD} p-3.5`}>
                   <p className="text-xs font-semibold text-gray-500 mb-2">📋 나르미 상담내역 ({narumiConsults.length}건)</p>
