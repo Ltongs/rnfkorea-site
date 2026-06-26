@@ -6,7 +6,7 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
-type TabKey = "chat"|"schedule"|"status"|"orders"|"hyundaicm"|"finance"|"narumi"|"jinheung"|"email"|"memo"|"financehub";
+type TabKey = "chat"|"schedule"|"status"|"orders"|"hyundaicm"|"finance"|"narumi"|"jinheung"|"email"|"memo"|"financehub"|"exportshop";
 type EmailReport = {
   id:number; created_at:string; report_date:string;
   title:string; content:string; source:string; is_read:boolean;
@@ -250,6 +250,162 @@ const LinkBadge = ({id,onClick}:{id:number|null;onClick:()=>void}) => id ? (
     🔗 상담#{id}
   </button>
 ) : null;
+
+
+// ─── ExportShop 탭 컴포넌트 ──────────────────────────────────────────────────
+const SUPABASE_STORAGE_URL = (import.meta as any).env?.VITE_SUPABASE_URL as string ?? "";
+const EXPORT_STORAGE_BASE = `${SUPABASE_STORAGE_URL}/storage/v1/object/public/export-listings`;
+
+type ExportListing = {
+  id: string;
+  category: "forklift"|"mini_excavator"|"excavator";
+  brand: string;
+  model: string|null;
+  year: number|null;
+  tonnage: number|null;
+  engine_type: string|null;
+  condition_grade: "A"|"B"|"C"|null;
+  price_usd: number|null;
+  price_negotiable: boolean;
+  stock_qty: number;
+  status: "active"|"sold"|"draft";
+  images: string[];
+  created_at: string;
+};
+
+const EXPORT_CAT_LBL: Record<string,string> = {
+  excavator: "굴삭기", mini_excavator: "미니굴삭기", forklift: "지게차",
+};
+const EXPORT_GRADE_CLS: Record<string,string> = {
+  A: "bg-emerald-100 text-emerald-700",
+  B: "bg-blue-100 text-blue-700",
+  C: "bg-amber-100 text-amber-700",
+};
+
+function exImgUrl(path: string) {
+  if(!path) return "";
+  if(path.startsWith("http")) return path;
+  return `${EXPORT_STORAGE_BASE}/${path}`;
+}
+
+function ExportShopTab({ onNavigate }: { onNavigate:(path:string)=>void }) {
+  const { isAdmin, isSubAdmin, isHyundaiCM } = useAuth();
+  const canManage = isAdmin || isSubAdmin || isHyundaiCM;
+  const [items, setItems] = React.useState<ExportListing[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [catFilter, setCatFilter] = React.useState<"all"|"excavator"|"mini_excavator"|"forklift">("all");
+
+  React.useEffect(()=>{
+    setLoading(true);
+    supabase
+      .from("export_listings")
+      .select("*")
+      .in("category",["excavator","mini_excavator","forklift"])
+      .in("status",["active","sold"])
+      .order("created_at",{ascending:false})
+      .then(({data})=>{ setItems((data as ExportListing[])??[]); setLoading(false); });
+  },[]);
+
+  const filtered = catFilter==="all" ? items : items.filter(i=>i.category===catFilter);
+  const counts = {
+    all: items.length,
+    excavator: items.filter(i=>i.category==="excavator").length,
+    mini_excavator: items.filter(i=>i.category==="mini_excavator").length,
+    forklift: items.filter(i=>i.category==="forklift").length,
+  };
+
+  return (
+    <div className="space-y-3 pb-4">
+      {/* 헤더 */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <p className="text-sm font-semibold text-[#0f172a]">🌏 수출장비 매물</p>
+        <div className="flex gap-1.5 flex-wrap">
+          {canManage&&(
+            <button className={BTP} onClick={()=>onNavigate("/export-shop/listing/new")}>+ 매물 등록</button>
+          )}
+          <button className={BTG} onClick={()=>onNavigate("/export-shop")}>전체 페이지 →</button>
+        </div>
+      </div>
+
+      {/* 카테고리 필터 */}
+      <div className="flex gap-1.5 flex-wrap">
+        {(["all","excavator","mini_excavator","forklift"] as const).map(c=>(
+          <button key={c} onClick={()=>setCatFilter(c)}
+            className={`px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${catFilter===c?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
+            {c==="all"?"전체":`${EXPORT_CAT_LBL[c]}`}
+            <span className={`ml-1 ${catFilter===c?"text-white/60":"text-gray-400"}`}>({counts[c]})</span>
+          </button>
+        ))}
+      </div>
+
+      {/* 로딩 */}
+      {loading&&(
+        <div className="flex items-center justify-center py-12 text-gray-400 gap-2">
+          <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+          <span className="text-sm">불러오는 중...</span>
+        </div>
+      )}
+
+      {/* 빈 상태 */}
+      {!loading&&filtered.length===0&&(
+        <div className={`${CARD} p-8 flex flex-col items-center gap-2 text-gray-400`}>
+          <p className="text-sm font-semibold">등록된 매물이 없습니다</p>
+          {canManage&&(
+            <button className={BTO} onClick={()=>onNavigate("/export-shop/listing/new")}>+ 첫 매물 등록</button>
+          )}
+        </div>
+      )}
+
+      {/* 매물 목록 */}
+      {!loading&&filtered.length>0&&(
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {filtered.map(item=>{
+            const thumb = item.images[0] ? exImgUrl(item.images[0]) : null;
+            return (
+              <div key={item.id} className={`${CARD} p-3.5 flex gap-3`}>
+                {/* 썸네일 */}
+                <div className="w-20 h-20 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0 relative">
+                  {thumb
+                    ? <img src={thumb} alt="" className="w-full h-full object-cover"/>
+                    : <div className="w-full h-full flex items-center justify-center text-gray-300 text-xs">No img</div>
+                  }
+                  {item.status==="sold"&&(
+                    <div className="absolute inset-0 bg-black/55 flex items-center justify-center">
+                      <span className="text-white text-[10px] font-bold tracking-widest">SOLD</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* 정보 */}
+                <div className="flex-1 min-w-0 space-y-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] font-semibold text-orange-500 uppercase">{EXPORT_CAT_LBL[item.category]}</span>
+                    {item.condition_grade&&(
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${EXPORT_GRADE_CLS[item.condition_grade]}`}>
+                        Grade {item.condition_grade}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm font-bold text-[#0f172a] truncate">
+                    {item.brand}{item.model?` ${item.model}`:""}{item.year?` (${item.year})`:""}
+                  </p>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {item.tonnage&&<span className="text-[11px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-lg font-medium">{item.tonnage}T</span>}
+                    {item.engine_type&&<span className="text-[11px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-lg font-medium capitalize">{item.engine_type}</span>}
+                    {item.stock_qty>1&&<span className="text-[11px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-lg font-medium">Qty {item.stock_qty}</span>}
+                  </div>
+                  <p className="text-sm font-semibold text-[#0f172a]">
+                    {item.price_usd ? `USD ${item.price_usd.toLocaleString()}${item.price_negotiable?" (협의)":""}` : "가격 문의"}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 
 // ─── FinanceHub 탭 컴포넌트 ──────────────────────────────────────────────────
@@ -3553,11 +3709,11 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               }
             }}
           >
-            {(["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo","financehub"] as TabKey[]).map(t=>(
+            {(["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo","financehub","exportshop"] as TabKey[]).map(t=>(
               <button key={t} className={`${TB} ${tab===t?TA:TI}`} style={{flexShrink:0, whiteSpace:"nowrap"}} onClick={()=>setTabAndSave(t)}>
                 {t==="email"
                   ? <span className="flex items-center gap-1">📧 이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
-                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",hyundaicm:"🏗 현대CM",finance:"🏦 금융상담",narumi:"🚛 나르미",jinheung:"🔧 진흥주문",memo:"📝 메모",financehub:"💵 매출/매입"}[t as string]
+                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",hyundaicm:"🏗 현대CM",finance:"🏦 금융상담",narumi:"🚛 나르미",jinheung:"🔧 진흥주문",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비"}[t as string]
                 }
               </button>
             ))}
@@ -4909,6 +5065,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
           )}
 
           {tab==="financehub"&&<FinanceHubTab/>}
+
+          {tab==="exportshop"&&<ExportShopTab onNavigate={(p)=>navigate(p)}/>}
 
           {/* ══ 입력창 (항상 하단 고정) ══ */}
           <div className="flex-shrink-0 pt-2">

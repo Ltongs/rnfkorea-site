@@ -8,7 +8,27 @@ import { useAuth } from "../../lib/auth";
 // ====================================================
 // 상수
 // ====================================================
-const BRANDS = ["Hyundai", "Volvo", "Doosan"] as const;
+type Category = "excavator" | "mini_excavator" | "forklift";
+
+const CATEGORY_OPTIONS: { value: Category; label: string }[] = [
+  { value: "excavator",      label: "굴삭기 (Excavator)" },
+  { value: "mini_excavator", label: "미니 굴삭기 (Mini Excavator)" },
+  { value: "forklift",       label: "지게차 (Forklift)" },
+];
+
+const BRANDS_BY_CATEGORY: Record<Category, string[]> = {
+  excavator:      ["Hyundai", "Volvo", "Doosan", "Komatsu", "Caterpillar", "Hitachi", "Kobelco", "Liebherr"],
+  mini_excavator: ["Hyundai", "Doosan", "Komatsu", "Kubota", "Yanmar", "Caterpillar"],
+  forklift:       ["Hyundai", "Toyota", "Doosan", "Nichiyu", "Komatsu", "Yale", "Jungheinrich", "Linde"],
+};
+
+// 지게차는 diesel/electric/LPG 선택 가능, 굴삭기 계열은 diesel 고정
+const ENGINE_OPTIONS: Record<Category, string[] | null> = {
+  excavator:      null, // null = 고정 diesel
+  mini_excavator: null,
+  forklift:       ["diesel", "electric", "LPG"],
+};
+
 const KRW_TO_USD_RATE = 1500;
 
 const PHOTO_SLOTS = [
@@ -34,10 +54,12 @@ type PhotoSlotFile = {
 };
 
 type FormData = {
+  category: Category;
   brand: string;
   model: string;
   year: string;
   tonnage: string;
+  engine_type: string;
   condition_grade: ConditionGrade | "";
   price_krw: string;
   price_usd: number | null;
@@ -50,7 +72,8 @@ type FormData = {
 };
 
 const INITIAL: FormData = {
-  brand: "", model: "", year: "", tonnage: "",
+  category: "excavator", brand: "", model: "", year: "", tonnage: "",
+  engine_type: "diesel",
   condition_grade: "", price_krw: "", price_usd: null,
   price_negotiable: true, stock_qty: "1", available_date: "",
   description_ko: "", description_en: "", status: "active",
@@ -226,7 +249,7 @@ const ExportListingNewPage: React.FC = () => {
     }
     setTranslating(true);
     try {
-      const context = `Excavator / ${form.brand} ${form.model} / ${form.year}y / ${form.tonnage}T / Grade ${form.condition_grade}`;
+      const context = `${CATEGORY_OPTIONS.find(c => c.value === form.category)?.label ?? form.category} / ${form.brand} ${form.model} / ${form.year}y / ${form.tonnage}T / Grade ${form.condition_grade}`;
       const en = await translateKoToEn(form.description_ko, context);
       set("description_en", en);
     } catch {
@@ -260,7 +283,7 @@ const ExportListingNewPage: React.FC = () => {
       let descEn = form.description_en.trim();
       if (!descEn && form.description_ko.trim()) {
         try {
-          const context = `Excavator / ${form.brand} ${form.model} / ${form.year}y / ${form.tonnage}T / Grade ${form.condition_grade}`;
+          const context = `${CATEGORY_OPTIONS.find(c => c.value === form.category)?.label ?? form.category} / ${form.brand} ${form.model} / ${form.year}y / ${form.tonnage}T / Grade ${form.condition_grade}`;
           descEn = await translateKoToEn(form.description_ko, context);
           set("description_en", descEn);
         } catch {
@@ -272,12 +295,12 @@ const ExportListingNewPage: React.FC = () => {
         .from("export_listings")
         .insert({
           created_by:       user.id,
-          category:         "excavator",
+          category:         form.category,
           brand:            form.brand,
           model:            form.model.trim() || null,
           year:             form.year ? parseInt(form.year) : null,
           tonnage:          form.tonnage ? parseFloat(form.tonnage) : null,
-          engine_type:      "diesel",
+          engine_type:      ENGINE_OPTIONS[form.category] ? form.engine_type : "diesel",
           condition_grade:  form.condition_grade || null,
           price_usd:        form.price_usd,
           price_negotiable: form.price_negotiable,
@@ -320,7 +343,7 @@ const ExportListingNewPage: React.FC = () => {
             ← Back
           </button>
           <div className="h-4 w-px bg-slate-200" />
-          <h1 className="text-2xl font-bold text-slate-900">굴삭기 매물 등록</h1>
+          <h1 className="text-2xl font-bold text-slate-900">장비 매물 등록</h1>
         </div>
 
         {errors._global && (
@@ -338,10 +361,23 @@ const ExportListingNewPage: React.FC = () => {
               <h2 className="font-bold text-slate-800">기본 정보</h2>
             </div>
 
-            {/* 카테고리 고정 */}
+            {/* 카테고리 선택 */}
             <div>
-              <Label>카테고리</Label>
-              <div className={fixedCls}>굴삭기 (Excavator) — 고정</div>
+              <Label required>카테고리</Label>
+              <select
+                value={form.category}
+                onChange={(e) => {
+                  const cat = e.target.value as Category;
+                  // 카테고리 변경 시 브랜드·엔진 초기화
+                  setForm((p) => ({ ...p, category: cat, brand: "", engine_type: "diesel" }));
+                  setErrors((p) => { const n = { ...p }; delete n.category; return n; });
+                }}
+                className={fieldCls}
+              >
+                {CATEGORY_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
             </div>
 
             {/* 브랜드 */}
@@ -353,7 +389,7 @@ const ExportListingNewPage: React.FC = () => {
                 className={errors.brand ? errorCls : fieldCls}
               >
                 <option value="">선택</option>
-                {BRANDS.map((b) => <option key={b} value={b}>{b}</option>)}
+                {BRANDS_BY_CATEGORY[form.category].map((b) => <option key={b} value={b}>{b}</option>)}
               </select>
               <FieldError msg={errors.brand} />
             </div>
@@ -398,7 +434,19 @@ const ExportListingNewPage: React.FC = () => {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>엔진</Label>
-                <div className={fixedCls}>Diesel — 고정</div>
+                {ENGINE_OPTIONS[form.category] ? (
+                  <select
+                    value={form.engine_type}
+                    onChange={(e) => set("engine_type", e.target.value)}
+                    className={fieldCls}
+                  >
+                    {ENGINE_OPTIONS[form.category]!.map((opt) => (
+                      <option key={opt} value={opt}>{opt.charAt(0).toUpperCase() + opt.slice(1)}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className={fixedCls}>Diesel — 고정</div>
+                )}
               </div>
               <div>
                 <Label>컨디션 등급</Label>
