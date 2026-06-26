@@ -495,23 +495,27 @@ function FinanceHubTab() {
   async function createAndMatch(){
     setMatchSaving(true);setFhError(null);
     try{
-      // 1) tax_invoices 등록
-      const{data:invRow,error:invErr}=await supabase.from("tax_invoices").insert({
-        direction:"sales",invoice_no:invForm.invoice_no||null,issue_date:invForm.issue_date||null,
-        customer_name:invForm.customer_name||null,business_no:invForm.business_no||null,
+      // 1) tax_invoices 등록 (matched_total 컬럼 없는 환경 대응)
+      const invPayload:Record<string,unknown>={
+        direction:"sales",
+        invoice_no:invForm.invoice_no||null,
+        issue_date:invForm.issue_date||new Date().toISOString().split("T")[0],
+        customer_name:invForm.customer_name||null,
+        business_no:invForm.business_no||null,
         supply_amount:invForm.supply_amount?parseFloat(invForm.supply_amount):null,
         tax_amount:invForm.tax_amount?parseFloat(invForm.tax_amount):null,
         total_amount:invForm.total_amount?parseFloat(invForm.total_amount):null,
-        items:invForm.items||null,matched_total:0,
-      }).select().single();
-      if(invErr||!invRow)throw new Error(invErr?.message||"계산서 등록 실패");
+        items:invForm.items||null,
+      };
+      const{data:invRow,error:invErr}=await supabase.from("tax_invoices").insert(invPayload).select().single();
+      if(invErr||!invRow)throw new Error("계산서 등록 실패: "+(invErr?.message||"알 수 없는 오류"));
       // 2) sales_records 신규 생성
       const supplyAmt=invForm.supply_amount?parseFloat(invForm.supply_amount):0;
-      const taxAmt=invForm.tax_amount?parseFloat(invForm.tax_amount):null;
-      const tradeType=(taxAmt===0)?"수출":"내수";
+      const taxAmtRaw=invForm.tax_amount?parseFloat(invForm.tax_amount):null;
+      const tradeType=(taxAmtRaw!=null&&taxAmtRaw===0)?"수출":"내수";
       const vat=tradeType==="수출"?1:1.1;
       const unitPrice=Math.round(supplyAmt);
-      await supabase.from("sales_records").insert({
+      const{error:recErr}=await supabase.from("sales_records").insert({
         sale_date:invForm.issue_date||new Date().toISOString().split("T")[0],
         customer_name:invForm.customer_name||"거래처 미입력",
         business_no:invForm.business_no||null,
@@ -519,17 +523,20 @@ function FinanceHubTab() {
         trade_type:tradeType,maker:null,
         spec:invForm.items||null,
         quantity:1,unit_price:unitPrice,unit_cost:0,
-        total_revenue:unitPrice*vat,total_cost:0,margin:unitPrice*vat,
         tax_invoice:true,payment_confirmed:false,payment_date:null,
         delivery_date:null,delivery_confirmed:false,wheel_returned:false,closing:false,
         invoice_id:invRow.id,
         note:`계산서 업로드 자동생성${invForm.invoice_no?` (#${invForm.invoice_no})`:""} — 수량·매입단가 확인 필요`,
       });
+      if(recErr)throw new Error("매출 생성 실패: "+recErr.message);
       setShowMatchModal(false);setInvForm(FH_EMPTY_INV);setMatchSelectedIds(new Set());
       await loadFhAll();
       setActiveSubTab("sales");
-    }catch(err:any){setFhError("신규 생성 실패: "+(err?.message||""));}
-    finally{setMatchSaving(false);}
+    }catch(err:any){
+      const msg="신규 생성 실패: "+(err?.message||"");
+      setFhError(msg);
+      alert(msg);
+    }finally{setMatchSaving(false);}
   }
   async function handlePurchInvFile(e:React.ChangeEvent<HTMLInputElement>){
     const file=e.target.files?.[0];if(!file)return;
@@ -1910,6 +1917,9 @@ const SecretaryPage:React.FC = () => {
   const [jList,setJList] = useState<any[]>([]);
   const [jConsults,setJConsults] = useState<OrderView[]>([]);
   const [jConsultsLoading,setJConsultsLoading] = useState(false);
+  const [showJNewForm,setShowJNewForm] = useState(false);
+  const [jNewSaving,setJNewSaving] = useState(false);
+  const [jNewForm,setJNewForm] = useState({customer_name:"",product_spec:"",quantity:"",memo:""});
   const [jAmtModal,setJAmtModal] = useState<any|null>(null);
   const [jAmtTo,setJAmtTo] = useState("");
   const [jAmtFrom,setJAmtFrom] = useState("");
@@ -4322,9 +4332,60 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                     supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60)
                       .then(({data})=>{setJList(data??[]);setJLoading(false);});
                   }}>새로고침</button>
+                  <button className={BTP} onClick={()=>setShowJNewForm(v=>!v)}>{showJNewForm?"닫기":"+ 신규 등록"}</button>
                   <button className={BTO} onClick={()=>navigate("/work/orders")}>전체 페이지 →</button>
                 </div>
               </div>
+
+              {/* 신규 주문 등록 폼 */}
+              {showJNewForm&&(
+                <div className={`${CARD} p-4`}>
+                  <p className="text-sm font-semibold text-[#0f172a] mb-3">신규 진흥주문 등록</p>
+                  <div className="grid grid-cols-2 gap-2.5 mb-3">
+                    <div className="col-span-2">
+                      <label className={LBL}>고객사명 *</label>
+                      <input className={CTRL} placeholder="예: 에코파밍 주식회사" value={jNewForm.customer_name} onChange={e=>setJNewForm(p=>({...p,customer_name:e.target.value}))}/>
+                    </div>
+                    <div className="col-span-2">
+                      <label className={LBL}>품목/규격 *</label>
+                      <input className={CTRL} placeholder="예: 18*7-8 솔리드 4개" value={jNewForm.product_spec} onChange={e=>setJNewForm(p=>({...p,product_spec:e.target.value}))}/>
+                    </div>
+                    <div>
+                      <label className={LBL}>수량</label>
+                      <input type="number" className={CTRL} placeholder="수량" value={jNewForm.quantity} onChange={e=>setJNewForm(p=>({...p,quantity:e.target.value}))}/>
+                    </div>
+                    <div>
+                      <label className={LBL}>메모</label>
+                      <input className={CTRL} placeholder="특이사항" value={jNewForm.memo} onChange={e=>setJNewForm(p=>({...p,memo:e.target.value}))}/>
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button className={BTS} onClick={()=>{setShowJNewForm(false);setJNewForm({customer_name:"",product_spec:"",quantity:"",memo:""});}}>취소</button>
+                    <button className={BTP} disabled={jNewSaving||!jNewForm.customer_name||!jNewForm.product_spec}
+                      onClick={async()=>{
+                        setJNewSaving(true);
+                        const{data}=await supabase.from("tb_orders").insert({
+                          customer_name_raw:jNewForm.customer_name,
+                          product_type:"tire",
+                          product_spec:jNewForm.product_spec,
+                          quantity:jNewForm.quantity?parseInt(jNewForm.quantity):null,
+                          inbound_channel:"manual",
+                          status:"received",
+                          memo:jNewForm.memo||null,
+                        }).select().single();
+                        setJNewSaving(false);
+                        setShowJNewForm(false);
+                        setJNewForm({customer_name:"",product_spec:"",quantity:"",memo:""});
+                        // 목록 새로고침 후 신규 카드 자동 펼침
+                        const{data:list}=await supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60);
+                        setJList(list??[]);
+                        if(data?.id) setJExpanded(data.id);
+                      }}>
+                      {jNewSaving?"저장 중...":"저장"}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* 타이어 상담내역 */}
               {jConsultsLoading?<p className="text-xs text-gray-400">상담내역 불러오는 중...</p>:jConsults.length>0&&(

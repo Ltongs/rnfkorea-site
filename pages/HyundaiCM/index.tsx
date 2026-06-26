@@ -569,6 +569,11 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     const d = new Date(); d.setMonth(d.getMonth()+1); d.setDate(1);
     return d.toISOString().slice(0,7);
   });
+  // 상환표 임의 수정값 (비교설명용)
+  const [schedOvPrincipal,    setSchedOvPrincipal]    = useState<string>("");
+  const [schedOvRate,         setSchedOvRate]         = useState<string>("");
+  const [schedOvMonths,       setSchedOvMonths]       = useState<string>("");
+  const [schedOvGrace,        setSchedOvGrace]        = useState<string>("");
   // 상환표 발송 (SMS/MMS)
   const [scheduleSendTarget,  setScheduleSendTarget]  = useState("");
   const [scheduleSending,     setScheduleSending]     = useState(false);
@@ -1924,6 +1929,11 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                         <button
                           onClick={() => {
                             setScheduleModal(r);
+                            // override 초기화 (딜 값으로 세팅)
+                            setSchedOvPrincipal(String(r.loan_limit ?? r.installment_principal ?? ""));
+                            setSchedOvRate(String(r.interest_rate ?? ""));
+                            setSchedOvMonths(String(r.loan_period ?? ""));
+                            setSchedOvGrace(String(r.grace_period ?? "0"));
                             setScheduleRecipient(r.company_name ?? r.customer_name ?? "");
                             setScheduleSendTarget(r.customer_phone ? formatPhoneKR(r.customer_phone) : "");
                           }}
@@ -2531,15 +2541,15 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       {/* ── 상환스케줄 PDF 모달 ── */}
       {scheduleModal && (() => {
         const r = scheduleModal;
-        // 승인 후 대출한도(loan_limit)가 있으면 우선, 없으면 접수 시 입력한 할부원금
-        const principal = r.loan_limit ?? r.installment_principal ?? 0;
-        const annualRate = r.interest_rate ?? 0;
-        const months = r.loan_period ?? 0;
-        const gracePeriod = r.grace_period ?? 0;
-        const installmentPeriod = r.installment_period ?? 0;
-        const periodLabel = (gracePeriod > 0 && installmentPeriod > 0)
+        // override 값 우선 사용 (비어있으면 딜 원래 값 사용)
+        const principal   = schedOvPrincipal ? Number(schedOvPrincipal.replace(/,/g,"")) : (r.loan_limit ?? r.installment_principal ?? 0);
+        const annualRate  = schedOvRate      ? Number(schedOvRate)      : (r.interest_rate ?? 0);
+        const months      = schedOvMonths    ? Number(schedOvMonths)    : (r.loan_period   ?? 0);
+        const gracePeriod = schedOvGrace     ? Number(schedOvGrace)     : (r.grace_period  ?? 0);
+        const installmentPeriod = months - gracePeriod;
+        const periodLabel = gracePeriod > 0
           ? `${months}개월 (거치 ${gracePeriod} + 할부 ${installmentPeriod})`
-          : gracePeriod > 0 ? `${months}개월 (거치 ${gracePeriod})` : `${months}개월`;
+          : `${months}개월`;
         const { payment, rows } = calcAmortization(principal, annualRate, months, scheduleStartDate, gracePeriod);
         const fmt = (n:number) => n.toLocaleString('ko-KR');
         return (
@@ -2576,8 +2586,63 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                     className="w-full h-9 rounded-xl border border-gray-200 px-3 text-sm focus:outline-none focus:border-blue-400"
                   />
                 </div>
+                {/* ── 비교설명용 조건 수정 ── */}
+                <div className="rounded-xl border border-orange-200 bg-orange-50 p-3 space-y-2">
+                  <p className="text-xs font-semibold text-orange-700">✏️ 비교설명용 조건 수정</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[11px] text-gray-500 mb-0.5 block">대출한도 (원)</label>
+                      <input
+                        type="text" inputMode="numeric"
+                        value={schedOvPrincipal ? Number(schedOvPrincipal.replace(/,/g,"")).toLocaleString("ko-KR") : ""}
+                        onChange={e => setSchedOvPrincipal(e.target.value.replace(/[^0-9]/g,""))}
+                        placeholder={fmt(r.loan_limit ?? r.installment_principal ?? 0)}
+                        className="w-full h-8 rounded-lg border border-orange-200 px-2 text-xs focus:outline-none focus:border-orange-400 bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-gray-500 mb-0.5 block">금리 (%)</label>
+                      <input
+                        type="number" step="0.1" min="0" max="30"
+                        value={schedOvRate}
+                        onChange={e => setSchedOvRate(e.target.value)}
+                        placeholder={String(r.interest_rate ?? "")}
+                        className="w-full h-8 rounded-lg border border-orange-200 px-2 text-xs focus:outline-none focus:border-orange-400 bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-gray-500 mb-0.5 block">총 대출기간 (개월)</label>
+                      <input
+                        type="number" min="1" max="120"
+                        value={schedOvMonths}
+                        onChange={e => setSchedOvMonths(e.target.value)}
+                        placeholder={String(r.loan_period ?? "")}
+                        className="w-full h-8 rounded-lg border border-orange-200 px-2 text-xs focus:outline-none focus:border-orange-400 bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-gray-500 mb-0.5 block">거치기간 (개월)</label>
+                      <input
+                        type="number" min="0" max="60"
+                        value={schedOvGrace}
+                        onChange={e => setSchedOvGrace(e.target.value)}
+                        placeholder={String(r.grace_period ?? "0")}
+                        className="w-full h-8 rounded-lg border border-orange-200 px-2 text-xs focus:outline-none focus:border-orange-400 bg-white"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setSchedOvPrincipal(String(r.loan_limit ?? r.installment_principal ?? ""));
+                      setSchedOvRate(String(r.interest_rate ?? ""));
+                      setSchedOvMonths(String(r.loan_period ?? ""));
+                      setSchedOvGrace(String(r.grace_period ?? "0"));
+                    }}
+                    className="text-[11px] text-orange-600 hover:text-orange-800 underline"
+                  >원래 조건으로 되돌리기</button>
+                </div>
                 <div className="flex gap-3 text-center bg-blue-50 rounded-xl p-3">
-                  <div className="flex-1"><p className="text-xs text-blue-500">{(r.grace_period ?? 0) > 0 ? "거치 후 월 납입액" : "월 납입액"}</p><p className="font-bold text-blue-700 text-sm">{fmt(payment)}원</p></div>
+                  <div className="flex-1"><p className="text-xs text-blue-500">{gracePeriod > 0 ? "거치 후 월 납입액" : "월 납입액"}</p><p className="font-bold text-blue-700 text-sm">{fmt(payment)}원</p></div>
                   <div className="flex-1"><p className="text-xs text-blue-500">총 이자</p><p className="font-bold text-blue-700 text-sm">{fmt(rows.reduce((s,r)=>s+r.interest,0))}원</p></div>
                   <div className="flex-1"><p className="text-xs text-blue-500">총 납입</p><p className="font-bold text-blue-700 text-sm">{fmt(rows.reduce((s,r)=>s+r.payment,0))}원</p></div>
                 </div>
@@ -2699,7 +2764,18 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               {/* 버튼 */}
               <div className="px-5 pb-5 pt-1 border-t border-gray-100 flex gap-2">
                 <button
-                  onClick={() => downloadSchedulePDF(r, scheduleStartDate, scheduleRecipient)}
+                  onClick={() => downloadSchedulePDF(
+                    { ...r,
+                      installment_principal: principal,
+                      loan_limit: principal,
+                      interest_rate: annualRate,
+                      loan_period: months,
+                      grace_period: gracePeriod,
+                      installment_period: months - gracePeriod,
+                    } as HCMTask,
+                    scheduleStartDate,
+                    scheduleRecipient
+                  )}
                   className="flex-1 py-2.5 rounded-xl bg-[#0a192f] text-white text-sm font-semibold hover:opacity-90 transition-all"
                 >🖨️ PDF 인쇄 / 저장</button>
                 <button
