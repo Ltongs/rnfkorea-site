@@ -1375,7 +1375,7 @@ function useIsApp(): boolean {
 }
 
 const AppRoutes = () => {
-  const { isAdmin, isSubAdmin, isInsAI, loading } = useAuth() as any;
+  const { isAdmin, isSubAdmin, isInsAI, isHyundaiCM, isNarumi, isNhCapital, isNhCapitalStaff, user, loading } = useAuth() as any;
   const isAdminLevel = isAdmin || isSubAdmin;
   const isApp = useIsApp(); // PWA 앱 여부
 
@@ -1392,9 +1392,16 @@ const AppRoutes = () => {
   // - PWA 앱 (일반)  : AI비서로 (secretary에서 로그인 처리)
   // - 브라우저 (일반) : 홈페이지
   const rootElement = (() => {
-    if (isAdminLevel) return <Navigate to="/work/secretary" replace />;
-    if (isInsAI)      return <Navigate to="/work/secretary-ins" replace />;
-    if (isApp)        return <Navigate to="/work/secretary" replace />;
+    // 앱(PWA standalone): 계정별 전용 페이지로
+    if (isApp) {
+      if (isInsAI)                          return <Navigate to="/work/secretary-ins" replace />;
+      if (isAdminLevel)                     return <Navigate to="/work/secretary" replace />;
+      if (isHyundaiCM || isNhCapital || isNhCapitalStaff) return <Navigate to="/hyundaicm" replace />;
+      if (isNarumi)                         return <Navigate to="/narumi" replace />;
+      // 그 외 로그인된 사용자도 일단 secretary로 (접근 권한은 해당 페이지에서 처리)
+      if (user)                             return <Navigate to="/work/secretary" replace />;
+    }
+    // 브라우저: 누구든 홈페이지
     return <HomePage />;
   })();
 
