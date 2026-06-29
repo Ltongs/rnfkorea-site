@@ -13,7 +13,7 @@ const PHONE_MASK_AFTER_HOURS = 24;    // 확정 후 24시간 경과 시 전화�
 
 // ─── 타입 ─────────────────────────────────────────────────
 type CustomerType = "개인" | "법인";
-type HCMStatus    = "접수" | "신용조회" | "승인" | "보완" | "거절" | "서류등록" | "전자계약발송" | "확정";
+type HCMStatus    = "접수" | "신용조회" | "승인" | "보완" | "거절" | "확정";
 
 type FinanceCompany = "NH캐피탈" | "오릭스캐피탈" | "우리금융캐피탈";
 
@@ -131,12 +131,12 @@ function getNhRateByScore(score: number): { rate: number; incentive: number } | 
 }
 
 // ─── 상태 설정 ────────────────────────────────────────────
-const STATUS_ORDER: HCMStatus[] = ["접수", "신용조회", "서류등록", "전자계약발송", "확정"];
+const STATUS_ORDER: HCMStatus[] = ["접수", "신용조회", "확정"];
 const CREDIT_STATUSES: HCMStatus[] = ["승인", "보완", "거절"];
 
 // 신용결과(승인/보완/거절)를 포함한 전체 순서 인덱스
 // 신용결과는 신용조회(1) 다음, 서류등록(2) 이전에 위치
-const FULL_STATUS_ORDER: HCMStatus[] = ["접수", "신용조회", "승인", "보완", "거절", "서류등록", "전자계약발송", "확정"];
+const FULL_STATUS_ORDER: HCMStatus[] = ["접수", "신용조회", "승인", "보완", "거절", "확정"];
 
 function getStatusIndex(status: HCMStatus): number {
   return FULL_STATUS_ORDER.indexOf(status);
@@ -158,16 +158,18 @@ function canGoToStatus(current: HCMStatus, next: HCMStatus, isAdmin: boolean): b
   // 접수 또는 신용조회 상태 → 신용결과(승인/보완/거절): 허용
   if ((current === "접수" || current === "신용조회") && CREDIT_STATUSES.includes(next)) return true;
 
-  // 신용결과 상태 → 서류등록: admin만 허용
-  if (CREDIT_STATUSES.includes(current) && next === "서류등록") return isAdmin;
+  // 신용조회 상태에서 신용결과 외 점프: 불가 (확정은 허용)
+  if (current === "신용조회" && !CREDIT_STATUSES.includes(next) && next !== "확정") return false;
 
-  // 신용조회/신용결과 상태에서 서류등록 건너뛰고 점프: 불가
-  if (current === "신용조회" && !CREDIT_STATUSES.includes(next)) return false;
-  if (CREDIT_STATUSES.includes(current) && next !== "서류등록") return false;
+  // 신용결과 상태 → 확정: 허용
+  if (CREDIT_STATUSES.includes(current) && next === "확정") return true;
 
-  // 일반 순서: 접수 → 서류등록 → 전자계약발송 → 확정 (신용조회 생략 허용)
-  const mainOrder: HCMStatus[] = ["접수", "신용조회", "서류등록", "전자계약발송", "확정"];
-  const currentMainIdx = mainOrder.indexOf(CREDIT_STATUSES.includes(current) ? "서류등록" : current);
+  // 신용결과 상태에서 확정 외 점프: 불가
+  if (CREDIT_STATUSES.includes(current) && next !== "확정") return false;
+
+  // 일반 순서: 접수 → 신용조회 → 확정
+  const mainOrder: HCMStatus[] = ["접수", "신용조회", "확정"];
+  const currentMainIdx = mainOrder.indexOf(CREDIT_STATUSES.includes(current) ? "확정" : current);
   const nextMainIdx    = mainOrder.indexOf(next);
   return nextMainIdx === currentMainIdx + 1;
 }
@@ -179,8 +181,6 @@ function statusStyle(status: HCMStatus) {
     case "승인":     return "bg-emerald-50 text-emerald-700 border-emerald-200";
     case "보완":     return "bg-yellow-50 text-yellow-700 border-yellow-200";
     case "거절":     return "bg-red-50 text-red-600 border-red-200";
-    case "서류등록":     return "bg-orange-50 text-orange-700 border-orange-200";
-    case "전자계약발송": return "bg-blue-50 text-blue-700 border-blue-200";
     case "확정":     return "bg-emerald-100 text-emerald-800 border-emerald-300";
     default:         return "bg-gray-50 text-gray-500 border-gray-200";
   }
@@ -325,6 +325,8 @@ export default function HyundaiCMPage() {
   const etcDocInputRef = useRef<HTMLInputElement | null>(null);
   const [etcDocUploading, setEtcDocUploading] = useState<string | null>(null); // rowId
   const [etcDocs, setEtcDocs] = useState<Record<string, { id: number; name: string; path: string; uploadedAt: string }[]>>({});
+  const [etcDocNameModal, setEtcDocNameModal] = useState<{ rowId: string; file: File } | null>(null);
+  const [etcDocNameInput, setEtcDocNameInput] = useState<string>("");
 
   // ── 세금계산서 업로드 (isHyundaiCM 전용, 72시간 자동삭제) ──
   const taxInvoiceInputRef = useRef<HTMLInputElement | null>(null);
@@ -708,7 +710,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     setEtcDocs((prev) => ({ ...prev, ...map }));
   };
 
-  const uploadEtcDoc = async (rowId: string | number, file: File) => {
+  const uploadEtcDoc = async (rowId: string | number, file: File, docLabel: string) => {
     if (!canUploadDoc) { alert("서류 업로드 권한이 없습니다."); return; }
     setEtcDocUploading(String(rowId));
     try {
@@ -719,9 +721,10 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         .from("hcm_docs")
         .upload(path, file, { upsert: false, contentType: file.type || undefined });
       if (upErr) throw upErr;
+      const displayName = docLabel.trim() || file.name;
       const { error: dbErr } = await supabase
         .from("hcm_etc_docs")
-        .insert({ task_id: Number(rowId), storage_path: path, file_name: file.name, file_size: file.size });
+        .insert({ task_id: Number(rowId), storage_path: path, file_name: displayName, file_size: file.size });
       if (dbErr) throw dbErr;
       await fetchEtcDocs([rowId]);
     } catch (e: any) { alert(`기타서류 업로드 실패: ${e?.message}`); }
@@ -1563,11 +1566,12 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       <input
         ref={etcDocInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.heic"
         className="hidden"
-        onChange={async (e) => {
+        onChange={(e) => {
           const file = e.target.files?.[0];
           const rowId = etcDocInputRef.current?.getAttribute("data-row-id");
           if (!file || !rowId) return;
-          await uploadEtcDoc(rowId, file);
+          setEtcDocNameInput("");
+          setEtcDocNameModal({ rowId, file });
         }}
       />
       {/* 세금계산서 전용 숨겨진 파일 인풋 */}
@@ -1582,6 +1586,47 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           await uploadTaxInvoice(rowId, file);
         }}
       />
+
+      {/* 기타서류 이름 입력 모달 */}
+      {etcDocNameModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 px-4"
+          onClick={() => { setEtcDocNameModal(null); if (etcDocInputRef.current) etcDocInputRef.current.value = ""; }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm font-bold text-[#0f172a] mb-1">기타서류 이름 입력</p>
+            <p className="text-xs text-gray-400 mb-3">파일: {etcDocNameModal.file.name}</p>
+            <input
+              autoFocus
+              type="text"
+              value={etcDocNameInput}
+              onChange={(e) => setEtcDocNameInput(e.target.value)}
+              onKeyDown={async (e) => {
+                if (e.key === "Enter" && etcDocNameInput.trim()) {
+                  const { rowId, file } = etcDocNameModal;
+                  setEtcDocNameModal(null);
+                  await uploadEtcDoc(rowId, file, etcDocNameInput.trim());
+                }
+              }}
+              placeholder="예: 사업자등록증, 재직증명서 등"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-orange-400 mb-4"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => { setEtcDocNameModal(null); if (etcDocInputRef.current) etcDocInputRef.current.value = ""; }}
+                className="px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-600 hover:border-gray-300"
+              >취소</button>
+              <button
+                disabled={!etcDocNameInput.trim() || etcDocUploading !== null}
+                onClick={async () => {
+                  const { rowId, file } = etcDocNameModal;
+                  setEtcDocNameModal(null);
+                  await uploadEtcDoc(rowId, file, etcDocNameInput.trim());
+                }}
+                className="px-3 py-1.5 rounded-xl bg-[#0f172a] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40"
+              >업로드</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 헤더 (AI비서 스타일) ── */}
       <div className="bg-white border-b border-gray-200 px-3 py-1.5 flex items-center justify-between gap-3 sticky top-0 z-30">
@@ -2082,8 +2127,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                           );
                         })}
 
-                        {/* 서류등록, 확정 버튼 */}
-                        {["서류등록", "전자계약발송", "확정"].map((s) => {
+                        {/* 확정 버튼 */}
+                        {["확정"].map((s) => {
                           const canGo = canGoToStatus(r.status, s as HCMStatus, isAdminLevel);
                           return (
                           <button

@@ -1363,9 +1363,21 @@ const ProtectedRoute: React.FC<{
   return <>{children}</>;
 };
 
+// PWA standalone 감지 훅
+function useIsApp(): boolean {
+  return useMemo(() => {
+    if (typeof window === "undefined") return false;
+    return (
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (window.navigator as any).standalone === true
+    );
+  }, []);
+}
+
 const AppRoutes = () => {
   const { isAdmin, isSubAdmin, isInsAI, loading } = useAuth() as any;
   const isAdminLevel = isAdmin || isSubAdmin;
+  const isApp = useIsApp(); // PWA 앱 여부
 
   // 로딩 중에는 리디렉션 판단 보류
   if (loading) return (
@@ -1373,6 +1385,18 @@ const AppRoutes = () => {
       <div className="w-6 h-6 border-2 border-orange-400 border-t-transparent rounded-full animate-spin"/>
     </div>
   );
+
+  // "/" 진입 시 목적지 결정
+  // - Admin/SubAdmin : 항상 AI비서
+  // - InsAI          : 항상 보험AI비서
+  // - PWA 앱 (일반)  : AI비서로 (secretary에서 로그인 처리)
+  // - 브라우저 (일반) : 홈페이지
+  const rootElement = (() => {
+    if (isAdminLevel) return <Navigate to="/work/secretary" replace />;
+    if (isInsAI)      return <Navigate to="/work/secretary-ins" replace />;
+    if (isApp)        return <Navigate to="/work/secretary" replace />;
+    return <HomePage />;
+  })();
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-white">
@@ -1398,13 +1422,7 @@ const AppRoutes = () => {
       {/* ✅ <main> 에 id와 role 명시 → 스크린리더 + 검색엔진 본문 인식 */}
       <main id="main-content" role="main" className="w-full">
         <Routes>
-          <Route path="/" element={
-            isAdminLevel
-              ? <Navigate to="/work/secretary" replace />
-              : isInsAI
-                ? <Navigate to="/work/secretary-ins" replace />
-                : <HomePage />
-          } />
+          <Route path="/" element={rootElement} />
           <Route path="/tires" element={<TiresPage />} />
           <Route path="/battery" element={<BatteryPage />} />
           <Route path="/export" element={<ExportPage />} />
