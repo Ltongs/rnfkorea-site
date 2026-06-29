@@ -144,7 +144,7 @@ const WL:Record<string,string> = {
   finance_hcm:"현대CM금융",narumi:"나르미",
 };
 const CAT_LBL:Record<string,string> = {meeting:"미팅",call:"통화",task:"업무",followup:"사후관리"};
-const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료",closed:"종결",waiting_customer:"고객대기",on_hold:"보류",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",confirmed:"확정",approved:"승인",rejected:"거절",supplement:"보완",credit_check:"신용조회",received:"접수",doc_registration:"서류등록",contract_sent:"전자계약",cancelled:"취소",registered:"등록완료",docs:"서류준비",insurance:"보험확인",
+const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료",closed:"종결",waiting_customer:"고객대기",on_hold:"보류",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",confirmed:"확정",approved:"승인",rejected:"거절",supplement:"보완",credit_check:"신용조회",received:"접수",cancelled:"취소",registered:"등록완료",docs:"서류준비",insurance:"보험확인",
   // 보험 단계
   design_request:"접수(설계요청)", design_requested:"접수(설계요청)", policy_issued:"완료(증권발급)",
   // 레거시 완결 → 계산서발행
@@ -1663,14 +1663,14 @@ function StatusTabContent({
   const cOtherMo  = cOther.filter((c:any)=>isMo(c.created_at)).length;
 
   const STS_LBL_HCM:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료"};
-  const FINANCE_STAGE_LBL:Record<string,string> = {consulting:"상담",quote_submitted:"견적제출",approved:"승인",rejected:"거절",documents_requested:"서류등록",confirmed:"확정",received:"접수",credit_check:"신용조회",supplement:"보완",doc_registration:"서류등록",contract_sent:"전자계약",cancelled:"취소"};
+  const FINANCE_STAGE_LBL:Record<string,string> = {consulting:"상담",quote_submitted:"견적제출",approved:"승인",rejected:"거절",documents_requested:"서류등록",confirmed:"확정",received:"접수",credit_check:"신용조회",supplement:"보완",cancelled:"취소"};
   const getConsultDisplayStatus = (c:any) => {
     if(c.work_type==="finance" && c.finance_stage) return c.finance_stage;
     if(["tire","tire_sales","battery","battery_sales","forklift","forklift_sales"].includes(c.work_type) && c.process_stage) return c.process_stage;
     return c.status;
   };
   const StsBadgeLocal = ({s,isFinance}:{s:string;isFinance?:boolean}) => {
-    const ALL_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",in_progress:"진행중",completed:"완료",done:"완료",closed:"완료",on_hold:"보류",waiting_customer:"고객대기",approved:"승인",confirmed:"확정",rejected:"거절",cancelled:"취소",supplement:"보완",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",credit_check:"신용조회",received:"접수",doc_registration:"서류등록",contract_sent:"전자계약",contract:"계약",delivery:"납품",
+    const ALL_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",in_progress:"진행중",completed:"완료",done:"완료",closed:"완료",on_hold:"보류",waiting_customer:"고객대기",approved:"승인",confirmed:"확정",rejected:"거절",cancelled:"취소",supplement:"보완",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",credit_check:"신용조회",received:"접수",contract:"계약",delivery:"납품",
       // 레거시 완결 → 계산서발행, 보험 단계
       completed_order:"계산서발행", design_request:"접수(설계요청)", policy_issued:"완료(증권발급)",
       // 레거시 상담/견적 단계
@@ -1726,8 +1726,7 @@ function StatusTabContent({
   const HCM_STS_CLR_LOCAL:Record<string,string> = {
     접수:"bg-gray-100 text-gray-500", 신용조회:"bg-blue-50 text-blue-700",
     승인:"bg-emerald-50 text-emerald-700", 보완:"bg-amber-50 text-amber-700",
-    거절:"bg-red-50 text-red-600", 서류등록:"bg-violet-50 text-violet-700",
-    전자계약발송:"bg-cyan-50 text-cyan-700", 확정:"bg-[#0f172a] text-white", 보류:"bg-orange-50 text-orange-700",
+    거절:"bg-red-50 text-red-600", 확정:"bg-[#0f172a] text-white", 보류:"bg-orange-50 text-orange-700",
   };
 
   return (
@@ -1833,8 +1832,7 @@ type PendingHyundaiUpdate = {action:Record<string,unknown>;matches:HyundaiMatch[
 const HCM_STS_CLR:Record<string,string> = {
   접수:"bg-gray-100 text-gray-600", 신용조회:"bg-blue-50 text-blue-700",
   승인:"bg-emerald-50 text-emerald-700", 보완:"bg-amber-50 text-amber-700",
-  거절:"bg-red-50 text-red-600", 서류등록:"bg-violet-50 text-violet-700",
-  전자계약발송:"bg-cyan-50 text-cyan-700", 확정:"bg-[#0f172a] text-white",
+  거절:"bg-red-50 text-red-600", 확정:"bg-[#0f172a] text-white",
   보류:"bg-orange-50 text-orange-700",
 };
 
@@ -3023,7 +3021,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
     if(cr.data){
       const fdMap:Record<number,string|null> = {};
       if(fdr.data) fdr.data.forEach((f:any)=>{ fdMap[f.consultation_id]=f.finance_stage; });
-      const FIN_LBL_S:Record<string,string> = {consulting:"상담중",received:"접수",credit_check:"신용조회",approved:"승인",supplement:"보완",rejected:"거절",doc_registration:"서류등록",contract_sent:"전자계약",confirmed:"확정",cancelled:"취소"};
+      const FIN_LBL_S:Record<string,string> = {consulting:"상담중",received:"접수",credit_check:"신용조회",approved:"승인",supplement:"보완",rejected:"거절",confirmed:"확정",cancelled:"취소"};
 
       // 타이어/배터리/지게차 process_stage 조회 (업무현황 탭 단계 표시 일치를 위함)
       const cids = cr.data.map((c:any)=>c.id as number);
@@ -3057,7 +3055,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       supabase.from("consultation_cases").select("id,customer_name,phone,telecom_provider,work_type,status,summary,followup_needed,next_followup_date,created_at").order("created_at",{ascending:false}).limit(8),
       supabase.from("consultation_finance_details").select("consultation_id,finance_stage"),
     ]);
-    const FIN_LBL:Record<string,string> = {consulting:"상담중",received:"접수",credit_check:"신용조회",approved:"승인",supplement:"보완",rejected:"거절",doc_registration:"서류등록",contract_sent:"전자계약",confirmed:"확정",cancelled:"취소"};
+    const FIN_LBL:Record<string,string> = {consulting:"상담중",received:"접수",credit_check:"신용조회",approved:"승인",supplement:"보완",rejected:"거절",confirmed:"확정",cancelled:"취소"};
     const fdMap:Record<number,string> = {};
     (fdr.data??[]).forEach((f:any)=>{ fdMap[f.consultation_id]=f.finance_stage; });
     if(fr.data)setFollowups(fr.data as Consult[]);
@@ -3206,7 +3204,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
         const FIN_LBL:Record<string,string> = {
           consulting:"상담중", received:"접수", credit_check:"신용조회",
           approved:"승인", supplement:"보완", rejected:"거절",
-          doc_registration:"서류등록", contract_sent:"전자계약", confirmed:"확정", cancelled:"취소"
+          confirmed:"확정", cancelled:"취소"
         };
         setFinanceConsults(cases.map((c:any)=>({
           ...c,
@@ -3444,10 +3442,10 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
     };
     if(TIRE[stage]) return TIRE[stage];
     // 금융 / 현대CM
-    const FIN:Record<string,string> = {received:"접수",credit_check:"신용조회",approved:"승인",supplement:"보완",rejected:"거절",doc_registration:"서류등록",contract_sent:"전자계약",confirmed:"확정"};
+    const FIN:Record<string,string> = {received:"접수",credit_check:"신용조회",approved:"승인",supplement:"보완",rejected:"거절",confirmed:"확정"};
     if(FIN[stage]) return FIN[stage];
     // HCM 한글 status 그대로
-    const HCM_KR = ["접수","신용조회","승인","보완","거절","서류등록","전자계약발송","확정","보류","취소"];
+    const HCM_KR = ["접수","신용조회","승인","보완","거절","확정","보류","취소"];
     if(HCM_KR.includes(stage)) return stage;
     return stage;
   };
@@ -3458,7 +3456,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
     if(["invoiced","completed","confirmed","delivered","completed_order","확정"].includes(stage)) return "text-emerald-600 font-semibold";
     if(["cancelled","rejected","취소","거절"].includes(stage)) return "text-red-400";
     if(["closed"].includes(stage)) return "text-gray-500"; // 종결 — 회색
-    if(["contract","contract_sent","approved","승인","보완","supplement"].includes(stage)) return "text-blue-600";
+    if(["contract","approved","승인","보완","supplement"].includes(stage)) return "text-blue-600";
     if(["quote","proposal","credit_check"].includes(stage)) return "text-indigo-500";
     return "text-orange-500";
   };
@@ -4277,8 +4275,6 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                               {value:"approved",          label:"승인"},
                               {value:"supplement",        label:"보완"},
                               {value:"rejected",          label:"거절"},
-                              {value:"doc_registration",  label:"서류등록"},
-                              {value:"contract_sent",     label:"전자계약"},
                               {value:"confirmed",         label:"확정"},
                               {value:"cancelled",         label:"취소"},
                             ];
@@ -4292,7 +4288,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                             const stageColor = (s:string) =>
                               ["invoiced","completed_order","confirmed","delivered","policy_issued"].includes(s) ? {bg:"#f0fdf4",fg:"#16a34a",bd:"#bbf7d0"}
                               :["cancelled","rejected"].includes(s)                              ? {bg:"#fef2f2",fg:"#ef4444",bd:"#fecaca"}
-                              :["contract","contract_sent","approved","design_request"].includes(s) ? {bg:"#eff6ff",fg:"#2563eb",bd:"#bfdbfe"}
+                              :["contract","approved","design_request"].includes(s) ? {bg:"#eff6ff",fg:"#2563eb",bd:"#bfdbfe"}
                               :["delivery"].includes(s)                                          ? {bg:"#fff7ed",fg:"#ea580c",bd:"#fed7aa"}
                                                                                                 : {bg:"#f9fafb",fg:"#6b7280",bd:"#e5e7eb"};
                             const sc = stageColor(curStage);
@@ -4441,7 +4437,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium border
                                     ${["invoiced","completed_order","confirmed","delivered","확정"].includes(o.progress_stage)?"bg-emerald-50 text-emerald-700 border-emerald-200"
                                     :["cancelled","rejected","취소","거절"].includes(o.progress_stage)?"bg-red-50 text-red-500 border-red-200"
-                                    :["contract","contract_sent","approved"].includes(o.progress_stage)?"bg-blue-50 text-blue-600 border-blue-200"
+                                    :["contract","approved"].includes(o.progress_stage)?"bg-blue-50 text-blue-600 border-blue-200"
                                     :["delivery"].includes(o.progress_stage)?"bg-orange-50 text-orange-600 border-orange-200"
                                     :"bg-gray-50 text-gray-500 border-gray-200"}`}>
                                     {fmtProgress(o.work_type, o.progress_stage)}
