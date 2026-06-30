@@ -147,7 +147,13 @@ export default function OrdersPage() {
     const patch: Partial<TbOrder> = { status: nextStatus };
     if (dateField) (patch as any)[dateField] = new Date().toISOString();
 
-    await supabase.from("tb_orders").update(patch).eq("id", order.id);
+    const { error } = await supabase.from("tb_orders").update(patch).eq("id", order.id);
+    if (error) {
+      console.error("단계 변경 실패:", error);
+      alert("단계 변경 중 오류가 발생했습니다: " + error.message);
+      setSaving(false);
+      return;
+    }
 
     // 알림톡 발송
     try {
@@ -174,11 +180,16 @@ export default function OrdersPage() {
   const saveAmount = async () => {
     if (!amountModal) return;
     setSaving(true);
-    await supabase.from("tb_orders").update({
+    const { error } = await supabase.from("tb_orders").update({
       price_to_customer:   amtToCustomer   ? parseInt(amtToCustomer.replace(/,/g, ""))   : null,
       price_from_jinheung: amtFromJinheung ? parseInt(amtFromJinheung.replace(/,/g, "")) : null,
     }).eq("id", amountModal.id);
     setSaving(false);
+    if (error) {
+      console.error("금액 저장 실패:", error);
+      alert("저장 중 오류가 발생했습니다: " + error.message);
+      return;
+    }
     setAmountModal(null);
     void loadOrders();
   };
@@ -187,16 +198,21 @@ export default function OrdersPage() {
   const saveNewOrder = async () => {
     if (!newCustomer || !newSpec) return;
     setSaving(true);
-    await supabase.from("tb_orders").insert({
+    const { error } = await supabase.from("tb_orders").insert({
       customer_name_raw: newCustomer,
       product_type:      "tire",
       product_spec:      newSpec,
       quantity:          newQty ? parseInt(newQty) : null,
-      inbound_channel:   "manual",
+      inbound_channel:   "other",
       status:            "received",
       memo:              newMemo || null,
     });
     setSaving(false);
+    if (error) {
+      console.error("진흥주문 저장 실패:", error);
+      alert("저장 중 오류가 발생했습니다: " + error.message);
+      return; // 입력값 유지 — 모달 닫지 않음
+    }
     setNewModal(false);
     setNewCustomer(""); setNewSpec(""); setNewQty(""); setNewMemo("");
     void loadOrders();

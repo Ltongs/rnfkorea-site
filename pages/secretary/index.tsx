@@ -2250,6 +2250,7 @@ const SecretaryPage:React.FC = () => {
   const [jExpanded,setJExpanded] = useState<string|null>(null);
   const [jLoading,setJLoading] = useState(false);
   const [jList,setJList] = useState<any[]>([]);
+  const jListReqRef = useRef(0); // tb_orders 목록 fetch 경쟁 상태 방지용 토큰
   const [jConsults,setJConsults] = useState<OrderView[]>([]);
   const [jConsultsLoading,setJConsultsLoading] = useState(false);
   const [showJNewForm,setShowJNewForm] = useState(false);
@@ -3231,12 +3232,14 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
 
   useEffect(()=>{
     if(tab!=="jinheung") return;
+    const myReq = ++jListReqRef.current;
     setJLoading(true);
     setJConsultsLoading(true);
     Promise.all([
       supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60),
       supabase.from("consultation_cases").select("id,customer_name,work_type,status,summary,created_at,phone,sub_type").in("work_type",["tire","tire_sales"]).order("created_at",{ascending:false}).limit(60),
     ]).then(async([ordRes,cRes])=>{
+      if(myReq!==jListReqRef.current) return; // 더 최신 요청(신규등록 후 새로고침 등)이 이미 있었다면 이 결과는 버림
       setJList(ordRes.data??[]);
       setJLoading(false);
       const cases = cRes.data??[];
@@ -3251,6 +3254,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
           tireMap[d.consultation_id] = d.process_stage ?? d.process_status;
         });
       }
+      if(myReq!==jListReqRef.current) return;
       setJConsults(cases.map((c:any)=>({...c, progress_stage: tireMap[c.id]??null, product_detail:null})));
       setJConsultsLoading(false);
     });
@@ -4904,9 +4908,10 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                     </button>
                   ))}
                   <button className={BTG} onClick={()=>{
+                    const myReq = ++jListReqRef.current;
                     setJLoading(true);
                     supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60)
-                      .then(({data})=>{setJList(data??[]);setJLoading(false);});
+                      .then(({data})=>{ if(myReq!==jListReqRef.current) return; setJList(data??[]);setJLoading(false);});
                   }}>새로고침</button>
                   <button className={BTP} onClick={()=>setShowJNewForm(v=>!v)}>{showJNewForm?"닫기":"+ 신규 등록"}</button>
                   <button className={BTO} onClick={()=>navigate("/work/orders")}>전체 페이지 →</button>
@@ -4945,7 +4950,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                           product_type:"tire",
                           product_spec:jNewForm.product_spec,
                           quantity:jNewForm.quantity?parseInt(jNewForm.quantity):null,
-                          inbound_channel:"manual",
+                          inbound_channel:"other",
                           status:"received",
                           memo:jNewForm.memo||null,
                         }).select().single();
@@ -4958,9 +4963,10 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                         setShowJNewForm(false);
                         setJNewForm({customer_name:"",product_spec:"",quantity:"",memo:""});
                         // 목록 새로고침 후 신규 카드 자동 펼침
+                        const myReq = ++jListReqRef.current;
                         const{data:list,error:listErr}=await supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60);
                         if(listErr){ console.error("진흥주문 목록 갱신 실패:", listErr); }
-                        setJList(list??[]);
+                        if(myReq===jListReqRef.current) setJList(list??[]);
                         if(data?.id) setJExpanded(data.id);
                       }}>
                       {jNewSaving?"저장 중...":"저장"}
@@ -4969,11 +4975,36 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                 </div>
               )}
 
-              {/* 타이어 상담내역 */}
-              {jConsultsLoading?<p className="text-xs text-gray-400">상담내역 불러오는 중...</p>:jConsults.length>0&&(
+              {/* 타이어 상담내역 + 진흥주문 통합 표시 */}
+              {(jConsultsLoading||jLoading)?<p className="text-xs text-gray-400">상담내역 불러오는 중...</p>:(jConsults.length>0||jList.length>0)&&(
                 <div className={`${CARD} p-3.5`}>
-                  <p className="text-xs font-semibold text-gray-500 mb-2">📋 타이어 상담내역 ({jConsults.length}건)</p>
+                  <p className="text-xs font-semibold text-gray-500 mb-2">📋 타이어 상담내역 ({jConsults.length+jList.length}건)</p>
                   <div className="space-y-2">
+                    {jList.map((o:any)=>(
+                      <div key={`jo-${o.id}`} className={`${CARD} p-3.5`}>
+                        <div className="flex items-start gap-2.5">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-sm font-semibold text-[#0f172a]">{o.customer_name_raw||"미확인"}</span>
+                              {o.product_spec&&<span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100">{o.product_spec}</span>}
+                              <span className="text-xs px-2 py-0.5 rounded-full border font-medium bg-orange-50 text-orange-600 border-orange-100">
+                                {STS_LBL[o.status]||o.status}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-gray-500">
+                              {o.memo&&<span className="truncate max-w-[200px]">{o.memo}</span>}
+                              <span className="ml-auto text-gray-300">{String(o.created_at||"").slice(0,10)}</span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-1 shrink-0">
+                            <button className={BTO} onClick={()=>{
+                              setJExpanded(o.id);
+                              setTimeout(()=>document.getElementById(`jorder-${o.id}`)?.scrollIntoView({behavior:"smooth",block:"center"}),50);
+                            }}>바로 처리</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                     {jConsults.map((c:any)=>(
                       <div key={c.id} className={`${CARD} p-3.5`}>
                         <div className="flex items-start gap-2.5">
@@ -5034,14 +5065,14 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                   // 납품일 오래된 순으로 정렬 (휠반납 누락 우려가 큰 건부터)
                   filtered=[...filtered].sort((a:any,b:any)=>new Date(a.delivered_at??a.created_at).getTime()-new Date(b.delivered_at??b.created_at).getTime());
                 }
-                const reload=()=>{setJLoading(true);supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60).then(({data})=>{setJList(data??[]);setJLoading(false);});};
+                const reload=()=>{const myReq=++jListReqRef.current;setJLoading(true);supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60).then(({data})=>{if(myReq!==jListReqRef.current)return;setJList(data??[]);setJLoading(false);});};
                 if(filtered.length===0) return <div className={`${CARD} p-8 text-center text-gray-400 text-sm`}>{jFilter==="wheel_pending"?"휠반납 대상 주문이 없습니다 (모두 회수 완료) 🎉":"주문이 없습니다"}</div>;
                 return (
                   <div className="space-y-2">
                     {filtered.map((o:any)=>{
                       const next=NEXT[o.status]; const isExp=jExpanded===o.id;
                       return (
-                        <div key={o.id} className={`${CARD} overflow-hidden`}>
+                        <div key={o.id} id={`jorder-${o.id}`} className={`${CARD} overflow-hidden`}>
                           <div className="p-3.5">
                             <div className="flex items-start gap-2.5">
                               <div className="flex-1 min-w-0">
@@ -5132,6 +5163,17 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                                 )}
                                 <button className={BTO} onClick={e=>{e.stopPropagation();navigate(`/work/orders?id=${o.id}`);}}>이동 →</button>
                                 <button className={BTG} onClick={e=>{e.stopPropagation();setJExpanded(isExp?null:o.id);}}>{isExp?"접기":"상세"}</button>
+                                <button
+                                  className="px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-red-400 hover:border-red-300 hover:bg-red-50 transition-all"
+                                  onClick={async e=>{
+                                    e.stopPropagation();
+                                    if(!window.confirm(`'${o.customer_name_raw||"미확인"}' 주문을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return;
+                                    const {error}=await supabase.from("tb_orders").delete().eq("id",o.id);
+                                    if(error){ console.error("진흥주문 삭제 실패:",error); alert("삭제 중 오류가 발생했습니다: "+error.message); return; }
+                                    if(jExpanded===o.id) setJExpanded(null);
+                                    reload();
+                                  }}
+                                >🗑 삭제</button>
                               </div>
                             </div>
                           </div>
@@ -5555,7 +5597,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                   price_from_jinheung: jAmtFrom?parseInt(jAmtFrom.replace(/,/g,"")):null,
                 }).eq("id",jAmtModal.id);
                 setJSaving(false); setJAmtModal(null);
-                supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60).then(({data})=>setJList(data??[]));
+                {const myReq=++jListReqRef.current;supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60).then(({data})=>{if(myReq===jListReqRef.current)setJList(data??[]);});}
               }} className="px-4 py-2 rounded-xl bg-[#0f172a] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40">저장</button>
             </div>
           </div>
@@ -5626,7 +5668,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
 
                     setJInvoiceModal(null); setJInvoiceFile(null); setJInvoiceUploading(false);
                     showToast("계산서발행 완료 + 매출관리 자동 등록됨");
-                    supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60).then(({data})=>setJList(data??[]));
+                    {const myReq=++jListReqRef.current;supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60).then(({data})=>{if(myReq===jListReqRef.current)setJList(data??[]);});}
                   }catch(err){
                     console.error(err);
                     alert("처리 중 오류가 발생했습니다.");

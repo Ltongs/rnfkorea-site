@@ -1363,21 +1363,9 @@ const ProtectedRoute: React.FC<{
   return <>{children}</>;
 };
 
-// PWA standalone 감지 훅
-function useIsApp(): boolean {
-  return useMemo(() => {
-    if (typeof window === "undefined") return false;
-    return (
-      window.matchMedia("(display-mode: standalone)").matches ||
-      (window.navigator as any).standalone === true
-    );
-  }, []);
-}
-
 const AppRoutes = () => {
-  const { isAdmin, isSubAdmin, isInsAI, isHyundaiCM, isNarumi, isNhCapital, isNhCapitalStaff, user, loading } = useAuth() as any;
+  const { isAdmin, isSubAdmin, isInsAI, loading } = useAuth() as any;
   const isAdminLevel = isAdmin || isSubAdmin;
-  const isApp = useIsApp(); // PWA 앱 여부
 
   // 로딩 중에는 리디렉션 판단 보류
   if (loading) return (
@@ -1386,24 +1374,11 @@ const AppRoutes = () => {
     </div>
   );
 
-  // "/" 진입 시 목적지 결정
-  // - Admin/SubAdmin : 항상 AI비서
-  // - InsAI          : 항상 보험AI비서
-  // - PWA 앱 (일반)  : AI비서로 (secretary에서 로그인 처리)
-  // - 브라우저 (일반) : 홈페이지
-  const rootElement = (() => {
-    // 앱(PWA standalone): 계정별 전용 페이지로
-    if (isApp) {
-      if (isInsAI)                          return <Navigate to="/work/secretary-ins" replace />;
-      if (isAdminLevel)                     return <Navigate to="/work/secretary" replace />;
-      if (isHyundaiCM || isNhCapital || isNhCapitalStaff) return <Navigate to="/hyundaicm" replace />;
-      if (isNarumi)                         return <Navigate to="/narumi" replace />;
-      // 그 외 로그인된 사용자도 일단 secretary로 (접근 권한은 해당 페이지에서 처리)
-      if (user)                             return <Navigate to="/work/secretary" replace />;
-    }
-    // 브라우저: 누구든 홈페이지
-    return <HomePage />;
-  })();
+  // "/" 는 항상 홈페이지 (브라우저든 앱이든 동일)
+  // PWA 앱은 manifest.json의 start_url(/work/secretary, /work/secretary-ins 등)로
+  // 곧바로 진입하므로 "/"로 들어올 일이 거의 없고, 들어오더라도 홈페이지를 보여주는 것이 맞음.
+  // 즉 "/"에서 계정 기준 강제 리다이렉트는 하지 않는다 — 브라우저에서 admin이 전체 사이트를 볼 수 있어야 함.
+  const rootElement = <HomePage />;
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-white">
