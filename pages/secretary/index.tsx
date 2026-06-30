@@ -2617,6 +2617,11 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
         body:JSON.stringify({action:"create",user_id:user.id,event:{...schedule,schedule_id:schedule.id}}),
       });
       const d = await res.json();
+      if(d.error){
+        console.error("gcal sync error:", d.error, d.raw);
+        showToast("⚠️ 구글 캘린더 동기화 실패: " + d.error + " — 재연동이 필요할 수 있습니다", "err");
+        return;
+      }
       // 응답에서 생성된 이벤트를 즉시 gcalEvents 상태에 추가
       if(d.event){
         const newEvt = {

@@ -90,6 +90,12 @@ serve(async (req) => {
       const res = await fetch(baseUrl, { method: "POST", headers, body: JSON.stringify(body) });
       const data = await res.json();
 
+      if (!res.ok || data.error) {
+        return new Response(JSON.stringify({ error: data.error?.message ?? "일정 생성 실패", raw: data }), {
+          status: 500, headers: { ...CORS, "Content-Type": "application/json" },
+        });
+      }
+
       // secretary_schedules에 gcal_event_id 저장 (AI비서 일정 동기화용)
       if (event.schedule_id && data.id) {
         await db.from("secretary_schedules").update({ gcal_event_id: data.id }).eq("id", event.schedule_id);
@@ -113,7 +119,13 @@ serve(async (req) => {
           ? { dateTime: `${event.schedule_date}T${event.end_time}:00+09:00`, timeZone: "Asia/Seoul" }
           : { date: event.schedule_date },
       };
-      await fetch(`${baseUrl}/${event_id}`, { method: "PUT", headers, body: JSON.stringify(body) });
+      const res = await fetch(`${baseUrl}/${event_id}`, { method: "PUT", headers, body: JSON.stringify(body) });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        return new Response(JSON.stringify({ error: data.error?.message ?? "일정 수정 실패", raw: data }), {
+          status: 500, headers: { ...CORS, "Content-Type": "application/json" },
+        });
+      }
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...CORS, "Content-Type": "application/json" },
       });
@@ -121,7 +133,13 @@ serve(async (req) => {
 
     // ── 이벤트 삭제
     if (action === "delete" && event_id) {
-      await fetch(`${baseUrl}/${event_id}`, { method: "DELETE", headers });
+      const res = await fetch(`${baseUrl}/${event_id}`, { method: "DELETE", headers });
+      if (!res.ok && res.status !== 410) {
+        const data = await res.json().catch(() => ({}));
+        return new Response(JSON.stringify({ error: data.error?.message ?? "일정 삭제 실패", raw: data }), {
+          status: 500, headers: { ...CORS, "Content-Type": "application/json" },
+        });
+      }
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...CORS, "Content-Type": "application/json" },
       });
