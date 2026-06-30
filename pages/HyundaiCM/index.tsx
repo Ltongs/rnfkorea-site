@@ -262,6 +262,10 @@ export default function HyundaiCMPage() {
   const [searchText,      setSearchText]      = useState("");
   const [statusFilter,    setStatusFilter]    = useState<HCMStatus | "all">("all");
   const [showClosed,      setShowClosed]      = useState(false);
+  const [statsMonth,      setStatsMonth]      = useState<string>(() => {
+    const n = new Date();
+    return n.getFullYear().toString() + String(n.getMonth() + 1).padStart(2, "0");
+  });
 
   // ── 수정 모달 ──
   const [editRow,                   setEditRow]                   = useState<HCMTask | null>(null);
@@ -1018,9 +1022,20 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
   , [rows]);
 
   // ─── 당월 실적 ───────────────────────────────────────────
-  const monthlyStats = useMemo(() => {
+  const availableStatsMonths = useMemo(() => {
+    const set = new Set<string>();
     const now = new Date();
-    const ym = now.getFullYear().toString() + String(now.getMonth() + 1).padStart(2, "0");
+    set.add(now.getFullYear().toString() + String(now.getMonth() + 1).padStart(2, "0"));
+    rows.forEach((r) => {
+      const d = new Date(r.created_at ?? 0);
+      if (!r.created_at || isNaN(d.getTime())) return;
+      set.add(d.getFullYear().toString() + String(d.getMonth() + 1).padStart(2, "0"));
+    });
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [rows]);
+
+  const monthlyStats = useMemo(() => {
+    const ym = statsMonth;
     const thisMonth = rows.filter((r) => {
       const d = new Date(r.created_at ?? 0);
       return d.getFullYear().toString() + String(d.getMonth() + 1).padStart(2, "0") === ym;
@@ -1028,7 +1043,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     const confirmed = thisMonth.filter((r) => r.status === "확정");
     const totalAmount = confirmed.reduce((sum, r) => sum + (r.loan_limit ?? r.installment_principal ?? 0), 0);
     return { total: thisMonth.length, confirmed: confirmed.length, amount: totalAmount };
-  }, [rows]);
+  }, [rows, statsMonth]);
 
   // 월내 순번 맵: 같은 연월의 건들을 created_at 오름차순으로 정렬해 순번 부여
   const caseNoMap = useMemo(() => {
@@ -1711,7 +1726,19 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           )}
           <div className="ml-auto flex items-center gap-2">
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-gray-200 bg-white text-xs font-medium text-gray-600">
-              <span className="text-gray-400">당월 접수</span>
+              <select
+                value={statsMonth}
+                onChange={(e) => setStatsMonth(e.target.value)}
+                className="bg-transparent text-xs font-semibold text-[#0f172a] outline-none cursor-pointer pr-1"
+              >
+                {availableStatsMonths.map((ym) => (
+                  <option key={ym} value={ym}>
+                    {ym.slice(0, 4)}년 {parseInt(ym.slice(4), 10)}월
+                  </option>
+                ))}
+              </select>
+              <span className="text-gray-300">|</span>
+              <span className="text-gray-400">접수</span>
               <span className="font-bold text-[#0f172a]">{monthlyStats.total}건</span>
               <span className="text-gray-300">|</span>
               <span className="text-gray-400">확정</span>

@@ -2246,7 +2246,7 @@ const SecretaryPage:React.FC = () => {
   const [narumiConsults,setNarumiConsults] = useState<OrderView[]>([]);
   const [narumiSelectedId,setNarumiSelectedId] = useState<number|null>(null);
   // 진흥주문 탭
-  const [jFilter,setJFilter] = useState<"active"|"all"|"done"|"wheel_pending">("active");
+  const [jFilter,setJFilter] = useState<"active"|"all"|"done">("active");
   const [jExpanded,setJExpanded] = useState<string|null>(null);
   const [jLoading,setJLoading] = useState(false);
   const [jList,setJList] = useState<any[]>([]);
@@ -2268,6 +2268,8 @@ const SecretaryPage:React.FC = () => {
   const [orderInvoiceModal,setOrderInvoiceModal] = useState<OrderView|null>(null);
   const [orderInvoiceFile,setOrderInvoiceFile] = useState<File|null>(null);
   const [orderInvoiceUploading,setOrderInvoiceUploading] = useState(false);
+  const [orderInvoiceAmtTo,setOrderInvoiceAmtTo] = useState("");
+  const [orderInvoiceAmtFrom,setOrderInvoiceAmtFrom] = useState("");
   // 여러 건 묶어서 계산서 발행 (합산 청구)
   const [orderSelectMode,setOrderSelectMode] = useState(false);
   const [orderSelectedIds,setOrderSelectedIds] = useState<Set<number>>(new Set());
@@ -3243,19 +3245,31 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       setJList(ordRes.data??[]);
       setJLoading(false);
       const cases = cRes.data??[];
-      // tire details에서 process_status 조회
+      // tire details에서 process_status + 휠반납/금액 조회
       const ids = cases.map((c:any)=>c.id);
-      let tireMap:Record<number,string> = {};
+      let tireMap:Record<number,{stage:string|null;wheel_returned_at:string|null;price_to_customer:number|null;price_from_jinheung:number|null}> = {};
       if(ids.length>0){
         const {data:tds} = await supabase.from("consultation_tire_details")
-          .select("consultation_id,process_status,process_stage,tire_size,vehicle_info,vehicle_type")
+          .select("consultation_id,process_status,process_stage,tire_size,vehicle_info,vehicle_type,wheel_returned_at,price_to_customer,price_from_jinheung")
           .in("consultation_id",ids);
         (tds??[]).forEach((d:any)=>{
-          tireMap[d.consultation_id] = d.process_stage ?? d.process_status;
+          tireMap[d.consultation_id] = {
+            stage: d.process_stage ?? d.process_status,
+            wheel_returned_at: d.wheel_returned_at ?? null,
+            price_to_customer: d.price_to_customer ?? null,
+            price_from_jinheung: d.price_from_jinheung ?? null,
+          };
         });
       }
       if(myReq!==jListReqRef.current) return;
-      setJConsults(cases.map((c:any)=>({...c, progress_stage: tireMap[c.id]??null, product_detail:null})));
+      setJConsults(cases.map((c:any)=>({
+        ...c,
+        progress_stage: tireMap[c.id]?.stage ?? null,
+        wheel_returned_at: tireMap[c.id]?.wheel_returned_at ?? null,
+        price_to_customer: tireMap[c.id]?.price_to_customer ?? null,
+        price_from_jinheung: tireMap[c.id]?.price_from_jinheung ?? null,
+        product_detail:null,
+      })));
       setJConsultsLoading(false);
     });
   },[tab]);
@@ -4901,12 +4915,6 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <p className="text-sm font-semibold text-[#0f172a]">🔧 진흥주문 관리</p>
                 <div className="flex gap-1.5 flex-wrap">
-                  {(["active","all","done","wheel_pending"] as const).map(f=>(
-                    <button key={f} onClick={()=>setJFilter(f)}
-                      className={`px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${jFilter===f?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
-                      {{active:"진행중",all:"전체",done:"완료",wheel_pending:"휠반납대상"}[f]}
-                    </button>
-                  ))}
                   <button className={BTG} onClick={()=>{
                     const myReq = ++jListReqRef.current;
                     setJLoading(true);
@@ -4975,198 +4983,93 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                 </div>
               )}
 
-              {/* 타이어 상담내역 + 진흥주문 통합 표시 */}
-              {(jConsultsLoading||jLoading)?<p className="text-xs text-gray-400">상담내역 불러오는 중...</p>:(jConsults.length>0||jList.length>0)&&(
+              {/* 타이어 상담내역 + 진흥주문 통합 표시 — 각 항목에서 단계변경/휠반납/금액입력/삭제까지 한번에 처리 */}
+              {(jConsultsLoading||jLoading)?<p className="text-xs text-gray-400">상담내역 불러오는 중...</p>:(jConsults.length>0||jList.length>0)?(
                 <div className={`${CARD} p-3.5`}>
-                  <p className="text-xs font-semibold text-gray-500 mb-2">📋 타이어 상담내역 ({jConsults.length+jList.length}건)</p>
-                  <div className="space-y-2">
-                    {jList.map((o:any)=>(
-                      <div key={`jo-${o.id}`} className={`${CARD} p-3.5`}>
-                        <div className="flex items-start gap-2.5">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-sm font-semibold text-[#0f172a]">{o.customer_name_raw||"미확인"}</span>
-                              {o.product_spec&&<span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100">{o.product_spec}</span>}
-                              <span className="text-xs px-2 py-0.5 rounded-full border font-medium bg-orange-50 text-orange-600 border-orange-100">
-                                {STS_LBL[o.status]||o.status}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-gray-500">
-                              {o.memo&&<span className="truncate max-w-[200px]">{o.memo}</span>}
-                              <span className="ml-auto text-gray-300">{String(o.created_at||"").slice(0,10)}</span>
-                            </div>
-                          </div>
-                          <div className="flex flex-col gap-1 shrink-0">
-                            <button className={BTO} onClick={()=>{
-                              setJExpanded(o.id);
-                              setTimeout(()=>document.getElementById(`jorder-${o.id}`)?.scrollIntoView({behavior:"smooth",block:"center"}),50);
-                            }}>바로 처리</button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    {jConsults.map((c:any)=>(
-                      <div key={c.id} className={`${CARD} p-3.5`}>
-                        <div className="flex items-start gap-2.5">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-sm font-semibold text-[#0f172a]">{c.customer_name}</span>
-                              {c.product_detail&&<span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100">{c.product_detail}</span>}
-                              <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${
-                                c.progress_stage
-                                  ? `${progressColor(c.progress_stage)} bg-orange-50 border-orange-100`
-                                  : "bg-orange-50 text-orange-600 border-orange-100"
-                              }`}>
-                                {c.progress_stage ? fmtProgress(c.work_type, c.progress_stage) : "납품"}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-gray-500">
-                              {c.summary&&<span className="truncate max-w-[200px]">{c.summary}</span>}
-                              <span className="ml-auto text-gray-300">{String(c.created_at||"").slice(0,10)}</span>
-                            </div>
-                          </div>
-                          <div className="flex flex-col gap-1 shrink-0">
-                            <button className={BTO} onClick={()=>navigate(`/work/call-management?id=${c.id}`)}>이동</button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* 당월 통계 */}
-              {(()=>{
-                const now=new Date();
-                const tm=jList.filter((o:any)=>{const d=new Date(o.created_at);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();});
-                const rev=tm.reduce((s:number,o:any)=>s+(o.price_to_customer??0),0);
-                const cost=tm.reduce((s:number,o:any)=>s+(o.price_from_jinheung??0),0);
-                return tm.length>0?(
-                  <div className={`${CARD} p-3`}>
-                    <p className="text-xs text-gray-500 mb-2">{now.getMonth()+1}월 실적 — {tm.length}건</p>
-                    <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                      <div><p className="text-gray-400">매출</p><p className="font-bold text-orange-600">{rev?`${(rev/10000).toFixed(0)}만원`:"-"}</p></div>
-                      <div><p className="text-gray-400">매입</p><p className="font-bold text-gray-600">{cost?`${(cost/10000).toFixed(0)}만원`:"-"}</p></div>
-                      <div><p className="text-gray-400">마진</p><p className="font-bold text-emerald-600">{rev&&cost?`${((rev-cost)/10000).toFixed(0)}만원`:"-"}</p></div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-gray-500">📋 타이어 상담내역 ({jConsults.length+jList.length}건)</p>
+                    <div className="flex gap-1.5">
+                      {(["active","all","done"] as const).map(f=>(
+                        <button key={f} onClick={()=>setJFilter(f)}
+                          className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border transition-all ${jFilter===f?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
+                          {{active:"진행중",all:"전체",done:"종결"}[f]}
+                        </button>
+                      ))}
                     </div>
                   </div>
-                ):null;
-              })()}
-
-              {/* tb_orders 목록 */}
-              {jLoading?<p className="text-sm text-gray-400 p-4 text-center">불러오는 중...</p>:(()=>{
-                const SLBL:Record<string,string>={received:"접수",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",billed_in:"진흥청구",payment_in:"입금확인",payment_out:"송금완료"};
-                const SCLR:Record<string,string>={received:"bg-gray-100 text-gray-600",forwarded:"bg-blue-100 text-blue-700",delivered:"bg-emerald-100 text-emerald-700",wheel_returned:"bg-purple-100 text-purple-700",invoiced:"bg-orange-100 text-orange-700",billed_in:"bg-yellow-100 text-yellow-700",payment_in:"bg-teal-100 text-teal-700",payment_out:"bg-green-100 text-green-700"};
-                const NEXT:Record<string,string|null>={received:"forwarded",forwarded:"delivered",delivered:"wheel_returned",wheel_returned:"invoiced",invoiced:"billed_in",billed_in:"payment_in",payment_in:"payment_out",payment_out:null};
-                const PREV:Record<string,string|null>={received:null,forwarded:"received",delivered:"forwarded",wheel_returned:"delivered",invoiced:"wheel_returned",billed_in:"invoiced",payment_in:"billed_in",payment_out:"payment_in"};
-                const DFLD:Record<string,string>={forwarded:"forwarded_at",delivered:"delivered_at",wheel_returned:"wheel_returned_at",invoiced:"invoiced_at",billed_in:"billed_in_at",payment_in:"payment_in_at",payment_out:"payment_out_at"};
-                let filtered=jList.filter((o:any)=>jFilter==="active"?o.status!=="payment_out":jFilter==="done"?o.status==="payment_out":jFilter==="wheel_pending"?o.status==="delivered":true);
-                if(jFilter==="wheel_pending"){
-                  // 납품일 오래된 순으로 정렬 (휠반납 누락 우려가 큰 건부터)
-                  filtered=[...filtered].sort((a:any,b:any)=>new Date(a.delivered_at??a.created_at).getTime()-new Date(b.delivered_at??b.created_at).getTime());
-                }
-                const reload=()=>{const myReq=++jListReqRef.current;setJLoading(true);supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60).then(({data})=>{if(myReq!==jListReqRef.current)return;setJList(data??[]);setJLoading(false);});};
-                if(filtered.length===0) return <div className={`${CARD} p-8 text-center text-gray-400 text-sm`}>{jFilter==="wheel_pending"?"휠반납 대상 주문이 없습니다 (모두 회수 완료) 🎉":"주문이 없습니다"}</div>;
-                return (
                   <div className="space-y-2">
-                    {filtered.map((o:any)=>{
-                      const next=NEXT[o.status]; const isExp=jExpanded===o.id;
+                    {/* ── tb_orders 기반 항목 ── */}
+                    {jList.filter((o:any)=>{
+                      const wheelDone=!!o.wheel_returned_at;
+                      const invoiced=!!o.invoiced_at||["invoiced","billed_in","payment_in","payment_out","wheel_returned"].includes(o.status);
+                      const closed=invoiced&&wheelDone;
+                      return jFilter==="active"?!closed:jFilter==="done"?closed:true;
+                    }).map((o:any)=>{
+                      const wheelDone=!!o.wheel_returned_at;
+                      const invoiced=!!o.invoiced_at||["invoiced","billed_in","payment_in","payment_out","wheel_returned"].includes(o.status);
+                      const delivered=!!o.delivered_at||["delivered","wheel_returned","invoiced","billed_in","payment_in","payment_out"].includes(o.status);
+                      const closed=invoiced&&wheelDone;
+                      const jStage:"received"|"delivered"|"invoiced"|"closed" = closed?"closed":invoiced?"invoiced":delivered?"delivered":"received";
+                      const JSLBL:Record<string,string>={received:"접수(진흥전달)",delivered:"발송(납품완료)",invoiced:"계산서발행",closed:"종결"};
+                      const JSCLR:Record<string,string>={received:"bg-gray-100 text-gray-600 border-gray-200",delivered:"bg-blue-100 text-blue-700 border-blue-200",invoiced:"bg-orange-100 text-orange-700 border-orange-200",closed:"bg-emerald-100 text-emerald-700 border-emerald-200"};
+                      const isExp=jExpanded===o.id;
+                      const reload=()=>{const myReq=++jListReqRef.current;supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60).then(({data})=>{if(myReq===jListReqRef.current)setJList(data??[]);});};
                       return (
-                        <div key={o.id} id={`jorder-${o.id}`} className={`${CARD} overflow-hidden`}>
+                        <div key={`jo-${o.id}`} id={`jorder-${o.id}`} className={`${CARD} overflow-hidden`}>
                           <div className="p-3.5">
                             <div className="flex items-start gap-2.5">
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className="text-sm font-semibold text-[#0f172a]">{o.customer_name_raw||"미확인"}</span>
-                                  <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${SCLR[o.status]||"bg-gray-100 text-gray-600"}`}>{SLBL[o.status]||o.status}</span>
+                                  <span className={`text-[11px] px-2 py-0.5 rounded-full border font-medium ${JSCLR[jStage]}`}>{JSLBL[jStage]}</span>
+                                  {jStage!=="closed"&&jStage!=="received"&&(
+                                    <span className={`text-[11px] px-2 py-0.5 rounded-full border font-medium ${wheelDone?"bg-purple-100 text-purple-700 border-purple-200":"bg-white text-gray-300 border-gray-200"}`}>휠반납 {wheelDone?"✓":"-"}</span>
+                                  )}
                                 </div>
                                 {o.product_spec&&<p className="text-xs text-gray-600 mt-0.5 font-medium">{o.product_spec}{o.quantity?` × ${o.quantity}개`:""}</p>}
-                                {/* 5단계 진행 바 */}
-                                {(()=>{
-                                  const STEPS=["received","forwarded","delivered","wheel_returned","invoiced"];
-                                  const STEP_LBL=["주문접수","발주","납품완료","휠반납","계산서발행"];
-                                  const curIdx=STEPS.indexOf(o.status);
-                                  const doneIdx=curIdx===-1?STEPS.length:curIdx;
-                                  return (
-                                    <div className="flex items-center gap-0.5 mt-1.5">
-                                      {STEPS.map((s,i)=>(
-                                        <div key={s} className="flex items-center gap-0.5 flex-1 min-w-0">
-                                          <div className={`h-1.5 flex-1 rounded-full transition-all ${i<=doneIdx?"bg-orange-400":"bg-gray-200"}`}/>
-                                          {i===doneIdx&&<span className="text-[10px] text-orange-500 font-semibold whitespace-nowrap ml-0.5">{STEP_LBL[i]}</span>}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  );
-                                })()}
                                 <div className="flex items-center gap-2 mt-1 flex-wrap text-xs">
                                   {o.price_to_customer&&<span className="text-orange-600 font-medium">매출 {Number(o.price_to_customer).toLocaleString("ko-KR")}원</span>}
                                   {o.margin!=null&&o.margin!==0&&<span className="text-emerald-600 font-medium">마진 {Number(o.margin).toLocaleString("ko-KR")}원</span>}
                                   <span className="text-gray-400">{String(o.created_at||"").slice(0,10)}</span>
                                 </div>
                                 {isExp&&(
-                                  <div className="mt-2 pt-2 border-t border-gray-100">
-                                    <div className="grid grid-cols-3 gap-2 text-xs mb-2">
-                                      <div><p className="text-gray-400">고객청구</p><p className="font-semibold text-orange-600">{o.price_to_customer?`${Number(o.price_to_customer).toLocaleString("ko-KR")}원`:"-"}</p></div>
+                                  <div className="mt-2 pt-2 border-t border-gray-100 space-y-2">
+                                    <div className="grid grid-cols-3 gap-2 text-xs">
+                                      <div><p className="text-gray-400">고객청구(매출)</p><p className="font-semibold text-orange-600">{o.price_to_customer?`${Number(o.price_to_customer).toLocaleString("ko-KR")}원`:"-"}</p></div>
                                       <div><p className="text-gray-400">진흥매입</p><p className="font-semibold text-gray-700">{o.price_from_jinheung?`${Number(o.price_from_jinheung).toLocaleString("ko-KR")}원`:"-"}</p></div>
                                       <div><p className="text-gray-400">마진</p><p className="font-semibold text-emerald-600">{o.margin!=null?`${Number(o.margin).toLocaleString("ko-KR")}원`:"-"}</p></div>
                                     </div>
-                                    <button className={`${BTG} text-xs`} onClick={e=>{e.stopPropagation();setJAmtModal(o);setJAmtTo(o.price_to_customer?.toLocaleString("ko-KR")??"");setJAmtFrom(o.price_from_jinheung?.toLocaleString("ko-KR")??"");}}>💰 금액 입력</button>
+                                    <div className="flex items-center justify-between">
+                                      <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none">
+                                        <input type="checkbox" checked={wheelDone} className="w-4 h-4 rounded border-gray-300 accent-purple-600"
+                                          onChange={async()=>{
+                                            const next=wheelDone?null:new Date().toISOString();
+                                            await supabase.from("tb_orders").update({wheel_returned_at:next}).eq("id",o.id);
+                                            if(next&&invoiced) await supabase.from("sales_records").update({wheel_returned:true}).eq("jinheung_order_id",o.id);
+                                            reload();
+                                          }}/>
+                                        휠반납 완료{jStage==="invoiced"&&!wheelDone&&<span className="text-gray-400">(체크 시 자동 종결)</span>}
+                                      </label>
+                                      <button className={`${BTG} text-xs`} onClick={e=>{e.stopPropagation();setJAmtModal(o);setJAmtTo(o.price_to_customer?.toLocaleString("ko-KR")??"");setJAmtFrom(o.price_from_jinheung?.toLocaleString("ko-KR")??"");}}>💰 매출금액 입력</button>
+                                    </div>
                                   </div>
                                 )}
                               </div>
                               <div className="flex flex-col gap-1 shrink-0">
-                                {/* 단계 직접 선택 드롭다운 */}
-                                <select
-                                  value={o.status}
-                                  onChange={async(e)=>{
-                                    const nextStatus = e.target.value;
-                                    if(nextStatus === o.status) return;
-                                    if(nextStatus === "invoiced"){
-                                      // 계산서발행 선택 시: 이미지 업로드 강제 모달
-                                      setJInvoiceModal(o);
-                                      return;
-                                    }
-                                    const patch:any={status:nextStatus};
-                                    if(DFLD[nextStatus]) patch[DFLD[nextStatus]]=new Date().toISOString();
-                                    await supabase.from("tb_orders").update(patch).eq("id",o.id);
-                                    try{await fetch("https://nfwtsptqloefsbpjvdyu.supabase.co/functions/v1/kakao-order-webhook",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({event:"status_change",orderId:o.id,status:nextStatus,customerName:o.customer_name_raw??"",productSpec:o.product_spec??"",quantity:o.quantity?.toString()??"",amount:String(o.price_to_customer??o.price_from_jinheung??"")})});}catch(err){console.error(err);}
+                                {jStage==="received"&&(
+                                  <button className={BTO} onClick={async()=>{
+                                    await supabase.from("tb_orders").update({status:"delivered",delivered_at:new Date().toISOString()}).eq("id",o.id);
+                                    try{await fetch("https://nfwtsptqloefsbpjvdyu.supabase.co/functions/v1/kakao-order-webhook",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({event:"status_change",orderId:o.id,status:"delivered",customerName:o.customer_name_raw??"",productSpec:o.product_spec??"",quantity:o.quantity?.toString()??"",amount:String(o.price_to_customer??o.price_from_jinheung??"")})});}catch(e){console.error(e);}
                                     reload();
-                                  }}
-                                  onClick={e=>e.stopPropagation()}
-                                  className="h-8 rounded-xl border border-gray-200 px-2 text-xs font-medium text-gray-600 focus:outline-none focus:border-orange-400 bg-white"
-                                >
-                                  {Object.keys(SLBL).map(s=>(
-                                    <option key={s} value={s}>{SLBL[s]}</option>
-                                  ))}
-                                </select>
-                                {next&&(
-                                  <button onClick={async()=>{
-                                    if(next === "invoiced"){
-                                      setJInvoiceModal(o);
-                                      return;
-                                    }
-                                    const patch:any={status:next};
-                                    if(DFLD[next]) patch[DFLD[next]]=new Date().toISOString();
-                                    await supabase.from("tb_orders").update(patch).eq("id",o.id);
-                                    try{await fetch("https://nfwtsptqloefsbpjvdyu.supabase.co/functions/v1/kakao-order-webhook",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({event:"status_change",orderId:o.id,status:next,customerName:o.customer_name_raw??"",productSpec:o.product_spec??"",quantity:o.quantity?.toString()??"",amount:String(o.price_to_customer??o.price_from_jinheung??"")})});}catch(e){console.error(e);}
-                                    reload();
-                                  }} className={BTO}>{SLBL[next]||next} →</button>
+                                  }}>발송(납품완료) →</button>
                                 )}
-                                {PREV[o.status]&&(
-                                  <button onClick={async()=>{
-                                    const prev=PREV[o.status]!;
-                                    const patch:any={status:prev};
-                                    if(DFLD[o.status]) patch[DFLD[o.status]]=null;
-                                    await supabase.from("tb_orders").update(patch).eq("id",o.id);
-                                    reload();
-                                  }} className="px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-400 hover:border-red-200 hover:text-red-400 transition-all">↩ {SLBL[PREV[o.status]!]||PREV[o.status]}</button>
+                                {jStage==="delivered"&&(
+                                  <button className={BTO} onClick={()=>setJInvoiceModal(o)}>계산서발행 →</button>
                                 )}
-                                <button className={BTO} onClick={e=>{e.stopPropagation();navigate(`/work/orders?id=${o.id}`);}}>이동 →</button>
-                                <button className={BTG} onClick={e=>{e.stopPropagation();setJExpanded(isExp?null:o.id);}}>{isExp?"접기":"상세"}</button>
+                                <button className={BTG} onClick={()=>setJExpanded(isExp?null:o.id)}>{isExp?"접기":"상세"}</button>
                                 <button
                                   className="px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-red-400 hover:border-red-300 hover:bg-red-50 transition-all"
-                                  onClick={async e=>{
-                                    e.stopPropagation();
+                                  onClick={async()=>{
                                     if(!window.confirm(`'${o.customer_name_raw||"미확인"}' 주문을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return;
                                     const {error}=await supabase.from("tb_orders").delete().eq("id",o.id);
                                     if(error){ console.error("진흥주문 삭제 실패:",error); alert("삭제 중 오류가 발생했습니다: "+error.message); return; }
@@ -5180,9 +5083,109 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                         </div>
                       );
                     })}
+
+                    {/* ── 상담(consultation_cases) 기반 타이어 항목 ── */}
+                    {jConsults.filter((c:any)=>{
+                      const wheelDone=!!c.wheel_returned_at;
+                      const closed=(c.progress_stage==="invoiced"&&wheelDone)||c.progress_stage==="cancelled";
+                      return jFilter==="active"?!closed:jFilter==="done"?closed:true;
+                    }).map((c:any)=>{
+                      const wheelDone=!!c.wheel_returned_at;
+                      const invoiced=c.progress_stage==="invoiced";
+                      const cancelled=c.progress_stage==="cancelled";
+                      const closed=invoiced&&wheelDone;
+                      const curStage=c.progress_stage??"contract";
+                      const badgeLabel = cancelled?"취소":closed?"종결":invoiced?"계산서발행":curStage==="delivery"?"발송(납품완료)":"접수(계약)";
+                      const badgeColor = cancelled?"bg-red-100 text-red-500 border-red-200":closed?"bg-emerald-100 text-emerald-700 border-emerald-200":invoiced?"bg-orange-100 text-orange-700 border-orange-200":curStage==="delivery"?"bg-blue-100 text-blue-700 border-blue-200":"bg-gray-100 text-gray-600 border-gray-200";
+                      const isExp=jExpanded===`c-${c.id}`;
+                      const toggleWheel=async()=>{
+                        const next=wheelDone?null:new Date().toISOString();
+                        const {error}=await supabase.from("consultation_tire_details").update({wheel_returned_at:next}).eq("consultation_id",c.id);
+                        if(error){ alert("휠반납 처리 실패: "+error.message); return; }
+                        if(next&&invoiced){
+                          await supabase.from("sales_records").update({wheel_returned:true}).eq("consultation_id",c.id);
+                        }
+                        setJConsults((prev:any)=>prev.map((x:any)=>x.id===c.id?{...x,wheel_returned_at:next}:x));
+                      };
+                      return (
+                        <div key={`jc-${c.id}`} className={`${CARD} overflow-hidden`}>
+                          <div className="p-3.5">
+                            <div className="flex items-start gap-2.5">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-sm font-semibold text-[#0f172a]">{c.customer_name}</span>
+                                  <span className={`text-[11px] px-2 py-0.5 rounded-full border font-medium ${badgeColor}`}>{badgeLabel}</span>
+                                  {!cancelled&&curStage!=="contract"&&(
+                                    <span className={`text-[11px] px-2 py-0.5 rounded-full border font-medium ${wheelDone?"bg-purple-100 text-purple-700 border-purple-200":"bg-white text-gray-300 border-gray-200"}`}>휠반납 {wheelDone?"✓":"-"}</span>
+                                  )}
+                                </div>
+                                {c.product_detail&&<p className="text-xs text-gray-600 mt-0.5 font-medium">{c.product_detail}</p>}
+                                <div className="flex items-center gap-2 mt-1 flex-wrap text-xs">
+                                  {c.price_to_customer&&<span className="text-orange-600 font-medium">매출 {Number(c.price_to_customer).toLocaleString("ko-KR")}원</span>}
+                                  {c.summary&&<span className="text-gray-500 truncate max-w-[200px]">{c.summary}</span>}
+                                  <span className="ml-auto text-gray-300">{String(c.created_at||"").slice(0,10)}</span>
+                                </div>
+                                {isExp&&(
+                                  <div className="mt-2 pt-2 border-t border-gray-100 space-y-2">
+                                    {c.summary&&<p className="text-xs text-gray-600 bg-gray-50 rounded-xl p-2.5 border border-gray-100">{c.summary}</p>}
+                                    <div className="grid grid-cols-3 gap-2 text-xs">
+                                      <div><p className="text-gray-400">고객청구(매출)</p><p className="font-semibold text-orange-600">{c.price_to_customer?`${Number(c.price_to_customer).toLocaleString("ko-KR")}원`:"-"}</p></div>
+                                      <div><p className="text-gray-400">진흥매입</p><p className="font-semibold text-gray-700">{c.price_from_jinheung?`${Number(c.price_from_jinheung).toLocaleString("ko-KR")}원`:"-"}</p></div>
+                                      <div><p className="text-gray-400">마진</p><p className="font-semibold text-emerald-600">{(c.price_to_customer!=null&&c.price_from_jinheung!=null)?`${(Number(c.price_to_customer)-Number(c.price_from_jinheung)).toLocaleString("ko-KR")}원`:"-"}</p></div>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      {!cancelled&&curStage!=="contract"?(
+                                        <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none">
+                                          <input type="checkbox" checked={wheelDone} className="w-4 h-4 rounded border-gray-300 accent-purple-600" onChange={toggleWheel}/>
+                                          휠반납 완료{invoiced&&!wheelDone&&<span className="text-gray-400">(체크 시 자동 종결)</span>}
+                                        </label>
+                                      ):<span/>}
+                                      <button className={`${BTG} text-xs`} onClick={()=>{setJAmtModal({...c,__consult:true});setJAmtTo(c.price_to_customer?.toLocaleString("ko-KR")??"");setJAmtFrom(c.price_from_jinheung?.toLocaleString("ko-KR")??"");}}>💰 매출금액 입력</button>
+                                    </div>
+                                    {!cancelled&&!invoiced&&(
+                                      <button className="px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-400 hover:border-red-200 hover:text-red-400 transition-all"
+                                        onClick={async()=>{
+                                          const {error}=await supabase.from("consultation_tire_details").update({process_stage:"cancelled",process_status:"cancelled"}).eq("consultation_id",c.id);
+                                          if(error){ alert("처리 실패: "+error.message); return; }
+                                          setJConsults((prev:any)=>prev.map((x:any)=>x.id===c.id?{...x,progress_stage:"cancelled"}:x));
+                                        }}>취소 처리</button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex flex-col gap-1 shrink-0">
+                                {curStage==="contract"&&(
+                                  <button className={BTO} onClick={async()=>{
+                                    const {error}=await supabase.from("consultation_tire_details").update({process_stage:"delivery",process_status:"delivery"}).eq("consultation_id",c.id);
+                                    if(error){ alert("단계 변경 실패: "+error.message); return; }
+                                    setJConsults((prev:any)=>prev.map((x:any)=>x.id===c.id?{...x,progress_stage:"delivery"}:x));
+                                  }}>발송(납품완료) →</button>
+                                )}
+                                {curStage==="delivery"&&(
+                                  <button className={BTO} onClick={()=>{setOrderInvoiceModal(c);setOrderInvoiceAmtTo(c.price_to_customer?.toLocaleString("ko-KR")??"");setOrderInvoiceAmtFrom(c.price_from_jinheung?.toLocaleString("ko-KR")??"");}}>계산서발행 →</button>
+                                )}
+                                <button className={BTG} onClick={()=>setJExpanded(isExp?null:`c-${c.id}`)}>{isExp?"접기":"상세"}</button>
+                                <button
+                                  className="px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-red-400 hover:border-red-300 hover:bg-red-50 transition-all"
+                                  onClick={async()=>{
+                                    if(!window.confirm(`'${c.customer_name}' 상담건을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return;
+                                    await supabase.from("consultation_tire_details").delete().eq("consultation_id",c.id);
+                                    const {error}=await supabase.from("consultation_cases").delete().eq("id",c.id);
+                                    if(error){ console.error("상담건 삭제 실패:",error); alert("삭제 중 오류가 발생했습니다: "+error.message); return; }
+                                    setJConsults((prev:any)=>prev.filter((x:any)=>x.id!==c.id));
+                                  }}
+                                >🗑 삭제</button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })()}
+                </div>
+              ):(
+                <div className={`${CARD} p-8 text-center text-gray-400 text-sm`}>주문/상담 내역이 없습니다</div>
+              )}
             </div>
           )}
 
@@ -5571,8 +5574,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       {jAmtModal&&(
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 px-4" style={{backdropFilter:"blur(2px)"}}>
           <div className="w-full max-w-sm border border-gray-200 rounded-2xl bg-white shadow-2xl p-6">
-            <h2 className="text-base font-bold text-[#0f172a] mb-1">금액 입력</h2>
-            <p className="text-sm text-gray-500 mb-4">{jAmtModal.customer_name_raw} — {jAmtModal.product_spec}</p>
+            <h2 className="text-base font-bold text-[#0f172a] mb-1">매출금액 입력</h2>
+            <p className="text-sm text-gray-500 mb-4">{jAmtModal.__consult?jAmtModal.customer_name:jAmtModal.customer_name_raw} — {jAmtModal.__consult?(jAmtModal.product_detail??""):jAmtModal.product_spec}</p>
             <div className="space-y-3">
               <div>
                 <label className="text-xs font-medium text-gray-500 mb-1 block">고객사 청구금액 (원)</label>
@@ -5592,12 +5595,25 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               <button onClick={()=>setJAmtModal(null)} className={BTG}>취소</button>
               <button disabled={jSaving} onClick={async()=>{
                 setJSaving(true);
-                await supabase.from("tb_orders").update({
-                  price_to_customer: jAmtTo?parseInt(jAmtTo.replace(/,/g,"")):null,
-                  price_from_jinheung: jAmtFrom?parseInt(jAmtFrom.replace(/,/g,"")):null,
-                }).eq("id",jAmtModal.id);
+                const amtTo = jAmtTo?parseInt(jAmtTo.replace(/,/g,"")):null;
+                const amtFrom = jAmtFrom?parseInt(jAmtFrom.replace(/,/g,"")):null;
+                if(jAmtModal.__consult){
+                  await supabase.from("consultation_tire_details").update({
+                    price_to_customer: amtTo,
+                    price_from_jinheung: amtFrom,
+                  }).eq("consultation_id",jAmtModal.id);
+                  // 이미 매출관리에 등록된 건이면 금액도 동기화
+                  await supabase.from("sales_records").update({ unit_price: amtTo??0, unit_cost: amtFrom??0 }).eq("consultation_id",jAmtModal.id);
+                  setJConsults((prev:any)=>prev.map((x:any)=>x.id===jAmtModal.id?{...x,price_to_customer:amtTo,price_from_jinheung:amtFrom}:x));
+                } else {
+                  await supabase.from("tb_orders").update({
+                    price_to_customer: amtTo,
+                    price_from_jinheung: amtFrom,
+                  }).eq("id",jAmtModal.id);
+                  await supabase.from("sales_records").update({ unit_price: amtTo??0, unit_cost: amtFrom??0 }).eq("jinheung_order_id",jAmtModal.id);
+                  {const myReq=++jListReqRef.current;supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60).then(({data})=>{if(myReq===jListReqRef.current)setJList(data??[]);});}
+                }
                 setJSaving(false); setJAmtModal(null);
-                {const myReq=++jListReqRef.current;supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60).then(({data})=>{if(myReq===jListReqRef.current)setJList(data??[]);});}
               }} className="px-4 py-2 rounded-xl bg-[#0f172a] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40">저장</button>
             </div>
           </div>
@@ -5691,6 +5707,16 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
             <p className="text-xs text-orange-600 bg-orange-50 border border-orange-100 rounded-xl p-2.5 mb-3">
               계산서발행 단계로 전환하려면 세금계산서 이미지를 먼저 등록해야 합니다. 등록 즉시 매출관리에도 자동 반영됩니다.
             </p>
+            <div className="space-y-2 mb-3">
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">매출금액(고객 청구, 원)</label>
+                <input value={orderInvoiceAmtTo} onChange={e=>setOrderInvoiceAmtTo(e.target.value.replace(/[^0-9]/g,"").replace(/\B(?=(\d{3})+(?!\d))/g,","))} placeholder="예: 250,000" inputMode="numeric" className="w-full h-9 rounded-xl border border-gray-200 px-3 text-sm focus:outline-none focus:border-orange-400"/>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">매입금액(원, 선택)</label>
+                <input value={orderInvoiceAmtFrom} onChange={e=>setOrderInvoiceAmtFrom(e.target.value.replace(/[^0-9]/g,"").replace(/\B(?=(\d{3})+(?!\d))/g,","))} placeholder="예: 220,000" inputMode="numeric" className="w-full h-9 rounded-xl border border-gray-200 px-3 text-sm focus:outline-none focus:border-orange-400"/>
+              </div>
+            </div>
             <input
               type="file"
               accept="image/*,.pdf"
@@ -5707,19 +5733,27 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                   setOrderInvoiceUploading(true);
                   try{
                     const o = orderInvoiceModal!;
+                    const amtTo = orderInvoiceAmtTo ? parseInt(orderInvoiceAmtTo.replace(/,/g,"")) : 0;
+                    const amtFrom = orderInvoiceAmtFrom ? parseInt(orderInvoiceAmtFrom.replace(/,/g,"")) : 0;
                     const ext = orderInvoiceFile.name.split(".").pop() || "jpg";
                     const path = `orders/${o.id}_${Date.now()}.${ext}`;
                     const { error: upErr } = await supabase.storage.from("tax-invoices").upload(path, orderInvoiceFile, { upsert:true, contentType: orderInvoiceFile.type || undefined });
                     if(upErr){ alert("업로드 실패: "+upErr.message); setOrderInvoiceUploading(false); return; }
 
-                    // 1. 상세 테이블 단계 업데이트 + 계산서 이미지 경로 저장
+                    // 1. 상세 테이블 단계 업데이트 + 계산서 이미지 경로 + 금액 저장
                     const table = ["tire","tire_sales"].includes(o.work_type) ? "consultation_tire_details" : "consultation_battery_details";
-                    await supabase.from(table).update({
+                    const updatePatch:any = {
                       process_stage: "invoiced",
+                      process_status: "invoiced",
                       invoice_image_path: path,
-                    }).eq("consultation_id", o.id);
+                    };
+                    if(table==="consultation_tire_details"){
+                      updatePatch.price_to_customer = amtTo;
+                      updatePatch.price_from_jinheung = amtFrom;
+                    }
+                    await supabase.from(table).update(updatePatch).eq("consultation_id", o.id);
 
-                    // 2. 매출(sales_records) 자동 반영 — 이미 등록된 건이면 중복 방지
+                    // 2. 매출(sales_records) 자동 반영 — 이미 등록된 건이면 중복 방지, 금액은 입력값 사용
                     const { data: existing } = await supabase.from("sales_records").select("id").eq("consultation_id", o.id).maybeSingle();
                     if(!existing){
                       await supabase.from("sales_records").insert({
@@ -5731,8 +5765,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                         maker: null,
                         spec: o.product_detail || null,
                         quantity: 1,
-                        unit_price: 0,
-                        unit_cost: 0,
+                        unit_price: amtTo,
+                        unit_cost: amtFrom,
                         tax_invoice: true,
                         payment_confirmed: false,
                         payment_date: null,
@@ -5740,13 +5774,17 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                         delivery_confirmed: false,
                         wheel_returned: false,
                         closing: false,
-                        note: `상담건 #${o.id} (${o.customer_name}) 자동 연동 — 계산서발행 시 자동 등록, 단가/매입가 확인 필요`,
+                        note: `상담건 #${o.id} (${o.customer_name}) 자동 연동 — 계산서발행 시 자동 등록`,
                         consultation_id: o.id,
                       });
+                    } else {
+                      await supabase.from("sales_records").update({ unit_price: amtTo, unit_cost: amtFrom }).eq("id", existing.id);
                     }
 
                     setOrderInvoiceModal(null); setOrderInvoiceFile(null); setOrderInvoiceUploading(false);
+                    setOrderInvoiceAmtTo(""); setOrderInvoiceAmtFrom("");
                     showToast("계산서발행 완료 + 매출관리 자동 등록됨");
+                    setJConsults((prev:any)=>prev.map((x:any)=>x.id===o.id?{...x,progress_stage:"invoiced",price_to_customer:amtTo,price_from_jinheung:amtFrom}:x));
                     void loadOrderViews();
                   }catch(err){
                     console.error(err);
