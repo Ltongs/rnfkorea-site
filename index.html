@@ -20,7 +20,7 @@
       gtag('config', 'G-4S1X3GVXZ2');
     </script>
 
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>RNF KOREA - 산업용 에너지 & 모빌리티 솔루션</title>
 
     <link rel="icon" href="/favicon.ico" />
@@ -123,11 +123,12 @@
 
     <!-- ✅ PWA 스플래시 -->
     <div id="pwa-splash" style="
+      display: none;
       position: fixed; top: 0; left: 0; right: 0; bottom: 0;
       width: 100%; height: 100%;
       z-index: 99999;
       background: #ffffff;
-      display: flex; flex-direction: column;
+      flex-direction: column;
       align-items: center; justify-content: center;
       opacity: 0;
       transition: opacity 0.45s ease;
@@ -140,7 +141,17 @@
     </div>
     <script>
       (function() {
+        // PWA 앱(홈 화면에서 실행)일 때만 스플래시를 보여준다.
+        // 일반 브라우저 탭에서는 즉시 숨겨서 헤더 등 콘텐츠를 가리지 않도록 한다.
+        var isStandalone = window.matchMedia('(display-mode: standalone)').matches
+          || window.navigator.standalone === true;
+
         var el = document.getElementById('pwa-splash');
+
+        if (!isStandalone) {
+          el.style.display = 'none';
+          return;
+        }
 
         document.body.classList.add('pwa-loading');
         el.style.display = 'flex';

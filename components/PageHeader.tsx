@@ -96,10 +96,11 @@ export default function PageHeader() {
   const { user, canViewAll, isAdmin, isSubAdmin, isNarumi, isLotte, isInsuranceManager, isHyundaiCM, isNhCapital, isNhCapitalStaff, isInsAI } = useAuth() as any;
   const isAdminLevel = isAdmin || isSubAdmin;
 
-  // PWA 앱 모드에서는 헤더 숨김 (각 페이지에서 자체 컴팩트 헤더 제공)
-  const isStandalone = window.matchMedia('(display-mode: standalone)').matches
-    || (window.navigator as any).standalone === true;
-  if (isStandalone) return null;
+  // 참고: PWA 앱은 manifest.json의 start_url(/work/secretary 등)로 곧장 진입하며,
+  // 해당 업무 페이지들은 App.tsx 라우팅 단계에서 이미 PageHeader 자체를 렌더링하지 않으므로
+  // 여기서 별도의 standalone 감지/숨김 처리는 하지 않는다.
+  // (이전 standalone 감지가 일부 브라우저 환경에서 오탐되어 일반 브라우저에서도
+  //  헤더가 사라지는 문제가 있었음 — 제거함)
 
   const [openBiz, setOpenBiz] = useState(false);
   const [openShop, setOpenShop] = useState(false);
@@ -302,7 +303,10 @@ export default function PageHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-[9999] bg-white/95 backdrop-blur border-b border-gray-200">
+    <header
+      className="sticky top-0 z-[9999] bg-white/95 backdrop-blur border-b border-gray-200"
+      style={{ paddingTop: "env(safe-area-inset-top)" }}
+    >
       <div
         ref={headerRef}
         className="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 h-16 md:h-20 flex items-center justify-between overflow-visible"

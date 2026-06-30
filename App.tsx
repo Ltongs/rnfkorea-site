@@ -1381,7 +1381,7 @@ const AppRoutes = () => {
   const rootElement = <HomePage />;
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-white">
+    <div className="min-h-screen bg-white">
       <ScrollToTop />
       <ScrollToTopButton />
 
@@ -1402,7 +1402,7 @@ const AppRoutes = () => {
         && <PageHeader />}
 
       {/* ✅ <main> 에 id와 role 명시 → 스크린리더 + 검색엔진 본문 인식 */}
-      <main id="main-content" role="main" className="w-full">
+      <main id="main-content" role="main" className="w-full overflow-x-hidden">
         <Routes>
           <Route path="/" element={rootElement} />
           <Route path="/tires" element={<TiresPage />} />
