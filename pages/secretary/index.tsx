@@ -2330,6 +2330,7 @@ const SecretaryPage:React.FC = () => {
   const [calViewMonth,setCalViewMonth] = useState(new Date().getMonth());
   // 구글 캘린더
   const [gcalConnected,setGcalConnected] = useState(false);
+  const [gcalEmail,setGcalEmail] = useState<string|null>(null);
   const [gcalEvents,setGcalEvents] = useState<{id:string;title:string;start:string;color?:string}[]>([]);
   const [gcalImporting,setGcalImporting] = useState(false);
   const [gcalBulkSyncing,setGcalBulkSyncing] = useState(false);
@@ -2483,8 +2484,9 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
   // ─── 구글 캘린더 ─────────────────────────────────────────────────────────────
   const checkGcalConnection = useCallback(async()=>{
     if(!user) return;
-    const {data} = await supabase.from("google_calendar_tokens").select("user_id").eq("user_id",user.id).maybeSingle();
+    const {data} = await supabase.from("google_calendar_tokens").select("user_id,gcal_email").eq("user_id",user.id).maybeSingle();
     setGcalConnected(!!data);
+    setGcalEmail((data as any)?.gcal_email ?? null);
     if(data) void loadGcalEvents(new Date().getFullYear(),new Date().getMonth());
   },[user]);
 
@@ -2521,11 +2523,15 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       const w = window.open(d.url,"_blank","width=600,height=700");
       // 연동 완료 메시지 수신
       const handler = (e:MessageEvent)=>{
-        if(e.data==="google-calendar-connected"){
+        // 신/구 포맷 모두 지원: 문자열("google-calendar-connected") 또는 { type, email }
+        const isConnected = e.data==="google-calendar-connected" || e.data?.type==="google-calendar-connected";
+        if(isConnected){
           window.removeEventListener("message",handler);
           setGcalConnected(true);
+          const email = e.data?.email ?? null;
+          setGcalEmail(email);
           void loadGcalEvents(new Date().getFullYear(),new Date().getMonth());
-          showToast("구글 캘린더 연동 완료! 🎉");
+          showToast(email ? `구글 캘린더 연동 완료! 🎉 (${email})` : "구글 캘린더 연동 완료! 🎉");
         }
       };
       window.addEventListener("message",handler);
@@ -2541,6 +2547,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       body:JSON.stringify({action:"disconnect",user_id:user.id}),
     });
     setGcalConnected(false);
+    setGcalEmail(null);
     setGcalEvents([]);
     showToast("구글 캘린더 연동 해제");
   }
@@ -3989,6 +3996,11 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
             {gcalConnected ? (
               <div className="space-y-1.5">
                 <p className="text-[10px] text-emerald-600 mb-1.5">✅ 연동됨 — 일정 자동 동기화 중</p>
+                {gcalEmail ? (
+                  <p className="text-[10px] text-gray-400 -mt-1 mb-1.5">계정: {gcalEmail}</p>
+                ) : (
+                  <p className="text-[10px] text-amber-500 -mt-1 mb-1.5">⚠️ 연동 계정 정보 없음 (재연동 시 표시됩니다)</p>
+                )}
                 {/* 구글 → AI비서 역방향 가져오기 */}
                 <button
                   onClick={()=>void importGcalToLocal(calViewYear, calViewMonth)}

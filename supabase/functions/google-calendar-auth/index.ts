@@ -11,7 +11,7 @@ const CORS = {
 const CLIENT_ID     = Deno.env.get("GOOGLE_CLIENT_ID")!;
 const CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
 const REDIRECT_URI  = Deno.env.get("GOOGLE_REDIRECT_URI")!;
-const SCOPES        = "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.readonly";
+const SCOPES        = "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -60,20 +60,33 @@ serve(async (req) => {
       });
     }
 
+    // 연동된 구글 계정 이메일 조회 (재연동 시 다른 계정으로 잘못 연결되는 걸 화면에서 바로 알 수 있도록)
+    let gcalEmail: string | null = null;
+    try {
+      const uiRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      });
+      const ui = await uiRes.json();
+      gcalEmail = ui.email ?? null;
+    } catch (_e) {
+      // 이메일 조회 실패해도 연동 자체는 계속 진행
+    }
+
     // refresh_token을 Supabase에 저장
     await db.from("google_calendar_tokens").upsert({
       user_id: userId,
       access_token:  tokens.access_token,
       refresh_token: tokens.refresh_token,
       expires_at:    new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
+      gcal_email:    gcalEmail,
     }, { onConflict: "user_id" });
 
     // 성공 후 AI비서 페이지로 리디렉션
     return new Response(
       `<html><body><script>
-        window.opener?.postMessage('google-calendar-connected','*');
+        window.opener?.postMessage({ type: 'google-calendar-connected', email: ${JSON.stringify(gcalEmail)} },'*');
         window.close();
-      </script><p>연동 완료! 이 창을 닫아주세요.</p></body></html>`,
+      </script><p>연동 완료${gcalEmail ? ` (${gcalEmail})` : ""}! 이 창을 닫아주세요.</p></body></html>`,
       { headers: { "Content-Type": "text/html" } }
     );
   }
