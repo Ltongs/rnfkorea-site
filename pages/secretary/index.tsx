@@ -4940,7 +4940,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                     <button className={BTP} disabled={jNewSaving||!jNewForm.customer_name||!jNewForm.product_spec}
                       onClick={async()=>{
                         setJNewSaving(true);
-                        const{data}=await supabase.from("tb_orders").insert({
+                        const{data,error}=await supabase.from("tb_orders").insert({
                           customer_name_raw:jNewForm.customer_name,
                           product_type:"tire",
                           product_spec:jNewForm.product_spec,
@@ -4950,10 +4950,16 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                           memo:jNewForm.memo||null,
                         }).select().single();
                         setJNewSaving(false);
+                        if(error){
+                          console.error("진흥주문 저장 실패:", error);
+                          alert("저장 중 오류가 발생했습니다: "+error.message);
+                          return; // 입력값 유지 — 폼 닫지 않음
+                        }
                         setShowJNewForm(false);
                         setJNewForm({customer_name:"",product_spec:"",quantity:"",memo:""});
                         // 목록 새로고침 후 신규 카드 자동 펼침
-                        const{data:list}=await supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60);
+                        const{data:list,error:listErr}=await supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60);
+                        if(listErr){ console.error("진흥주문 목록 갱신 실패:", listErr); }
                         setJList(list??[]);
                         if(data?.id) setJExpanded(data.id);
                       }}>
