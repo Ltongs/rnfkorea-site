@@ -1308,11 +1308,14 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         vat_deferred_amount: next === "승인" && creditModal.row.vat_deferred && creditVatAmount.trim()
                                ? parseInt(creditVatAmount.replace(/,/g, ""), 10) || null : null,
         credit_note:         creditNote.trim() || null,
+        // 신용결과 처리 시 입력한 메모를 본문 특이사항에도 반영(대체)
+        special_note:        creditNote.trim() || null,
       };
       const { error } = await supabase.from("hyundaicm_tasks").update(patch).eq("id", row.id as any);
       if (error) throw error;
       setRows((prev) => prev.map((r) => String(r.id) === String(row.id) ? { ...r, ...patch } : r));
       setCreditResults((prev) => ({ ...prev, [String(row.id)]: next }));
+      setMemoDrafts((prev) => ({ ...prev, [String(row.id)]: patch.special_note ?? "" }));
 
       // 카카오 알림 — 동일 상태 재저장(조건 수정)인 경우 "수정 알림", 신규 상태 변경인 경우 기존 알림
       const isConditionUpdate = row.status === next; // 이미 같은 상태(예: 승인)에서 재저장 = 조건 수정
@@ -2168,6 +2171,29 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                             📋 승인조건
                           </button>
                         )}
+                        {/* 조건 변경 버튼 — 신용결과(승인/보완/거절)가 이미 확정된 건의 세부조건만 다시 입력 */}
+                        {canChangeStatus && CREDIT_STATUSES.includes(r.status as any) && (
+                          <button
+                            onClick={() => {
+                              setCreditNiceScore(r.nice_score != null ? String(r.nice_score) : "");
+                              setCreditRate(r.credit_rate != null ? String(r.credit_rate) : "");
+                              setCreditIncentive(r.credit_incentive != null ? String(r.credit_incentive) : "");
+                              setCreditLoanLimit(r.loan_limit != null ? Number(r.loan_limit).toLocaleString("ko-KR") : "");
+                              setCreditLoanPeriod(r.loan_period != null ? String(r.loan_period) : "");
+                              setCreditGracePeriod(r.grace_period != null ? String(r.grace_period) : "");
+                              setCreditInstallmentPeriod(r.installment_period != null ? String(r.installment_period) : "");
+                              setCreditVehicleAmount(r.vehicle_amount != null ? Number(r.vehicle_amount).toLocaleString("ko-KR") : "");
+                              setCreditAttachAmount(r.attach_amount != null ? Number(r.attach_amount).toLocaleString("ko-KR") : "");
+                              setCreditVatAmount(r.vat_deferred_amount != null ? Number(r.vat_deferred_amount).toLocaleString("ko-KR") : "");
+                              setCreditNote(r.credit_note ?? "");
+                              setCreditBizHistory((r.biz_history as any) ?? "1년이상");
+                              setCreditModal({ row: r, next: r.status as HCMStatus });
+                            }}
+                            className="px-3 py-1 rounded-xl border text-xs font-semibold transition-all bg-violet-50 border-violet-200 text-violet-700 hover:bg-violet-100"
+                          >
+                            ✏️ 조건 변경
+                          </button>
+                        )}
                       </div>
 
                       {/* 2행: 업로드 버튼 + 인센티브 지급 버튼 — 확정 상태일 때만 표시 */}
@@ -2978,7 +3004,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
             <div className="overflow-y-auto flex-1 p-3.5">
             <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-500 mb-2">신용결과</p>
             <h2 className="text-sm font-semibold text-[#0f172a] mb-1">
-              {creditModal.next} 처리
+              {creditModal.row.status === creditModal.next ? `${creditModal.next} 조건 변경` : `${creditModal.next} 처리`}
             </h2>
             <p className="text-sm text-gray-500 mb-5">
               {creditModal.row.company_name ? `${creditModal.row.company_name}${creditModal.row.customer_name !== creditModal.row.company_name ? ` (${creditModal.row.customer_name})` : ""}` : creditModal.row.customer_name} ({creditModal.row.customer_type})
@@ -3220,15 +3246,15 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               )}
               </>)}
 
-              {/* 특이사항(승인) / 보완사항(보완) */}
+              {/* 특이사항(승인) / 보완사항(보완) — credit_note 컬럼, 본문 특이사항(special_note)과는 별개 항목 */}
               <div>
                 <label className={labelClass}>
-                  {creditModal.next === "승인" ? "특이사항" : "보완사항"}
+                  {creditModal.next === "승인" ? "특이사항 (승인조건 메모)" : "보완사항"}
                 </label>
                 <textarea
                   value={creditNote}
                   onChange={(e) => setCreditNote(e.target.value)}
-                  placeholder={creditModal.next === "승인" ? "특이사항을 입력해주세요" : "보완 사항을 입력해주세요"}
+                  placeholder={creditModal.next === "승인" ? "승인조건 관련 특이사항을 입력해주세요" : "보완 사항을 입력해주세요"}
                   rows={3}
                   className={inputClass + " resize-none"}
                   disabled={creditSaving}
