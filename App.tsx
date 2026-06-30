@@ -1366,6 +1366,13 @@ const ProtectedRoute: React.FC<{
 const AppRoutes = () => {
   const { isAdmin, isSubAdmin, isInsAI, loading } = useAuth() as any;
   const isAdminLevel = isAdmin || isSubAdmin;
+  // ✅ useLocation은 early return(아래 loading 분기) 이전, 컴포넌트 최상단에서
+  //    단 한 번만 호출한다. early return 뒤에서 호출하거나 본문 여러 곳에서
+  //    인라인으로 useLocation()을 반복 호출하면, loading 값이 바뀔 때마다
+  //    렌더마다 호출되는 Hook의 개수/순서가 달라져 React의 "Rules of Hooks"를
+  //    위반하게 되고, 그 결과 컴포넌트가 깨진 상태로 강제 리마운트되면서
+  //    스크롤 위치가 예기치 않게 초기화되는 등의 부작용이 발생한다.
+  const { pathname } = useLocation();
 
   // 로딩 중에는 리디렉션 판단 보류
   if (loading) return (
@@ -1379,6 +1386,17 @@ const AppRoutes = () => {
   // 곧바로 진입하므로 "/"로 들어올 일이 거의 없고, 들어오더라도 홈페이지를 보여주는 것이 맞음.
   // 즉 "/"에서 계정 기준 강제 리다이렉트는 하지 않는다 — 브라우저에서 admin이 전체 사이트를 볼 수 있어야 함.
   const rootElement = <HomePage />;
+
+  const hideHeader =
+    pathname.startsWith("/work/secretary")
+    || pathname.startsWith("/work/call-management")
+    || pathname.startsWith("/hyundaicm")
+    || pathname.startsWith("/narumi");
+
+  const hideFooter =
+    pathname.startsWith("/work/")
+    || pathname.startsWith("/hyundaicm")
+    || pathname.startsWith("/narumi");
 
   return (
     <div className="min-h-screen bg-white">
@@ -1395,11 +1413,7 @@ const AppRoutes = () => {
         </script>
       </Helmet>
 
-      {!useLocation().pathname.startsWith("/work/secretary")
-        && !useLocation().pathname.startsWith("/work/call-management")
-        && !useLocation().pathname.startsWith("/hyundaicm")
-        && !useLocation().pathname.startsWith("/narumi")
-        && <PageHeader />}
+      {!hideHeader && <PageHeader />}
 
       {/* ✅ <main> 에 id와 role 명시 → 스크린리더 + 검색엔진 본문 인식 */}
       <main id="main-content" role="main" className="w-full overflow-x-hidden">
@@ -1517,10 +1531,7 @@ const AppRoutes = () => {
         </Routes>
       </main>
 
-      {!useLocation().pathname.startsWith("/work/")
-        && !useLocation().pathname.startsWith("/hyundaicm")
-        && !useLocation().pathname.startsWith("/narumi")
-        && <Footer />}
+      {!hideFooter && <Footer />}
     </div>
   );
 };

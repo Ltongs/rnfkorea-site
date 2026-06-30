@@ -1,7 +1,9 @@
 /* RNF - index.css (Tailwind CDN 전제) */
 
-html, body, #root { height: 100%; }
-body { overflow-y: auto; }
+/* html/body에 인위적인 height:100%, overflow 제어를 걸지 않는다.
+   (이전에 height:100% + overflow-y:auto 조합으로 body가 자체 스크롤박스가 되어
+   sticky 헤더가 브라우저 UI 영역과 겹치는 문제, 그리고 height:100% 비대칭으로
+   인한 바운스/되튕김 문제가 있었음. 문서 흐름에 맡기는 것이 가장 안전하다.) */
 
 body {
   font-family: "Noto Sans KR", sans-serif;

@@ -93,7 +93,7 @@ function calcMobileMenuStyle(btnEl: HTMLButtonElement | null): MobileMenuStyle {
 export default function PageHeader() {
   const { pathname } = useLocation();
   const nav = useNavigate();
-  const { user, canViewAll, isAdmin, isSubAdmin, isNarumi, isLotte, isInsuranceManager, isHyundaiCM, isNhCapital, isNhCapitalStaff, isInsAI } = useAuth() as any;
+  const { user, canViewAll, isAdmin, isSubAdmin, isNarumi, isLotte, isInsuranceManager, isHyundaiCM, isNhCapital, isNhCapitalStaff, isInsAI, logout } = useAuth() as any;
   const isAdminLevel = isAdmin || isSubAdmin;
 
   // 참고: PWA 앱은 manifest.json의 start_url(/work/secretary 등)로 곧장 진입하며,
@@ -304,8 +304,16 @@ export default function PageHeader() {
 
   return (
     <header
-      className="sticky top-0 z-[9999] bg-white/95 backdrop-blur border-b border-gray-200"
-      style={{ paddingTop: "env(safe-area-inset-top)" }}
+      className="sticky top-0 z-[9999] bg-white border-b border-gray-200"
+      style={{
+        paddingTop: "env(safe-area-inset-top)",
+        // Safari의 position:sticky 렌더링 버그(스크롤 시 헤더가 사라지거나
+        // 페이지가 다시 맨 위로 튕기는 현상) 우회: 별도 컴포지팅 레이어로 강제 승격
+        transform: "translateZ(0)",
+        WebkitTransform: "translateZ(0)",
+        WebkitBackfaceVisibility: "hidden",
+        backfaceVisibility: "hidden",
+      }}
     >
       <div
         ref={headerRef}
@@ -627,6 +635,20 @@ export default function PageHeader() {
             <Phone size={16} />
             1551-1873
           </a>
+
+          {user && (
+            <button
+              type="button"
+              onClick={async () => {
+                await logout();
+                nav("/");
+              }}
+              className="ml-1 md:ml-2 inline-flex items-center gap-1.5 px-3 md:px-4 py-2 rounded-xl border border-gray-200 text-gray-500 font-normal text-sm hover:bg-gray-50 hover:text-gray-700 transition-all whitespace-nowrap"
+              title="로그아웃"
+            >
+              로그아웃
+            </button>
+          )}
         </nav>
       </div>
     </header>
