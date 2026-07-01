@@ -657,17 +657,19 @@ export default function PageHeader() {
           </a>
 
           {user ? (
-            <button
-              type="button"
-              onClick={async () => {
-                await logout();
-                nav("/");
-              }}
-              className="ml-1 md:ml-2 inline-flex items-center gap-1.5 px-3 md:px-4 py-2 rounded-xl border border-gray-200 text-gray-500 font-normal text-sm hover:bg-gray-50 hover:text-gray-700 transition-all whitespace-nowrap"
-              title="로그아웃"
-            >
-              로그아웃
-            </button>
+            !window.matchMedia('(display-mode: standalone)').matches && !(window.navigator as any).standalone && (
+              <button
+                type="button"
+                onClick={async () => {
+                  await logout();
+                  nav("/");
+                }}
+                className="ml-1 md:ml-2 inline-flex items-center gap-1.5 px-3 md:px-4 py-2 rounded-xl border border-gray-200 text-gray-500 font-normal text-sm hover:bg-gray-50 hover:text-gray-700 transition-all whitespace-nowrap"
+                title="로그아웃"
+              >
+                로그아웃
+              </button>
+            )
           ) : (
             <button
               type="button"
