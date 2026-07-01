@@ -656,7 +656,7 @@ export default function PageHeader() {
             1551-1873
           </a>
 
-          {user && (
+          {user ? (
             <button
               type="button"
               onClick={async () => {
@@ -667,6 +667,15 @@ export default function PageHeader() {
               title="로그아웃"
             >
               로그아웃
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => nav("/login")}
+              className="ml-1 md:ml-2 inline-flex items-center gap-1.5 px-3 md:px-4 py-2 rounded-xl bg-[#0a192f] text-white font-normal text-sm hover:bg-[#1a3a5f] transition-all whitespace-nowrap"
+              title="로그인"
+            >
+              로그인
             </button>
           )}
         </nav>
