@@ -53,6 +53,7 @@ import { ProjectConsultForm } from "./components/ProjectConsultForm";
 import NarumiPage from "./pages/Narumi";
 import BsonWorkPage from "./pages/BsonWork/index";
 import NarumiLoginPage from "./pages/Narumi/login";
+import LoginPage from "./pages/Login/index";
 import HyundaiCMPage from "./pages/HyundaiCM/index";
 import HyundaiCMLoginPage from "./pages/HyundaiCM/Login";
 import HyundaiCMRouteGuard from "./pages/HyundaiCM/Routeguard";
@@ -1442,6 +1443,7 @@ const AppRoutes = () => {
           <Route path="/tire-rental" element={<TireRentalPage />} />
 
           {/* Narumi (noindex는 AutoSeoHead에서 처리) */}
+          <Route path="/login" element={<LoginPage />} />
           <Route path="/narumi/login" element={<NarumiLoginPage />} />
           <Route
             path="/narumi"
@@ -1497,7 +1499,7 @@ const AppRoutes = () => {
           {/* AI 비서 */}
           <Route
             path="/work/secretary"
-            element={isAdminLevel ? <SecretaryPage /> : <Navigate to="/" replace />}
+            element={isAdminLevel ? <SecretaryPage /> : <Navigate to="/login" state={{ from: "/work/secretary" }} replace />}
           />
 
           {/* AI 비서 (Ins) — everyasset.fc@gmail.com 전용 */}

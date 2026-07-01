@@ -2,7 +2,8 @@
 // 견적서 작성 → Excel 다운로드 / 이메일 발송 / SMS(MMS) 발송
 // 의존성: npm install xlsx html2canvas
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import html2canvas from 'html2canvas';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
@@ -230,6 +231,14 @@ function calcAmortization(
 
 export default function QuotationPage() {
   const [tab, setTab] = useState<'battery'|'forklift'|'installment'>('battery');
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    const type = searchParams.get('type');
+    if (type === 'forklift' || type === 'battery' || type === 'installment') {
+      setTab(type);
+    }
+  }, [searchParams]);
   const [bf, setBf] = useState<BatteryForm>(BF0);
   const [ff, setFf] = useState<ForkliftForm>(FF0);
   const [iff, setIff] = useState<InstallmentForm>(IF0);
