@@ -1,6 +1,6 @@
 import React, { useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Phone, Loader2, Send } from "lucide-react";
+import { Phone, Loader2, Send, LogIn } from "lucide-react";
 import { Battery, Truck, Wallet, Check } from "lucide-react";
 
 type HeroShowcaseItem = {
@@ -506,20 +506,35 @@ const CTASection: React.FC = () => {
         전문 상담원이 대표님의 현장 상황에 딱 맞는 최적의 솔루션을 제안해 드립니다.
       </p>
 
-      <a
-        href="tel:1551-1873"
-        className="
-          bg-lime-300 text-[#0a192f] font-bold text-lg
-          px-8 py-3.5 rounded-xl
-          hover:bg-lime-400 transition-colors
-          shadow-[0_12px_30px_rgba(0,0,0,0.22)]
-          flex items-center justify-center gap-3
-          focus:outline-none focus-visible:ring-4 focus-visible:ring-lime-200/60
-        "
-      >
-        <Phone size={20} />
-        상담문의 1551-1873
-      </a>
+      <div className="flex items-center gap-3 flex-wrap">
+        <a
+          href="tel:1551-1873"
+          className="
+            bg-lime-300 text-[#0a192f] font-bold text-lg
+            px-8 py-3.5 rounded-xl
+            hover:bg-lime-400 transition-colors
+            shadow-[0_12px_30px_rgba(0,0,0,0.22)]
+            flex items-center justify-center gap-3
+            focus:outline-none focus-visible:ring-4 focus-visible:ring-lime-200/60
+          "
+        >
+          <Phone size={20} />
+          상담문의 1551-1873
+        </a>
+        <Link
+          to="/login"
+          className="
+            border border-white/30 text-white font-semibold text-base
+            px-5 py-3.5 rounded-xl
+            hover:bg-white/10 transition-colors
+            flex items-center justify-center gap-2
+            focus:outline-none focus-visible:ring-4 focus-visible:ring-white/30
+          "
+        >
+          <LogIn size={18} />
+          로그인
+        </Link>
+      </div>
 
       <p className="mt-6 text-gray-300/80 text-sm">
         상담가능시간 : 09:00 - 20:00 (연중무휴)

@@ -622,6 +622,26 @@ export default function PageHeader() {
                       매출/매입 관리
                     </button>
                   )}
+
+                  {isAdminLevel && (
+                    <button
+                      type="button"
+                      className={dropItem}
+                      onClick={() => goWorkInternalOnly("/work/withholding")}
+                    >
+                      원천징수 관리
+                    </button>
+                  )}
+
+                  {isAdminLevel && (
+                    <button
+                      type="button"
+                      className={dropItem}
+                      onClick={() => goWorkInternalOnly("/work/quotation")}
+                    >
+                      견적서 작성
+                    </button>
+                  )}
                 </div>
               </>
             )}

@@ -81,6 +81,8 @@ import SecretaryInsPage from "./pages/secretary-ins/index";
 import OrdersPage from "./pages/Orders/index";
 import OrderConfirmPage from "./pages/OrderConfirm/index";
 import FinanceHubPage from "./pages/FinanceHub/index";
+import WithholdingPage from "./pages/work/WithholdingPage";
+import QuotationPage from "./pages/work/QuotationPage";
 
 /* utils / config */
 import { fetchTireRows } from "./lib/tiresCsv";
@@ -1520,6 +1522,16 @@ const AppRoutes = () => {
           <Route
             path="/work/finance-hub"
             element={isAdminLevel ? <FinanceHubPage /> : <Navigate to="/" replace />}
+          />
+
+          <Route
+            path="/work/withholding"
+            element={isAdminLevel ? <WithholdingPage /> : <Navigate to="/" replace />}
+          />
+
+          <Route
+            path="/work/quotation"
+            element={isAdminLevel ? <QuotationPage /> : <Navigate to="/" replace />}
           />
 
           {/* 물품발송/휠반납 확인 페이지 (진흥 전용, 인증 불필요) */}

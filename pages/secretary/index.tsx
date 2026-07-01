@@ -6,7 +6,7 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
-type TabKey = "chat"|"schedule"|"status"|"orders"|"hyundaicm"|"finance"|"narumi"|"jinheung"|"email"|"memo"|"financehub"|"exportshop";
+type TabKey = "chat"|"schedule"|"status"|"orders"|"hyundaicm"|"finance"|"narumi"|"jinheung"|"email"|"memo"|"financehub"|"exportshop"|"quotation";
 type EmailReport = {
   id:number; created_at:string; report_date:string;
   title:string; content:string; source:string; is_read:boolean;
@@ -3894,6 +3894,13 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       <div ref={headerBarRef} className="bg-white border-b border-gray-200 flex-shrink-0 sticky top-0 left-0 right-0 z-[200] shadow-sm">
         <div className="max-w-6xl mx-auto px-6 pt-3 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate("/")}
+              className="w-8 h-8 rounded-xl border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:text-[#0f172a] transition-all flex-shrink-0"
+              title="홈으로"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            </button>
             <div className="w-8 h-8 rounded-xl bg-[#0f172a] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">AI</div>
             <div>
               <h1 className="text-sm font-bold text-[#0f172a]">AI 비서</h1>
@@ -3953,13 +3960,13 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               }
             }}
           >
-            {([...["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo","financehub","exportshop"],
-               ...["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo","financehub","exportshop"],
-               ...["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo","financehub","exportshop"]] as TabKey[]).map((t,i)=>(
+            {([...["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo","financehub","exportshop","quotation"],
+               ...["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo","financehub","exportshop","quotation"],
+               ...["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo","financehub","exportshop","quotation"]] as TabKey[]).map((t,i)=>(
               <button key={`${t}-${i}`} className={`${TB} ${tab===t?TA:TI}`} style={{flexShrink:0,whiteSpace:"nowrap"}} onClick={()=>setTabAndSave(t)}>
                 {t==="email"
                   ? <span className="flex items-center gap-1">📧 이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
-                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",hyundaicm:"🏗 현대CM",finance:"🏦 금융상담",narumi:"🚛 나르미",jinheung:"🔧 진흥주문",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비"}[t as string]
+                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",hyundaicm:"🏗 현대CM",finance:"🏦 금융상담",narumi:"🚛 나르미",jinheung:"🔧 진흥주문",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비",quotation:"📋 견적서"}[t as string]
                 }
               </button>
             ))}
@@ -4897,11 +4904,19 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                 </div>
                 );
               })()}
-              {narumiConsults.length>0&&(
+              {narumiConsults.length>0&&(()=>{
+                const NARUMI_DONE_STS = ["policy_issued","closed","cancelled"];
+                const filteredConsults = narumiFilter==="active"
+                  ? narumiConsults.filter((c:any)=>!NARUMI_DONE_STS.includes(c.status??""))
+                  : narumiFilter==="done"
+                  ? narumiConsults.filter((c:any)=>NARUMI_DONE_STS.includes(c.status??""))
+                  : narumiConsults;
+                if(filteredConsults.length===0) return null;
+                return (
                 <div className={`${CARD} p-3.5`}>
-                  <p className="text-xs font-semibold text-gray-500 mb-2">📋 나르미 상담내역 ({narumiConsults.length}건)</p>
+                  <p className="text-xs font-semibold text-gray-500 mb-2">📋 나르미 상담내역 ({filteredConsults.length}건)</p>
                   <div className="space-y-2">
-                    {narumiConsults.map((c:any)=>(
+                    {filteredConsults.map((c:any)=>(
                       <div key={c.id} className={`${CARD} p-3.5`}>
                         <div className="flex items-start gap-2.5">
                           <div className="flex-1 min-w-0">
@@ -4922,7 +4937,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                     ))}
                   </div>
                 </div>
-              )}
+                );
+              })()}
             </div>
           )}
 
@@ -5555,6 +5571,28 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
           {tab==="financehub"&&<FinanceHubTab/>}
 
           {tab==="exportshop"&&<ExportShopTab onNavigate={(p)=>navigate(p)}/>}
+
+          {tab==="quotation"&&(
+            <div className="flex flex-col items-center justify-center gap-4 py-16 w-full">
+              <div className="text-4xl">📋</div>
+              <h2 className="text-lg font-bold text-[#0f172a]">견적서 작성</h2>
+              <p className="text-sm text-gray-500 text-center">지게차 · 배터리 견적서를 작성하고<br/>이메일로 발송할 수 있습니다.</p>
+              <div className="flex gap-3 mt-2">
+                <button
+                  onClick={()=>navigate("/work/quotation?type=battery")}
+                  className="px-5 py-2.5 bg-[#0f172a] text-white rounded-xl text-sm font-medium hover:bg-[#1e3a5f] transition-all"
+                >
+                  🔋 배터리 견적
+                </button>
+                <button
+                  onClick={()=>navigate("/work/quotation?type=forklift")}
+                  className="px-5 py-2.5 bg-orange-500 text-white rounded-xl text-sm font-medium hover:bg-orange-600 transition-all"
+                >
+                  🚜 지게차 견적
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* ══ 입력창 (항상 하단 고정) ══ */}
           <div className="flex-shrink-0 pt-2">
