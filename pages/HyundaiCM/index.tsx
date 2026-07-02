@@ -333,9 +333,10 @@ export default function HyundaiCMPage() {
   const [etcDocNameInput, setEtcDocNameInput] = useState<string>("");
 
   // ── 세금계산서 업로드 (isHyundaiCM 전용, 72시간 자동삭제) ──
-  const taxInvoiceInputRef = useRef<HTMLInputElement | null>(null);
+  const taxInvoiceInputRef       = useRef<HTMLInputElement | null>(null);
+  const taxInvoiceAttachInputRef = useRef<HTMLInputElement | null>(null);
   const [taxInvoiceUploading, setTaxInvoiceUploading] = useState<string | null>(null);
-  const [taxInvoiceFiles, setTaxInvoiceFiles] = useState<Record<string, { name: string; path: string; uploadedAt: string }[]>>({});
+  const [taxInvoiceFiles, setTaxInvoiceFiles] = useState<Record<string, { name: string; path: string; uploadedAt: string; invoiceType: string }[]>>({});
 
   // ── 인센티브 지급 완료 상태 (한 번 누르면 비활성화) ──
   const [incentivePaidIds, setIncentivePaidIds] = useState<Set<string>>(new Set());
@@ -823,26 +824,26 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     if (rowIds.length === 0) return;
     const { data } = await supabase
       .from("tax_invoice_uploads")
-      .select("id, record_id, file_name, storage_path, uploaded_at")
+      .select("id, record_id, file_name, storage_path, uploaded_at, invoice_type")
       .in("record_id", rowIds.map(String))
       .order("uploaded_at", { ascending: false });
     if (!data) return;
-    const map: Record<string, { name: string; path: string; uploadedAt: string }[]> = {};
+    const map: Record<string, { name: string; path: string; uploadedAt: string; invoiceType: string }[]> = {};
     data.forEach((d: any) => {
       const key = String(d.record_id);
       if (!map[key]) map[key] = [];
-      map[key].push({ name: d.file_name, path: d.storage_path, uploadedAt: d.uploaded_at });
+      map[key].push({ name: d.file_name, path: d.storage_path, uploadedAt: d.uploaded_at, invoiceType: d.invoice_type ?? "vehicle" });
     });
     setTaxInvoiceFiles(map);
   };
 
   // ─── 세금계산서 업로드 ───────────────────────────────────────
-  const uploadTaxInvoice = async (rowId: string | number, file: File) => {
-    setTaxInvoiceUploading(String(rowId));
+  const uploadTaxInvoice = async (rowId: string | number, file: File, invoiceType: string = "vehicle") => {
+    setTaxInvoiceUploading(`${rowId}-${invoiceType}`);
     try {
       const ext      = file.name.includes(".") ? file.name.split(".").pop() : "bin";
       const safeName = `${Date.now()}.${ext}`;
-      const path     = `${rowId}/${safeName}`;
+      const path     = `${rowId}/${invoiceType}_${safeName}`;
 
       const { error: upErr } = await supabase.storage
         .from("tax-invoices")
@@ -857,6 +858,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           storage_path: path,
           file_name:    file.name,
           file_size:    file.size,
+          invoice_type: invoiceType,
         });
       if (dbErr) throw dbErr;
 
@@ -881,8 +883,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       setTaxInvoiceUploading(null);
     }
   };
-
-  // ─── 세금계산서 다운로드 ─────────────────────────────────────
   const downloadTaxInvoice = async (path: string, name: string) => {
     try {
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
@@ -1592,7 +1592,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           setEtcDocNameModal({ rowId, file });
         }}
       />
-      {/* 세금계산서 전용 숨겨진 파일 인풋 */}
+      {/* 세금계산서 전용 숨겨진 파일 인풋 (차량) */}
       <input
         ref={taxInvoiceInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.heic"
         className="hidden"
@@ -1601,7 +1601,19 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           const rowId = taxInvoiceInputRef.current?.getAttribute("data-row-id");
           if (!file || !rowId) return;
           e.target.value = "";
-          await uploadTaxInvoice(rowId, file);
+          await uploadTaxInvoice(rowId, file, "vehicle");
+        }}
+      />
+      {/* 세금계산서 전용 숨겨진 파일 인풋 (어태치) */}
+      <input
+        ref={taxInvoiceAttachInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.heic"
+        className="hidden"
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          const rowId = taxInvoiceAttachInputRef.current?.getAttribute("data-row-id");
+          if (!file || !rowId) return;
+          e.target.value = "";
+          await uploadTaxInvoice(rowId, file, "attach");
         }}
       />
 
@@ -2245,25 +2257,42 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                                   : "+ 차량등록증"}
                             </button>
                           )}
-                          {canUploadTaxInvoice && (
-                            <button
-                              disabled={
-                                taxInvoiceUploading === String(r.id) ||
-                                (taxInvoiceFiles[String(r.id)] ?? []).length > 0
-                              }
-                              onClick={() => {
-                                taxInvoiceInputRef.current?.setAttribute("data-row-id", String(r.id));
-                                taxInvoiceInputRef.current?.click();
-                              }}
-                              className="px-3 py-1 rounded-xl border border-blue-300 bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                            >
-                              {taxInvoiceUploading === String(r.id)
-                                ? "업로드중..."
-                                : (taxInvoiceFiles[String(r.id)] ?? []).length > 0
-                                  ? "✓ 세금계산서"
-                                  : "+ 세금계산서"}
-                            </button>
-                          )}
+                          {canUploadTaxInvoice && (() => {
+                            const files      = taxInvoiceFiles[String(r.id)] ?? [];
+                            const hasAttach  = r.attach_amount != null && r.attach_amount > 0;
+                            const vFiles     = files.filter(f => f.invoiceType === "vehicle");
+                            const aFiles     = files.filter(f => f.invoiceType === "attach");
+                            const vUploading = taxInvoiceUploading === `${r.id}-vehicle`;
+                            const aUploading = taxInvoiceUploading === `${r.id}-attach`;
+                            return (
+                              <>
+                                {/* 차량 세금계산서 */}
+                                <button
+                                  disabled={vUploading || vFiles.length > 0}
+                                  onClick={() => {
+                                    taxInvoiceInputRef.current?.setAttribute("data-row-id", String(r.id));
+                                    taxInvoiceInputRef.current?.click();
+                                  }}
+                                  className="px-3 py-1 rounded-xl border border-blue-300 bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                                >
+                                  {vUploading ? "업로드중..." : vFiles.length > 0 ? "✓ 세금계산서" : "+ 세금계산서"}
+                                </button>
+                                {/* 어태치 세금계산서 (attach_amount 있을 때만) */}
+                                {hasAttach && (
+                                  <button
+                                    disabled={aUploading || aFiles.length > 0}
+                                    onClick={() => {
+                                      taxInvoiceAttachInputRef.current?.setAttribute("data-row-id", String(r.id));
+                                      taxInvoiceAttachInputRef.current?.click();
+                                    }}
+                                    className="px-3 py-1 rounded-xl border border-cyan-300 bg-cyan-50 text-cyan-700 text-xs font-semibold hover:bg-cyan-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                                  >
+                                    {aUploading ? "업로드중..." : aFiles.length > 0 ? "✓ 어태치 계산서" : "+ 어태치 계산서"}
+                                  </button>
+                                )}
+                              </>
+                            );
+                          })()}
                           {isAdminLevel && (
                             <button
                               disabled={incentivePaidIds.has(String(r.id))}
@@ -2436,10 +2465,16 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                         const uploadedDate = new Date(f.uploadedAt);
                         const expiresDate  = new Date(uploadedDate.getTime() + 72 * 60 * 60 * 1000);
                         const hoursLeft    = Math.max(0, Math.round((expiresDate.getTime() - Date.now()) / (1000 * 60 * 60)));
+                        const isAttach     = f.invoiceType === "attach";
                         return (
-                          <div key={idx} className="flex items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-1.5">
+                          <div key={idx} className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-1.5 ${isAttach ? "border-cyan-100 bg-cyan-50" : "border-blue-100 bg-blue-50"}`}>
                             <div className="min-w-0">
-                              <p className="text-sm font-medium text-blue-800 truncate">{f.name}</p>
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${isAttach ? "bg-cyan-200 text-cyan-800" : "bg-blue-200 text-blue-800"}`}>
+                                  {isAttach ? "어태치" : "차량"}
+                                </span>
+                                <p className={`text-sm font-medium truncate ${isAttach ? "text-cyan-800" : "text-blue-800"}`}>{f.name}</p>
+                              </div>
                               <p className="text-xs text-gray-400 mt-0.5">
                                 {formatCreatedAt(f.uploadedAt)} 업로드 &nbsp;·&nbsp;
                                 <span className={hoursLeft < 6 ? "text-red-500 font-semibold" : "text-gray-400"}>
@@ -2449,7 +2484,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                             </div>
                             <button
                               onClick={() => downloadTaxInvoice(f.path, f.name)}
-                              className="shrink-0 px-3 py-1 rounded-xl border border-blue-200 text-blue-700 text-xs font-medium hover:border-blue-400 transition-all"
+                              className={`shrink-0 px-3 py-1 rounded-xl border text-xs font-medium transition-all ${isAttach ? "border-cyan-200 text-cyan-700 hover:border-cyan-400" : "border-blue-200 text-blue-700 hover:border-blue-400"}`}
                             >다운로드</button>
                           </div>
                         );
