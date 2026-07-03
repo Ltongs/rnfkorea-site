@@ -15,7 +15,8 @@ const PHONE_MASK_AFTER_HOURS = 24;    // 확정 후 24시간 경과 시 전화�
 type CustomerType = "개인" | "법인";
 type TaesanStatus    = "접수" | "신용조회" | "승인" | "보완" | "거절" | "확정";
 
-type FinanceCompany = "NH캐피탈" | "오릭스캐피탈" | "우리금융캐피탈";
+type FinanceCompany = "NH캐피탈" | "오릭스캐피탈" | "우리금융캐피탈" | "현대커머셜";
+type BodyType = "윙바디" | "카고";
 
 type TaesanTask = {
   id: string | number;
@@ -27,7 +28,10 @@ type TaesanTask = {
   repayment_sent_at?: string | null;
   repayment_sent_channel?: "sms" | null;
   repayment_sent_to?: string | null;
+  maker: string | null;                // 메이커
   equipment_ton: string | null;        // 톤수
+  model_year: string | null;           // 연식
+  body_type: string | null;            // 특장 (윙바디/카고)
   purchase_amount: number | null;      // 차량가격 (차량+어태치 합산)
   vehicle_amount: number | null;       // 차량가격 (순수 차량)
   attach_amount: number | null;        // 어태치 가격
@@ -43,11 +47,8 @@ type TaesanTask = {
   biz_history: string | null;          // 업력 (1년이상/1년미만)
   loan_limit: number | null;           // 대출한도 (승인 시)
   credit_note: string | null;          // 특이사항(승인)/보완사항(보완)/거절사유(거절)
-  has_tax_invoice: boolean | null;     // 세금계산서 업로드 여부
-  vat_deferred: boolean | null;        // 부가세 후불 여부
-  vat_deferred_amount: number | null;  // 부가세 후불 금액
+  has_tax_invoice: boolean | null;     // 지입사 사업자등록증 업로드 여부
   loan_period: number | null;          // 대출기간 (확정 시)
-  sales_rep: string | null;
   status: TaesanStatus;
   special_note: string | null;
   doc_id_card: string | null;
@@ -242,15 +243,15 @@ export default function TaesanPage() {
   const [customerName,          setCustomerName]          = useState("");
   const [customerPhone,         setCustomerPhone]         = useState("");
   const [ceoName,                setCeoName]                = useState("");
+  const [maker,                  setMaker]                  = useState("");
   const [equipmentTon,          setEquipmentTon]          = useState("");
+  const [modelYear,              setModelYear]              = useState("");
+  const [bodyType,               setBodyType]               = useState<BodyType | "">("");
   const [purchaseAmount,        setPurchaseAmount]        = useState("");
   const [installmentPrincipal,  setInstallmentPrincipal]  = useState("");
   const [financeCompany,        setFinanceCompany]        = useState<string>("NH캐피탈");
   const [interestRate,          setInterestRate]          = useState("");
   const [incentive,             setIncentive]             = useState("");
-  const [vatDeferred,           setVatDeferred]           = useState<"Y" | "N">("N");
-  const [vatDeferredAmount,     setVatDeferredAmount]     = useState("");
-  const [salesRep,              setSalesRep]              = useState("");
   const [specialNote,           setSpecialNote]           = useState("");
 
   // ── 데이터 ──
@@ -277,16 +278,16 @@ export default function TaesanPage() {
   const [editCustomerName,          setEditCustomerName]          = useState("");
   const [editCustomerPhone,         setEditCustomerPhone]         = useState("");
   const [editCeoName,               setEditCeoName]                = useState("");
+  const [editMaker,                  setEditMaker]                  = useState("");
   const [editEquipmentTon,          setEditEquipmentTon]          = useState("");
+  const [editModelYear,              setEditModelYear]              = useState("");
+  const [editBodyType,               setEditBodyType]               = useState<BodyType | "">("");
   const [editPurchaseAmount,        setEditPurchaseAmount]        = useState("");
   const [editInstallmentPrincipal,  setEditInstallmentPrincipal]  = useState("");
   const [editFinanceCompany,        setEditFinanceCompany]        = useState<string>("NH캐피탈");
   const [editInterestRate,          setEditInterestRate]          = useState("");
   const [editIncentive,             setEditIncentive]             = useState("");
-  const [editVatDeferred,           setEditVatDeferred]           = useState<"Y"|"N">("N");
-  const [editVatDeferredAmount,     setEditVatDeferredAmount]     = useState("");
   const [editLoanPeriod,            setEditLoanPeriod]            = useState("");
-  const [editSalesRep,              setEditSalesRep]              = useState("");
   const [editSpecialNote,           setEditSpecialNote]           = useState("");
 
   // ── 메모 ──
@@ -307,7 +308,6 @@ export default function TaesanPage() {
   const [creditInstallmentPeriod, setCreditInstallmentPeriod] = useState(""); // 할부기간 (승인 시)
   const [creditVehicleAmount, setCreditVehicleAmount] = useState(""); // 차량가격 순수 차량
   const [creditAttachAmount,  setCreditAttachAmount]  = useState(""); // 어태치 가격
-  const [creditVatAmount,    setCreditVatAmount]    = useState(""); // 부가세 후불금액 (승인 시)
   const [creditNote,         setCreditNote]         = useState(""); // 특이사항(승인)/보완사항(보완)/거절사유(거절)
   const [creditBizHistory,   setCreditBizHistory]   = useState<"1년이상" | "1년미만">("1년이상");
   const [creditSaving,       setCreditSaving]       = useState(false);
@@ -323,10 +323,11 @@ export default function TaesanPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | number | null>(null);
   const [deleting,        setDeleting]        = useState(false);
 
-  // ── 차량등록증 업로드 (확정 후, 72시간 자동삭제) ──
+  // ── 차량등록증 업로드 (확정 후, 72시간 자동삭제) — 이전 전 / 이전 후 구분 ──
   const vehicleRegInputRef = useRef<HTMLInputElement | null>(null);
-  const [vehicleRegUploading, setVehicleRegUploading] = useState<string | null>(null); // rowId
-  const [vehicleRegFiles, setVehicleRegFiles] = useState<Record<string, { name: string; path: string; uploadedAt: string }[]>>({});
+  const [vehicleRegUploading, setVehicleRegUploading] = useState<string | null>(null); // `${rowId}:${docType}`
+  const [vehicleRegDocType, setVehicleRegDocType] = useState<"before" | "after">("before");
+  const [vehicleRegFiles, setVehicleRegFiles] = useState<Record<string, { name: string; path: string; uploadedAt: string; docType: "before" | "after" }[]>>({});
 
   // ── 기타서류 다중 업로드 ──
   const etcDocInputRef = useRef<HTMLInputElement | null>(null);
@@ -335,14 +336,11 @@ export default function TaesanPage() {
   const [etcDocNameModal, setEtcDocNameModal] = useState<{ rowId: string; file: File } | null>(null);
   const [etcDocNameInput, setEtcDocNameInput] = useState<string>("");
 
-  // ── 세금계산서 업로드 (관리자 전용, 72시간 자동삭제) ──
+  // ── 지입사 사업자등록증 업로드 (관리자 전용, 72시간 자동삭제) ──
   const taxInvoiceInputRef       = useRef<HTMLInputElement | null>(null);
   const taxInvoiceAttachInputRef = useRef<HTMLInputElement | null>(null);
   const [taxInvoiceUploading, setTaxInvoiceUploading] = useState<string | null>(null);
   const [taxInvoiceFiles, setTaxInvoiceFiles] = useState<Record<string, { name: string; path: string; uploadedAt: string; invoiceType: string }[]>>({});
-
-  // ── 인센티브 지급 완료 상태 (한 번 누르면 비활성화) ──
-  const [incentivePaidIds, setIncentivePaidIds] = useState<Set<string>>(new Set());
 
   // ── 보류(재통화 예약) ──
   const KAKAO_RECIPIENTS = [
@@ -409,7 +407,6 @@ export default function TaesanPage() {
         customerName: row.customer_name,
         customerType: row.customer_type,
         equipmentTon: row.equipment_ton  ?? "",
-        salesRep:     row.sales_rep      ?? "",
         scheduledAt,  // ISO 문자열 → Edge Function에서 KST 포맷팅
         holdNote:     holdNote.trim() || "",
         // 선택 수신자 이름 목록 (메시지 내 참고용)
@@ -570,7 +567,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
   const [confirmLoanPeriod,    setConfirmLoanPeriod]    = useState("");
   const [confirmInterestRate,  setConfirmInterestRate]  = useState("");
   const [confirmIncentive,     setConfirmIncentive]     = useState("");
-  const [confirmVatAmount,     setConfirmVatAmount]     = useState("");
 
   // ── 상환스케줄 PDF 모달 ──
   const [scheduleModal, setScheduleModal] = useState<TaesanTask | null>(null);
@@ -617,7 +613,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     company_name: string | null;
     equipment_ton: string | null;
     finance_company: string | null;
-    sales_rep: string;
   }) => {
     if (!user) return;
     try {
@@ -626,7 +621,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       const description = [
         task.equipment_ton ? `장비: ${task.equipment_ton}` : null,
         task.finance_company ? `금융사: ${task.finance_company}` : null,
-        task.sales_rep ? `영업: ${task.sales_rep}` : null,
       ].filter(Boolean).join("\n");
       const todayIso = new Date().toISOString().slice(0, 10);
       const res = await fetch(
@@ -687,15 +681,20 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     if (rowIds.length === 0) return;
     const { data } = await supabase
       .from("taesan_vehicle_reg_doc_uploads")
-      .select("id, record_id, file_name, storage_path, uploaded_at, expires_at")
+      .select("id, record_id, file_name, storage_path, uploaded_at, expires_at, doc_type")
       .in("record_id", rowIds.map(String))
       .order("uploaded_at", { ascending: false });
     if (!data) return;
-    const map: Record<string, { name: string; path: string; uploadedAt: string }[]> = {};
+    const map: Record<string, { name: string; path: string; uploadedAt: string; docType: "before" | "after" }[]> = {};
     data.forEach((d: any) => {
       const key = String(d.record_id);
       if (!map[key]) map[key] = [];
-      map[key].push({ name: d.file_name, path: d.storage_path, uploadedAt: d.uploaded_at });
+      map[key].push({
+        name: d.file_name,
+        path: d.storage_path,
+        uploadedAt: d.uploaded_at,
+        docType: d.doc_type === "after" ? "after" : "before",
+      });
     });
     setVehicleRegFiles(map);
   };
@@ -755,14 +754,15 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     } catch (e: any) { alert(`삭제 실패: ${e?.message}`); }
   };
 
-  // ─── 차량등록증 업로드 실행 ──────────────────────────────────
-  const uploadVehicleRegDoc = async (rowId: string | number, file: File) => {
-    setVehicleRegUploading(String(rowId));
+  // ─── 차량등록증 업로드 실행 (이전 전 / 이전 후) ──────────────
+  const uploadVehicleRegDoc = async (rowId: string | number, file: File, docType: "before" | "after") => {
+    const uploadKey = `${rowId}:${docType}`;
+    setVehicleRegUploading(uploadKey);
     try {
       // 한글/특수문자 제거 → 안전한 파일명 생성
       const ext      = file.name.includes(".") ? file.name.split(".").pop() : "bin";
       const safeName = `${Date.now()}.${ext}`;
-      const path     = `${rowId}/${safeName}`;
+      const path     = `${rowId}/${docType}/${safeName}`;
 
       const { error: upErr } = await supabase.storage
         .from("taesan-vehicle-reg-docs")
@@ -777,6 +777,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           storage_path: path,
           file_name:    file.name,   // 원본 파일명은 DB에 보관
           file_size:    file.size,
+          doc_type:     docType,
         });
       if (dbErr) throw dbErr;
 
@@ -793,7 +794,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           customerType:   row.customer_type,
           equipmentTon:   row.equipment_ton,
           financeCompany: row.finance_company,
-          salesRep:       row.sales_rep,
         });
       }
     } catch (e: any) {
@@ -823,7 +823,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     } catch (e: any) { alert(`다운로드 실패: ${e?.message}`); }
   };
 
-  // ─── 세금계산서 목록 조회 ────────────────────────────────────
+  // ─── 지입사 사업자등록증 목록 조회 ────────────────────────
   const fetchTaxInvoiceFiles = async (rowIds: (string | number)[]) => {
     if (rowIds.length === 0) return;
     const { data } = await supabase
@@ -841,7 +841,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     setTaxInvoiceFiles(map);
   };
 
-  // ─── 세금계산서 업로드 ───────────────────────────────────────
+  // ─── 지입사 사업자등록증 업로드 ────────────────────────────
   const uploadTaxInvoice = async (rowId: string | number, file: File, invoiceType: string = "vehicle") => {
     setTaxInvoiceUploading(`${rowId}-${invoiceType}`);
     try {
@@ -879,7 +879,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           customerType:   row.customer_type,
           equipmentTon:   row.equipment_ton,
           financeCompany: row.finance_company,
-          salesRep:       row.sales_rep,
         });
       }
     } catch (e: any) {
@@ -945,7 +944,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       const confirmedIds = nextRows.filter((r) => r.status === "확정").map((r) => r.id);
       if (confirmedIds.length > 0) fetchVehicleRegFiles(confirmedIds);
 
-      // 세금계산서 파일 목록 조회 (전체)
+      // 지입사 사업자등록증 파일 목록 조회 (전체)
       fetchTaxInvoiceFiles(nextRows.map((r) => r.id));
 
       // 기타서류 목록 조회 (전체)
@@ -1006,9 +1005,11 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       result = result.filter((r) =>
         (r.customer_name ?? "").toLowerCase().includes(q) ||
         (r.company_name ?? "").toLowerCase().includes(q) ||
+        (r.maker ?? "").toLowerCase().includes(q) ||
         (r.equipment_ton ?? "").toLowerCase().includes(q) ||
+        (r.model_year ?? "").toLowerCase().includes(q) ||
+        (r.body_type ?? "").toLowerCase().includes(q) ||
         (r.finance_company ?? "").toLowerCase().includes(q) ||
-        (r.sales_rep ?? "").toLowerCase().includes(q) ||
         (r.special_note ?? "").toLowerCase().includes(q) ||
         String(r.id).includes(q) ||
         (qd ? onlyDigits(r.customer_phone ?? "").includes(qd) : false)
@@ -1068,19 +1069,17 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
   // ─── 신규 접수 ───────────────────────────────────────────
   const onReset = () => {
     setCustomerType("개인"); setCustomerName(""); setCustomerPhone("");
-    setCeoName(""); setEquipmentTon(""); setPurchaseAmount("");
+    setCeoName(""); setMaker(""); setEquipmentTon(""); setModelYear(""); setBodyType("");
+    setPurchaseAmount("");
     setInstallmentPrincipal(""); setFinanceCompany("NH캐피탈");
     setInterestRate(""); setIncentive("");
-    setVatDeferred("N"); setVatDeferredAmount("");
-    setSalesRep(""); setSpecialNote("");
+    setSpecialNote("");
   };
 
   const onAdd = async () => {
     if (!canCreate) { alert("신규 입력 권한이 없습니다."); return; }
     if (!customerName.trim()) { alert("고객명을 입력해주세요."); return; }
     if (!customerPhone.trim()) { alert("고객 전화번호를 입력해주세요."); return; }
-    
-    if (!salesRep.trim())      { alert("영업사원을 입력해주세요."); return; }
 
     setSaving(true); setErr("");
     try {
@@ -1090,16 +1089,16 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         customer_phone:          onlyDigits(customerPhone) || null,
         company_name:            customerType === "법인" ? customerName.trim() : null,
         ceo_name:                customerType === "법인" ? (ceoName.trim() || null) : null,
+        maker:                   maker.trim() || null,
         equipment_ton:           equipmentTon.trim() || null,
+        model_year:              modelYear.trim() || null,
+        body_type:               bodyType || null,
         purchase_amount:         purchaseAmount.trim() ? parseInt(onlyDigits(purchaseAmount), 10) || null : null,
         installment_principal:   installmentPrincipal.trim() ? parseInt(onlyDigits(installmentPrincipal), 10) || null : null,
         finance_company:         financeCompany || null,
         interest_rate:           interestRate.trim() ? parseFloat(interestRate) || null : null,
         incentive:               incentive.trim() ? parseFloat(incentive) || null : null,
-        vat_deferred:            vatDeferred === "Y",
-        vat_deferred_amount:     vatDeferred === "Y" && vatDeferredAmount.trim() ? parseInt(onlyDigits(vatDeferredAmount), 10) || null : null,
         loan_period:             null,
-        sales_rep:               salesRep.trim(),
         special_note:            specialNote.trim() || null,
         status:                  "접수" as TaesanStatus,
         phone_scrubbed_at:       null,
@@ -1132,7 +1131,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         customerType:         payload.customer_type,
         equipmentTon:         payload.equipment_ton,
         financeCompany:       payload.finance_company,
-        salesRep:             payload.sales_rep,
         installmentPrincipal: payload.installment_principal,
       });
 
@@ -1144,7 +1142,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           company_name: payload.company_name,
           equipment_ton: payload.equipment_ton,
           finance_company: payload.finance_company,
-          sales_rep: payload.sales_rep,
         });
 
         // 접수 시 할일 + 일정 자동 등록 (단 1회)
@@ -1154,7 +1151,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           `케이스: ${newCaseNo}`,
           payload.equipment_ton   ? `장비: ${payload.equipment_ton}`    : null,
           payload.finance_company ? `금융사: ${payload.finance_company}` : null,
-          payload.sales_rep       ? `영업: ${payload.sales_rep}`         : null,
         ].filter(Boolean).join(" / ");
         await Promise.all([
           supabase.from("secretary_todos").insert({
@@ -1207,7 +1203,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       setConfirmLoanPeriod(row.loan_period != null ? String(row.loan_period) : "");
       setConfirmInterestRate(row.interest_rate != null ? String(row.interest_rate) : "");
       setConfirmIncentive(row.incentive != null ? String(row.incentive) : "");
-      setConfirmVatAmount(row.vat_deferred_amount != null ? Number(row.vat_deferred_amount).toLocaleString("ko-KR") : "");
       setConfirmModal(row);
       return;
     }
@@ -1236,7 +1231,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         equipmentTon:         row.equipment_ton,
         financeCompany:       row.finance_company,       // 금융사 (신용조회 단계에서 표시)
         installmentPrincipal: row.installment_principal ? String(row.installment_principal) : undefined,
-        salesRep:             row.sales_rep,
         prevStatus:           row.status,
         nextStatus:           next,
       };
@@ -1256,7 +1250,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         loan_period:          confirmLoanPeriod.trim() ? parseInt(confirmLoanPeriod, 10) || null : null,
         interest_rate:        confirmInterestRate.trim() ? parseFloat(confirmInterestRate) || null : null,
         incentive:            confirmIncentive.trim() ? parseFloat(confirmIncentive) || null : null,
-        vat_deferred_amount:  confirmVatAmount.trim() ? parseInt(onlyDigits(confirmVatAmount), 10) || null : null,
       };
       const { error } = await supabase.from("taesan_tasks").update(patch).eq("id", confirmModal.id as any);
       if (error) throw error;
@@ -1273,7 +1266,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         customerName:         confirmModal.customer_name,
         customerType:         confirmModal.customer_type,
         equipmentTon:         confirmModal.equipment_ton,
-        salesRep:             confirmModal.sales_rep,
         prevStatus:           confirmModal.status,
         nextStatus:           "확정",
         financeCompany:       confirmModal.finance_company,
@@ -1281,7 +1273,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         installmentPrincipal: patch.installment_principal,
         interestRate:         patch.interest_rate,
         incentive:            patch.incentive,
-        vatDeferredAmount:    patch.vat_deferred_amount,
         loanPeriod:           patch.loan_period,
       });
 
@@ -1326,8 +1317,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         purchase_amount:     next === "승인" && (creditVehicleAmount.trim() || creditAttachAmount.trim())
                                ? ((parseInt(creditVehicleAmount.replace(/,/g, ""), 10) || 0) + (parseInt(creditAttachAmount.replace(/,/g, ""), 10) || 0)) || null
                                : undefined as any,
-        vat_deferred_amount: next === "승인" && creditModal.row.vat_deferred && creditVatAmount.trim()
-                               ? parseInt(creditVatAmount.replace(/,/g, ""), 10) || null : null,
         credit_note:         creditNote.trim() || null,
         // 신용결과 처리 시 입력한 메모를 본문 특이사항에도 반영(대체)
         special_note:        creditNote.trim() || null,
@@ -1347,7 +1336,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         customerName:     row.customer_name,
         customerType:     row.customer_type,
         equipmentTon:     row.equipment_ton,
-        salesRep:         row.sales_rep,
         prevStatus:       row.status,
         nextStatus:       next,
         niceScore:        patch.nice_score,
@@ -1376,16 +1364,16 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     setEditCustomerName(row.customer_name ?? "");
     setEditCustomerPhone(formatPhoneKR(row.customer_phone ?? ""));
     setEditCeoName(row.ceo_name ?? "");
+    setEditMaker(row.maker ?? "");
     setEditEquipmentTon(row.equipment_ton ?? "");
+    setEditModelYear(row.model_year ?? "");
+    setEditBodyType((row.body_type as BodyType) ?? "");
     setEditPurchaseAmount(row.purchase_amount != null ? String(row.purchase_amount) : "");
     setEditInstallmentPrincipal(row.installment_principal != null ? String(row.installment_principal) : "");
     setEditFinanceCompany(row.finance_company ?? "NH캐피탈");
     setEditInterestRate(row.interest_rate != null ? String(row.interest_rate) : "");
     setEditIncentive(row.incentive != null ? String(row.incentive) : "");
-    setEditVatDeferred(row.vat_deferred ? "Y" : "N");
-    setEditVatDeferredAmount(row.vat_deferred_amount != null ? Number(row.vat_deferred_amount).toLocaleString("ko-KR") : "");
     setEditLoanPeriod(row.loan_period != null ? String(row.loan_period) : "");
-    setEditSalesRep(row.sales_rep ?? "");
     setEditSpecialNote(row.special_note ?? "");
   };
 
@@ -1402,15 +1390,14 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         customer_phone:         onlyDigits(editCustomerPhone) || null,
         company_name:           editCustomerType === "법인" ? editCustomerName.trim() : null,
         ceo_name:               editCustomerType === "법인" ? (editCeoName.trim() || null) : null,
+        maker:                  editMaker.trim() || null,
         equipment_ton:          editEquipmentTon.trim() || null,
+        model_year:             editModelYear.trim() || null,
+        body_type:              editBodyType || null,
         purchase_amount:        editPurchaseAmount.trim() ? parseInt(onlyDigits(editPurchaseAmount), 10) || null : null,
         installment_principal:  editInstallmentPrincipal.trim() ? parseInt(onlyDigits(editInstallmentPrincipal), 10) || null : null,
         finance_company:        editFinanceCompany || null,
-        vat_deferred:           editVatDeferred === "Y",
-        vat_deferred_amount:    editVatDeferred === "Y" && editVatDeferredAmount.trim()
-                                  ? parseInt(editVatDeferredAmount.replace(/,/g, ""), 10) || null : null,
         loan_period:            editLoanPeriod.trim() ? parseInt(editLoanPeriod, 10) || null : null,
-        sales_rep:              editSalesRep.trim() || null,
         special_note:           editSpecialNote.trim() || null,
         // 전화번호 변경 시 마스킹 초기화
         ...(onlyDigits(editCustomerPhone) !== onlyDigits(editRow?.customer_phone ?? "")
@@ -1436,20 +1423,20 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           changes.push({ label: "전화번호", before: editRow.customer_phone ?? "-", after: patch.customer_phone ?? "-" });
         if (patch.equipment_ton !== (editRow.equipment_ton ?? null))
           changes.push({ label: "톤수", before: editRow.equipment_ton ?? "-", after: patch.equipment_ton ?? "-" });
+        if (patch.maker !== (editRow.maker ?? null))
+          changes.push({ label: "메이커", before: editRow.maker ?? "-", after: patch.maker ?? "-" });
+        if (patch.model_year !== (editRow.model_year ?? null))
+          changes.push({ label: "연식", before: editRow.model_year ?? "-", after: patch.model_year ?? "-" });
+        if (patch.body_type !== (editRow.body_type ?? null))
+          changes.push({ label: "특장", before: editRow.body_type ?? "-", after: patch.body_type ?? "-" });
         if (patch.finance_company !== (editRow.finance_company ?? null))
           changes.push({ label: "금융사", before: editRow.finance_company ?? "-", after: patch.finance_company ?? "-" });
         if (patch.purchase_amount !== (editRow.purchase_amount ?? null))
           changes.push({ label: "차량가격", before: fmtAmt(editRow.purchase_amount), after: fmtAmt(patch.purchase_amount) });
         if (patch.installment_principal !== (editRow.installment_principal ?? null))
           changes.push({ label: "할부원금", before: fmtAmt(editRow.installment_principal), after: fmtAmt(patch.installment_principal) });
-        if (patch.vat_deferred !== (editRow.vat_deferred ?? false))
-          changes.push({ label: "부가세후불", before: editRow.vat_deferred ? "Y" : "N", after: patch.vat_deferred ? "Y" : "N" });
-        if (patch.vat_deferred_amount !== (editRow.vat_deferred_amount ?? null))
-          changes.push({ label: "부가세금액", before: fmtAmt(editRow.vat_deferred_amount), after: fmtAmt(patch.vat_deferred_amount) });
         if (patch.loan_period !== (editRow.loan_period ?? null))
           changes.push({ label: "대출기간", before: editRow.loan_period ? `${editRow.loan_period}개월` : "-", after: patch.loan_period ? `${patch.loan_period}개월` : "-" });
-        if (patch.sales_rep !== (editRow.sales_rep ?? null))
-          changes.push({ label: "영업사원", before: editRow.sales_rep ?? "-", after: patch.sales_rep ?? "-" });
 
         const changedSummary = changes.length > 0
           ? changes.map((c) => `${c.label}: ${c.before}→${c.after}`).join("\n")
@@ -1467,9 +1454,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           purchaseAmount:       patch.purchase_amount ? String(patch.purchase_amount) : "",
           interestRate:         editRow.interest_rate ? String(editRow.interest_rate) : "",
           incentive:            editRow.incentive ? String(editRow.incentive) : "",
-          vatDeferredAmount:    patch.vat_deferred_amount ? String(patch.vat_deferred_amount) : "",
           loanPeriod:           patch.loan_period ? String(patch.loan_period) : (editRow.loan_period ? String(editRow.loan_period) : ""),
-          salesRep:             patch.sales_rep ?? "-",
           prevStatus:           editRow.status,
           changedSummary,
         });
@@ -1576,16 +1561,17 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         ref={docInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.heic"
         className="hidden" onChange={handleDocFileChange}
       />
-      {/* 차량등록증 전용 숨겨진 파일 인풋 */}
+      {/* 차량등록증 전용 숨겨진 파일 인풋 (이전 전 / 이전 후) */}
       <input
         ref={vehicleRegInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.heic"
         className="hidden"
         onChange={async (e) => {
           const file = e.target.files?.[0];
           const rowId = vehicleRegInputRef.current?.getAttribute("data-row-id");
+          const docType = (vehicleRegInputRef.current?.getAttribute("data-doc-type") === "after" ? "after" : "before") as "before" | "after";
           if (!file || !rowId) return;
           e.target.value = "";
-          await uploadVehicleRegDoc(rowId, file);
+          await uploadVehicleRegDoc(rowId, file, docType);
         }}
       />
       {/* 기타서류 전용 숨겨진 파일 인풋 */}
@@ -1600,7 +1586,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           setEtcDocNameModal({ rowId, file });
         }}
       />
-      {/* 세금계산서 전용 숨겨진 파일 인풋 (차량) */}
+      {/* 지입사 사업자등록증 전용 숨겨진 파일 인풋 (차량) */}
       <input
         ref={taxInvoiceInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.heic"
         className="hidden"
@@ -1612,7 +1598,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           await uploadTaxInvoice(rowId, file, "vehicle");
         }}
       />
-      {/* 세금계산서 전용 숨겨진 파일 인풋 (어태치) */}
+      {/* 지입사 사업자등록증 전용 숨겨진 파일 인풋 (어태치) */}
       <input
         ref={taxInvoiceAttachInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.heic"
         className="hidden"
@@ -1842,8 +1828,24 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                 </div>
               )}
               <div>
+                <label className={labelClass}>메이커</label>
+                <input value={maker} onChange={(e) => setMaker(e.target.value)} placeholder="예: 현대, 볼보" className={inputClass} />
+              </div>
+              <div>
                 <label className={labelClass}>톤수</label>
                 <input value={equipmentTon} onChange={(e) => setEquipmentTon(e.target.value)} placeholder="예: 20톤" className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>연식</label>
+                <input value={modelYear} onChange={(e) => setModelYear(e.target.value)} placeholder="예: 2022년" className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>특장</label>
+                <select value={bodyType} onChange={(e) => setBodyType(e.target.value as BodyType | "")} className={inputClass}>
+                  <option value="">선택</option>
+                  <option value="윙바디">윙바디</option>
+                  <option value="카고">카고</option>
+                </select>
               </div>
               <div>
                 <label className={labelClass}>차량가격 (원)</label>
@@ -1869,49 +1871,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                   <option value="NH캐피탈">NH캐피탈</option>
                   <option value="오릭스캐피탈">오릭스캐피탈</option>
                   <option value="우리금융캐피탈">우리금융캐피탈</option>
+                  <option value="현대커머셜">현대커머셜</option>
                 </select>
-              </div>
-              {/* 부가세 후불 + 금액 + 영업사원 — 한 행 */}
-              <div className="col-span-1 sm:col-span-2 md:col-span-3">
-                <div className="grid grid-cols-3 gap-3 items-end">
-                  <div>
-                    <label className={labelClass}>부가세 후불</label>
-                    <div className="flex gap-1.5">
-                      {(["Y", "N"] as const).map((v) => (
-                        <button
-                          key={v}
-                          type="button"
-                          onClick={() => { setVatDeferred(v); if (v === "N") setVatDeferredAmount(""); }}
-                          className={`flex-1 h-[38px] rounded-xl border text-xs font-semibold transition-all ${
-                            vatDeferred === v
-                              ? v === "Y" ? "bg-orange-500 border-orange-500 text-white" : "bg-gray-200 border-gray-300 text-gray-700"
-                              : "bg-white border-gray-200 text-gray-400 hover:border-gray-300"
-                          }`}
-                        >{v}</button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <label className={labelClass}>후불금액 (원)</label>
-                    <input
-                      value={vatDeferredAmount ? Number(vatDeferredAmount).toLocaleString("ko-KR") : ""}
-                      onChange={(e) => setVatDeferredAmount(onlyDigits(e.target.value))}
-                      placeholder={vatDeferred === "Y" ? "15,000,000" : "-"}
-                      inputMode="numeric"
-                      disabled={vatDeferred === "N"}
-                      className={`h-[38px] w-full px-3 rounded-xl border text-xs font-medium transition-all focus:outline-none focus:border-orange-400 ${vatDeferred === "N" ? "bg-gray-50 border-gray-200 text-gray-300" : "bg-white border-gray-200 text-[#0f172a]"}`}
-                    />
-                  </div>
-                  <div>
-                    <label className={labelClass}>영업사원 *</label>
-                    <input
-                      value={salesRep}
-                      onChange={(e) => setSalesRep(e.target.value)}
-                      placeholder="홍길동"
-                      className="h-[38px] w-full px-3 rounded-xl border border-gray-200 bg-white text-xs font-medium text-[#0f172a] placeholder:text-gray-400 focus:outline-none focus:border-orange-400 transition-all"
-                    />
-                  </div>
-                </div>
               </div>
 
             </div>
@@ -2041,7 +2002,10 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                       </div>
                       {[
                         { label: "할부금융사", value: r.finance_company ?? "-" },
+                        { label: "메이커",     value: r.maker ?? "-" },
                         { label: "톤수",       value: r.equipment_ton ?? "-" },
+                        { label: "연식",       value: r.model_year ?? "-" },
+                        { label: "특장",       value: r.body_type ?? "-" },
                         { label: "차량가격",   value: formatAmount(r.purchase_amount) },
                         { label: "대출한도",   value: formatAmount(r.loan_limit ?? r.installment_principal) },
                         { label: "선수율",     value: (() => {
@@ -2052,7 +2016,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                           })() },
                         { label: "금리",       value: r.interest_rate != null ? `${r.interest_rate}%` : "-" },
                         { label: "인센티브",   value: r.incentive != null ? `${r.incentive}%` : "-" },
-                        { label: "부가세후불", value: r.vat_deferred ? `Y${r.vat_deferred_amount != null ? " / " + formatAmount(r.vat_deferred_amount) : ""}` : "N" },
                         {
                           label: "대출기간",
                           value: r.loan_period != null
@@ -2063,7 +2026,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                                 : `${r.loan_period}개월`
                             : "-",
                         },
-                        { label: "영업사원",   value: r.sales_rep ?? "-" },
                         { label: "접수일시",   value: formatCreatedAt(r.created_at) },
                       ].map(({ label, value }) => (
                         <div key={label}>
@@ -2156,7 +2118,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                             setCreditInstallmentPeriod(r.installment_period != null ? String(r.installment_period) : "");
                             setCreditVehicleAmount(r.vehicle_amount != null ? Number(r.vehicle_amount).toLocaleString("ko-KR") : "");
                             setCreditAttachAmount(r.attach_amount != null ? Number(r.attach_amount).toLocaleString("ko-KR") : "");
-                            setCreditVatAmount(r.vat_deferred_amount != null ? Number(r.vat_deferred_amount).toLocaleString("ko-KR") : "");
                             setCreditNote(r.credit_note ?? "");
                             setCreditBizHistory((r.biz_history as any) ?? "1년이상");
                             setCreditModal({ row: r, next: s });
@@ -2231,8 +2192,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                               setCreditInstallmentPeriod(r.installment_period != null ? String(r.installment_period) : "");
                               setCreditVehicleAmount(r.vehicle_amount != null ? Number(r.vehicle_amount).toLocaleString("ko-KR") : "");
                               setCreditAttachAmount(r.attach_amount != null ? Number(r.attach_amount).toLocaleString("ko-KR") : "");
-                              setCreditVatAmount(r.vat_deferred_amount != null ? Number(r.vat_deferred_amount).toLocaleString("ko-KR") : "");
-                              setCreditNote(r.credit_note ?? "");
+                                setCreditNote(r.credit_note ?? "");
                               setCreditBizHistory((r.biz_history as any) ?? "1년이상");
                               setCreditModal({ row: r, next: r.status as TaesanStatus });
                             }}
@@ -2243,28 +2203,51 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                         )}
                       </div>
 
-                      {/* 2행: 업로드 버튼 + 인센티브 지급 버튼 — 확정 상태일 때만 표시 */}
-                      {r.status === "확정" && (canUploadVehicleRegDoc || canUploadTaxInvoice || isAdminLevel) && (
+                      {/* 2행: 업로드 버튼 — 확정 상태일 때만 표시 */}
+                      {r.status === "확정" && (canUploadVehicleRegDoc || canUploadTaxInvoice) && (
                         <div className="flex flex-wrap gap-1.5">
-                          {canUploadVehicleRegDoc && (
-                            <button
-                              disabled={
-                                vehicleRegUploading === String(r.id) ||
-                                (vehicleRegFiles[String(r.id)] ?? []).length > 0
-                              }
-                              onClick={() => {
-                                vehicleRegInputRef.current?.setAttribute("data-row-id", String(r.id));
-                                vehicleRegInputRef.current?.click();
-                              }}
-                              className="px-3 py-1 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                            >
-                              {vehicleRegUploading === String(r.id)
-                                ? "업로드중..."
-                                : (vehicleRegFiles[String(r.id)] ?? []).length > 0
-                                  ? "✓ 차량등록증"
-                                  : "+ 차량등록증"}
-                            </button>
-                          )}
+                          {canUploadVehicleRegDoc && (() => {
+                            const beforeFiles = (vehicleRegFiles[String(r.id)] ?? []).filter(f => f.docType === "before");
+                            const afterFiles  = (vehicleRegFiles[String(r.id)] ?? []).filter(f => f.docType === "after");
+                            const beforeKey = `${r.id}:before`;
+                            const afterKey  = `${r.id}:after`;
+                            return (
+                              <>
+                                <button
+                                  disabled={vehicleRegUploading === beforeKey || beforeFiles.length > 0}
+                                  onClick={() => {
+                                    setVehicleRegDocType("before");
+                                    vehicleRegInputRef.current?.setAttribute("data-row-id", String(r.id));
+                                    vehicleRegInputRef.current?.setAttribute("data-doc-type", "before");
+                                    vehicleRegInputRef.current?.click();
+                                  }}
+                                  className="px-3 py-1 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                                >
+                                  {vehicleRegUploading === beforeKey
+                                    ? "업로드중..."
+                                    : beforeFiles.length > 0
+                                      ? "✓ 차량등록증(이전 전)"
+                                      : "+ 차량등록증(이전 전)"}
+                                </button>
+                                <button
+                                  disabled={vehicleRegUploading === afterKey || afterFiles.length > 0}
+                                  onClick={() => {
+                                    setVehicleRegDocType("after");
+                                    vehicleRegInputRef.current?.setAttribute("data-row-id", String(r.id));
+                                    vehicleRegInputRef.current?.setAttribute("data-doc-type", "after");
+                                    vehicleRegInputRef.current?.click();
+                                  }}
+                                  className="px-3 py-1 rounded-xl border border-teal-300 bg-teal-50 text-teal-700 text-xs font-semibold hover:bg-teal-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                                >
+                                  {vehicleRegUploading === afterKey
+                                    ? "업로드중..."
+                                    : afterFiles.length > 0
+                                      ? "✓ 차량등록증(이전 후)"
+                                      : "+ 차량등록증(이전 후)"}
+                                </button>
+                              </>
+                            );
+                          })()}
                           {canUploadTaxInvoice && (() => {
                             const files      = taxInvoiceFiles[String(r.id)] ?? [];
                             const hasAttach  = r.attach_amount != null && r.attach_amount > 0;
@@ -2274,7 +2257,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                             const aUploading = taxInvoiceUploading === `${r.id}-attach`;
                             return (
                               <>
-                                {/* 차량 세금계산서 */}
+                                {/* 지입사 사업자등록증 */}
                                 <button
                                   disabled={vUploading || vFiles.length > 0}
                                   onClick={() => {
@@ -2283,9 +2266,9 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                                   }}
                                   className="px-3 py-1 rounded-xl border border-blue-300 bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                                 >
-                                  {vUploading ? "업로드중..." : vFiles.length > 0 ? "✓ 세금계산서" : "+ 세금계산서"}
+                                  {vUploading ? "업로드중..." : vFiles.length > 0 ? "✓ 지입사 사업자등록증" : "+ 지입사 사업자등록증"}
                                 </button>
-                                {/* 어태치 세금계산서 (attach_amount 있을 때만) */}
+                                {/* 어태치 관련 지입사 사업자등록증 (attach_amount 있을 때만) */}
                                 {hasAttach && (
                                   <button
                                     disabled={aUploading || aFiles.length > 0}
@@ -2295,34 +2278,12 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                                     }}
                                     className="px-3 py-1 rounded-xl border border-cyan-300 bg-cyan-50 text-cyan-700 text-xs font-semibold hover:bg-cyan-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                                   >
-                                    {aUploading ? "업로드중..." : aFiles.length > 0 ? "✓ 어태치 계산서" : "+ 어태치 계산서"}
+                                    {aUploading ? "업로드중..." : aFiles.length > 0 ? "✓ 지입사 사업자등록증(어태치)" : "+ 지입사 사업자등록증(어태치)"}
                                   </button>
                                 )}
                               </>
                             );
                           })()}
-                          {isAdminLevel && (
-                            <button
-                              disabled={incentivePaidIds.has(String(r.id))}
-                              onClick={() => {
-                                if (!window.confirm("인센티브 지급 완료 알림을 발송하시겠습니까?")) return;
-                                sendKakaoNotify({
-                                  channel:      "taesan",
-                                  type:           "incentive_paid",
-                                  caseNo:         caseNoMap[String(r.id)] ?? String(r.id),
-                                  customerName:   r.customer_name,
-                                  customerType:   r.customer_type,
-                                  equipmentTon:   r.equipment_ton,
-                                  financeCompany: r.finance_company,
-                                  salesRep:       r.sales_rep,
-                                });
-                                setIncentivePaidIds((prev) => new Set([...prev, String(r.id)]));
-                              }}
-                              className="px-3 py-1 rounded-xl border border-purple-300 bg-purple-50 text-purple-700 text-xs font-semibold hover:bg-purple-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                            >
-                              {incentivePaidIds.has(String(r.id)) ? "✓ 인센티브 지급" : "💰 인센티브 지급"}
-                            </button>
-                          )}
                         </div>
                       )}
                     </div>
@@ -2426,45 +2387,54 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                     <p className="text-xs text-gray-400 mt-0.5">업로드 후 72시간 뒤 자동 삭제됩니다</p>
                   </div>
 
-                  {/* 업로드된 파일 목록 */}
-                  {(vehicleRegFiles[String(r.id)] ?? []).length > 0 ? (
-                    <div className="space-y-2">
-                      {(vehicleRegFiles[String(r.id)] ?? []).map((f, idx) => {
-                        const uploadedDate = new Date(f.uploadedAt);
-                        const expiresDate  = new Date(uploadedDate.getTime() + 72 * 60 * 60 * 1000);
-                        const hoursLeft    = Math.max(0, Math.round((expiresDate.getTime() - Date.now()) / (1000 * 60 * 60)));
-                        return (
-                          <div key={idx} className="flex items-center justify-between gap-3 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-1.5">
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-emerald-800 truncate">{f.name}</p>
-                              <p className="text-xs text-gray-400 mt-0.5">
-                                {formatCreatedAt(f.uploadedAt)} 업로드 &nbsp;·&nbsp;
-                                <span className={hoursLeft < 6 ? "text-red-500 font-semibold" : "text-gray-400"}>
-                                  {hoursLeft}시간 후 자동삭제
-                                </span>
-                              </p>
-                            </div>
-                            {(isAdmin || isSubAdmin || isTaesan) && (
-                            <button
-                              onClick={() => downloadVehicleRegDoc(f.path, f.name)}
-                              className="shrink-0 px-3 py-1 rounded-xl border border-emerald-200 text-emerald-700 text-xs font-medium hover:border-emerald-400 transition-all"
-                            >다운로드</button>
-                            )}
+                  {(["before", "after"] as const).map((dt) => {
+                    const files = (vehicleRegFiles[String(r.id)] ?? []).filter((f) => f.docType === dt);
+                    return (
+                      <div key={dt} className="mb-3 last:mb-0">
+                        <p className="text-[11px] font-semibold text-gray-500 mb-1.5">
+                          {dt === "before" ? "이전 전" : "이전 후"}
+                        </p>
+                        {files.length > 0 ? (
+                          <div className="space-y-2">
+                            {files.map((f, idx) => {
+                              const uploadedDate = new Date(f.uploadedAt);
+                              const expiresDate  = new Date(uploadedDate.getTime() + 72 * 60 * 60 * 1000);
+                              const hoursLeft    = Math.max(0, Math.round((expiresDate.getTime() - Date.now()) / (1000 * 60 * 60)));
+                              return (
+                                <div key={idx} className="flex items-center justify-between gap-3 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-1.5">
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-medium text-emerald-800 truncate">{f.name}</p>
+                                    <p className="text-xs text-gray-400 mt-0.5">
+                                      {formatCreatedAt(f.uploadedAt)} 업로드 &nbsp;·&nbsp;
+                                      <span className={hoursLeft < 6 ? "text-red-500 font-semibold" : "text-gray-400"}>
+                                        {hoursLeft}시간 후 자동삭제
+                                      </span>
+                                    </p>
+                                  </div>
+                                  {(isAdmin || isSubAdmin || isTaesan) && (
+                                  <button
+                                    onClick={() => downloadVehicleRegDoc(f.path, f.name)}
+                                    className="shrink-0 px-3 py-1 rounded-xl border border-emerald-200 text-emerald-700 text-xs font-medium hover:border-emerald-400 transition-all"
+                                  >다운로드</button>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-gray-400">업로드된 차량등록증이 없습니다.</p>
-                  )}
+                        ) : (
+                          <p className="text-xs text-gray-400">업로드된 파일이 없습니다.</p>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
                 )}
 
-                {/* 세금계산서 — 확정 상태이고 펼쳐진 경우에만 표시 */}
+                {/* 지입사 사업자등록증 — 확정 상태이고 펼쳐진 경우에만 표시 */}
                 {r.status === "확정" && (!isConfirmed || isExpanded) && (
                 <div className="px-4 md:px-3.5 pb-5 border-t border-blue-100 pt-4">
                   <div className="mb-3">
-                    <p className="text-xs font-medium tracking-wide text-blue-600 uppercase">세금계산서</p>
+                    <p className="text-xs font-medium tracking-wide text-blue-600 uppercase">지입사 사업자등록증</p>
                     <p className="text-xs text-gray-400 mt-0.5">업로드 후 72시간 뒤 자동 삭제됩니다</p>
                   </div>
 
@@ -2500,7 +2470,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                       })}
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-400">업로드된 세금계산서가 없습니다.</p>
+                    <p className="text-sm text-gray-400">업로드된 지입사 사업자등록증이 없습니다.</p>
                   )}
                 </div>
                 )}
@@ -2548,63 +2518,30 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               <div><label className={labelClass}>고객명 *</label><input value={editCustomerName} onChange={(e) => setEditCustomerName(e.target.value)} className={inputClass} disabled={editSaving} placeholder="홍길동" /></div>
               <div><label className={labelClass}>전화번호</label><input value={editCustomerPhone} onChange={(e) => setEditCustomerPhone(formatPhoneKR(e.target.value))} className={inputClass} disabled={editSaving} inputMode="tel" /></div>
               {editCustomerType === "법인" && <div><label className={labelClass}>대표자명</label><input value={editCeoName} onChange={(e) => setEditCeoName(e.target.value)} className={inputClass} disabled={editSaving} placeholder="홍길동" /></div>}
+              <div><label className={labelClass}>메이커</label><input value={editMaker} onChange={(e) => setEditMaker(e.target.value)} className={inputClass} disabled={editSaving} placeholder="예: 현대, 볼보" /></div>
               <div><label className={labelClass}>톤수</label><input value={editEquipmentTon} onChange={(e) => setEditEquipmentTon(e.target.value)} className={inputClass} disabled={editSaving} placeholder="예: 20톤" /></div>
+              <div><label className={labelClass}>연식</label><input value={editModelYear} onChange={(e) => setEditModelYear(e.target.value)} className={inputClass} disabled={editSaving} placeholder="예: 2022년" /></div>
+              <div>
+                <label className={labelClass}>특장</label>
+                <select value={editBodyType} onChange={(e) => setEditBodyType(e.target.value as BodyType | "")} className={inputClass} disabled={editSaving}>
+                  <option value="">선택</option>
+                  <option value="윙바디">윙바디</option>
+                  <option value="카고">카고</option>
+                </select>
+              </div>
               <div><label className={labelClass}>차량가격 (원)</label><input value={editPurchaseAmount} onChange={(e) => setEditPurchaseAmount(onlyDigits(e.target.value))} className={inputClass} disabled={editSaving} inputMode="numeric" /></div>
               <div><label className={labelClass}>할부원금 (원)</label><input value={editInstallmentPrincipal} onChange={(e) => setEditInstallmentPrincipal(onlyDigits(e.target.value))} className={inputClass} disabled={editSaving} inputMode="numeric" /></div>
-              <div><label className={labelClass}>할부금융사</label><select value={editFinanceCompany} onChange={(e) => setEditFinanceCompany(e.target.value)} className={inputClass} disabled={editSaving}><option value="NH캐피탈">NH캐피탈</option><option value="오릭스캐피탈">오릭스캐피탈</option><option value="우리금융캐피탈">우리금융캐피탈</option></select></div>
-              {/* 부가세 후불 + 금액 + 대출기간 + 영업사원 */}
-              <div className="col-span-1 sm:col-span-2 md:col-span-3">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
-                  <div>
-                    <label className={labelClass}>부가세 후불</label>
-                    <div className="flex gap-1.5">
-                      {(["Y", "N"] as const).map((v) => (
-                        <button key={v} type="button"
-                          onClick={() => { setEditVatDeferred(v); if (v === "N") setEditVatDeferredAmount(""); }}
-                          disabled={editSaving}
-                          className={`flex-1 h-[38px] rounded-xl border text-xs font-semibold transition-all ${
-                            editVatDeferred === v
-                              ? v === "Y" ? "bg-orange-500 border-orange-500 text-white" : "bg-gray-200 border-gray-300 text-gray-700"
-                              : "bg-white border-gray-200 text-gray-400 hover:border-gray-300"
-                          }`}
-                        >{v}</button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <label className={labelClass}>후불금액 (원)</label>
-                    <input
-                      value={editVatDeferredAmount}
-                      onChange={(e) => {
-                        const raw = onlyDigits(e.target.value);
-                        setEditVatDeferredAmount(raw ? Number(raw).toLocaleString("ko-KR") : "");
-                      }}
-                      placeholder={editVatDeferred === "Y" ? "15,000,000" : "-"}
-                      inputMode="numeric"
-                      disabled={editSaving || editVatDeferred === "N"}
-                      className={`h-[38px] w-full px-3 rounded-xl border text-xs font-medium transition-all focus:outline-none focus:border-orange-400 ${
-                        editVatDeferred === "N" ? "bg-gray-50 border-gray-200 text-gray-300" : "bg-white border-gray-200 text-[#0f172a]"
-                      }`}
-                    />
-                  </div>
-                  <div>
-                    <label className={labelClass}>대출기간 (개월)</label>
-                    <input
-                      type="number" inputMode="numeric"
-                      value={editLoanPeriod}
-                      onChange={(e) => setEditLoanPeriod(e.target.value)}
-                      placeholder="예: 60"
-                      className="h-[38px] w-full px-3 rounded-xl border border-gray-200 bg-white text-xs font-medium text-[#0f172a] placeholder:text-gray-400 focus:outline-none focus:border-orange-400 transition-all"
-                      disabled={editSaving}
-                    />
-                  </div>
-                  <div>
-                    <label className={labelClass}>영업사원</label>
-                    <input value={editSalesRep} onChange={(e) => setEditSalesRep(e.target.value)}
-                      className="h-[38px] w-full px-3 rounded-xl border border-gray-200 bg-white text-xs font-medium text-[#0f172a] placeholder:text-gray-400 focus:outline-none focus:border-orange-400 transition-all"
-                      disabled={editSaving} />
-                  </div>
-                </div>
+              <div><label className={labelClass}>할부금융사</label><select value={editFinanceCompany} onChange={(e) => setEditFinanceCompany(e.target.value)} className={inputClass} disabled={editSaving}><option value="NH캐피탈">NH캐피탈</option><option value="오릭스캐피탈">오릭스캐피탈</option><option value="우리금융캐피탈">우리금융캐피탈</option><option value="현대커머셜">현대커머셜</option></select></div>
+              <div>
+                <label className={labelClass}>대출기간 (개월)</label>
+                <input
+                  type="number" inputMode="numeric"
+                  value={editLoanPeriod}
+                  onChange={(e) => setEditLoanPeriod(e.target.value)}
+                  placeholder="예: 60"
+                  className={inputClass}
+                  disabled={editSaving}
+                />
               </div>
               <div><label className={labelClass}>ID</label><input value={String(editRow.id)} readOnly className={inputClass + " !bg-gray-50 !text-gray-400 cursor-not-allowed"} /></div>
             </div>
@@ -2987,14 +2924,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                   {confirmLoanPeriod ? `${confirmLoanPeriod}개월` : "-"}
                 </span>
               </div>
-              {confirmModal.vat_deferred && (
-                <div>
-                  <span className="text-gray-400">부가세후불</span>
-                  <span className="ml-2 font-semibold text-[#0f172a]">
-                    {confirmVatAmount ? `${confirmVatAmount}원` : "-"}
-                  </span>
-                </div>
-              )}
             </div>
 
             <div className="space-y-4">
@@ -3029,27 +2958,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                     value={confirmLoanPeriod}
                     onChange={(e) => setConfirmLoanPeriod(e.target.value)}
                     placeholder="예: 60"
-                    inputMode="numeric"
-                    className={inputClass + " border-orange-400 ring-2 ring-orange-200/50"}
-                    disabled={confirmSaving}
-                  />
-                </div>
-              )}
-              {/* 부가세 후불금액 — vat_deferred=Y이고 미입력이면 여기서 입력 */}
-              {confirmModal.vat_deferred && !confirmVatAmount && (
-                <div>
-                  <label className={labelClass}>
-                    부가세 후불금액 (원)
-                    <span className="ml-2 text-xs text-orange-500">※ 부가세 후불 Y — 미입력</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={confirmVatAmount}
-                    onChange={(e) => {
-                      const raw = onlyDigits(e.target.value);
-                      setConfirmVatAmount(raw ? Number(raw).toLocaleString("ko-KR") : "");
-                    }}
-                    placeholder="예: 17,000,000"
                     inputMode="numeric"
                     className={inputClass + " border-orange-400 ring-2 ring-orange-200/50"}
                     disabled={confirmSaving}
@@ -3293,28 +3201,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                   </p>
                 ) : null;
               })()}
-
-              {creditModal.row.vat_deferred && (
-              <div>
-                <label className={labelClass}>
-                  부가세 후불금액 (원)
-                  <span className="ml-2 text-xs font-semibold text-orange-500">※ 부가세 후불 Y</span>
-                </label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={creditVatAmount}
-                  onChange={(e) => {
-                    const raw = e.target.value.replace(/[^0-9]/g, "");
-                    setCreditVatAmount(raw ? Number(raw).toLocaleString("ko-KR") : "");
-                  }}
-                  placeholder="예: 17,000,000"
-                  className={inputClass + (!creditVatAmount ? " border-orange-400 ring-2 ring-orange-200/50" : "")}
-                  disabled={creditSaving}
-                />
-                {creditVatAmount && <p className="mt-1 text-xs text-gray-400">{creditVatAmount}원</p>}
-              </div>
-              )}
               </>)}
 
               {/* 특이사항(승인) / 보완사항(보완) — credit_note 컬럼, 본문 특이사항(special_note)과는 별개 항목 */}
@@ -3413,12 +3299,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-gray-500">대출한도</span>
                       <span className="text-sm font-medium text-gray-800">{fmtAmt(r.loan_limit ?? r.installment_principal)}</span>
-                    </div>
-                  )}
-                  {r.vat_deferred && r.vat_deferred_amount != null && (
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-500">부가세 후불</span>
-                      <span className="text-sm font-medium text-orange-600">+{fmtAmt(r.vat_deferred_amount)}</span>
                     </div>
                   )}
                   
