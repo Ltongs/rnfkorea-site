@@ -24,6 +24,7 @@ type AuthContextType = {
   isNhCapital: boolean;   // 농협캐피탈 (강신규 소장)
   isNhCapitalStaff: boolean; // NH캐피탈 직원 (조회 전용, NH캐피탈 건만)
   isInsAI: boolean;       // AI 비서 (Ins) 전용 (everyasset.fc@gmail.com)
+  isTaesan: boolean;      // 태산통운 (yj565012@naver.com) - 태산통운 탭 전용, 신규등록/자료첨부만 가능
   isInternal: boolean;
 
   // page permissions
@@ -62,8 +63,9 @@ function getRoleFlags(emailRaw?: string | null) {
                           || email === "yongbaek_jo@orix.co.kr";  // ORIX 조용백
   const isNhCapitalStaff   = email === "ehddhks1115@nhcapital.co.kr"; // NH캐피탈 직원 (조회 전용)
   const isInsAI            = email === "everyasset.fc@gmail.com"; // AI 비서 (Ins) 전용
+  const isTaesan            = email === "yj565012@naver.com";      // 태산통운 (신규등록완료) - 태산통운 탭 전용
 
-  // isHyundaiCM / isNhCapital 은 각자 전용 페이지만 볼 수 있으므로
+  // isHyundaiCM / isNhCapital / isTaesan 은 각자 전용 페이지만 볼 수 있으므로
   // isInternal(나르미 공통 접근)에는 포함하지 않음
   const isInternal = isAdmin || isSubAdmin || isNarumi || isLotte || isInsuranceManager || isInsAI;
 
@@ -78,6 +80,7 @@ function getRoleFlags(emailRaw?: string | null) {
     isNhCapital,
     isNhCapitalStaff,
     isInsAI,
+    isTaesan,
     isInternal,
   };
 }
@@ -93,6 +96,7 @@ function getPermissions(emailRaw?: string | null) {
     isNhCapital,
     isNhCapitalStaff,
     isInsAI,
+    isTaesan,
     isInternal,
   } = getRoleFlags(emailRaw);
 
@@ -108,8 +112,14 @@ function getPermissions(emailRaw?: string | null) {
     isNhCapital,
     isNhCapitalStaff,
     isInsAI,
+    isTaesan,
     isInternal,
 
+    // 참고: 아래 canXxx 값들은 상담관리/나르미/보험 등 "공용" 페이지에서 쓰는 값입니다.
+    // 현대CM 페이지와 마찬가지로, 태산통운 페이지(/taesan)는 이 공용 플래그를 쓰지 않고
+    // 컴포넌트 내부에서 isTaesan role flag를 직접 참조해 자체 권한(신규등록 O,
+    // 상태변경 X, 삭제 X, 자료첨부/다운로드 O)을 계산합니다. 따라서 canCreate 등에
+    // isTaesan을 추가하지 않았습니다 (다른 공용 페이지에 의도치 않은 권한이 새는 것을 방지).
     canViewAll:          isInternal,
     canViewHyundaiCM:    isInternal || isHyundaiCM || isNhCapital || isNhCapitalStaff,
     canCreate:           isAdminLevel || isNarumi || isInsuranceManager || isHyundaiCM || isNhCapital || isInsAI,
@@ -205,6 +215,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isNhCapital:        permissionState.isNhCapital,
       isNhCapitalStaff:   permissionState.isNhCapitalStaff,
       isInsAI:            permissionState.isInsAI,
+      isTaesan:           permissionState.isTaesan,
       isInternal:         permissionState.isInternal,
 
       canViewAll:         permissionState.canViewAll,

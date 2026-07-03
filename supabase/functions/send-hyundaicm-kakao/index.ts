@@ -33,6 +33,28 @@ const HCM_TEMPLATES: Record<string, string> = {
 
 const HCM_PAGE_URL = "https://rnfkorea.co.kr/hyundaicm";
 
+// ─── 태산통운 카카오 알림톡 설정 ──────────────────────────────
+// 요청에 따라 현대CM과 동일한 Solapi 알림톡 템플릿을 그대로 재사용합니다.
+// (신규 템플릿 승인 절차 없이 바로 카카오 알림톡 발송됨)
+const TAESAN_PF_ID = HCM_PF_ID; // 기존 채널과 동일 (@주식회사알앤에프코리아)
+
+const TAESAN_TEMPLATES: Record<string, string> = {
+  taesan_new:           HCM_TEMPLATES.hcm_new,
+  taesan_status_change: HCM_TEMPLATES.hcm_status_change,
+  taesan_approved:      HCM_TEMPLATES.hcm_approved,
+  taesan_supplement:    HCM_TEMPLATES.hcm_supplement,
+  taesan_rejected:      HCM_TEMPLATES.hcm_rejected,
+  taesan_confirmed:     HCM_TEMPLATES.hcm_confirmed,
+  taesan_edit:          HCM_TEMPLATES.hcm_edit,
+  taesan_hold:          HCM_TEMPLATES.hcm_hold,
+};
+
+const TAESAN_PAGE_URL = "https://rnfkorea.co.kr/taesan";
+
+// 태산통운 전용 수신자 (미설정 시 관리자 번호로 폴백)
+const TAESAN_RECIPIENTS_RAW = Deno.env.get("TAESAN_SMS_RECIPIENTS") ?? "01050549006,01095250707,01094525800,01030991111";
+const TAESAN_RECIPIENTS     = TAESAN_RECIPIENTS_RAW.split(",").map((n) => n.replace(/\D/g, ""));
+
 // ─── 나르미 카카오 알림톡 설정 ────────────────────────────────
 const NARUMI_PF_ID = "KA01PF2606081346516718bsSRTnA56x"; // HCM과 동일 채널
 
@@ -235,6 +257,58 @@ async function sendNarumiAlimtalkToAll(
   if (!templateId) throw new Error(`나르미 템플릿 키 없음: ${templateKey}`);
   await Promise.all(
     NARUMI_RECIPIENTS.map((to) => sendNarumiAlimtalk(to, templateId, variables, fallbackText))
+  );
+}
+
+// ─── 태산통운 알림톡 단건 발송 ─────────────────────────────
+async function sendTaesanAlimtalk(
+  to: string,
+  templateId: string,
+  variables: Record<string, string>,
+  fallbackText: string,
+): Promise<void> {
+  const authHeader = await getSolapiAuthHeader();
+  const res = await fetch("https://api.solapi.com/messages/v4/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: authHeader },
+    body: JSON.stringify({
+      message: {
+        to,
+        from: SENDER_PHONE,
+        kakaoOptions: {
+          pfId:       TAESAN_PF_ID,
+          templateId,
+          variables,
+          disableSms: false,
+          buttons: [{
+            buttonType: "WL",
+            buttonName: "업무 페이지 열기",
+            linkMo:     TAESAN_PAGE_URL,
+            linkPc:     TAESAN_PAGE_URL,
+          }],
+        },
+        text: fallbackText,
+      },
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    console.error(`태산통운 알림톡 오류 (${to}):`, err);
+    throw new Error(`태산통운 알림톡 발송 실패: ${err}`);
+  }
+  console.log(`태산통운 알림톡 발송 성공 (${to}):`, templateId);
+}
+
+// ─── 태산통운 알림톡 전체 수신자 발송 ────────────────────────
+async function sendTaesanAlimtalkToAll(
+  templateKey: string,
+  variables: Record<string, string>,
+  fallbackText: string,
+): Promise<void> {
+  const templateId = TAESAN_TEMPLATES[templateKey];
+  if (!templateId) throw new Error(`태산통운 템플릿 키 없음(미승인): ${templateKey}`);
+  await Promise.all(
+    TAESAN_RECIPIENTS.map((to) => sendTaesanAlimtalk(to, templateId, variables, fallbackText))
   );
 }
 
@@ -620,6 +694,182 @@ function buildMessage(body: Record<string, string>): string {
 }
 
 // ─────────────────────────────────────────────
+// 태산통운 메시지 빌더 (SMS 폴백용 — 알림톡 템플릿 미승인 시 사용)
+// ─────────────────────────────────────────────
+function buildTaesanMessage(body: Record<string, string>): string {
+  const {
+    type, caseNo, customerName, customerType, equipmentTon,
+    financeCompany, salesRep, installmentPrincipal,
+    purchaseAmount, interestRate, incentive,
+    vatDeferredAmount, loanPeriod, prevStatus, nextStatus,
+  } = body;
+  const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+
+  if (type === "new") {
+    return [
+      "[태산통운 할부 신규 접수]", "",
+      `번호: ${caseNo ?? "-"}`,
+      `고객: ${customerName} (${customerType})`,
+      `장비: ${equipmentTon ?? "-"}`,
+      `금융사: ${financeCompany ?? "-"}`,
+      installmentPrincipal ? `할부원금: ${Number(installmentPrincipal).toLocaleString("ko-KR")}원` : "",
+      `영업: ${salesRep ?? "-"}`,
+      `시간: ${now}`,
+    ].filter(Boolean).join("\n");
+  }
+
+  if (type === "status_change" && nextStatus === "확정") {
+    const purchase  = purchaseAmount       ? Number(purchaseAmount)       : null;
+    const principal = installmentPrincipal ? Number(installmentPrincipal) : null;
+    const downRate  = (purchase && principal)
+      ? `${(((purchase - principal) / purchase) * 100).toFixed(1)}%` : null;
+    return [
+      "[태산통운 할부 확정]", "",
+      `번호: ${caseNo ?? "-"}`,
+      `고객: ${customerName} (${customerType})`,
+      `장비: ${equipmentTon ?? "-"}`,
+      `금융사: ${financeCompany ?? "-"}`,
+      purchase    ? `차량가격: ${purchase.toLocaleString("ko-KR")}원`  : "",
+      principal   ? `할부원금: ${principal.toLocaleString("ko-KR")}원` : "",
+      downRate    ? `선수율: ${downRate}`                              : "",
+      interestRate ? `금리: ${interestRate}%`                         : "",
+      incentive    ? `인센티브: ${incentive}%`                         : "",
+      vatDeferredAmount ? `부가세후불: ${Number(vatDeferredAmount).toLocaleString("ko-KR")}원` : "",
+      loanPeriod   ? `대출기간: ${loanPeriod}개월`                     : "",
+      `영업: ${salesRep ?? "-"}`,
+      `시간: ${now}`,
+    ].filter(Boolean).join("\n");
+  }
+
+  if (type === "status_change") {
+    const isCreditStatus = ["승인", "보완", "거절"].includes(nextStatus);
+    return [
+      "[태산통운 할부 진행 알림]", "",
+      `번호: ${caseNo ?? "-"}`,
+      `고객: ${customerName} (${customerType})`,
+      `장비: ${equipmentTon ?? "-"}`,
+      financeCompany ? `금융사: ${financeCompany}` : "",
+      installmentPrincipal ? `할부원금: ${Number(installmentPrincipal).toLocaleString("ko-KR")}원` : "",
+      `상태: ${prevStatus} → ${nextStatus}`,
+      ...(isCreditStatus ? [
+        ...(nextStatus !== "거절" ? [
+          body.bizHistory      ? `업력: ${body.bizHistory}`               : "",
+          body.niceScore       ? `NICE 점수: ${body.niceScore}점`         : "",
+          body.creditRate      ? `적용금리: ${body.creditRate}%`          : "",
+          body.creditIncentive ? `적용인센티브: ${body.creditIncentive}%` : "",
+        ] : []),
+        ...(nextStatus === "승인" ? [
+          body.loanLimit && body.loanLimit !== "-"
+            ? `대출한도: ${isNaN(Number(body.loanLimit)) ? body.loanLimit : Number(body.loanLimit).toLocaleString("ko-KR") + "원"}`
+            : "",
+          body.creditNote ? `특이사항: ${body.creditNote}` : "",
+        ] : []),
+        ...(nextStatus === "보완" ? [
+          body.creditNote ? `보완사항: ${body.creditNote}` : "",
+        ] : []),
+        ...(nextStatus === "거절" ? [
+          body.creditNote ? `거절사유: ${body.creditNote}` : "",
+        ] : []),
+      ] : []),
+      `영업: ${salesRep ?? "-"}`,
+      `시간: ${now}`,
+    ].filter(Boolean).join("\n");
+  }
+
+  if (type === "edit") {
+    return [
+      "[태산통운 할부 정보 수정]", "",
+      `번호: ${caseNo ?? "-"}`,
+      `고객: ${customerName} (${customerType})`,
+      `현재단계: ${prevStatus ?? "-"}`,
+      `영업: ${salesRep ?? "-"}`, "",
+      "── 변경사항 ──",
+      body.changedSummary ?? "변경사항 없음", "",
+      `시간: ${now}`,
+    ].filter(Boolean).join("\n");
+  }
+
+  if (type === "credit_condition_updated") {
+    const v = body.vehicleAmount ? Number(body.vehicleAmount) : null;
+    const a = body.attachAmount  ? Number(body.attachAmount)  : null;
+    const totalVehicle = (v ?? 0) + (a ?? 0);
+    const g = body.gracePeriod ?? null;
+    const inst = body.installmentPeriod ?? null;
+    return [
+      "[태산통운 승인조건 수정]", "",
+      `번호: ${caseNo ?? "-"}`,
+      `고객: ${customerName} (${customerType})`,
+      `장비: ${equipmentTon ?? "-"}`,
+      `영업: ${salesRep ?? "-"}`, "",
+      "── 수정된 승인조건 ──",
+      totalVehicle > 0 ? `차량가격: ${totalVehicle.toLocaleString("ko-KR")}원${v && a ? ` (차량 ${v.toLocaleString("ko-KR")} + 어태치 ${a.toLocaleString("ko-KR")})` : ""}` : null,
+      body.loanLimit && body.loanLimit !== "-"
+        ? `대출한도: ${isNaN(Number(body.loanLimit)) ? body.loanLimit : Number(body.loanLimit).toLocaleString("ko-KR") + "원"}`
+        : null,
+      `대출기간: ${body.loanPeriod ?? "-"}개월${g && inst ? ` (거치 ${g} + 할부 ${inst})` : ""}`,
+      `적용금리: ${body.creditRate ?? "-"}%`,
+      body.creditIncentive ? `인센티브: ${body.creditIncentive}%` : null,
+      body.creditNote ? `특이사항: ${body.creditNote}` : null, "",
+      `시간: ${now}`,
+    ].filter(Boolean).join("\n");
+  }
+
+  if (type === "vehicle_reg_upload") {
+    return [
+      "[태산통운 차량등록증 업로드]", "",
+      `번호: ${caseNo ?? "-"}`,
+      `고객: ${customerName} (${customerType})`,
+      `장비: ${equipmentTon ?? "-"}`,
+      financeCompany ? `금융사: ${financeCompany}` : "",
+      `영업: ${salesRep ?? "-"}`, "",
+      "차량 등록이 완료되었습니다.",
+      `시간: ${now}`,
+    ].filter(Boolean).join("\n");
+  }
+
+  if (type === "tax_invoice_upload") {
+    return [
+      "[태산통운 세금계산서 업로드]", "",
+      `번호: ${caseNo ?? "-"}`,
+      `고객: ${customerName} (${customerType})`,
+      `장비: ${equipmentTon ?? "-"}`,
+      financeCompany ? `금융사: ${financeCompany}` : "",
+      `영업: ${salesRep ?? "-"}`, "",
+      "세금계산서가 업로드되었습니다.",
+      `시간: ${now}`,
+    ].filter(Boolean).join("\n");
+  }
+
+  if (type === "incentive_paid") {
+    return [
+      "[태산통운 인센티브 지급]", "",
+      `번호: ${caseNo ?? "-"}`,
+      `고객: ${customerName} (${customerType})`,
+      `장비: ${equipmentTon ?? "-"}`,
+      financeCompany ? `금융사: ${financeCompany}` : "",
+      `영업: ${salesRep ?? "-"}`, "",
+      "✅ 인센티브 지급 완료",
+      `시간: ${now}`,
+    ].filter(Boolean).join("\n");
+  }
+
+  if (type === "hold_registered") {
+    return [
+      "[태산통운 보류(재통화 예약)]", "",
+      `번호: ${caseNo ?? "-"}`,
+      `고객: ${customerName} (${customerType})`,
+      `장비: ${equipmentTon ?? "-"}`,
+      `영업: ${salesRep ?? "-"}`,
+      body.scheduledAt ? `재통화예정: ${body.scheduledAt}` : "",
+      body.holdNote    ? `메모: ${body.holdNote}`         : "",
+      `시간: ${now}`,
+    ].filter(Boolean).join("\n");
+  }
+
+  throw new Error(`태산통운 메시지 빌더: 알 수 없는 type: ${type}`);
+}
+
+// ─────────────────────────────────────────────
 // HCM 알림톡 변수 빌더
 // ─────────────────────────────────────────────
 function buildHcmVariables(body: Record<string, string>): { templateKey: string; variables: Record<string, string> } {
@@ -826,6 +1076,226 @@ function buildHcmVariables(body: Record<string, string>): { templateKey: string;
 }
 
 // ─────────────────────────────────────────────
+// 태산통운 알림톡 변수 빌더
+// ─────────────────────────────────────────────
+function buildTaesanVariables(body: Record<string, string>): { templateKey: string; variables: Record<string, string> } {
+  const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+  const {
+    type, caseNo, customerName, customerType, equipmentTon,
+    financeCompany, salesRep, installmentPrincipal,
+    purchaseAmount, interestRate, incentive,
+    vatDeferredAmount, loanPeriod, prevStatus, nextStatus,
+  } = body;
+
+  if (type === "new") {
+    return {
+      templateKey: "taesan_new",
+      variables: {
+        "#{케이스번호}": caseNo         ?? "-",
+        "#{고객명}":     customerName   ?? "-",
+        "#{고객유형}":   customerType   ?? "-",
+        "#{장비톤수}":   equipmentTon   ?? "-",
+        "#{금융사}":     financeCompany ?? "-",
+        "#{할부원금}":   installmentPrincipal
+          ? `${Number(installmentPrincipal).toLocaleString("ko-KR")}원` : "-",
+        "#{영업사원}":   salesRep ?? "-",
+        "#{시간}":       now,
+      },
+    };
+  }
+
+  if (type === "status_change" && nextStatus === "확정") {
+    const purchase  = purchaseAmount       ? Number(purchaseAmount)       : null;
+    const principal = installmentPrincipal ? Number(installmentPrincipal) : null;
+    const downRate  = (purchase && principal)
+      ? `${(((purchase - principal) / purchase) * 100).toFixed(1)}%` : "-";
+    return {
+      templateKey: "taesan_confirmed",
+      variables: {
+        "#{케이스번호}": caseNo         ?? "-",
+        "#{고객명}":     customerName   ?? "-",
+        "#{고객유형}":   customerType   ?? "-",
+        "#{장비톤수}":   equipmentTon   ?? "-",
+        "#{금융사}":     financeCompany ?? "-",
+        "#{차량가격}":   purchase  ? purchase.toLocaleString("ko-KR")  : "-",
+        "#{할부원금}":   principal ? principal.toLocaleString("ko-KR") : "-",
+        "#{선수율}":     downRate,
+        "#{금리}":       interestRate ?? "-",
+        "#{인센티브}":   incentive    ?? "-",
+        "#{부가세후불}": vatDeferredAmount
+          ? Number(vatDeferredAmount).toLocaleString("ko-KR") : "-",
+        "#{대출기간}":   loanPeriod   ?? "-",
+        "#{영업사원}":   salesRep     ?? "-",
+        "#{시간}":       now,
+      },
+    };
+  }
+
+  if (type === "status_change" && nextStatus === "승인") {
+    return {
+      templateKey: "taesan_approved",
+      variables: {
+        "#{케이스번호}":   caseNo         ?? "-",
+        "#{고객명}":       customerName   ?? "-",
+        "#{고객유형}":     customerType   ?? "-",
+        "#{장비톤수}":     equipmentTon   ?? "-",
+        "#{업력}":         body.bizHistory      ?? "-",
+        "#{NICE점수}":     body.niceScore        ?? "-",
+        "#{적용금리}":     body.creditRate        ?? "-",
+        "#{적용인센티브}": body.creditIncentive   ?? "-",
+        "#{대출한도}":     body.loanLimit && body.loanLimit !== "-"
+          ? (isNaN(Number(body.loanLimit))
+              ? body.loanLimit.replace(/원+$/, "")
+              : Number(body.loanLimit).toLocaleString("ko-KR"))
+          : "-",
+        "#{특이사항}":     body.creditNote  ?? "-",
+        "#{영업사원}":     salesRep         ?? "-",
+        "#{시간}":         now,
+      },
+    };
+  }
+
+  if (type === "status_change" && nextStatus === "보완") {
+    return {
+      templateKey: "taesan_supplement",
+      variables: {
+        "#{케이스번호}": caseNo         ?? "-",
+        "#{고객명}":     customerName   ?? "-",
+        "#{고객유형}":   customerType   ?? "-",
+        "#{장비톤수}":   equipmentTon   ?? "-",
+        "#{업력}":       body.bizHistory  ?? "-",
+        "#{NICE점수}":   body.niceScore    ?? "-",
+        "#{적용금리}":   body.creditRate    ?? "-",
+        "#{보완사항}":   body.creditNote    ?? "-",
+        "#{영업사원}":   salesRep           ?? "-",
+        "#{시간}":       now,
+      },
+    };
+  }
+
+  if (type === "status_change" && nextStatus === "거절") {
+    return {
+      templateKey: "taesan_rejected",
+      variables: {
+        "#{케이스번호}": caseNo       ?? "-",
+        "#{고객명}":     customerName ?? "-",
+        "#{고객유형}":   customerType ?? "-",
+        "#{장비톤수}":   equipmentTon ?? "-",
+        "#{거절사유}":   body.creditNote ?? "-",
+        "#{영업사원}":   salesRep        ?? "-",
+        "#{시간}":       now,
+      },
+    };
+  }
+
+  if (type === "status_change") {
+    return {
+      templateKey: "taesan_status_change",
+      variables: {
+        "#{케이스번호}": caseNo         ?? "-",
+        "#{고객명}":     customerName   ?? "-",
+        "#{고객유형}":   customerType   ?? "-",
+        "#{장비톤수}":   equipmentTon   ?? "-",
+        "#{금융사}":     financeCompany ?? "-",
+        "#{할부원금}":   installmentPrincipal
+          ? `${Number(installmentPrincipal).toLocaleString("ko-KR")}원` : "-",
+        "#{이전단계}":   prevStatus ?? "-",
+        "#{현재단계}":   nextStatus ?? "-",
+        "#{영업사원}":   salesRep   ?? "-",
+        "#{시간}":       now,
+      },
+    };
+  }
+
+  if (type === "edit") {
+    return {
+      templateKey: "taesan_edit",
+      variables: {
+        "#{케이스번호}": caseNo       ?? "-",
+        "#{고객명}":     customerName ?? "-",
+        "#{고객유형}":   customerType ?? "-",
+        "#{현재단계}":   prevStatus   ?? "-",
+        "#{영업사원}":   salesRep     ?? "-",
+        "#{변경사항}":   body.changedSummary ?? "변경사항 없음",
+        "#{시간}":       now,
+      },
+    };
+  }
+
+  if (type === "credit_condition_updated") {
+    const v = body.vehicleAmount ? Number(body.vehicleAmount) : null;
+    const a = body.attachAmount  ? Number(body.attachAmount)  : null;
+    const totalVehicle = (v ?? 0) + (a ?? 0);
+    const g = body.gracePeriod ?? null;
+    const inst = body.installmentPeriod ?? null;
+    const periodText = `${loanPeriod ?? "-"}개월${g && inst ? ` (거치${g}+할부${inst})` : ""}`;
+    const summary = [
+      totalVehicle > 0 ? `차량가격 ${totalVehicle.toLocaleString("ko-KR")}원${v && a ? `(차량${v.toLocaleString("ko-KR")}+어태치${a.toLocaleString("ko-KR")})` : ""}` : null,
+      body.loanLimit ? `대출한도 ${Number(body.loanLimit).toLocaleString("ko-KR")}원` : null,
+      `대출기간 ${periodText}`,
+      `금리 ${body.creditRate ?? "-"}%`,
+      body.creditIncentive ? `인센티브 ${body.creditIncentive}%` : null,
+      body.creditNote ? `특이사항: ${body.creditNote}` : null,
+    ].filter(Boolean).join(" / ");
+    return {
+      templateKey: "taesan_edit",
+      variables: {
+        "#{케이스번호}": caseNo       ?? "-",
+        "#{고객명}":     customerName ?? "-",
+        "#{고객유형}":   customerType ?? "-",
+        "#{현재단계}":   "승인조건 수정",
+        "#{영업사원}":   salesRep     ?? "-",
+        "#{변경사항}":   summary || "변경사항 없음",
+        "#{시간}":       now,
+      },
+    };
+  }
+
+  if (type === "hold_registered") {
+    return {
+      templateKey: "taesan_hold",
+      variables: {
+        "#{케이스번호}": caseNo       ?? "-",
+        "#{고객명}":     customerName ?? "-",
+        "#{고객유형}":   customerType ?? "-",
+        "#{장비톤수}":   equipmentTon ?? "-",
+        "#{영업사원}":   salesRep     ?? "-",
+        "#{재통화예정}": body.scheduledAt ?? "-",
+        "#{메모}":       body.holdNote    ?? "-",
+        "#{시간}":       now,
+      },
+    };
+  }
+
+  // vehicle_reg_upload / tax_invoice_upload / incentive_paid → taesan_status_change 재활용
+  const typeLabel: Record<string, string> = {
+    vehicle_reg_upload: "차량등록증 업로드",
+    tax_invoice_upload: "세금계산서 업로드",
+    incentive_paid:     "인센티브 지급",
+  };
+  if (typeLabel[type]) {
+    return {
+      templateKey: "taesan_status_change",
+      variables: {
+        "#{케이스번호}": caseNo         ?? "-",
+        "#{고객명}":     customerName   ?? "-",
+        "#{고객유형}":   customerType   ?? "-",
+        "#{장비톤수}":   equipmentTon   ?? "-",
+        "#{금융사}":     financeCompany ?? "-",
+        "#{할부원금}":   installmentPrincipal
+          ? `${Number(installmentPrincipal).toLocaleString("ko-KR")}원` : "-",
+        "#{이전단계}":   prevStatus      ?? "-",
+        "#{현재단계}":   typeLabel[type],
+        "#{영업사원}":   salesRep        ?? "-",
+        "#{시간}":       now,
+      },
+    };
+  }
+
+  throw new Error(`태산통운 알림톡 변수 빌더: 알 수 없는 type: ${type}`);
+}
+
+// ─────────────────────────────────────────────
 // 메인 서버
 // ─────────────────────────────────────────────
 serve(async (req) => {
@@ -914,6 +1384,7 @@ serve(async (req) => {
           const q = item.payload as Record<string, string>;
           const qIsJinheung = q.type === "order_forwarded" || q.type === "wheel_return_request";
           const qIsNarumi   = typeof q.type === "string" && q.type.startsWith("narumi");
+          const qIsTaesan   = q.channel === "taesan";
 
           if (qIsJinheung) {
             await sendJinheungNow(q);
@@ -927,6 +1398,13 @@ serve(async (req) => {
               } catch {
                 await sendSms(buildMessage(q), NARUMI_RECIPIENTS);
               }
+            }
+          } else if (qIsTaesan) {
+            try {
+              const { templateKey, variables } = buildTaesanVariables(q);
+              await sendTaesanAlimtalkToAll(templateKey, variables, buildTaesanMessage(q));
+            } catch {
+              await sendSms(buildTaesanMessage(q), TAESAN_RECIPIENTS);
             }
           } else {
             const { templateKey, variables } = buildHcmVariables(q);
@@ -981,6 +1459,7 @@ serve(async (req) => {
     }
 
     const isNarumi = typeof body.type === "string" && body.type.startsWith("narumi");
+    const isTaesan = body.channel === "taesan";
 
     // ── 나르미: 알림톡 발송 ──────────────────────────────────────
     if (isNarumi) {
@@ -1003,6 +1482,20 @@ serve(async (req) => {
         }
       }
     }
+    // ── 태산통운: 알림톡 발송 (템플릿 미승인 시 자동 SMS 폴백) ──
+    else if (isTaesan) {
+      try {
+        const { templateKey, variables } = buildTaesanVariables(body);
+        const fallbackText = buildTaesanMessage(body);
+        console.log("[태산통운 알림톡 발송]:", templateKey);
+        await sendTaesanAlimtalkToAll(templateKey, variables, fallbackText);
+      } catch (e) {
+        // 템플릿 미승인/없는 타입은 SMS 폴백
+        console.warn("[태산통운 알림톡 폴백 SMS]:", (e as Error).message);
+        const smsText = buildTaesanMessage(body);
+        await sendSms(smsText, TAESAN_RECIPIENTS);
+      }
+    }
     // ── HCM: 알림톡 발송 ─────────────────────────────────────
     else {
       const { templateKey, variables } = buildHcmVariables(body);
@@ -1011,8 +1504,8 @@ serve(async (req) => {
       await sendHcmAlimtalkToAll(templateKey, variables, fallbackText);
     }
 
-    // ── 신규 접수 시 자동 등록 ─────────────────────────────
-    if (body.type === "new") {
+    // ── 신규 접수 시 자동 등록 (HCM) ─────────────────────────
+    if (body.type === "new" && !isTaesan) {
       try {
         const sbUrl = Deno.env.get("APP_SUPABASE_URL") ?? Deno.env.get("SUPABASE_URL") ?? "";
         const sbKey = Deno.env.get("APP_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -1067,6 +1560,64 @@ serve(async (req) => {
         console.log("[자동등록] 팔로업 일정 + 채팅 알림 등록 완료:", body.customerName);
       } catch (autoErr) {
         console.error("[자동등록 오류]:", autoErr);
+      }
+    }
+
+    // ── 신규 접수 시 자동 등록 (태산통운) ─────────────────────
+    if (body.type === "new" && isTaesan) {
+      try {
+        const sbUrl = Deno.env.get("APP_SUPABASE_URL") ?? Deno.env.get("SUPABASE_URL") ?? "";
+        const sbKey = Deno.env.get("APP_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+        const db = createClient(sbUrl, sbKey);
+
+        const today    = new Date();
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowIso = tomorrow.toISOString().slice(0, 10);
+
+        const schedTitle = `${body.customerName} (태산통운 신규접수)`;
+        const schedDesc  = [
+          `케이스번호: ${body.caseNo ?? "-"}`,
+          `고객: ${body.customerName} (${body.customerType ?? "-"})`,
+          `장비: ${body.equipmentTon ?? "-"}`,
+          `금융사: ${body.financeCompany ?? "-"}`,
+          body.installmentPrincipal ? `할부원금: ${Number(body.installmentPrincipal).toLocaleString("ko-KR")}원` : "",
+          `영업: ${body.salesRep ?? "-"}`,
+        ].filter(Boolean).join(" / ");
+
+        await db.from("secretary_schedules").insert({
+          title:         schedTitle,
+          description:   schedDesc,
+          schedule_date: tomorrowIso,
+          start_time:    "09:00",
+          category:      "followup",
+          related_type:  "finance",
+        });
+
+        await db.from("secretary_todos").insert({
+          title:       `${body.customerName} (태산통운 신규접수)`,
+          description: schedDesc,
+          priority:    "urgent",
+          category:    "finance",
+          is_done:     false,
+        });
+
+        const chatMsg = [
+          `🚛 **태산통운 신규 접수 알림**`, ``,
+          `**${body.customerName}** (${body.customerType ?? "-"}) 고객이 신규 접수되었습니다.`,
+          `케이스번호: ${body.caseNo ?? "-"}`,
+          `장비: ${body.equipmentTon ?? "-"} / 금융사: ${body.financeCompany ?? "-"}`,
+          body.installmentPrincipal ? `할부원금: ${Number(body.installmentPrincipal).toLocaleString("ko-KR")}원` : "",
+          ``, `📅 내일(${tomorrowIso}) 팔로업 일정이 자동 등록되었습니다.`,
+        ].filter(Boolean).join("\n");
+
+        await db.from("secretary_chat_logs").insert({
+          role: "assistant", content: chatMsg, session_id: "main",
+        });
+
+        console.log("[자동등록] 태산통운 팔로업 일정 + 채팅 알림 등록 완료:", body.customerName);
+      } catch (autoErr) {
+        console.error("[태산통운 자동등록 오류]:", autoErr);
       }
     }
 

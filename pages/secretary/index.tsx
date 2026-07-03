@@ -6,7 +6,7 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
-type TabKey = "chat"|"schedule"|"status"|"orders"|"hyundaicm"|"finance"|"narumi"|"jinheung"|"email"|"memo"|"financehub"|"exportshop"|"quotation";
+type TabKey = "chat"|"schedule"|"status"|"orders"|"hyundaicm"|"taesan"|"finance"|"narumi"|"jinheung"|"email"|"memo"|"financehub"|"exportshop"|"quotation";
 type EmailReport = {
   id:number; created_at:string; report_date:string;
   title:string; content:string; source:string; is_read:boolean;
@@ -56,6 +56,11 @@ type Consult = {
   process_stage?:string|null;
 };
 type HyundaiTask = {
+  id:number; customer_name:string; company_name:string|null;
+  status:string|null; purchase_amount:number|null; finance_company:string|null;
+  created_at:string; equipment_ton:string|null;
+};
+type TaesanTask = {
   id:number; customer_name:string; company_name:string|null;
   status:string|null; purchase_amount:number|null; finance_company:string|null;
   created_at:string; equipment_ton:string|null;
@@ -2237,6 +2242,10 @@ const SecretaryPage:React.FC = () => {
   const [hcmExpanded,setHcmExpanded] = useState<number|null>(null);
   const [hcmLoading,setHcmLoading] = useState(false);
   const [hcmList,setHcmList] = useState<HyundaiTask[]>([]);
+  const [taesanFilter,setTaesanFilter] = useState<"active"|"all"|"done">("active");
+  const [taesanExpanded,setTaesanExpanded] = useState<number|null>(null);
+  const [taesanLoading,setTaesanLoading] = useState(false);
+  const [taesanList,setTaesanList] = useState<TaesanTask[]>([]);
   const [hcmConsults,setHcmConsults] = useState<OrderView[]>([]);
   const [hcmSelectedId,setHcmSelectedId] = useState<number|null>(null);
   // 나르미 탭
@@ -3200,6 +3209,13 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
   },[tab]);
 
   useEffect(()=>{
+    if(tab!=="taesan") return;
+    setTaesanLoading(true);
+    supabase.from("taesan_tasks").select("*").order("created_at",{ascending:false}).limit(60)
+      .then(({data})=>{setTaesanList((data??[]) as TaesanTask[]);setTaesanLoading(false);});
+  },[tab]);
+
+  useEffect(()=>{
     if(tab!=="finance") return;
     setFinanceLoading(true);
     supabase.from("consultation_cases")
@@ -3960,13 +3976,13 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               }
             }}
           >
-            {([...["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo","financehub","exportshop","quotation"],
-               ...["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo","financehub","exportshop","quotation"],
-               ...["chat","schedule","status","orders","hyundaicm","finance","narumi","jinheung","email","memo","financehub","exportshop","quotation"]] as TabKey[]).map((t,i)=>(
+            {([...["chat","schedule","status","orders","hyundaicm","taesan","finance","narumi","jinheung","email","memo","financehub","exportshop","quotation"],
+               ...["chat","schedule","status","orders","hyundaicm","taesan","finance","narumi","jinheung","email","memo","financehub","exportshop","quotation"],
+               ...["chat","schedule","status","orders","hyundaicm","taesan","finance","narumi","jinheung","email","memo","financehub","exportshop","quotation"]] as TabKey[]).map((t,i)=>(
               <button key={`${t}-${i}`} className={`${TB} ${tab===t?TA:TI}`} style={{flexShrink:0,whiteSpace:"nowrap"}} onClick={()=>setTabAndSave(t)}>
                 {t==="email"
                   ? <span className="flex items-center gap-1">📧 이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
-                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",hyundaicm:"🏗 현대CM",finance:"🏦 금융상담",narumi:"🚛 나르미",jinheung:"🔧 진흥주문",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비",quotation:"📋 견적서"}[t as string]
+                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",hyundaicm:"🏗 현대CM",taesan:"🚛 태산통운",finance:"🏦 금융상담",narumi:"🚛 나르미",jinheung:"🔧 진흥주문",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비",quotation:"📋 견적서"}[t as string]
                 }
               </button>
             ))}
@@ -4589,6 +4605,69 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                           <div className="flex flex-col gap-1 shrink-0" onClick={e=>e.stopPropagation()}>
                             <button className={BTG} onClick={()=>setHcmExpanded(hcmExpanded===t.id?null:t.id)}>{hcmExpanded===t.id?"접기":"상세"}</button>
                             <button className={BTO} onClick={()=>navigate(`/hyundaicm?id=${t.id}`)}>이동 →</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* ══ 태산통운 ══ */}
+          {tab==="taesan"&&(
+            <div className="space-y-3 pb-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <p className="text-sm font-semibold text-[#0f172a]">🚛 태산통운업무</p>
+                <div className="flex gap-1.5 flex-wrap">
+                  {(["active","all","done"] as const).map(f=>(
+                    <button key={f} onClick={()=>setTaesanFilter(f)}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${taesanFilter===f?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
+                      {{active:"진행중",all:"전체",done:"확정"}[f]}
+                    </button>
+                  ))}
+                  <button className={BTG} onClick={()=>{
+                    setTaesanLoading(true);
+                    supabase.from("taesan_tasks").select("*").order("created_at",{ascending:false}).limit(60)
+                      .then(({data})=>{setTaesanList((data??[]) as TaesanTask[]);setTaesanLoading(false);});
+                  }}>새로고침</button>
+                  <button className={BTO} onClick={()=>navigate("/taesan")}>전체 페이지 →</button>
+                </div>
+              </div>
+              {taesanLoading?<p className="text-sm text-gray-400 p-4 text-center">불러오는 중...</p>:(()=>{
+                const filtered=taesanList.filter((t:any)=>taesanFilter==="active"?(t.status!=="확정"&&t.status!=="거절"):taesanFilter==="done"?t.status==="확정":true);
+                return filtered.length===0?<div className={`${CARD} p-8 text-center text-gray-400 text-sm`}>해당 건이 없습니다</div>:(
+                  <div className="space-y-2">
+                    {filtered.map((t:any)=>(
+                      <div key={t.id} className={`${CARD} p-3.5 cursor-pointer hover:shadow-md transition-all`}
+                        onClick={()=>navigate(`/taesan?id=${t.id}`)}>
+                        <div className="flex items-start gap-2.5">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-sm font-semibold text-[#0f172a]">{t.customer_name}</span>
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100">{t.customer_type}</span>
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 border border-orange-100 font-medium">{t.status}</span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-gray-500">
+                              {t.finance_company&&<span>{t.finance_company}</span>}
+                              {t.equipment_ton&&<span>{t.equipment_ton}</span>}
+                              {t.installment_principal&&<span>{Number(t.installment_principal).toLocaleString("ko-KR")}원</span>}
+                              {t.interest_rate&&<span>금리 {t.interest_rate}%</span>}
+                              <span className="ml-auto text-gray-300">{String(t.created_at||"").slice(0,10)}</span>
+                            </div>
+                            {taesanExpanded===t.id&&(
+                              <div className="mt-2 pt-2 border-t border-gray-100 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                                {t.nice_score&&<div><span className="text-gray-400">NICE </span><span>{t.nice_score}점</span></div>}
+                                {t.loan_period&&<div><span className="text-gray-400">기간 </span><span>{t.loan_period}개월</span></div>}
+                                {t.vat_deferred&&<div><span className="text-gray-400">부가세 </span><span>Y{t.vat_deferred_amount?` / ${Number(t.vat_deferred_amount).toLocaleString("ko-KR")}원`:""}</span></div>}
+                                {t.sales_rep&&<div><span className="text-gray-400">영업 </span><span>{t.sales_rep}</span></div>}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex flex-col gap-1 shrink-0" onClick={e=>e.stopPropagation()}>
+                            <button className={BTG} onClick={()=>setTaesanExpanded(taesanExpanded===t.id?null:t.id)}>{taesanExpanded===t.id?"접기":"상세"}</button>
+                            <button className={BTO} onClick={()=>navigate(`/taesan?id=${t.id}`)}>이동 →</button>
                           </div>
                         </div>
                       </div>

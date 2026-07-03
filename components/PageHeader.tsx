@@ -93,7 +93,7 @@ function calcMobileMenuStyle(btnEl: HTMLButtonElement | null): MobileMenuStyle {
 export default function PageHeader() {
   const { pathname } = useLocation();
   const nav = useNavigate();
-  const { user, canViewAll, isAdmin, isSubAdmin, isNarumi, isLotte, isInsuranceManager, isHyundaiCM, isNhCapital, isNhCapitalStaff, isInsAI, logout } = useAuth() as any;
+  const { user, canViewAll, isAdmin, isSubAdmin, isNarumi, isLotte, isInsuranceManager, isHyundaiCM, isNhCapital, isNhCapitalStaff, isInsAI, isTaesan, logout } = useAuth() as any;
   const isAdminLevel = isAdmin || isSubAdmin;
 
   // 참고: PWA 앱은 manifest.json의 start_url(/work/secretary 등)로 곧장 진입하며,
@@ -281,6 +281,12 @@ export default function PageHeader() {
     // 현대건설기계: 항상 현대건설기계 로그인으로 (RouteGuard가 권한 처리)
     if (path === "/hyundaicm") {
       nav("/hyundaicm/login");
+      return;
+    }
+
+    // 태산통운: 항상 태산통운 로그인으로 (RouteGuard가 권한 처리)
+    if (path === "/taesan") {
+      nav("/taesan/login");
       return;
     }
 
@@ -572,6 +578,16 @@ export default function PageHeader() {
                       onClick={() => goWorkInternalOnly("/hyundaicm")}
                     >
                       현대건설기계업무
+                    </button>
+                  )}
+
+                  {(isAdminLevel || isTaesan || !user) && (
+                    <button
+                      type="button"
+                      className={dropItem}
+                      onClick={() => goWorkInternalOnly("/taesan")}
+                    >
+                      태산통운업무
                     </button>
                   )}
 

@@ -57,6 +57,9 @@ import LoginPage from "./pages/Login/index";
 import HyundaiCMPage from "./pages/HyundaiCM/index";
 import HyundaiCMLoginPage from "./pages/HyundaiCM/Login";
 import HyundaiCMRouteGuard from "./pages/HyundaiCM/Routeguard";
+import TaesanPage from "./pages/Taesan/index";
+import TaesanLoginPage from "./pages/Taesan/Login";
+import TaesanRouteGuard from "./pages/Taesan/Routeguard";
 import SitemapPage from "./pages/Sitemap";
 import IndividualCargoFinancePage from "./pages/IndividualCargoFinance/index";
 import TireShopPage from "./pages/TireShop/index";
@@ -512,7 +515,8 @@ function ScrollToTopButton() {
   const [visible, setVisible] = useState(false);
   const hideEntirely = pathname.startsWith("/work/secretary")
     || pathname.startsWith("/work/call-management")
-    || pathname.startsWith("/hyundaicm");
+    || pathname.startsWith("/hyundaicm")
+    || pathname.startsWith("/taesan");
   const hideOnMobile = pathname.startsWith("/tires-shop");
 
   useEffect(() => {
@@ -1203,6 +1207,10 @@ const Footer: React.FC = () => {
       nav("/hyundaicm/login");
       return;
     }
+    if (path === "/taesan") {
+      nav("/taesan/login");
+      return;
+    }
     if (user && canViewAll) nav(path);
     else nav("/narumi/login");
   };
@@ -1394,11 +1402,13 @@ const AppRoutes = () => {
     pathname.startsWith("/work/secretary")
     || pathname.startsWith("/work/call-management")
     || pathname.startsWith("/hyundaicm")
+    || pathname.startsWith("/taesan")
     || pathname.startsWith("/narumi");
 
   const hideFooter =
     pathname.startsWith("/work/")
     || pathname.startsWith("/hyundaicm")
+    || pathname.startsWith("/taesan")
     || pathname.startsWith("/narumi");
 
   return (
@@ -1478,6 +1488,17 @@ const AppRoutes = () => {
             </HyundaiCMRouteGuard>
           } />
           <Route path="/kakao-callback" element={<KakaoCallbackPage />} />
+
+          {/* 태산통운 */}
+          <Route path="/taesan/login" element={<TaesanLoginPage />} />
+          <Route
+            path="/taesan"
+            element={
+              <TaesanRouteGuard>
+                <TaesanPage />
+              </TaesanRouteGuard>
+            }
+          />
 
           {/* BS_ON */}
           <Route path="/bson" element={<BsonWorkPage />} />

@@ -89,6 +89,42 @@ type FinanceDetailRow = {
   note: string | null;
 };
 
+// ── 현대CM(hyundaicm_tasks) / 태산통운(taesan_tasks) 통합 표시용 ──
+// 두 테이블은 구조가 동일(HCMTask/TaesanTask 스키마 공유)하므로 하나의 타입으로 병합해서
+// 상담관리 금융탭에 함께 보여준다. _source로 원본 테이블을 구분한다.
+type ExternalFinanceSource = "hyundaicm" | "taesan";
+type ExternalFinanceRow = {
+  id: number;
+  _source: ExternalFinanceSource;
+  customer_type: string | null;
+  customer_name: string;
+  customer_phone: string | null;
+  company_name: string | null;
+  ceo_name: string | null;
+  equipment_ton: string | null;
+  purchase_amount: number | null;
+  vehicle_amount: number | null;
+  attach_amount: number | null;
+  installment_principal: number | null;
+  grace_period: number | null;
+  installment_period: number | null;
+  finance_company: string | null;
+  interest_rate: number | null;
+  incentive: number | null;
+  sales_rep: string | null;
+  status: string;
+  special_note: string | null;
+  created_at: string;
+};
+
+const EXTERNAL_FINANCE_STATUSES = ["접수", "신용조회", "승인", "보완", "거절", "확정"] as const;
+function externalFinanceSourceLabel(source: ExternalFinanceSource) {
+  return source === "hyundaicm" ? "🏗 현대CM" : "🚛 태산통운";
+}
+function externalFinanceFullPageUrl(row: ExternalFinanceRow) {
+  return row._source === "hyundaicm" ? `/hyundaicm?id=${row.id}` : `/taesan?id=${row.id}`;
+}
+
 
 type ForkliftDetailRow = {
   consultation_id: number;
@@ -253,6 +289,8 @@ const textareaClass =
 
 const labelClass = "block text-sm font-medium text-navy-900 mb-2";
 const compactLabelClass = "block text-xs font-medium text-gray-600 mb-1";
+const compactInputClass =
+  "w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300";
 
 const thClass =
   "px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase border-b border-gray-100 whitespace-nowrap";
@@ -441,11 +479,13 @@ function deriveNarumiInsuranceStatus(row: {
 }
 
 const CallManagementPage: React.FC = () => {
-  const { user, loading, isAdmin, isInsuranceManager } = useAuth() as any;
+  const { user, loading, isAdmin, isSubAdmin, isInsuranceManager } = useAuth() as any;
   const location = useLocation();
   const navigate = useNavigate();
   const canAccessConsulting = isAdmin || isInsuranceManager;
   const insuranceOnlyScope = isInsuranceManager && !isAdmin;
+  // 현대CM/태산통운 통합 섹션: 수정/상태변경은 관리자(admin/subAdmin)만
+  const isAdminLevel = isAdmin || isSubAdmin;
 
   const [tab, setTab] = useState<TabKey>("new");
   const newFormTopRef = useRef<HTMLFormElement | null>(null);
@@ -589,6 +629,14 @@ const CallManagementPage: React.FC = () => {
   const [batteryDetailsMap, setBatteryDetailsMap] = useState<
     Record<number, BatteryDetailRow>
   >({});
+
+  // ── 현대CM(hyundaicm_tasks) + 태산통운(taesan_tasks) 통합 표시 ──
+  const [externalFinanceRows, setExternalFinanceRows] = useState<ExternalFinanceRow[]>([]);
+  const [externalFinanceLoading, setExternalFinanceLoading] = useState(false);
+  const [externalFinanceExpandedKey, setExternalFinanceExpandedKey] = useState<string | null>(null);
+  const [externalFinanceEditKey, setExternalFinanceEditKey] = useState<string | null>(null);
+  const [externalFinanceDraft, setExternalFinanceDraft] = useState<Partial<ExternalFinanceRow>>({});
+  const [externalFinanceSaving, setExternalFinanceSaving] = useState(false);
 
   const [insuranceExpiries, setInsuranceExpiries] = useState<InsuranceExpiryRow[]>([]);
   const [loadingExpiry, setLoadingExpiry] = useState(false);
@@ -959,6 +1007,46 @@ const CallManagementPage: React.FC = () => {
     forkliftDetailsMap,
     batteryDetailsMap,
   ]);
+
+  // 현대CM/태산통운은 항상 "금융" 성격이므로, 금융 필터가 없거나(전체) "finance"로 걸려있을 때만 노출
+  const filteredExternalFinanceRows = useMemo(() => {
+    if (listFilterWorkType && listFilterWorkType !== "finance") return [];
+    return externalFinanceRows.filter((row) => {
+      const nameOk =
+        !listSearchName.trim() ||
+        row.customer_name.toLowerCase().includes(listSearchName.trim().toLowerCase());
+      const phoneOk =
+        !listSearchPhone.trim() || (row.customer_phone || "").includes(listSearchPhone.trim());
+      const companyOk =
+        !listSearchCompany.trim() ||
+        (row.company_name || "").toLowerCase().includes(listSearchCompany.trim().toLowerCase());
+      const statusOk = !listFilterStatus || row.status === listFilterStatus;
+      return nameOk && phoneOk && companyOk && statusOk;
+    });
+  }, [externalFinanceRows, listFilterWorkType, listFilterStatus, listSearchName, listSearchPhone, listSearchCompany]);
+
+  // 상담관리 네이티브 행 + 현대CM/태산통운 행을 날짜순으로 병합해서 하나의 표로 렌더링
+  type ListDisplayItem =
+    | { kind: "native"; key: string; sortAt: string; row: ConsultationRow }
+    | { kind: "external"; key: string; sortAt: string; row: ExternalFinanceRow };
+
+  const combinedListDisplayRows = useMemo<ListDisplayItem[]>(() => {
+    const nativeItems: ListDisplayItem[] = filteredRows.map((row) => ({
+      kind: "native",
+      key: `native-${row.id}`,
+      sortAt: row.call_datetime || row.created_at,
+      row,
+    }));
+    const externalItems: ListDisplayItem[] = filteredExternalFinanceRows.map((row) => ({
+      kind: "external",
+      key: `${row._source}-${row.id}`,
+      sortAt: row.created_at,
+      row,
+    }));
+    return [...nativeItems, ...externalItems].sort(
+      (a, b) => new Date(b.sortAt).getTime() - new Date(a.sortAt).getTime()
+    );
+  }, [filteredRows, filteredExternalFinanceRows]);
 
   const filteredFollowups = useMemo(() => {
     return followups.filter((row) => {
@@ -1774,6 +1862,98 @@ const CallManagementPage: React.FC = () => {
     setBatteryDetailsMap(batteryMap);
   };
 
+  // ── 현대CM(hyundaicm_tasks) + 태산통운(taesan_tasks) 통합 조회 ──
+  const fetchExternalFinanceRows = async () => {
+    setExternalFinanceLoading(true);
+    try {
+      const [hcmRes, taesanRes] = await Promise.all([
+        supabase.from("hyundaicm_tasks").select("*").order("created_at", { ascending: false }).limit(300),
+        supabase.from("taesan_tasks").select("*").order("created_at", { ascending: false }).limit(300),
+      ]);
+      const hcmRows: ExternalFinanceRow[] = (hcmRes.data || []).map((r: any) => ({ ...r, _source: "hyundaicm" as const }));
+      const taesanRows: ExternalFinanceRow[] = (taesanRes.data || []).map((r: any) => ({ ...r, _source: "taesan" as const }));
+      const merged = [...hcmRows, ...taesanRows].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      setExternalFinanceRows(merged);
+    } finally {
+      setExternalFinanceLoading(false);
+    }
+  };
+
+  const externalFinanceTableName = (source: ExternalFinanceSource) =>
+    source === "hyundaicm" ? "hyundaicm_tasks" : "taesan_tasks";
+
+  const startEditExternalFinance = (row: ExternalFinanceRow) => {
+    if (!isAdminLevel) return;
+    setExternalFinanceEditKey(`${row._source}-${row.id}`);
+    setExternalFinanceDraft({ ...row });
+  };
+
+  const cancelEditExternalFinance = () => {
+    setExternalFinanceEditKey(null);
+    setExternalFinanceDraft({});
+  };
+
+  const saveExternalFinanceEdit = async (row: ExternalFinanceRow) => {
+    if (!isAdminLevel) return;
+    setExternalFinanceSaving(true);
+    try {
+      const patch: Record<string, unknown> = {
+        customer_name: externalFinanceDraft.customer_name?.trim() || row.customer_name,
+        customer_phone: (externalFinanceDraft.customer_phone ?? row.customer_phone) || null,
+        company_name: (externalFinanceDraft.company_name ?? row.company_name) || null,
+        ceo_name: (externalFinanceDraft.ceo_name ?? row.ceo_name) || null,
+        equipment_ton: (externalFinanceDraft.equipment_ton ?? row.equipment_ton) || null,
+        purchase_amount: externalFinanceDraft.purchase_amount ?? row.purchase_amount,
+        vehicle_amount: externalFinanceDraft.vehicle_amount ?? row.vehicle_amount,
+        attach_amount: externalFinanceDraft.attach_amount ?? row.attach_amount,
+        installment_principal: externalFinanceDraft.installment_principal ?? row.installment_principal,
+        grace_period: externalFinanceDraft.grace_period ?? row.grace_period,
+        installment_period: externalFinanceDraft.installment_period ?? row.installment_period,
+        finance_company: (externalFinanceDraft.finance_company ?? row.finance_company) || null,
+        interest_rate: externalFinanceDraft.interest_rate ?? row.interest_rate,
+        incentive: externalFinanceDraft.incentive ?? row.incentive,
+        sales_rep: (externalFinanceDraft.sales_rep ?? row.sales_rep) || null,
+        special_note: (externalFinanceDraft.special_note ?? row.special_note) || null,
+      };
+      const { error } = await supabase
+        .from(externalFinanceTableName(row._source))
+        .update(patch)
+        .eq("id", row.id);
+      if (error) {
+        alert(`저장 실패: ${error.message}`);
+        return;
+      }
+      await fetchExternalFinanceRows();
+      cancelEditExternalFinance();
+    } finally {
+      setExternalFinanceSaving(false);
+    }
+  };
+
+  const changeExternalFinanceStatus = async (row: ExternalFinanceRow, nextStatus: string) => {
+    if (!isAdminLevel) return;
+    if (nextStatus === row.status) return;
+    if (!window.confirm(`${row.customer_name} 건의 상태를 "${nextStatus}"(으)로 변경할까요?`)) return;
+    setExternalFinanceSaving(true);
+    try {
+      const patch: Record<string, unknown> = { status: nextStatus };
+      if (nextStatus === "확정") patch.closed_at = new Date().toISOString();
+      const { error } = await supabase
+        .from(externalFinanceTableName(row._source))
+        .update(patch)
+        .eq("id", row.id);
+      if (error) {
+        alert(`상태 변경 실패: ${error.message}`);
+        return;
+      }
+      await fetchExternalFinanceRows();
+    } finally {
+      setExternalFinanceSaving(false);
+    }
+  };
+
   // D+30일 초과 상담 감지 → 취소 후보 반환
   const checkOverdueConsultations = async () => {
     const cutoff = new Date();
@@ -2121,6 +2301,7 @@ const CallManagementPage: React.FC = () => {
     if (user && canAccessConsulting) {
       fetchConsultations();
       fetchInsuranceExpiries();
+      void fetchExternalFinanceRows();
     }
   }, [user, canAccessConsulting]);
 
@@ -4618,11 +4799,11 @@ const CallManagementPage: React.FC = () => {
             {!loadingList && listError && (
               <div className="text-sm text-red-600">상담내역 조회 실패: {listError}</div>
             )}
-            {!loadingList && !listError && filteredRows.length === 0 && (
+            {!loadingList && !listError && combinedListDisplayRows.length === 0 && (
               <div className="text-sm text-gray-500">조건에 맞는 상담내역이 없습니다.</div>
             )}
 
-            {!loadingList && !listError && filteredRows.length > 0 && (
+            {!loadingList && !listError && combinedListDisplayRows.length > 0 && (
               <div className="border border-gray-200 rounded-2xl overflow-x-auto">
                 <table className="w-full bg-white">
                   <thead>
@@ -4649,8 +4830,210 @@ const CallManagementPage: React.FC = () => {
                   </thead>
 
                   <tbody>
-                    {filteredRows.map((row) => (
-                      <React.Fragment key={row.id}>
+                    {combinedListDisplayRows.map((item) => {
+                      if (item.kind === "external") {
+                        const row = item.row;
+                        const editKey = `${row._source}-${row.id}`;
+                        const isExpanded = externalFinanceExpandedKey === editKey;
+                        const isEditing = externalFinanceEditKey === editKey;
+                        return (
+                          <React.Fragment key={item.key}>
+                            <tr
+                              className={`hover:bg-gray-50 cursor-pointer ${isExpanded ? "bg-orange-50" : ""}`}
+                              onClick={() =>
+                                setExternalFinanceExpandedKey(isExpanded ? null : editKey)
+                              }
+                            >
+                              <td className={tdClass}>
+                                <span className="text-xs text-gray-300">-</span>
+                              </td>
+                              <td className={tdClass}>{formatDateTime(row.created_at)}</td>
+                              <td className={tdClass}>{row.customer_name}</td>
+                              <td className={tdClass}>
+                                {row.customer_phone ? (
+                                  <a
+                                    href={`tel:${onlyDigits(row.customer_phone)}`}
+                                    className="text-orange-600 font-medium hover:underline"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    {row.customer_phone}
+                                  </a>
+                                ) : (
+                                  "-"
+                                )}
+                              </td>
+                              <td className={tdClass}>
+                                <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-100">
+                                  {externalFinanceSourceLabel(row._source)}
+                                </span>
+                              </td>
+                              <td className={tdClass} style={{maxWidth:"240px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                {row.company_name || row.finance_company || "-"}
+                              </td>
+                              <td className={tdClass}>
+                                <span className="text-xs font-medium text-purple-600">{row.status}</span>
+                              </td>
+                              <td className={tdClass}>-</td>
+                              <td className={tdClass}>
+                                {isAdminLevel ? (
+                                  <button
+                                    type="button"
+                                    className={`${actionBtnClass} whitespace-nowrap`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setExternalFinanceExpandedKey(editKey);
+                                      startEditExternalFinance(row);
+                                    }}
+                                  >
+                                    수정
+                                  </button>
+                                ) : (
+                                  <span className="text-xs text-gray-300">-</span>
+                                )}
+                              </td>
+                            </tr>
+
+                            {isExpanded && (
+                              <tr>
+                                <td colSpan={9} className="p-2 bg-white max-w-0">
+                                  <div className={inlineDetailBoxClass}>
+                                    <div className="flex items-center justify-between mb-1.5">
+                                      <span className="text-sm font-semibold text-gray-700">
+                                        {externalFinanceSourceLabel(row._source)} · {row.customer_name} 상세
+                                      </span>
+                                      <div className="flex gap-1.5">
+                                        <a
+                                          href={externalFinanceFullPageUrl(row)}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className={actionBtnClass}
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          전체 페이지 열기 →
+                                        </a>
+                                        {isAdminLevel && !isEditing && (
+                                          <button
+                                            type="button"
+                                            className={actionBtnClass}
+                                            onClick={(e) => { e.stopPropagation(); startEditExternalFinance(row); }}
+                                          >
+                                            수정
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {!isEditing ? (
+                                      <div className="text-[12px] text-gray-700 space-y-1">
+                                        <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+                                          <span><span className={detailLabelClass}>구분</span><span className={detailValueClass}>{row.customer_type || "-"}</span></span>
+                                          <span><span className={detailLabelClass}>회사명</span><span className={detailValueClass}>{row.company_name || "-"}</span></span>
+                                          <span><span className={detailLabelClass}>대표자</span><span className={detailValueClass}>{row.ceo_name || "-"}</span></span>
+                                          <span><span className={detailLabelClass}>톤수</span><span className={detailValueClass}>{row.equipment_ton || "-"}</span></span>
+                                          <span><span className={detailLabelClass}>할부금융사</span><span className={detailValueClass}>{row.finance_company || "-"}</span></span>
+                                          <span><span className={detailLabelClass}>할부원금</span><span className={detailValueClass}>{row.installment_principal ? Number(row.installment_principal).toLocaleString("ko-KR")+"원" : "-"}</span></span>
+                                          <span><span className={detailLabelClass}>금리</span><span className={detailValueClass}>{row.interest_rate != null ? `${row.interest_rate}%` : "-"}</span></span>
+                                          <span><span className={detailLabelClass}>영업담당</span><span className={detailValueClass}>{row.sales_rep || "-"}</span></span>
+                                        </div>
+                                        {row.special_note && (
+                                          <div className="border-t border-gray-100 mt-1 pt-1 text-[11px] text-gray-500 leading-4">
+                                            특이사항: {row.special_note}
+                                          </div>
+                                        )}
+                                        {isAdminLevel && (
+                                          <div className="border-t border-gray-100 mt-1.5 pt-1.5 flex items-center gap-1.5 flex-wrap">
+                                            <span className={detailLabelClass}>상태변경</span>
+                                            {EXTERNAL_FINANCE_STATUSES.map((s) => (
+                                              <button
+                                                key={s}
+                                                type="button"
+                                                disabled={externalFinanceSaving || s === row.status}
+                                                onClick={(e) => { e.stopPropagation(); changeExternalFinanceStatus(row, s); }}
+                                                className={`px-2 py-0.5 rounded-lg text-[11px] font-medium border transition-all ${
+                                                  s === row.status
+                                                    ? "bg-[#0f172a] text-white border-[#0f172a]"
+                                                    : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
+                                                }`}
+                                              >
+                                                {s}
+                                              </button>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                          <div>
+                                            <label className={compactLabelClass}>고객명</label>
+                                            <input className={compactInputClass} value={externalFinanceDraft.customer_name ?? row.customer_name}
+                                              onChange={(e) => setExternalFinanceDraft((d) => ({ ...d, customer_name: e.target.value }))} />
+                                          </div>
+                                          <div>
+                                            <label className={compactLabelClass}>연락처</label>
+                                            <input className={compactInputClass} value={externalFinanceDraft.customer_phone ?? row.customer_phone ?? ""}
+                                              onChange={(e) => setExternalFinanceDraft((d) => ({ ...d, customer_phone: e.target.value }))} />
+                                          </div>
+                                          <div>
+                                            <label className={compactLabelClass}>회사명</label>
+                                            <input className={compactInputClass} value={externalFinanceDraft.company_name ?? row.company_name ?? ""}
+                                              onChange={(e) => setExternalFinanceDraft((d) => ({ ...d, company_name: e.target.value }))} />
+                                          </div>
+                                          <div>
+                                            <label className={compactLabelClass}>대표자</label>
+                                            <input className={compactInputClass} value={externalFinanceDraft.ceo_name ?? row.ceo_name ?? ""}
+                                              onChange={(e) => setExternalFinanceDraft((d) => ({ ...d, ceo_name: e.target.value }))} />
+                                          </div>
+                                          <div>
+                                            <label className={compactLabelClass}>톤수</label>
+                                            <input className={compactInputClass} value={externalFinanceDraft.equipment_ton ?? row.equipment_ton ?? ""}
+                                              onChange={(e) => setExternalFinanceDraft((d) => ({ ...d, equipment_ton: e.target.value }))} />
+                                          </div>
+                                          <div>
+                                            <label className={compactLabelClass}>할부금융사</label>
+                                            <input className={compactInputClass} value={externalFinanceDraft.finance_company ?? row.finance_company ?? ""}
+                                              onChange={(e) => setExternalFinanceDraft((d) => ({ ...d, finance_company: e.target.value }))} />
+                                          </div>
+                                          <div>
+                                            <label className={compactLabelClass}>할부원금</label>
+                                            <input type="number" className={compactInputClass} value={externalFinanceDraft.installment_principal ?? row.installment_principal ?? ""}
+                                              onChange={(e) => setExternalFinanceDraft((d) => ({ ...d, installment_principal: e.target.value === "" ? null : Number(e.target.value) }))} />
+                                          </div>
+                                          <div>
+                                            <label className={compactLabelClass}>금리(%)</label>
+                                            <input type="number" step="0.1" className={compactInputClass} value={externalFinanceDraft.interest_rate ?? row.interest_rate ?? ""}
+                                              onChange={(e) => setExternalFinanceDraft((d) => ({ ...d, interest_rate: e.target.value === "" ? null : Number(e.target.value) }))} />
+                                          </div>
+                                          <div>
+                                            <label className={compactLabelClass}>영업담당</label>
+                                            <input className={compactInputClass} value={externalFinanceDraft.sales_rep ?? row.sales_rep ?? ""}
+                                              onChange={(e) => setExternalFinanceDraft((d) => ({ ...d, sales_rep: e.target.value }))} />
+                                          </div>
+                                          <div className="col-span-2 md:col-span-4">
+                                            <label className={compactLabelClass}>특이사항</label>
+                                            <input className={compactInputClass} value={externalFinanceDraft.special_note ?? row.special_note ?? ""}
+                                              onChange={(e) => setExternalFinanceDraft((d) => ({ ...d, special_note: e.target.value }))} />
+                                          </div>
+                                        </div>
+                                        <div className="flex gap-1.5 justify-end">
+                                          <button type="button" className={actionBtnClass} onClick={cancelEditExternalFinance} disabled={externalFinanceSaving}>취소</button>
+                                          <button type="button" className={completeBtnClass} onClick={() => saveExternalFinanceEdit(row)} disabled={externalFinanceSaving}>
+                                            {externalFinanceSaving ? "저장 중..." : "저장"}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      }
+
+                      const row = item.row;
+                      return (
+                      <React.Fragment key={item.key}>
                         <tr
                           className={`hover:bg-gray-50 cursor-pointer ${
                             expandedRowId === row.id ? "bg-orange-50" : ""
@@ -4858,7 +5241,8 @@ const CallManagementPage: React.FC = () => {
                           </tr>
                         )}
                       </React.Fragment>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
