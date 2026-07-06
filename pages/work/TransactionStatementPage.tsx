@@ -3,7 +3,7 @@
 // 기존 QuotationPage.tsx와 동일한 패턴(클라이언트 SheetJS 조립 + Edge Function 발송)을 따릅니다.
 // 의존성: npm install xlsx (이미 QuotationPage에서 설치되어 있음)
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
 
@@ -29,10 +29,22 @@ const SF0: StatementForm = {
 
 const n0 = (v:any) => typeof v==='number'?v:Number(v)||0;
 const fmt = (n:number) => n.toLocaleString('ko-KR');
+
+// 대용량 결과를 안전하게 base64로 변환
+// (설치된 xlsx 버전은 type:'array' 시 Uint8Array가 아니라 ArrayBuffer를 반환하므로 항상 Uint8Array로 감싸서 처리)
+function bytesToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunkSize)) as number[]);
+  }
+  return btoa(binary);
+}
 const calcSupply = (items:Item[]) => items.reduce((s,it)=> s + n0(it.qty)*n0(it.unitPrice), 0);
 
 // ── Excel 생성: 원본 "거래명세서" 양식과 동일한 셀 배치 ──────────────────────────
-function buildStatement(form: StatementForm): Uint8Array {
+function buildStatement(form: StatementForm): ArrayBuffer {
   const wb = XLSX.utils.book_new();
   const ws: XLSX.WorkSheet = {'!ref':'A1:I43'};
   const set = (a:string, v:any) => { ws[a]={v, t:typeof v==='number'?'n':'s'}; };
@@ -129,6 +141,126 @@ export default function TransactionStatementPage() {
   const upd = (i:number, k:keyof Item, v:any) =>
     setSf(f=>{ const items=[...f.items]; items[i]={...items[i],[k]:v}; return {...f,items}; });
 
+  // 사업자번호 입력 중 실시간으로 거래처 후보 목록(Pool) 표시
+  interface CustomerSuggestion { name:string; business_no:string; representative:string|null; address:string|null; contact_phone:string|null; }
+  const [bizSuggestions, setBizSuggestions] = useState<CustomerSuggestion[]>([]);
+  const [bizDropdownOpen, setBizDropdownOpen] = useState(false);
+  const [bizSearchLoading, setBizSearchLoading] = useState(false);
+  const bizSearchTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
+
+  useEffect(() => {
+    const digitsOnly = sf.customerBizNo.replace(/[^0-9]/g,'');
+    if (bizSearchTimer.current) clearTimeout(bizSearchTimer.current);
+    if (digitsOnly.length < 2) { setBizSuggestions([]); setBizDropdownOpen(false); return; }
+    bizSearchTimer.current = setTimeout(async () => {
+      setBizSearchLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('customers')
+          .select('name,business_no,representative,address,contact_phone')
+          .ilike('business_no', `%${digitsOnly}%`)
+          .limit(8);
+        if (!error) { setBizSuggestions(data ?? []); setBizDropdownOpen((data ?? []).length > 0); }
+      } finally {
+        setBizSearchLoading(false);
+      }
+    }, 250);
+    return () => { if (bizSearchTimer.current) clearTimeout(bizSearchTimer.current); };
+  }, [sf.customerBizNo]);
+
+  // 사업자번호로 customers + 과거 발송이력에서 나머지 정보 채우기 (자동완성 선택 / 계산서 인식 공통 사용)
+  const fetchCustomerExtras = async (businessNo: string) => {
+    let representative = '', address = '', contactPhone = '', email = '';
+    try {
+      const digitsOnly = businessNo.replace(/[^0-9]/g,'');
+      const { data: cust } = await supabase
+        .from('customers')
+        .select('representative,address,contact_phone')
+        .ilike('business_no', `%${digitsOnly}%`)
+        .limit(1)
+        .maybeSingle();
+      representative = cust?.representative ?? '';
+      address = cust?.address ?? '';
+      contactPhone = cust?.contact_phone ?? '';
+
+      const { data: pastStmt } = await supabase
+        .from('tb_transaction_statements')
+        .select('customer_email')
+        .eq('customer_biz_no', businessNo)
+        .order('created_at', { ascending:false })
+        .limit(1)
+        .maybeSingle();
+      email = pastStmt?.customer_email ?? '';
+    } catch { /* 부가 정보 조회 실패는 무시 — 계산서/자동완성에서 얻은 기본 정보는 그대로 유지 */ }
+    return { representative, address, contactPhone, email };
+  };
+
+  const selectCustomer = async (row: CustomerSuggestion) => {
+    setBizDropdownOpen(false);
+    const extras = await fetchCustomerExtras(row.business_no);
+    setSf(f => ({
+      ...f,
+      customerName: row.name, customerBizNo: row.business_no,
+      customerCeo: row.representative ?? extras.representative, customerAddress: row.address ?? extras.address,
+      customerPhone: row.contact_phone ?? extras.contactPhone, customerEmail: extras.email || f.customerEmail,
+    }));
+    flash(`✅ ${row.name} 정보를 불러왔습니다.`);
+  };
+
+  // 이미 발송된 계산서 이미지를 업로드하면 AI가 인식해 거래명세서 항목을 자동으로 채움
+  const [invoiceParsing, setInvoiceParsing] = useState(false);
+  const handleInvoiceUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // 같은 파일 재업로드 가능하도록 초기화
+    if (!file) return;
+    setInvoiceParsing(true);
+    try {
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const image_base64 = dataUrl.split(',')[1] ?? '';
+      const media_type = file.type || 'image/png';
+
+      const { data, error } = await supabase.functions.invoke('parse-tax-invoice', {
+        body: { image_base64, media_type, direction: 'sales' },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      const businessNo: string = data.business_no ?? '';
+      const extras = businessNo ? await fetchCustomerExtras(businessNo) : { representative:'', address:'', contactPhone:'', email:'' };
+
+      const supplyFromInvoice = data.supply_amount ?? 0;
+      const detailRows: {name:string; spec:string; qty:number; unit_price:number}[] = Array.isArray(data.items_detail) ? data.items_detail : [];
+      const parsedItems = detailRows.length > 0
+        ? detailRows.slice(0, MAX_ROWS).map(d => ({ name: d.name, spec: d.spec ?? '', qty: d.qty || 1, unitPrice: d.unit_price || 0 }))
+        : [{ name: data.items ?? '', spec:'', qty:1, unitPrice: supplyFromInvoice }];
+      const newItems = [
+        ...parsedItems,
+        ...Array(Math.max(0, MAX_ROWS-parsedItems.length)).fill(null).map(()=>({...EMPTY_ITEM})),
+      ];
+
+      setSf(f => ({
+        ...f,
+        customerName: data.customer_name || f.customerName,
+        customerBizNo: businessNo || f.customerBizNo,
+        customerCeo: extras.representative || f.customerCeo,
+        customerAddress: extras.address || f.customerAddress,
+        customerPhone: extras.contactPhone || f.customerPhone,
+        customerEmail: extras.email || f.customerEmail,
+        issueDate: data.sale_date || f.issueDate,
+        items: newItems,
+      }));
+      flash(`✅ 계산서 인식 완료 (품목 ${parsedItems.length}개) — 내용을 확인 후 필요하면 수정해주세요.`);
+    } catch (e:any) {
+      flash(`계산서 인식 오류: ${e.message}`);
+    }
+    setInvoiceParsing(false);
+  };
+
   // 발송 이력
   interface HistoryRow {
     id:number; doc_no:string; issue_date:string; customer_name:string; customer_biz_no:string|null;
@@ -181,7 +313,7 @@ export default function TransactionStatementPage() {
         issueDate: row.issue_date, paymentCondition: row.payment_condition ?? '현금',
         managerName: row.manager_name ?? '', extraMessage: '', items,
       });
-      const blob = new Blob([bytes.buffer as ArrayBuffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      const blob = new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = `RNF_거래명세서_${row.customer_name}_${row.doc_no}.xlsx`;
@@ -193,7 +325,7 @@ export default function TransactionStatementPage() {
     setLoading(true);
     try {
       const bytes = buildStatement(sf);
-      const blob = new Blob([bytes.buffer as ArrayBuffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      const blob = new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = `RNF_거래명세서_${sf.customerName||'거래처'}.xlsx`;
@@ -209,7 +341,7 @@ export default function TransactionStatementPage() {
     setEmailLoading(true);
     try {
       const bytes = buildStatement(sf);
-      const b64 = btoa(String.fromCharCode(...bytes));
+      const b64 = bytesToBase64(bytes);
       const docNo = `TS-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
       await supabase.from('tb_transaction_statements').insert({
         doc_no: docNo, issue_date: sf.issueDate,
@@ -228,7 +360,17 @@ export default function TransactionStatementPage() {
           extraMessage: sf.extraMessage.trim(),
         },
       });
-      if(error) throw error;
+      if(error) {
+        let detail = error.message;
+        try {
+          const ctx = (error as any).context;
+          if (ctx && typeof ctx.json === 'function') {
+            const body = await ctx.clone().json();
+            if (body?.error) detail = body.error;
+          }
+        } catch { /* 본문 파싱 실패 시 기본 메시지 사용 */ }
+        throw new Error(detail);
+      }
       flash(`✅ ${sf.customerEmail}로 발송 완료 (${docNo})`);
     } catch(e:any) { flash(`발송 오류: ${e.message}`); }
     setEmailLoading(false);
@@ -253,12 +395,43 @@ export default function TransactionStatementPage() {
         {msg && <div className={`text-sm px-4 py-2.5 rounded border ${msg.startsWith('✅')?'bg-green-50 border-green-200 text-green-700':'bg-red-50 border-red-200 text-red-700'}`}>{msg}</div>}
 
         <div className="bg-white rounded-lg border p-5">
-          <h2 className="font-semibold text-gray-800 mb-4 text-sm">거래처 정보</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-gray-800 text-sm">거래처 정보</h2>
+            <label className={`px-3 py-1.5 rounded text-xs font-medium cursor-pointer ${invoiceParsing ? 'bg-gray-100 text-gray-400' : 'bg-gray-800 text-white hover:bg-gray-900'}`}>
+              {invoiceParsing ? '인식 중...' : '📄 발송된 계산서 업로드 (자동 인식)'}
+              <input type="file" accept="image/*" className="hidden" disabled={invoiceParsing} onChange={handleInvoiceUpload}/>
+            </label>
+          </div>
           <div className="grid grid-cols-3 gap-4">
             <div><Label>거래처 상호 *</Label><Input value={sf.customerName} onChange={e=>setSf(f=>({...f,customerName:e.target.value}))} placeholder="(주)예일이큅먼트"/></div>
             <div><Label>발송 이메일 *</Label><Input type="email" value={sf.customerEmail} onChange={e=>setSf(f=>({...f,customerEmail:e.target.value}))} placeholder="customer@company.com"/></div>
             <div><Label>작성일자</Label><Input type="date" value={sf.issueDate} onChange={e=>setSf(f=>({...f,issueDate:e.target.value}))}/></div>
-            <div><Label>사업자번호</Label><Input value={sf.customerBizNo} onChange={e=>setSf(f=>({...f,customerBizNo:e.target.value}))} placeholder="220-87-30749"/></div>
+            <div className="relative">
+              <Label>사업자번호</Label>
+              <Input
+                value={sf.customerBizNo}
+                onChange={e=>setSf(f=>({...f,customerBizNo:e.target.value}))}
+                onFocus={()=>{ if (bizSuggestions.length>0) setBizDropdownOpen(true); }}
+                onBlur={()=>{ setTimeout(()=>setBizDropdownOpen(false), 150); }}
+                placeholder="숫자 2자리 이상 입력하면 거래처 목록이 뜹니다"
+              />
+              {bizSearchLoading && <p className="text-xs text-gray-400 mt-1">검색 중...</p>}
+              {bizDropdownOpen && bizSuggestions.length>0 && (
+                <div className="absolute z-20 mt-1 w-full max-w-md bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                  {bizSuggestions.map((row,i)=>(
+                    <button
+                      key={i}
+                      type="button"
+                      onMouseDown={()=>selectCustomer(row)}
+                      className="w-full text-left px-3 py-2 hover:bg-orange-50 border-b last:border-b-0"
+                    >
+                      <div className="text-sm font-medium text-gray-800">{row.name}</div>
+                      <div className="text-xs text-gray-400">{row.business_no}{row.address ? ` · ${row.address}` : ''}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <div><Label>대표자</Label><Input value={sf.customerCeo} onChange={e=>setSf(f=>({...f,customerCeo:e.target.value}))}/></div>
             <div><Label>연락처</Label><Input value={sf.customerPhone} onChange={e=>setSf(f=>({...f,customerPhone:e.target.value}))} placeholder="1544-3051"/></div>
             <div className="col-span-2"><Label>주소</Label><Input value={sf.customerAddress} onChange={e=>setSf(f=>({...f,customerAddress:e.target.value}))}/></div>

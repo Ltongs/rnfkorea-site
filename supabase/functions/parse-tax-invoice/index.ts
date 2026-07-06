@@ -35,12 +35,16 @@ function buildExtractPrompt(direction: "sales" | "purchase") {
 - supply_amount: 공급가액 합계 (숫자만, 콤마 제거)
 - tax_amount: 세액 합계 (숫자만, 없으면 0)
 - total_amount: 합계금액 (숫자만)
-- items: 품목명과 규격을 모두 합쳐 ' / '로 구분한 문자열 (여러 품목이면 ', '로 나열)
+- items: 품목명과 규격을 모두 합쳐 ' / '로 구분한 문자열 (여러 품목이면 ', '로 나열) — 하위 호환용 요약 문자열
+- items_detail: 계산서 하단의 품목 테이블에 있는 행을 하나도 빠짐없이 각각 배열 원소로 추출한 JSON 배열.
+  각 원소는 {"name": 품목명, "spec": 규격, "qty": 수량(숫자), "unit_price": 단가(숫자)} 형태.
+  월/일 컬럼은 무시하고, 공급가액·세액 컬럼도 넣지 않습니다 (수량×단가로 계산 가능하므로).
+  품목이 1개뿐이어도 배열로 담고, 못 읽으면 빈 배열 []로 응답하세요.
 
 값을 찾을 수 없는 항목은 null로 표기하세요.
 
-응답 예시:
-{"invoice_no":"20260613-12345678-87654321","sale_date":"2026-06-13","customer_name":"(주)예시상사","business_no":"1234567890","supply_amount":1000000,"tax_amount":100000,"total_amount":1100000,"items":"타이어 / 815-15 (4개)"}`;
+응답 예시 (품목이 여러 행인 경우):
+{"invoice_no":"20260613-12345678-87654321","sale_date":"2026-06-13","customer_name":"(주)예시상사","business_no":"1234567890","supply_amount":1000000,"tax_amount":100000,"total_amount":1100000,"items":"타이어 815-15 / 로드휠 우레탄","items_detail":[{"name":"타이어","spec":"815-15","qty":4,"unit_price":150000},{"name":"로드휠","spec":"우레탄","qty":2,"unit_price":200000}]}`;
 }
 
 serve(async (req) => {
@@ -103,7 +107,7 @@ serve(async (req) => {
 
     const data = await response.json();
 
-    const textBlock = (data.content || []).find((c: any) => c.type === "text");
+    const textBlock = (data.content || []).find((c: { type: string; text?: string }) => c.type === "text");
     const rawText: string = textBlock?.text || "{}";
 
     // 코드블록 표시나 잡설이 섞여 와도 JSON 부분만 추출
@@ -126,6 +130,25 @@ serve(async (req) => {
       return Number.isNaN(n) ? null : n;
     };
 
+    // items_detail 배열 정리 (형식이 어긋나거나 없으면 빈 배열)
+    const rawItemsDetail = Array.isArray(parsed.items_detail) ? parsed.items_detail : [];
+    const itemsDetail = rawItemsDetail
+      .map((it: unknown) => {
+        if (typeof it !== "object" || it === null) return null;
+        const row = it as Record<string, unknown>;
+        const qty = toNumber(row.qty) ?? 0;
+        const unitPrice = toNumber(row.unit_price) ?? 0;
+        const name = row.name ? String(row.name).trim() : "";
+        if (!name) return null;
+        return {
+          name,
+          spec: row.spec ? String(row.spec).trim() : "",
+          qty,
+          unit_price: unitPrice,
+        };
+      })
+      .filter((it): it is { name: string; spec: string; qty: number; unit_price: number } => it !== null);
+
     const result = {
       invoice_no: parsed.invoice_no ? String(parsed.invoice_no).trim() : null,
       sale_date: parsed.sale_date || null,
@@ -135,6 +158,7 @@ serve(async (req) => {
       tax_amount: toNumber(parsed.tax_amount),
       total_amount: toNumber(parsed.total_amount),
       items: parsed.items || null,
+      items_detail: itemsDetail,
     };
 
     return new Response(JSON.stringify(result), {

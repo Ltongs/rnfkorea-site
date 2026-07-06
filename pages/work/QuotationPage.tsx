@@ -58,6 +58,18 @@ const FF0: ForkliftForm = {
 
 const n0 = (v:any) => typeof v==='number'?v:Number(v)||0;
 const fmt = (n:number) => n.toLocaleString('ko-KR');
+
+// 설치된 xlsx 버전은 type:'array' 시 Uint8Array가 아니라 ArrayBuffer를 반환하므로
+// 항상 Uint8Array로 감싸서 청크 단위로 base64 변환 (스프레드 연산자는 이 경우 사용 불가/불안정)
+function bytesToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunkSize)) as number[]);
+  }
+  return btoa(binary);
+}
 const calcTotal = (items:Item[]) =>
   items.reduce((s,it)=>{ if(!it.price||it.price==='포함') return s; return s+n0(it.price)*(n0(it.qty)||1); },0);
 
@@ -68,7 +80,7 @@ function pmt(principal:number, rate:number, months:number){
 }
 
 // ── Excel 생성: 배터리
-function buildBattery(form:BatteryForm): Uint8Array {
+function buildBattery(form:BatteryForm): ArrayBuffer {
   const wb = XLSX.utils.book_new();
   const ws: XLSX.WorkSheet = {'!ref':'A1:H42'};
   const set = (a:string, v:any) => { ws[a]={v, t:typeof v==='number'?'n':'s'}; };
@@ -113,7 +125,7 @@ function buildBattery(form:BatteryForm): Uint8Array {
 }
 
 // ── Excel 생성: 지게차
-function buildForklift(form:ForkliftForm): Uint8Array {
+function buildForklift(form:ForkliftForm): ArrayBuffer {
   const wb = XLSX.utils.book_new();
   const ws: XLSX.WorkSheet = {'!ref':'A1:J45'};
   const set = (a:string, v:any) => { ws[a]={v, t:typeof v==='number'?'n':'s'}; };
@@ -306,7 +318,7 @@ export default function QuotationPage() {
       const bytes = tab==='battery'
         ? buildBattery({ ...BF0, recipient:row.recipient, recipientEmail:row.recipient_email, quoteDate:row.quote_date, items, notes: row.notes ?? BF0.notes })
         : buildForklift({ ...FF0, recipient:row.recipient, recipientEmail:row.recipient_email, quoteDate:row.quote_date, items, notes: row.notes ?? FF0.notes });
-      const blob = new Blob([bytes.buffer as ArrayBuffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      const blob = new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = `RNF_${tab==='battery'?'배터리':'지게차'}견적서_${row.recipient}_${row.quote_no}.xlsx`;
@@ -322,7 +334,7 @@ export default function QuotationPage() {
     setLoading(true);
     try {
       const bytes = tab==='battery' ? buildBattery(bf) : buildForklift(ff);
-      const blob  = new Blob([bytes.buffer as ArrayBuffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      const blob  = new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
       const a     = document.createElement('a');
       a.href      = URL.createObjectURL(blob);
       a.download  = `RNF_${tab==='battery'?'배터리':'지게차'}견적서_${(tab==='battery'?bf:ff).recipient||'고객'}.xlsx`;
@@ -339,7 +351,7 @@ export default function QuotationPage() {
     setEmailLoading(true);
     try {
       const bytes    = tab==='battery' ? buildBattery(bf) : buildForklift(ff);
-      const b64      = btoa(String.fromCharCode(...bytes));
+      const b64      = bytesToBase64(bytes);
       const total    = tab==='battery' ? bTotal : fTotal;
       const vat      = Math.round(total*.1);
       const grand    = total+vat;
