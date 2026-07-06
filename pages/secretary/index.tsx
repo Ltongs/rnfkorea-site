@@ -7,7 +7,7 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
-type TabKey = "chat"|"schedule"|"status"|"orders"|"hyundaicm"|"taesan"|"finance"|"narumi"|"jinheung"|"email"|"memo"|"financehub"|"exportshop"|"quotation";
+type TabKey = "chat"|"schedule"|"status"|"orders"|"hyundaicm"|"taesan"|"finance"|"narumi"|"jinheung"|"email"|"memo"|"financehub"|"exportshop"|"quotation"|"statement";
 type EmailReport = {
   id:number; created_at:string; report_date:string;
   title:string; content:string; source:string; is_read:boolean;
@@ -163,6 +163,7 @@ const CAT_CLR:Record<string,string> = {meeting:"#60a5fa",call:"#fb923c",followup
 
 // ─── 유틸 ─────────────────────────────────────────────────────────────────────
 const todayStr = () => { const d=new Date(); d.setHours(d.getHours()+9); return d.toISOString().slice(0,10); };
+const nowTimeStr = () => { const d=new Date(); d.setHours(d.getHours()+9); d.setMinutes(Math.round(d.getMinutes()/10)*10); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
 const nowTs = () => new Date().toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}).replace(". ","월 ").replace(". ","일 ");
 const pad2 = (n:number) => String(n).padStart(2,"0");
 const fmtDate = (d:string) => { const dt=new Date(d+(d.includes("T")?"":"T00:00:00")); return `${dt.getMonth()+1}월 ${dt.getDate()}일`; };
@@ -2211,7 +2212,7 @@ const SecretaryPage:React.FC = () => {
   }|null>(null);
   const [dupSelected,setDupSelected] = useState<Set<number>>(new Set());
   const [schedProgress,setSchedProgress] = useState({memo:"",next_date:"",next_time:""});
-  const [newSched,setNewSched] = useState({title:"",description:"",schedule_date:todayStr(),start_time:"",end_time:"",category:"meeting" as Schedule["category"],location:"",related_type:"",consultation_id:""});
+  const [newSched,setNewSched] = useState({title:"",description:"",schedule_date:todayStr(),start_time:nowTimeStr(),end_time:"",category:"meeting" as Schedule["category"],location:"",related_type:"",consultation_id:""});
 
   // 할일
   const [todos,setTodos]             = useState<Todo[]>([]);
@@ -3351,7 +3352,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
     if(!error){
       showToast("일정 저장 완료");
       setShowSchedForm(false);
-      setNewSched({title:"",description:"",schedule_date:todayStr(),start_time:"",end_time:"",category:"meeting",location:"",related_type:"",consultation_id:""});
+      setNewSched({title:"",description:"",schedule_date:todayStr(),start_time:nowTimeStr(),end_time:"",category:"meeting",location:"",related_type:"",consultation_id:""});
       void loadSchedules(); void loadStats();
       void loadCalData(calViewYear, calViewMonth);
       // 구글 캘린더 동기화
@@ -3371,11 +3372,12 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
     const appendText = schedProgress.memo ? "["+today+"] "+schedProgress.memo : null;
     const newMemo = appendText ? (s.progress_memo ? s.progress_memo+"\n"+appendText : appendText) : s.progress_memo;
     const patch: Record<string,unknown> = { progress_memo: newMemo };
+
     if (schedProgress.next_date) {
-      patch.next_schedule_date = schedProgress.next_date;
-      patch.next_schedule_time = schedProgress.next_time || null;
-      patch.is_done = true; // 다음 일정 등록 시 기존 일정 자동 완료 처리
-      const {data:newSchedData} = await supabase.from("secretary_schedules").insert({
+      // 다음 일정을 먼저 생성하고, 성공했을 때만 기존 일정을 완료 처리한다.
+      // (기존 코드는 이 insert의 성공 여부를 확인하지 않아, 실패해도 기존 일정이
+      //  그냥 완료 처리되어 "다음 일정 없이 완료만 되는" 현상이 발생했음)
+      const {data:newSchedData, error:insertError} = await supabase.from("secretary_schedules").insert({
         title: s.title,
         description: newMemo,
         schedule_date: schedProgress.next_date,
@@ -3384,9 +3386,20 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
         location: s.location,
         related_type: s.related_type,
         consultation_id: s.consultation_id,
+        is_done: false,
       }).select("id").single();
+
+      if (insertError || !newSchedData) {
+        showToast("다음 일정 등록 실패: " + (insertError?.message ?? "알 수 없는 오류"));
+        return; // 기존 일정은 완료 처리하지 않고 중단 — 모달은 열어둔 채로 재시도 가능
+      }
+
+      patch.next_schedule_date = schedProgress.next_date;
+      patch.next_schedule_time = schedProgress.next_time || null;
+      patch.is_done = true; // 다음 일정 등록에 성공했을 때만 기존 일정 자동 완료 처리
+
       // 구글 캘린더 동기화 — 새로 등록된 다음 일정
-      if(gcalConnected && newSchedData){
+      if(gcalConnected){
         void syncToGcal({
           id: newSchedData.id,
           title: s.title,
@@ -3398,7 +3411,12 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
         });
       }
     }
-    await supabase.from("secretary_schedules").update(patch).eq("id",s.id);
+
+    const {error:updateError} = await supabase.from("secretary_schedules").update(patch).eq("id",s.id);
+    if (updateError) {
+      showToast("경과 저장 실패: " + updateError.message);
+      return;
+    }
     await loadSchedules();
     setSchedModal(null);
     setSchedProgress({memo:"",next_date:"",next_time:""});
@@ -3907,7 +3925,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                   </div>
                   <div>
                     <label className={LBL}>다음 일정 시간</label>
-                    <input type="time" className={CTRL} value={schedProgress.next_time} onChange={e=>setSchedProgress(p=>({...p,next_time:e.target.value}))}/>
+                    <input type="time" step="600" className={CTRL} value={schedProgress.next_time} onChange={e=>setSchedProgress(p=>({...p,next_time:e.target.value}))}/>
                   </div>
                 </div>
               </div>
@@ -4008,13 +4026,13 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               }
             }}
           >
-            {([...["chat","schedule","status","orders","hyundaicm","taesan","finance","narumi","jinheung","email","memo","financehub","exportshop","quotation"],
-               ...["chat","schedule","status","orders","hyundaicm","taesan","finance","narumi","jinheung","email","memo","financehub","exportshop","quotation"],
-               ...["chat","schedule","status","orders","hyundaicm","taesan","finance","narumi","jinheung","email","memo","financehub","exportshop","quotation"]] as TabKey[]).map((t,i)=>(
+            {([...["chat","schedule","status","orders","hyundaicm","taesan","finance","narumi","jinheung","email","memo","financehub","exportshop","quotation","statement"],
+               ...["chat","schedule","status","orders","hyundaicm","taesan","finance","narumi","jinheung","email","memo","financehub","exportshop","quotation","statement"],
+               ...["chat","schedule","status","orders","hyundaicm","taesan","finance","narumi","jinheung","email","memo","financehub","exportshop","quotation","statement"]] as TabKey[]).map((t,i)=>(
               <button key={`${t}-${i}`} className={`${TB} ${tab===t?TA:TI}`} style={{flexShrink:0,whiteSpace:"nowrap"}} onClick={()=>setTabAndSave(t)}>
                 {t==="email"
                   ? <span className="flex items-center gap-1">📧 이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
-                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",hyundaicm:"🏗 현대CM",taesan:"🚛 태산통운",finance:"🏦 금융상담",narumi:"🚛 나르미",jinheung:"🔧 진흥주문",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비",quotation:"📋 견적서"}[t as string]
+                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",hyundaicm:"🏗 현대CM",taesan:"🚛 태산통운",finance:"🏦 금융상담",narumi:"🚛 나르미",jinheung:"🔧 진흥주문",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비",quotation:"📋 견적서",statement:"📑 거래명세서"}[t as string]
                 }
               </button>
             ))}
@@ -4143,8 +4161,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                         <option value="meeting">미팅</option><option value="call">통화</option><option value="task">업무</option><option value="followup">사후관리</option>
                       </select>
                     </div>
-                    <div><label className={LBL}>시작</label><input type="time" className={CTRL} value={newSched.start_time} onChange={e=>setNewSched(p=>({...p,start_time:e.target.value}))}/></div>
-                    <div><label className={LBL}>종료</label><input type="time" className={CTRL} value={newSched.end_time} onChange={e=>setNewSched(p=>({...p,end_time:e.target.value}))}/></div>
+                    <div><label className={LBL}>시작</label><input type="time" step="600" className={CTRL} value={newSched.start_time} onChange={e=>setNewSched(p=>({...p,start_time:e.target.value}))}/></div>
+                    <div><label className={LBL}>종료</label><input type="time" step="600" className={CTRL} value={newSched.end_time} onChange={e=>setNewSched(p=>({...p,end_time:e.target.value}))}/></div>
                     <div><label className={LBL}>장소</label><input className={CTRL} value={newSched.location} onChange={e=>setNewSched(p=>({...p,location:e.target.value}))} placeholder="장소"/></div>
                     <div><label className={LBL}>업무 분류</label>
                       <select className={CTRL} value={newSched.related_type} onChange={e=>setNewSched(p=>({...p,related_type:e.target.value}))}>
@@ -4167,7 +4185,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                       <p className="text-xs font-semibold text-gray-400 px-1 py-1 mt-2">{fmtDate(date as string)} ({["일","월","화","수","목","금","토"][new Date((date as string)+"T00:00:00").getDay()]})</p>
                       {allSchedules.filter(s=>s.schedule_date===date).map(s=>(
                         <div key={s.id} className={`${CARD} p-3.5 flex items-start gap-3 cursor-pointer hover:bg-blue-50 transition-all mb-1.5 ${s.is_done?"opacity-50":""}`}
-                          onClick={()=>{setSchedModal({s});setSchedProgress({memo:"",next_date:"",next_time:""});}}>
+                          onClick={()=>{setSchedModal({s});setSchedProgress({memo:"",next_date:todayStr(),next_time:nowTimeStr()});}}>
                           <button className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-all ${s.is_done?"bg-emerald-500 border-emerald-500":"border-gray-300 hover:border-emerald-400"}`}
                             onClick={e=>{e.stopPropagation();void toggleSched(s.id,s.is_done);setAllSchedules(p=>p.map(x=>x.id===s.id?{...x,is_done:!x.is_done}:x));}}>
                             {s.is_done&&<span className="text-white text-[10px]">✓</span>}
@@ -4192,7 +4210,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                 :schedules.length===0?<div className={`${CARD} p-8 text-center text-gray-400 text-sm`}>{fmtDate(schedDate)} 일정이 없습니다</div>
                 :schedules.map(s=>(
                   <div key={s.id} className={`${CARD} p-4 flex items-start gap-3 cursor-pointer hover:bg-blue-50 transition-all ${s.is_done?"opacity-60":""}`}
-                    onClick={()=>{setSchedModal({s});setSchedProgress({memo:"",next_date:"",next_time:""});}}>
+                    onClick={()=>{setSchedModal({s});setSchedProgress({memo:"",next_date:todayStr(),next_time:nowTimeStr()});}}>
                     <CatDot c={s.category}/>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -5850,6 +5868,28 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                   className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-all"
                 >
                   💳 할부금융 견적
+                </button>
+                <button
+                  onClick={()=>navigate("/work/statement")}
+                  className="px-5 py-2.5 bg-gray-700 text-white rounded-xl text-sm font-medium hover:bg-gray-800 transition-all"
+                >
+                  📑 거래명세서
+                </button>
+              </div>
+            </div>
+          )}
+
+          {tab==="statement"&&(
+            <div className="flex flex-col items-center justify-center gap-4 py-16 w-full">
+              <div className="text-4xl">📑</div>
+              <h2 className="text-lg font-bold text-[#0f172a]">거래명세서 작성</h2>
+              <p className="text-sm text-gray-500 text-center">거래처 정보와 품목을 입력해 거래명세서를 작성하고<br/>원본 양식 그대로 엑셀 다운로드 · 이메일 발송할 수 있습니다.</p>
+              <div className="flex flex-wrap justify-center gap-3 mt-2">
+                <button
+                  onClick={()=>navigate("/work/statement")}
+                  className="px-5 py-2.5 bg-[#0f172a] text-white rounded-xl text-sm font-medium hover:bg-[#1e3a5f] transition-all"
+                >
+                  📑 거래명세서 작성하기
                 </button>
               </div>
             </div>

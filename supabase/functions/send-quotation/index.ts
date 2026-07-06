@@ -18,7 +18,7 @@ serve(async (req) => {
     const {
       quoteNo, quoteType, recipient, email,
       totalAmount, vatAmount, grandTotal,
-      xlsxBase64, fileName,
+      xlsxBase64, fileName, extraMessage,
     } = await req.json();
 
     const typeLabel = quoteType === "forklift" ? "지게차" : "배터리";
@@ -41,6 +41,7 @@ serve(async (req) => {
   <tr><td style="padding:28px 32px;">
     <p style="font-size:15px;color:#1e293b;margin:0 0 20px;"><strong>${recipient}</strong> 귀중,</p>
     <p style="font-size:13px;color:#374151;margin:0 0 24px;">안녕하세요. 주식회사 알앤에프코리아입니다.<br>요청하신 ${typeLabel} 견적서를 첨부 파일로 발송드립니다.</p>
+    ${extraMessage?.trim() ? `<p style="font-size:13px;color:#374151;white-space:pre-wrap;margin:0 0 24px;">${extraMessage.trim()}</p>` : ''}
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;border-radius:6px;padding:16px 20px;">
       <tr><td style="font-size:11px;color:#64748b;padding:3px 0;">견적번호</td><td style="font-size:12px;color:#1e293b;text-align:right;font-weight:bold;">${quoteNo}</td></tr>
       <tr><td style="font-size:11px;color:#64748b;padding:3px 0;">공급가액</td><td style="font-size:12px;color:#1e293b;text-align:right;">${fmt(totalAmount)}원</td></tr>
@@ -67,6 +68,7 @@ serve(async (req) => {
       body: JSON.stringify({
         from:    `주식회사 알앤에프코리아 <${FROM_EMAIL}>`,
         to:      [email],
+        cc:      ["admin@rnfkorea.co.kr"],
         subject: `[RNF KOREA] ${typeLabel} 견적서 ${quoteNo} — ${recipient} 귀중`,
         html:    htmlBody,
         attachments: [{
@@ -82,8 +84,9 @@ serve(async (req) => {
     return new Response(JSON.stringify({ success: true, emailId: data.id }), {
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
     });
-  } catch (e: any) {
-    return new Response(JSON.stringify({ error: e.message }), {
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
     });

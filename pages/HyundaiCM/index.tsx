@@ -346,8 +346,23 @@ export default function HyundaiCMPage() {
     { id: "tongs",    label: "이동수 (관리자)" },
     { id: "p2001103", label: "현대CM 담당자" },
     { id: "nhcap",    label: "NH캐피탈 담당자" },
+    { id: "woori",    label: "우리금융캐피탈 담당자" },
   ] as const;
   type RecipientId = typeof KAKAO_RECIPIENTS[number]["id"];
+
+  // 할부금융사별 카카오 발송 대상 목록 전환
+  // - NH캐피탈  건: NH캐피탈 담당자만 노출 (우리금융캐피탈 담당자는 숨김)
+  // - 우리금융캐피탈 건: 우리금융캐피탈 담당자만 노출 (NH캐피탈 담당자는 숨김)
+  // - 그 외(오릭스캐피탈 등): 캐피탈사 전용 항목은 모두 숨김
+  const getVisibleKakaoRecipients = (financeCompany?: string | null) => {
+    if (financeCompany === "우리금융캐피탈") {
+      return KAKAO_RECIPIENTS.filter((r) => r.id !== "nhcap");
+    }
+    if (financeCompany === "NH캐피탈") {
+      return KAKAO_RECIPIENTS.filter((r) => r.id !== "woori");
+    }
+    return KAKAO_RECIPIENTS.filter((r) => r.id !== "nhcap" && r.id !== "woori");
+  };
 
   const [holdModal,        setHoldModal]        = useState<HCMTask | null>(null);
   const [approvalModal,    setApprovalModal]    = useState<HCMTask | null>(null); // 승인조건 확인 모달
@@ -911,6 +926,10 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       ).toISOString();
 
       let q = supabase.from("hyundaicm_tasks").select("*");
+      // NH캐피탈 직원(조회 전용)은 할부금융사가 NH캐피탈인 건만 조회 가능 — 쿼리 단계에서부터 제한
+      if (isNhCapitalStaff) {
+        q = q.eq("finance_company", "NH캐피탈");
+      }
       if (!isAdmin) {
         q = q.or(`status.neq.확정,created_at.gte.${cutoffISO}`);
       } else if (!showClosed) {
@@ -3559,7 +3578,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                 <div>
                   <label className={labelClass}>알림 받을 담당자 * (복수 선택 가능)</label>
                   <div className="space-y-2">
-                    {KAKAO_RECIPIENTS.map((rec) => {
+                    {getVisibleKakaoRecipients(holdModal?.finance_company).map((rec) => {
                       const checked = holdRecipients.includes(rec.id as RecipientId);
                       return (
                         <button

@@ -245,15 +245,74 @@ export default function QuotationPage() {
   const [loading, setLoading] = useState(false);
   const [emailLoading, setEmailLoading] = useState(false);
   const [msg, setMsg] = useState('');
+  const [extraMessage, setExtraMessage] = useState('');
 
   // SMS 상태
-  const [smsPhone, setSmsPhone]     = useState('');
+  const [smsPhone1, setSmsPhone1] = useState('');
+  const [smsPhone2, setSmsPhone2] = useState('');
   const [smsSending, setSmsSending] = useState(false);
 
   // 각 탭 캡처 ref
   const batteryPreviewRef    = useRef<HTMLDivElement>(null);
   const forkliftPreviewRef   = useRef<HTMLDivElement>(null);
   const installmentPreviewRef = useRef<HTMLDivElement>(null);
+
+  // 발송 이력 (탭별로 tb_quotations 조회)
+  interface HistoryRow {
+    id:number; quote_no:string; quote_date:string; recipient:string; recipient_email:string;
+    items:Item[]; notes:string[]|null; total_amount:number; vat_amount:number; grand_total:number;
+    created_at:string;
+  }
+  const [history, setHistory] = useState<HistoryRow[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  const loadHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('tb_quotations')
+        .select('id,quote_no,quote_date,recipient,recipient_email,items,notes,total_amount,vat_amount,grand_total,created_at')
+        .eq('quote_type', tab)
+        .order('created_at', { ascending:false })
+        .limit(20);
+      if (error) throw error;
+      setHistory((data ?? []) as HistoryRow[]);
+    } catch (e:any) {
+      flash(`이력 조회 오류: ${e.message}`);
+    }
+    setHistoryLoading(false);
+  };
+
+  useEffect(() => { if (historyOpen) void loadHistory(); }, [tab, historyOpen]);
+
+  // 이력에서 폼으로 불러오기 (배터리/지게차만 — 할부는 구조가 달라 재구성하지 않음)
+  const loadFromHistory = (row:HistoryRow) => {
+    if (tab === 'installment') { flash('할부견적서는 이력에서 다시 불러오기를 지원하지 않습니다.'); return; }
+    const patch = {
+      recipient: row.recipient, recipientEmail: row.recipient_email,
+      quoteDate: row.quote_date, items: row.items?.length ? row.items : (tab==='battery'?BF0.items:FF0.items),
+      notes: row.notes ?? (tab==='battery'?BF0.notes:FF0.notes),
+    };
+    if (tab === 'battery') setBf(f => ({ ...f, ...patch }));
+    else setFf(f => ({ ...f, ...patch }));
+    flash(`${row.quote_no} 내용을 폼에 불러왔습니다. 수정 후 재발송하세요.`);
+  };
+
+  const downloadFromHistory = (row:HistoryRow) => {
+    if (tab === 'installment') { flash('할부견적서는 이력에서 다운로드를 지원하지 않습니다.'); return; }
+    try {
+      const items = row.items?.length ? row.items : [];
+      const bytes = tab==='battery'
+        ? buildBattery({ ...BF0, recipient:row.recipient, recipientEmail:row.recipient_email, quoteDate:row.quote_date, items, notes: row.notes ?? BF0.notes })
+        : buildForklift({ ...FF0, recipient:row.recipient, recipientEmail:row.recipient_email, quoteDate:row.quote_date, items, notes: row.notes ?? FF0.notes });
+      const blob = new Blob([bytes.buffer as ArrayBuffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `RNF_${tab==='battery'?'배터리':'지게차'}견적서_${row.recipient}_${row.quote_no}.xlsx`;
+      a.click();
+    } catch { flash('Excel 재생성 오류'); }
+  };
 
   const flash = (m:string) => { setMsg(m); setTimeout(()=>setMsg(''),5000); };
   const bTotal=calcTotal(bf.items), fTotal=calcTotal(ff.items);
@@ -298,6 +357,8 @@ export default function QuotationPage() {
           email:form.recipientEmail, totalAmount:total, vatAmount:vat, grandTotal:grand,
           xlsxBase64:b64,
           fileName:`RNF_${tab==='battery'?'배터리':'지게차'}견적서_${form.recipient}.xlsx`,
+          cc:['admin@rnfkorea.co.kr'],
+          extraMessage: extraMessage.trim(),
         },
       });
       if(error) throw error;
@@ -449,16 +510,17 @@ ${iff.recipient?`<p class="rcpt">수신: <strong>${iff.recipient}${iff.companyNa
     if(win) win.addEventListener('load',()=>{setTimeout(()=>{win.print();URL.revokeObjectURL(url);},500);});
   };
 
-  // ── SMS(MMS) 발송 — 현대CM과 동일 패턴
+  // ── SMS(MMS) 발송 — 현대CM과 동일 패턴 (수신번호 최대 2개)
   const sendSMS = async () => {
-    if (!smsPhone.trim()) { flash('수신 전화번호를 입력해주세요.'); return; }
+    const phones = [smsPhone1.trim(), smsPhone2.trim()].filter(Boolean);
+    if (phones.length === 0) { flash('수신 전화번호를 1개 이상 입력해주세요.'); return; }
     const ref = tab === 'battery' ? batteryPreviewRef
                : tab === 'forklift' ? forkliftPreviewRef
                : installmentPreviewRef;
     if (!ref.current) { flash('미리보기 영역을 찾을 수 없습니다.'); return; }
     setSmsSending(true);
     try {
-      // 1. html2canvas 캡처
+      // 1. html2canvas 캡처 (한 번만 캡처해서 두 번호에 동일하게 재사용)
       let canvas = await html2canvas(ref.current, { scale: 1.5, backgroundColor: '#ffffff' });
 
       // 2. Solapi MMS 크기 제한 대응 (가로 1500px, 세로 1440px)
@@ -494,27 +556,43 @@ ${iff.recipient?`<p class="rcpt">수신: <strong>${iff.recipient}${iff.companyNa
         setSmsSending(false); return;
       }
 
-      // 4. Edge Function 호출
+      // 4. Edge Function 호출 — 입력된 번호 수만큼 순차 발송
       const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-quote-sms`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type':  'application/json',
-            'Authorization': `Bearer ${session?.access_token ?? ''}`,
-          },
-          body: JSON.stringify({
-            recipientPhone: smsPhone.trim(),
-            recipientName:  tab === 'battery' ? bf.recipient : tab === 'forklift' ? ff.recipient : iff.recipient,
-            imageBase64,
-            quoteType: tab,
-          }),
+      const recipientName = tab === 'battery' ? bf.recipient : tab === 'forklift' ? ff.recipient : iff.recipient;
+      const results: { phone: string; ok: boolean; error?: string }[] = [];
+      for (const phone of phones) {
+        try {
+          const res = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-quote-sms`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type':  'application/json',
+                'Authorization': `Bearer ${session?.access_token ?? ''}`,
+              },
+              body: JSON.stringify({
+                recipientPhone: phone,
+                recipientName,
+                imageBase64,
+                quoteType: tab,
+              }),
+            }
+          );
+          const d = await res.json();
+          results.push({ phone, ok: res.ok && !d.error, error: d.error });
+        } catch (e: any) {
+          results.push({ phone, ok: false, error: e?.message ?? String(e) });
         }
-      );
-      const d = await res.json();
-      if (!res.ok || d.error) { flash(`SMS 발송 실패: ${d.error ?? '알 수 없는 오류'}`); }
-      else flash(`✅ ${smsPhone}으로 MMS가 발송되었습니다.`);
+      }
+      const okList = results.filter(r => r.ok).map(r => r.phone);
+      const failList = results.filter(r => !r.ok);
+      if (failList.length === 0) {
+        flash(`✅ ${okList.join(', ')}으로 MMS가 발송되었습니다.`);
+      } else if (okList.length === 0) {
+        flash(`SMS 발송 실패: ${failList.map(f=>`${f.phone} (${f.error ?? '알 수 없는 오류'})`).join(', ')}`);
+      } else {
+        flash(`✅ ${okList.join(', ')} 발송 완료 / ⚠️ ${failList.map(f=>f.phone).join(', ')} 실패`);
+      }
     } catch (e: any) {
       flash(`SMS 오류: ${e?.message ?? e}`);
     }
@@ -533,7 +611,7 @@ ${iff.recipient?`<p class="rcpt">수신: <strong>${iff.recipient}${iff.companyNa
     try{
       const quoteNo=`HL-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
       await supabase.from('tb_quotations').insert({
-        quote_type:'forklift',quote_no:quoteNo,quote_date:iff.quoteDate,
+        quote_type:'installment',quote_no:quoteNo,quote_date:iff.quoteDate,
         recipient:iff.recipient,recipient_email:iff.recipientEmail,company_name:iff.companyName,
         items:[{name:iff.itemName,spec:iff.itemSpec,qty:1,price:n0(iff.carPrice)||p}],
         notes:[`할부원금: ${fmtN(p)}원`,`연이율: ${r}%`,`기간: ${months}개월`,`월납입액: ${fmtN(payment)}원`,`금융사: ${iff.financeCompany}`],
@@ -544,7 +622,9 @@ ${iff.recipient?`<p class="rcpt">수신: <strong>${iff.recipient}${iff.companyNa
           totalAmount:p,vatAmount:0,grandTotal:p,xlsxBase64:'',fileName:'',
           installmentInfo:{itemName:iff.itemName,itemSpec:iff.itemSpec,companyName:iff.companyName,
             financeCompany:iff.financeCompany,principal:p,annualRate:r,gracePeriod:gp,
-            installmentMonths:im,totalMonths:months,payment,startYM:iff.startYM}},
+            installmentMonths:im,totalMonths:months,payment,startYM:iff.startYM},
+          cc:['admin@rnfkorea.co.kr'],
+          extraMessage: extraMessage.trim()},
       });
       if(error) throw error;
       flash(`✅ ${iff.recipientEmail}로 할부견적서가 발송되었습니다. (${quoteNo})`);
@@ -757,26 +837,86 @@ ${iff.recipient?`<p class="rcpt">수신: <strong>${iff.recipient}${iff.companyNa
           </div>
         </>}
 
+        {/* ══ 이메일 추가 메시지 (공통) ══ */}
+        <div className="bg-white rounded-lg border p-5">
+          <h2 className="font-semibold text-gray-800 mb-2 text-sm">✉️ 이메일 추가 메시지 (선택)</h2>
+          <textarea
+            value={extraMessage}
+            onChange={e=>setExtraMessage(e.target.value)}
+            placeholder="예: 항상 저희 제품을 이용해 주셔서 감사합니다. 문의사항 있으시면 언제든 연락 주세요."
+            rows={3}
+            className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+          />
+          <p className="text-xs text-gray-400 mt-1.5">여기 입력한 문구는 이메일 본문에 그대로 추가됩니다 (첨부 견적서 내용과는 별개).</p>
+        </div>
+
         {/* ══ SMS 발송 공통 영역 ══ */}
         <div className="bg-white rounded-lg border p-5">
           <h2 className="font-semibold text-gray-800 mb-3 text-sm">📤 SMS(MMS) 발송</h2>
           <div className="flex gap-3">
             <input
-              value={smsPhone}
-              onChange={e => setSmsPhone(e.target.value.replace(/[^0-9-]/g,''))}
+              value={smsPhone1}
+              onChange={e => setSmsPhone1(e.target.value.replace(/[^0-9-]/g,''))}
               placeholder="010-1234-5678"
+              inputMode="tel"
+              className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+            <input
+              value={smsPhone2}
+              onChange={e => setSmsPhone2(e.target.value.replace(/[^0-9-]/g,''))}
+              placeholder="010-1234-5678 (선택)"
               inputMode="tel"
               className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
             />
             <button
               onClick={sendSMS}
-              disabled={smsSending || !smsPhone.trim()}
+              disabled={smsSending || (!smsPhone1.trim() && !smsPhone2.trim())}
               className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded text-sm font-medium disabled:opacity-40"
             >
               {smsSending ? '발송 중...' : '📤 MMS 발송'}
             </button>
           </div>
-          <p className="text-xs text-gray-400 mt-2">견적서 요약 이미지를 MMS로 발송합니다. 발신번호: 1551-1873</p>
+          <p className="text-xs text-gray-400 mt-2">견적서 요약 이미지를 MMS로 발송합니다 (번호 2개까지 동시 발송 가능). 발신번호: 1551-1873</p>
+        </div>
+
+        {/* ══ 발송 이력 ══ */}
+        <div className="bg-white rounded-lg border p-5">
+          <button className="flex items-center justify-between w-full" onClick={()=>setHistoryOpen(o=>!o)}>
+            <h2 className="font-semibold text-gray-800 text-sm">📜 최근 발송 이력 (최근 20건)</h2>
+            <span className="text-xs text-gray-400">{historyOpen ? '접기 ▲' : '펼치기 ▼'}</span>
+          </button>
+          {historyOpen && (
+            <div className="mt-3">
+              {historyLoading ? (
+                <p className="text-xs text-gray-400">불러오는 중...</p>
+              ) : history.length === 0 ? (
+                <p className="text-xs text-gray-400">발송 이력이 없습니다.</p>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 text-gray-500">
+                    <tr>{['견적번호','발송일','수신인','총액','발송시각',''].map(h=>(
+                      <th key={h} className="px-2 py-2 text-left font-medium">{h}</th>
+                    ))}</tr>
+                  </thead>
+                  <tbody>
+                    {history.map(row=>(
+                      <tr key={row.id} className="border-b">
+                        <td className="px-2 py-1.5">{row.quote_no}</td>
+                        <td className="px-2 py-1.5">{row.quote_date}</td>
+                        <td className="px-2 py-1.5">{row.recipient}</td>
+                        <td className="px-2 py-1.5 text-right">{fmt(row.grand_total)}원</td>
+                        <td className="px-2 py-1.5 text-gray-400">{new Date(row.created_at).toLocaleString('ko-KR')}</td>
+                        <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                          <button onClick={()=>downloadFromHistory(row)} className="text-gray-500 hover:text-gray-800 mr-2">📥</button>
+                          <button onClick={()=>loadFromHistory(row)} className="text-orange-500 hover:text-orange-700">불러오기</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ══ 캡처용 미리보기 (hidden, 각 탭 ref) ══ */}
