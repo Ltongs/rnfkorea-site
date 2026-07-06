@@ -1280,6 +1280,36 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       });
 
       setConfirmModal(null);
+
+      // ── 확정 전환 시: 익일 사후 미결 할 일 자동 등록 (설정 / 원본서류 징구) ──
+      try {
+        const tomorrowDate = (() => {
+          const d = new Date();
+          d.setDate(d.getDate() + 1);
+          return d.toISOString().slice(0, 10);
+        })();
+        const custName = confirmModal.customer_name || "고객";
+        await Promise.all([
+          supabase.from("secretary_todos").insert({
+            title:       `${custName} 설정`,
+            description: `[현대CM] ${custName} 확정 건 - 설정(담보) 등록 확인`,
+            priority:    "urgent",
+            category:    "finance",
+            due_date:    tomorrowDate,
+            is_done:     false,
+          }),
+          supabase.from("secretary_todos").insert({
+            title:       `${custName} 원본`,
+            description: `[현대CM] ${custName} 확정 건 - 원본서류 징구 확인`,
+            priority:    "urgent",
+            category:    "finance",
+            due_date:    tomorrowDate,
+            is_done:     false,
+          }),
+        ]);
+      } catch (todoErr) {
+        console.error("[현대CM 확정 사후 할 일 등록 오류]:", todoErr);
+      }
     } catch (e: any) { alert(e?.message || "저장 실패"); }
     finally { setConfirmSaving(false); }
   };

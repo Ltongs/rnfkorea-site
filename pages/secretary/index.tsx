@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus as FhPlus, Search as FhSearch, Check as FhCheck, X as FhX, Pencil as FhPencil, Trash2 as FhTrash2, Loader2 as FhLoader2, PackageCheck as FhPackageCheck, AlertCircle as FhAlertCircle, Upload as FhUpload, FileText as FhFileText, Link2 as FhLink2, FileSpreadsheet as FhFileSpreadsheet } from "lucide-react";
 import ReactDOM from "react-dom";
+import html2canvas from "html2canvas";
 import { Navigate, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
@@ -2235,7 +2236,38 @@ const SecretaryPage:React.FC = () => {
     principal:"", gracePeriod:"3", installmentPeriod:"36", interestRate:"",
     sendMethod:"kakao" as "kakao"|"email"|"sms",
   });
+  const [repayStartYM,setRepayStartYM] = useState(()=>{
+    const d = new Date(); d.setMonth(d.getMonth()+1);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+  });
   const [repaySending,setRepaySending] = useState(false);
+  const repayTableRef = useRef<HTMLDivElement>(null);
+
+  // ── 원리금균등분납 상환스케줄 계산 (거치기간 지원) ──
+  const calcRepayAmortization = (principal:number, annualRate:number, months:number, startYM:string, gracePeriod:number=0) => {
+    const r = annualRate/100/12;
+    const grace = Math.max(0, Math.min(gracePeriod, months));
+    const installmentMonths = months - grace;
+    const payment = installmentMonths<=0 ? 0
+      : r===0 ? principal/installmentMonths
+      : (principal*r*Math.pow(1+r,installmentMonths))/(Math.pow(1+r,installmentMonths)-1);
+    const rows:{no:number;date:string;payment:number;interest:number;principalPmt:number;balance:number}[] = [];
+    let balance = principal;
+    const [sy,sm] = startYM.split("-").map(Number);
+    for(let i=1;i<=months;i++){
+      const interest = balance*r;
+      const d = new Date(sy, sm-1+(i-1), 1);
+      const date = `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,"0")}.01`;
+      if(i<=grace){
+        rows.push({no:i,date,payment:Math.round(interest),interest:Math.round(interest),principalPmt:0,balance:Math.round(balance)});
+      } else {
+        const principalPmt = payment-interest;
+        balance = Math.max(0, balance-principalPmt);
+        rows.push({no:i,date,payment:Math.round(payment),interest:Math.round(interest),principalPmt:Math.round(principalPmt),balance:Math.round(balance)});
+      }
+    }
+    return { payment: Math.round(payment), rows };
+  };
 
   // 현대CM 탭
   const [hcmFilter,setHcmFilter] = useState<"active"|"all"|"done">("active");
@@ -4379,6 +4411,33 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                                       const {error} = await supabase.from("consultation_finance_details").update({finance_stage:next}).eq("consultation_id",c.id);
                                       if(error){alert("단계 변경 실패: "+error.message);return;}
                                       setRecentC(prev=>prev.map(x=>x.id===c.id?{...x,display_status:next}:x));
+                                      // ── 확정 익일 사후미결(설정/원본서류) 할 일 자동 등록 ──
+                                      if(next==="confirmed"){
+                                        try{
+                                          const nextDayStr = (()=>{ const d=new Date(); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); })();
+                                          const postConfirmDesc = `상담ID: ${c.id} / 금융상담 확정 사후미결`;
+                                          await Promise.all([
+                                            supabase.from("secretary_todos").insert({
+                                              title: `${c.customer_name} 설정`,
+                                              description: postConfirmDesc,
+                                              priority: "urgent",
+                                              category: "finance",
+                                              due_date: nextDayStr,
+                                              is_done: false,
+                                            }),
+                                            supabase.from("secretary_todos").insert({
+                                              title: `${c.customer_name} 원본`,
+                                              description: postConfirmDesc,
+                                              priority: "urgent",
+                                              category: "finance",
+                                              due_date: nextDayStr,
+                                              is_done: false,
+                                            }),
+                                          ]);
+                                        }catch(todoErr){
+                                          console.error("[금융상담 확정 사후미결 할 일 등록 오류]:",todoErr);
+                                        }
+                                      }
                                     } else if(isInsurance){
                                       const {error} = await supabase.from("consultation_cases").update({status:next}).eq("id",c.id);
                                       if(error){alert("단계 변경 실패: "+error.message);return;}
@@ -4721,7 +4780,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                           {(["kakao","email","sms"] as const).map(m=>(
                             <button key={m} onClick={()=>setRepayForm(p=>({...p,sendMethod:m}))}
                               className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-all ${repayForm.sendMethod===m?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200"}`}>
-                              {m==="kakao"?"💬 카카오":m==="email"?"📧 이메일":"📱 SMS"}
+                              {m==="kakao"?"💬 카카오(SMS)":m==="email"?"📧 이메일":"📱 SMS"}
                             </button>
                           ))}
                         </div>
@@ -4816,6 +4875,12 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                         </div>
                       </div>
 
+                      <div>
+                        <label className="text-xs font-semibold text-gray-500 block mb-1">납입 시작월</label>
+                        <input type="month" value={repayStartYM} onChange={e=>setRepayStartYM(e.target.value)}
+                          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-orange-400"/>
+                      </div>
+
                       {/* 미리보기 요약 */}
                       {repayForm.principal&&repayForm.interestRate&&(()=>{
                         const P = Number(repayForm.principal);
@@ -4869,21 +4934,132 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                               });
                               if(error) throw error;
                             } else {
-                              const { error } = await supabase.functions.invoke("send-solapi", {
-                                body: { to: repayForm.recipientPhone.replace(/-/g,""), text: msg, type: repayForm.sendMethod==="kakao"?"kakao":"sms" }
+                              // ── 카카오/SMS: 텍스트가 아니라 상환표 이미지를 MMS로 발송 ──
+                              if (!repayTableRef.current) throw new Error("상환표 렌더링 실패");
+                              let canvas = await html2canvas(repayTableRef.current, { scale: 1.5, backgroundColor: "#ffffff" });
+
+                              // Solapi MMS 이미지 크기 제한(가로 1500px, 세로 1440px) 대응
+                              const MAX_W = 1500, MAX_H = 1440;
+                              if (canvas.width > MAX_W || canvas.height > MAX_H) {
+                                const ratio = Math.min(MAX_W / canvas.width, MAX_H / canvas.height);
+                                const resized = document.createElement("canvas");
+                                resized.width = Math.floor(canvas.width * ratio);
+                                resized.height = Math.floor(canvas.height * ratio);
+                                const ctx = resized.getContext("2d");
+                                ctx?.drawImage(canvas, 0, 0, resized.width, resized.height);
+                                canvas = resized;
+                              }
+
+                              // Solapi MMS 이미지 용량 제한(200KB) 대응: JPEG 품질을 단계적으로 낮춰 압축
+                              const MAX_BYTES = 200 * 1024;
+                              const base64SizeBytes = (dataUrl: string) => Math.ceil((dataUrl.length - dataUrl.indexOf(",") - 1) * 3 / 4);
+                              let quality = 0.9;
+                              let imageBase64 = canvas.toDataURL("image/jpeg", quality);
+                              while (base64SizeBytes(imageBase64) > MAX_BYTES && quality > 0.2) {
+                                quality -= 0.1;
+                                imageBase64 = canvas.toDataURL("image/jpeg", quality);
+                              }
+                              if (base64SizeBytes(imageBase64) > MAX_BYTES) {
+                                const shrink = document.createElement("canvas");
+                                const ratio = Math.sqrt(MAX_BYTES / base64SizeBytes(imageBase64)) * 0.9;
+                                shrink.width = Math.max(320, Math.floor(canvas.width * ratio));
+                                shrink.height = Math.max(200, Math.floor(canvas.height * ratio));
+                                const ctx = shrink.getContext("2d");
+                                ctx?.drawImage(canvas, 0, 0, shrink.width, shrink.height);
+                                imageBase64 = shrink.toDataURL("image/jpeg", 0.7);
+                              }
+                              if (base64SizeBytes(imageBase64) > MAX_BYTES) {
+                                throw new Error("상환표 이미지 압축에 실패했습니다. 잠시 후 다시 시도해주세요.");
+                              }
+
+                              const { error } = await supabase.functions.invoke("send-hyundaicm-kakao", {
+                                body: { type: "quote_send", to: repayForm.recipientPhone.replace(/-/g,""), text: msg, imageBase64 }
                               });
                               if(error) throw error;
                             }
-                            alert(`${repayForm.sendMethod==="kakao"?"카카오톡":repayForm.sendMethod==="email"?"이메일":"SMS"} 발송 완료!`);
+                            alert(`${repayForm.sendMethod==="email"?"이메일":"MMS"} 발송 완료!`);
                             setShowRepayModal(false);
                             setRepayForm({recipientName:"",recipientPhone:"",recipientEmail:"",customerName:"",vehicleModel:"",vehiclePrice:"",downPaymentRate:"20",principal:"",gracePeriod:"3",installmentPeriod:"36",interestRate:"",sendMethod:"kakao"});
                           } catch(e:any) {
-                            alert(`발송 실패: ${e?.message??"다시 시도해주세요."}`);
+                            let detail = e?.message ?? "다시 시도해주세요.";
+                            try {
+                              // supabase-js FunctionsHttpError: 실제 응답 본문은 e.context에 들어있음
+                              if (e?.context && typeof e.context.json === "function") {
+                                const body = await e.context.json();
+                                detail = body?.error ?? detail;
+                              }
+                            } catch { /* 본문 파싱 실패 시 원래 메시지 사용 */ }
+                            alert(`발송 실패: ${detail}`);
                           } finally { setRepaySending(false); }
                         }}
                         className={`w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all ${repaySending||(!repayForm.recipientPhone&&!repayForm.recipientEmail)||!repayForm.principal||!repayForm.interestRate?"bg-gray-100 text-gray-400 cursor-not-allowed":"bg-[#0f172a] text-white hover:bg-[#1e293b]"}`}>
-                        {repaySending ? <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>발송 중...</> : `${repayForm.sendMethod==="kakao"?"💬 카카오톡":repayForm.sendMethod==="email"?"📧 이메일":"📱 SMS"}으로 발송`}
+                        {repaySending ? <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>발송 중...</> : `${repayForm.sendMethod==="email"?"📧 이메일":"📱 MMS"}으로 발송`}
                       </button>
+
+                      {/* 발송용 캡처 전용 숨김 DOM — 상환표 이미지 생성 */}
+                      {repayForm.principal && repayForm.interestRate && (()=>{
+                        const P = Number(repayForm.principal);
+                        const grace = Number(repayForm.gracePeriod)||0;
+                        const inst = Number(repayForm.installmentPeriod)||36;
+                        const months = grace + inst;
+                        const { payment, rows } = calcRepayAmortization(P, Number(repayForm.interestRate), months, repayStartYM, grace);
+                        const fmt = (n:number) => n.toLocaleString("ko-KR");
+                        return (
+                          <div style={{ position:"fixed", left:"-9999px", top:0, width:"560px" }}>
+                            <div ref={repayTableRef} style={{ fontFamily:"'Malgun Gothic','맑은 고딕',sans-serif", background:"#fff", padding:"24px", color:"#1e293b" }}>
+                              <h1 style={{ fontSize:"18px", fontWeight:700, margin:"0 0 4px", color:"#0a192f" }}>원리금균등분납 상환스케줄</h1>
+                              <p style={{ fontSize:"12px", color:"#64748b", marginBottom:"16px" }}>{repayForm.vehicleModel||"할부금융"}</p>
+                              <p style={{ fontSize:"13px", marginBottom:"12px" }}>수신: <strong style={{ color:"#0a192f" }}>{repayForm.customerName||repayForm.recipientName}</strong> 귀중</p>
+                              <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:"8px", marginBottom:"16px", background:"#f8fafc", borderRadius:"8px", padding:"14px" }}>
+                                <div><div style={{ fontSize:"10px", color:"#94a3b8" }}>고객명</div><div style={{ fontWeight:600, color:"#0a192f", fontSize:"13px" }}>{repayForm.customerName||repayForm.recipientName}</div></div>
+                                <div><div style={{ fontSize:"10px", color:"#94a3b8" }}>할부원금</div><div style={{ fontWeight:600, color:"#0a192f", fontSize:"13px" }}>{fmt(P)}원</div></div>
+                                <div><div style={{ fontSize:"10px", color:"#94a3b8" }}>금리 (연)</div><div style={{ fontWeight:600, color:"#0a192f", fontSize:"13px" }}>{repayForm.interestRate}%</div></div>
+                                <div><div style={{ fontSize:"10px", color:"#94a3b8" }}>대출기간</div><div style={{ fontWeight:600, color:"#0a192f", fontSize:"13px" }}>{months}개월{grace>0?` (거치 ${grace}+할부 ${inst})`:""}</div></div>
+                                <div><div style={{ fontSize:"10px", color:"#94a3b8" }}>{grace>0?"거치 후 월 납입액":"월 납입액"}</div><div style={{ fontWeight:600, color:"#0a192f", fontSize:"13px" }}>{fmt(payment)}원</div></div>
+                                <div><div style={{ fontSize:"10px", color:"#94a3b8" }}>차종</div><div style={{ fontWeight:600, color:"#0a192f", fontSize:"13px" }}>{repayForm.vehicleModel||"-"}</div></div>
+                              </div>
+                              <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                                <thead>
+                                  <tr>
+                                    {["회차","납입일","월납입액","원금","이자","잔액"].map(h=>(
+                                      <th key={h} style={{ background:"#0a192f", color:"#fff", padding:"7px 6px", textAlign: h==="회차"||h==="납입일" ? "center":"right", fontSize:"10px" }}>{h}</th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {(rows.length>12 ? rows.slice(0,6) : rows).map(row=>(
+                                    <tr key={row.no} style={{ background: row.no%2===0 ? "#f8fafc":"#fff" }}>
+                                      <td style={{ padding:"5px 6px", textAlign:"center", fontSize:"10.5px", borderBottom:"1px solid #f1f5f9" }}>{row.no}</td>
+                                      <td style={{ padding:"5px 6px", textAlign:"center", fontSize:"10.5px", borderBottom:"1px solid #f1f5f9", color:"#64748b" }}>{row.date}</td>
+                                      <td style={{ padding:"5px 6px", textAlign:"right", fontSize:"10.5px", borderBottom:"1px solid #f1f5f9", fontWeight:600 }}>{fmt(row.payment)}</td>
+                                      <td style={{ padding:"5px 6px", textAlign:"right", fontSize:"10.5px", borderBottom:"1px solid #f1f5f9" }}>{fmt(row.principalPmt)}</td>
+                                      <td style={{ padding:"5px 6px", textAlign:"right", fontSize:"10.5px", borderBottom:"1px solid #f1f5f9", color:"#64748b" }}>{fmt(row.interest)}</td>
+                                      <td style={{ padding:"5px 6px", textAlign:"right", fontSize:"10.5px", borderBottom:"1px solid #f1f5f9" }}>{fmt(row.balance)}</td>
+                                    </tr>
+                                  ))}
+                                  {rows.length>12 && (
+                                    <tr><td colSpan={6} style={{ padding:"8px 6px", textAlign:"center", fontSize:"11px", color:"#94a3b8", letterSpacing:"2px" }}>⋮ 중간 {rows.length-12}회차 생략 ⋮</td></tr>
+                                  )}
+                                  {rows.length>12 && rows.slice(-6).map(row=>(
+                                    <tr key={row.no} style={{ background: row.no%2===0 ? "#f8fafc":"#fff" }}>
+                                      <td style={{ padding:"5px 6px", textAlign:"center", fontSize:"10.5px", borderBottom:"1px solid #f1f5f9" }}>{row.no}</td>
+                                      <td style={{ padding:"5px 6px", textAlign:"center", fontSize:"10.5px", borderBottom:"1px solid #f1f5f9", color:"#64748b" }}>{row.date}</td>
+                                      <td style={{ padding:"5px 6px", textAlign:"right", fontSize:"10.5px", borderBottom:"1px solid #f1f5f9", fontWeight:600 }}>{fmt(row.payment)}</td>
+                                      <td style={{ padding:"5px 6px", textAlign:"right", fontSize:"10.5px", borderBottom:"1px solid #f1f5f9" }}>{fmt(row.principalPmt)}</td>
+                                      <td style={{ padding:"5px 6px", textAlign:"right", fontSize:"10.5px", borderBottom:"1px solid #f1f5f9", color:"#64748b" }}>{fmt(row.interest)}</td>
+                                      <td style={{ padding:"5px 6px", textAlign:"right", fontSize:"10.5px", borderBottom:"1px solid #f1f5f9" }}>{fmt(row.balance)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                              <p style={{ marginTop:"16px", fontSize:"10px", color:"#94a3b8", textAlign:"center" }}>
+                                ※ 실제 납입액은 금융사 기준일·계산방식에 따라 일부 다를 수 있습니다.
+                                {rows.length>12 ? " 전체 회차 상세 내역은 별도 요청해주세요." : ""}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>,

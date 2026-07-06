@@ -156,6 +156,64 @@ async function sendSms(text: string, recipients: string[] = RECIPIENTS): Promise
   console.log("솔라피 SMS 결과:", JSON.stringify(await res.json()));
 }
 
+// base64 데이터 URL → 순수 base64 문자열 분리
+function stripDataUrlPrefix(dataUrl: string): { base64: string; mime: string } {
+  const match = dataUrl.match(/^data:(.+);base64,(.+)$/);
+  if (!match) return { base64: dataUrl, mime: "image/png" };
+  return { mime: match[1], base64: match[2] };
+}
+
+// 솔라피 스토리지에 이미지 업로드 → fileId 발급
+async function uploadImageToSolapi(imageBase64: string): Promise<string> {
+  const { base64, mime } = stripDataUrlPrefix(imageBase64);
+  const authHeader = await getSolapiAuthHeader();
+  const res = await fetch("https://api.solapi.com/storage/v1/files", {
+    method: "POST",
+    headers: { "Authorization": authHeader, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      file: base64,
+      type: "MMS",
+      name: `quote_${Date.now()}.${mime.includes("jpeg") ? "jpg" : "png"}`,
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.fileId) {
+    console.error("솔라피 이미지 업로드 오류:", JSON.stringify(data));
+    throw new Error(data?.errorMessage ?? "이미지 업로드 실패");
+  }
+  return data.fileId as string;
+}
+
+// MMS 발송 (이미지 첨부, 실패 시 텍스트 SMS로 폴백)
+async function sendMms(text: string, recipients: string[], imageBase64: string): Promise<void> {
+  let fileId: string;
+  try {
+    fileId = await uploadImageToSolapi(imageBase64);
+  } catch (e) {
+    console.warn("[MMS 이미지 업로드 실패 → 텍스트 SMS 폴백]:", (e as Error).message);
+    await sendSms(text, recipients);
+    return;
+  }
+  const authHeader = await getSolapiAuthHeader();
+  for (const to of recipients) {
+    const res = await fetch("https://api.solapi.com/messages/v4/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: authHeader },
+      body: JSON.stringify({
+        message: { to, from: SENDER_PHONE, text, type: "MMS", imageId: fileId },
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      console.error(`솔라피 MMS 오류 (${to}):`, err);
+      // 개별 수신자 MMS 실패 시 텍스트 SMS로 폴백
+      await sendSms(text, [to]);
+    } else {
+      console.log(`솔라피 MMS 발송 완료 → ${to}`);
+    }
+  }
+}
+
 // ─── HCM 알림톡 단건 발송 ────────────────────────────────────
 async function sendHcmAlimtalk(
   to: string,
@@ -1406,6 +1464,12 @@ serve(async (req) => {
             } catch {
               await sendSms(buildTaesanMessage(q), TAESAN_RECIPIENTS);
             }
+          } else if (q.type === "quote_send") {
+            const to = (q.to ?? "").replace(/\D/g, "");
+            if (to && q.text) {
+              if (q.imageBase64) await sendMms(q.text, [to], q.imageBase64);
+              else await sendSms(q.text, [to]);
+            }
           } else {
             const { templateKey, variables } = buildHcmVariables(q);
             await sendHcmAlimtalkToAll(templateKey, variables, buildMessage(q));
@@ -1446,6 +1510,26 @@ serve(async (req) => {
           { headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
         );
       }
+    }
+
+    // ── 견적서/상환스케줄 안내 문자 (imageBase64 있으면 MMS, 없으면 SMS) ──
+    if (body.type === "quote_send") {
+      const to = (body.to ?? "").replace(/\D/g, "");
+      if (!to || !body.text) {
+        return new Response(
+          JSON.stringify({ error: "to, text는 필수입니다." }),
+          { status: 400, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+        );
+      }
+      if (body.imageBase64) {
+        await sendMms(body.text, [to], body.imageBase64);
+      } else {
+        await sendSms(body.text, [to]);
+      }
+      return new Response(
+        JSON.stringify({ success: true, type: "quote_send" }),
+        { headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+      );
     }
 
     // ── 업무시간 내 즉시 발송 ────────────────────────────────────

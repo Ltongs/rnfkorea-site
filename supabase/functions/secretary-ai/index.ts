@@ -425,6 +425,33 @@ serve(async (req: Request) => {
         work_type:      "finance_hcm", // 현대CM 구분용
       });
 
+      // ── 확정 시: 익일 사후 미결 할 일 자동 등록 (설정 / 원본서류 징구)
+      if (next_status === "확정") {
+        const tomorrowIso = (() => {
+          const d = new Date(TODAY_ISO);
+          d.setDate(d.getDate() + 1);
+          return d.toISOString().slice(0, 10);
+        })();
+        await Promise.all([
+          db.from("secretary_todos").insert({
+            title:       `${customerName} 설정`,
+            description: `[현대CM] ${customerName} 확정 건 - 설정(담보) 등록 확인`,
+            priority:    "urgent",
+            category:    "finance",
+            due_date:    tomorrowIso,
+            is_done:     false,
+          }),
+          db.from("secretary_todos").insert({
+            title:       `${customerName} 원본`,
+            description: `[현대CM] ${customerName} 확정 건 - 원본서류 징구 확인`,
+            priority:    "urgent",
+            category:    "finance",
+            due_date:    tomorrowIso,
+            is_done:     false,
+          }),
+        ]);
+      }
+
       return new Response(
         JSON.stringify({
           reply: `✅ **${customerName}** 건 → **${next_status}** 상태 변경 완료. 카카오 알림 발송됨.`,
@@ -1463,7 +1490,8 @@ serve(async (req: Request) => {
           // finance_stage 업데이트 (consultation_finance_details 테이블)
           if (financeStageValue && wt === "finance") {
             const {data:fdr} = await db.from("consultation_finance_details")
-              .select("consultation_id").eq("consultation_id", best.id).maybeSingle();
+              .select("consultation_id,finance_stage").eq("consultation_id", best.id).maybeSingle();
+            const prevFinanceStage = (fdr?.finance_stage as string | null | undefined) ?? null;
             if (fdr) {
               await db.from("consultation_finance_details")
                 .update({ finance_stage: financeStageValue })
@@ -1471,6 +1499,34 @@ serve(async (req: Request) => {
             } else {
               await db.from("consultation_finance_details")
                 .insert({ consultation_id: best.id, finance_stage: financeStageValue });
+            }
+
+            // ── 확정 전환 시: 익일 사후 미결 할 일 자동 등록 (설정 / 원본서류 징구)
+            if (financeStageValue === "confirmed" && prevFinanceStage !== "confirmed") {
+              const custName = (best.customer_name as string) || "고객";
+              const tomorrowIso = (() => {
+                const d = new Date(TODAY_ISO);
+                d.setDate(d.getDate() + 1);
+                return d.toISOString().slice(0, 10);
+              })();
+              await Promise.all([
+                db.from("secretary_todos").insert({
+                  title:       `${custName} 설정`,
+                  description: `[금융] ${custName} 확정 건 - 설정(담보) 등록 확인`,
+                  priority:    "urgent",
+                  category:    "finance",
+                  due_date:    tomorrowIso,
+                  is_done:     false,
+                }),
+                db.from("secretary_todos").insert({
+                  title:       `${custName} 원본`,
+                  description: `[금융] ${custName} 확정 건 - 원본서류 징구 확인`,
+                  priority:    "urgent",
+                  category:    "finance",
+                  due_date:    tomorrowIso,
+                  is_done:     false,
+                }),
+              ]);
             }
           }
 
