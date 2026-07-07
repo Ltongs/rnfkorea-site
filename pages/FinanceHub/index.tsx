@@ -56,6 +56,35 @@ type PurchaseRecord = {
 
 type Customer = { id: string; name: string; business_no: string | null; };
 
+// 진흥주문(tb_orders) — 매출건과 연결(sales_record_id)하기 위한 최소 타입
+type TbOrder = {
+  id: string;
+  created_at: string;
+  customer_name_raw: string | null;
+  product_type: string | null;
+  product_spec: string | null;
+  quantity: number | null;
+  status: string;
+  price_to_customer: number | null;
+  sales_record_id: number | null;
+  delivered_at: string | null;
+  invoiced_at: string | null;
+  wheel_returned_at: string | null;
+};
+// AI비서 > 진흥주문 관리 탭과 동일한 방식으로 상태를 계산 — status 컬럼이 아니라
+// delivered_at/invoiced_at/wheel_returned_at 날짜 필드 유무 기준 (두 화면 표시가 어긋나지 않도록).
+// 종결 조건: 발송(납품완료) + 휠반납 + 매출건 연결 (개별 계산서발행 여부는 더 이상 종결 기준이 아님)
+function orderStageLabel(o: TbOrder): string {
+  const wheelDone = !!o.wheel_returned_at;
+  const invoiced = !!o.invoiced_at || ["invoiced","billed_in","payment_in","payment_out","wheel_returned"].includes(o.status);
+  const delivered = !!o.delivered_at || ["delivered","wheel_returned","invoiced","billed_in","payment_in","payment_out"].includes(o.status);
+  const closed = delivered && wheelDone && !!o.sales_record_id;
+  if (closed) return "종결";
+  if (invoiced) return "계산서발행";
+  if (delivered) return wheelDone ? "발송(휠반납✓)" : "발송(납품완료)";
+  return "접수(진흥전달)";
+}
+
 type SalesFormData = {
   sale_date: string; customer_name: string; business_no: string;
   category: string; trade_type: "내수" | "수출"; maker: string; spec: string;
@@ -102,7 +131,7 @@ const PERIODS = ["월간", "분기", "반기", "연간"] as const;
 type Period = typeof PERIODS[number];
 
 const EMPTY_SALES_FORM: SalesFormData = {
-  sale_date: new Date().toISOString().split("T")[0], customer_name: "", business_no: "",
+  sale_date: todayLocalStr(), customer_name: "", business_no: "",
   category: "타이어", trade_type: "내수", maker: "", spec: "",
   quantity: "", unit_price: "", unit_cost: "",
   tax_invoice: false, payment_confirmed: false, payment_date: "",
@@ -110,14 +139,14 @@ const EMPTY_SALES_FORM: SalesFormData = {
 };
 
 const EMPTY_PURCHASE_FORM: PurchaseFormData = {
-  purchase_date: new Date().toISOString().split("T")[0], supplier_name: "", business_no: "",
+  purchase_date: todayLocalStr(), supplier_name: "", business_no: "",
   category: "기타", trade_type: "국내", maker: "", spec: "",
   quantity: "1", unit_price: "",
   tax_invoice: true, payment_confirmed: false, payment_date: "", note: "",
 };
 
 const EMPTY_INVOICE_FORM: InvoiceForm = {
-  invoice_no: "", issue_date: new Date().toISOString().split("T")[0],
+  invoice_no: "", issue_date: todayLocalStr(),
   customer_name: "", business_no: "", supply_amount: "", tax_amount: "", total_amount: "", items: "",
 };
 
@@ -148,24 +177,53 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+// supabase.functions.invoke()가 던지는 에러는 기본적으로 "Edge Function returned a non-2xx status code"처럼
+// 뭉뚱그려진 메시지만 담고 있고, 실제 원인(Edge Function 내부에서 던진 상세 에러 텍스트)은
+// err.context(Response 객체)의 본문에 들어있음. 여기서 그 본문을 꺼내서 보여준다.
+async function extractFnErrorMessage(err: any): Promise<string> {
+  try {
+    if (err?.context && typeof err.context.text === "function") {
+      const bodyText = await err.context.text();
+      try {
+        const parsed = JSON.parse(bodyText);
+        return parsed?.error || parsed?.message || bodyText || err.message || "알 수 없는 오류";
+      } catch {
+        return bodyText || err.message || "알 수 없는 오류";
+      }
+    }
+  } catch { /* 무시하고 아래 기본 메시지로 폴백 */ }
+  return err?.message || "알 수 없는 오류";
+}
+
+// 브라우저 로컬 시간 기준 오늘 날짜 (YYYY-MM-DD). new Date().toISOString()은 UTC 변환 과정에서
+// 한국 시간 새벽 0~8시대에 하루 전 날짜로 잘못 나오는 문제가 있어 로컬 컴포넌트로 직접 조립함.
+function todayLocalStr(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 function getDateRange(year: number, month: number, period: Period) {
   const pad = (n: number) => String(n).padStart(2, "0");
+  // new Date(y, m, 0).getDate()는 로컬 시간 기준으로 구성/조회하므로 시간대 변환이 개입되지 않아 안전함.
+  // (기존에 .toISOString()을 쓰면 로컬→UTC 변환 과정에서 날짜가 하루 밀리는 문제가 있었음 — KST 기준 매달 말일 매출/매입이 누락되던 원인)
+  const lastDay = (y: number, m: number) => new Date(y, m, 0).getDate();
   if (period === "월간") {
     const from = `${year}-${pad(month)}-01`;
-    const to = new Date(year, month, 0).toISOString().split("T")[0];
+    const to = `${year}-${pad(month)}-${pad(lastDay(year, month))}`;
     return { from, to };
   }
   if (period === "분기") {
     const q = Math.ceil(month / 3);
     const fm = (q - 1) * 3 + 1;
     const tm = q * 3;
-    return { from: `${year}-${pad(fm)}-01`, to: new Date(year, tm, 0).toISOString().split("T")[0] };
+    return { from: `${year}-${pad(fm)}-01`, to: `${year}-${pad(tm)}-${pad(lastDay(year, tm))}` };
   }
   if (period === "반기") {
     const h = month <= 6 ? 1 : 2;
     const fm = h === 1 ? 1 : 7;
     const tm = h === 1 ? 6 : 12;
-    return { from: `${year}-${pad(fm)}-01`, to: new Date(year, tm, 0).toISOString().split("T")[0] };
+    return { from: `${year}-${pad(fm)}-01`, to: `${year}-${pad(tm)}-${pad(lastDay(year, tm))}` };
   }
   return { from: `${year}-01-01`, to: `${year}-12-31` };
 }
@@ -236,6 +294,16 @@ const FinanceHubPage: React.FC = () => {
   const purchInvRef = useRef<HTMLInputElement>(null);
   const [parsingPurchInv, setParsingPurchInv] = useState(false);
 
+  // 진흥주문(tb_orders) 연결
+  const [showOrderLinkModal, setShowOrderLinkModal] = useState(false);
+  const [orderLinkTarget, setOrderLinkTarget] = useState<SalesRecord | null>(null);
+  const [orderCandidates, setOrderCandidates] = useState<TbOrder[]>([]);
+  const [orderSearch, setOrderSearch] = useState("");
+  const [orderSelectedIds, setOrderSelectedIds] = useState<Set<string>>(new Set());
+  const [loadingOrderCandidates, setLoadingOrderCandidates] = useState(false);
+  const [orderLinkSaving, setOrderLinkSaving] = useState(false);
+  const [linkedOrdersBySales, setLinkedOrdersBySales] = useState<Record<number, TbOrder[]>>({});
+
   // 엑셀 일괄등록 (매출/매입 자동 구분)
   const excelRef = useRef<HTMLInputElement>(null);
   const [importingExcel, setImportingExcel] = useState(false);
@@ -294,6 +362,62 @@ const FinanceHubPage: React.FC = () => {
     setAllSales((sa.data || []) as SalesRecord[]);
     setAllPurchases((pa.data || []) as PurchaseRecord[]);
     setLoading(false);
+    const salesIds = (s.data || []).map((r: any) => r.id);
+    if (salesIds.length > 0) void loadLinkedOrders(salesIds);
+    else setLinkedOrdersBySales({});
+  }
+
+  // 진흥주문(tb_orders) 연결 현황 일괄 조회 — 화면에 보이는 매출건들에 이미 연결된 주문을 배지로 보여주기 위함
+  async function loadLinkedOrders(salesIds: number[]) {
+    const { data, error } = await supabase.from("tb_orders").select("*").in("sales_record_id", salesIds);
+    if (error) return; // 조용히 실패 — tb_orders.sales_record_id 컬럼이 아직 없으면 여기서 에러가 날 수 있음
+    const grouped: Record<number, TbOrder[]> = {};
+    for (const o of (data || []) as TbOrder[]) {
+      if (o.sales_record_id == null) continue;
+      (grouped[o.sales_record_id] ||= []).push(o);
+    }
+    setLinkedOrdersBySales(grouped);
+  }
+
+  // 진흥주문 연결 모달 열기 — 거래처명으로 우선 검색
+  function openOrderLink(rec: SalesRecord) {
+    setOrderLinkTarget(rec);
+    const cleanName = (rec.customer_name || "").replace(/^\(유\)|^\(주\)|^\(재\)|^\(사\)/g, "").trim();
+    setOrderSearch(cleanName);
+    setOrderSelectedIds(new Set((linkedOrdersBySales[rec.id] || []).map(o => o.id)));
+    setShowOrderLinkModal(true);
+    void loadOrderCandidates(cleanName);
+  }
+
+  async function loadOrderCandidates(q: string) {
+    setLoadingOrderCandidates(true);
+    const cleanQ = q.trim().replace(/^\(유\)|^\(주\)|^\(재\)|^\(사\)/g, "").trim();
+    let query = supabase.from("tb_orders").select("*").order("created_at", { ascending: false }).limit(100);
+    if (cleanQ) query = query.ilike("customer_name_raw", `%${cleanQ}%`);
+    const { data, error } = await query;
+    if (error) setError(error.message);
+    setOrderCandidates((data || []) as TbOrder[]);
+    setLoadingOrderCandidates(false);
+  }
+
+  // 체크된 주문은 이 매출건에 연결, 체크 해제된(이전에 연결돼 있던) 주문은 연결 해제
+  async function confirmOrderLink() {
+    if (!orderLinkTarget) return;
+    setOrderLinkSaving(true); setError(null);
+    const toLink = Array.from(orderSelectedIds);
+    const previouslyLinked = orderCandidates.filter(o => o.sales_record_id === orderLinkTarget.id).map(o => o.id);
+    const toUnlink = previouslyLinked.filter(id => !orderSelectedIds.has(id));
+
+    if (toLink.length > 0) {
+      const { error: linkErr } = await supabase.from("tb_orders").update({ sales_record_id: orderLinkTarget.id }).in("id", toLink);
+      if (linkErr) { setError(linkErr.message); setOrderLinkSaving(false); return; }
+    }
+    if (toUnlink.length > 0) {
+      await supabase.from("tb_orders").update({ sales_record_id: null }).in("id", toUnlink);
+    }
+    setShowOrderLinkModal(false); setOrderLinkTarget(null); setOrderSelectedIds(new Set());
+    setOrderLinkSaving(false);
+    loadAll();
   }
 
   // 미완성 건: is_confirmed=false인 건만 (category=기타이고 미확정)
@@ -510,7 +634,7 @@ const FinanceHubPage: React.FC = () => {
   }
   async function quickToggleSales(id: number, field: string, current: boolean) {
     const upd: Record<string, unknown> = { [field]: !current };
-    if (field === "payment_confirmed" && !current) upd.payment_date = new Date().toISOString().split("T")[0];
+    if (field === "payment_confirmed" && !current) upd.payment_date = todayLocalStr();
     await supabase.from("sales_records").update(upd).eq("id", id); loadAll();
   }
 
@@ -551,7 +675,7 @@ const FinanceHubPage: React.FC = () => {
   }
   async function quickTogglePurchase(id: number, current: boolean) {
     const upd: Record<string, unknown> = { payment_confirmed: !current };
-    if (!current) upd.payment_date = new Date().toISOString().split("T")[0];
+    if (!current) upd.payment_date = todayLocalStr();
     await supabase.from("purchase_records").update(upd).eq("id", id); loadAll();
   }
 
@@ -579,7 +703,7 @@ const FinanceHubPage: React.FC = () => {
       const cleanName = (parsed.customer_name || "").replace(/^\(유\)|^\(주\)|^\(재\)|^\(사\)/g, "").trim();
       setMatchSelectedIds(new Set()); setMatchSearch(cleanName);
       setShowMatchModal(true); loadMatchCandidates(cleanName);
-    } catch (err: any) { setError("계산서 인식 실패: " + (err?.message || "")); }
+    } catch (err: any) { const msg = await extractFnErrorMessage(err); setError("계산서 인식 실패: " + msg); }
     finally { setParsingSalesInv(false); if (salesInvRef.current) salesInvRef.current.value = ""; }
   }
 
@@ -628,10 +752,16 @@ const FinanceHubPage: React.FC = () => {
           .eq("id", rec.id);
       } else {
         // 복수건: 기존 비율대로 계산서 금액 배분
+        // 마지막 건은 반올림하지 않고 "계산서 총액 - 지금까지 배분한 합"으로 역산해서
+        // 배분금액 합이 정확히 계산서 총액과 일치하게 함 (원 단위 반올림 오차 누적 방지 — 마지막 건이 오차 흡수)
         const totalExisting = selectedRecords.reduce((s, r) => s + (r.total_revenue || 0), 0);
-        for (const rec of selectedRecords) {
+        let allocatedSoFar = 0;
+        for (let i = 0; i < selectedRecords.length; i++) {
+          const rec = selectedRecords[i];
+          const isLast = i === selectedRecords.length - 1;
           const ratio = totalExisting > 0 ? (rec.total_revenue || 0) / totalExisting : 1 / selectedRecords.length;
-          const allocSupply = Math.round(invoiceSupply * ratio);
+          const allocSupply = isLast ? (invoiceSupply - allocatedSoFar) : Math.round(invoiceSupply * ratio);
+          allocatedSoFar += allocSupply;
           const newUnitPrice = rec.quantity > 0 ? Math.round(allocSupply / rec.quantity) : rec.unit_price;
           await supabase.from("sales_records")
             .update({ unit_price: newUnitPrice, tax_invoice: true, invoice_id: invRow.id })
@@ -664,7 +794,7 @@ const FinanceHubPage: React.FC = () => {
       const tradeType: "국내" | "수입" = (parsed.tax_amount ?? null) === 0 ? "수입" : "국내";
       const { data: invRow, error: invErr } = await supabase.from("tax_invoices").insert({
         direction: "purchase", invoice_no: parsed.invoice_no || null,
-        issue_date: parsed.sale_date || new Date().toISOString().split("T")[0],
+        issue_date: parsed.sale_date || todayLocalStr(),
         customer_name: parsed.customer_name || null,
         business_no: parsed.business_no ? String(parsed.business_no).replace(/[^0-9]/g, "") : null,
         supply_amount: parsed.supply_amount ?? null, tax_amount: parsed.tax_amount ?? null,
@@ -672,7 +802,7 @@ const FinanceHubPage: React.FC = () => {
       }).select().single();
       if (invErr || !invRow) throw new Error(invErr?.message || "계산서 등록 실패");
       const { data: newRec } = await supabase.from("purchase_records").insert({
-        purchase_date: parsed.sale_date || new Date().toISOString().split("T")[0],
+        purchase_date: parsed.sale_date || todayLocalStr(),
         supplier_name: parsed.customer_name || "거래처 미입력",
         business_no: parsed.business_no ? String(parsed.business_no).replace(/[^0-9]/g, "") : null,
         category: guessCategory(parsed.items || ""),
@@ -684,7 +814,7 @@ const FinanceHubPage: React.FC = () => {
       }).select().single();
       await loadAll();
       if (newRec) { setActiveTab("purchases"); openEditPurchase(newRec as PurchaseRecord); }
-    } catch (err: any) { setError("계산서 인식/등록 실패: " + (err?.message || "")); }
+    } catch (err: any) { const msg = await extractFnErrorMessage(err); setError("계산서 인식/등록 실패: " + msg); }
     finally { setParsingPurchInv(false); if (purchInvRef.current) purchInvRef.current.value = ""; }
   }
 
@@ -962,7 +1092,7 @@ const FinanceHubPage: React.FC = () => {
 
             {activeTab === "sales" ? (
               <>
-                <input ref={salesInvRef} type="file" accept="image/*" className="hidden" onChange={handleSalesInvFile} />
+                <input ref={salesInvRef} type="file" accept="image/*,.pdf,application/pdf" className="hidden" onChange={handleSalesInvFile} />
                 <button onClick={() => salesInvRef.current?.click()} disabled={parsingSalesInv} className={btnHero}>
                   {parsingSalesInv ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                   {parsingSalesInv ? "인식 중..." : "계산서 업로드"}
@@ -973,7 +1103,7 @@ const FinanceHubPage: React.FC = () => {
               </>
             ) : (
               <>
-                <input ref={purchInvRef} type="file" accept="image/*" className="hidden" onChange={handlePurchInvFile} />
+                <input ref={purchInvRef} type="file" accept="image/*,.pdf,application/pdf" className="hidden" onChange={handlePurchInvFile} />
                 <button onClick={() => purchInvRef.current?.click()} disabled={parsingPurchInv} className={btnHero}>
                   {parsingPurchInv ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                   {parsingPurchInv ? "인식 중..." : "계산서 업로드"}
@@ -1134,6 +1264,27 @@ const FinanceHubPage: React.FC = () => {
                                       </button>
                                     )}
                                   </div>
+                                </div>
+                                <div>
+                                  <p className="text-[11px] text-gray-400 mb-0.5">진흥주문 연결</p>
+                                  <div className="flex items-center gap-1.5">
+                                    {(linkedOrdersBySales[r.id]?.length ?? 0) > 0 ? (
+                                      <p className="font-semibold text-xs text-blue-600">🔗 {linkedOrdersBySales[r.id].length}건 연결됨</p>
+                                    ) : (
+                                      <p className="font-semibold text-xs text-gray-400">연결 안 됨</p>
+                                    )}
+                                    <button
+                                      onClick={() => openOrderLink(r)}
+                                      className="text-[10px] px-1.5 py-0.5 rounded-lg bg-blue-50 text-blue-500 hover:bg-blue-100 border border-blue-200 transition-all"
+                                    >
+                                      연결관리
+                                    </button>
+                                  </div>
+                                  {(linkedOrdersBySales[r.id]?.length ?? 0) > 0 && (
+                                    <p className="text-[10px] text-gray-400 mt-1 max-w-[220px]">
+                                      {linkedOrdersBySales[r.id].map(o => o.customer_name_raw).filter((v,i,a)=>a.indexOf(v)===i).join(", ")}
+                                    </p>
+                                  )}
                                 </div>
                                 <div>
                                   <p className="text-[11px] text-gray-400 mb-0.5">납품일</p>
@@ -1692,6 +1843,60 @@ const FinanceHubPage: React.FC = () => {
             <button onClick={confirmMatch} disabled={matchSaving} className={btnPrimary}>
               {matchSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
               매칭 확정 ({matchSelectedIds.size}건)
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── 진흥주문 연결 모달 ────────────────────────────────────────────── */}
+      {showOrderLinkModal && orderLinkTarget && (
+        <Modal title={`진흥주문 연결 — ${orderLinkTarget.customer_name}`} onClose={() => setShowOrderLinkModal(false)} wide>
+          <div className="space-y-4">
+            <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 flex flex-wrap gap-x-6 gap-y-1 text-xs">
+              <span className="text-gray-400">매출일 <span className="text-gray-700 font-medium">{orderLinkTarget.sale_date}</span></span>
+              <span className="text-gray-400">품목 <span className="text-gray-700 font-medium">{[orderLinkTarget.maker, orderLinkTarget.spec].filter(Boolean).join(" / ") || "-"}</span></span>
+              <span className="text-gray-400">매출액 <span className="text-gray-700 font-medium">{fmt(orderLinkTarget.total_revenue || 0)}</span></span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input value={orderSearch} onChange={e => setOrderSearch(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && loadOrderCandidates(orderSearch)}
+                  placeholder="거래처명으로 진흥주문 검색" className="w-full h-[38px] pl-9 pr-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-orange-400" />
+              </div>
+              <button onClick={() => loadOrderCandidates(orderSearch)} className={btnSecondary}><Search className="w-4 h-4" />검색</button>
+            </div>
+            <div className="border border-gray-100 rounded-xl overflow-hidden max-h-72 overflow-y-auto divide-y divide-gray-50">
+              {loadingOrderCandidates ? (
+                <div className="flex items-center justify-center py-8 text-gray-400"><Loader2 className="w-5 h-5 animate-spin text-orange-500 mr-2" />불러오는 중...</div>
+              ) : orderCandidates.length === 0 ? (
+                <div className="py-8 text-center text-sm text-gray-400">검색된 진흥주문이 없습니다.</div>
+              ) : orderCandidates.map(o => {
+                const checked = orderSelectedIds.has(o.id);
+                const linkedElsewhere = o.sales_record_id != null && o.sales_record_id !== orderLinkTarget.id;
+                return (
+                  <label key={o.id} className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${linkedElsewhere ? "opacity-50 cursor-not-allowed" : "cursor-pointer"} ${checked ? "bg-blue-50" : "hover:bg-gray-50"}`}>
+                    <div onClick={e => { e.preventDefault(); if (linkedElsewhere) return; setOrderSelectedIds(prev => { const n = new Set(prev); checked ? n.delete(o.id) : n.add(o.id); return n; }); }}
+                      className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 ${checked ? "bg-blue-500 border-blue-500" : "bg-white border-gray-300"}`}>
+                      {checked && <Check className="w-3 h-3 text-white" />}
+                    </div>
+                    <span className="text-xs text-gray-400 w-32 shrink-0">{new Date(o.created_at).toLocaleDateString("ko-KR")}</span>
+                    <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">{o.customer_name_raw || "거래처 미입력"}</span>
+                    <span className="text-xs text-gray-500 truncate flex-1">{[o.product_type, o.product_spec].filter(Boolean).join(" / ") || "-"}{o.quantity ? ` (${o.quantity}개)` : ""}</span>
+                    <span className="text-[11px] px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-600 shrink-0">{orderStageLabel(o)}</span>
+                    {linkedElsewhere && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-600 font-medium shrink-0">다른 매출건에 연결됨</span>}
+                    {o.price_to_customer != null && <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">{fmt(o.price_to_customer)}</span>}
+                  </label>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-gray-400">체크된 주문이 이 매출건에 연결됩니다. 이미 연결돼 있던 주문의 체크를 해제하면 연결이 풀립니다. 다른 매출건에 이미 연결된 주문은 그쪽 연결을 먼저 해제해야 선택할 수 있습니다.</p>
+          </div>
+          <div className="flex justify-end gap-3 mt-5 pt-4 border-t border-gray-100">
+            <button onClick={() => setShowOrderLinkModal(false)} className={btnSecondary}>취소</button>
+            <button onClick={confirmOrderLink} disabled={orderLinkSaving} className={btnPrimary}>
+              {orderLinkSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
+              연결 저장 ({orderSelectedIds.size}건)
             </button>
           </div>
         </Modal>

@@ -1469,6 +1469,10 @@ VIN: ${nextVin}`);
           }`}>{loginRoleLabel}</span>
         </div>
         <div className="flex items-center gap-1.5">
+          <button type="button" onClick={()=>navigate("/work/secretary")}
+            className="inline-flex items-center px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-medium hover:border-gray-300 transition-all">
+            ← AI비서로
+          </button>
           <button type="button" onClick={fetchRows}
             className="inline-flex items-center px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-medium hover:border-gray-300 transition-all">
             새로고침

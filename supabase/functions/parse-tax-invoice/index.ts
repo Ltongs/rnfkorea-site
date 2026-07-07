@@ -65,8 +65,28 @@ serve(async (req) => {
 
     const safeDirection: "sales" | "purchase" = direction === "purchase" ? "purchase" : "sales";
 
-    const allowedMediaTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
-    const safeMediaType = allowedMediaTypes.includes(media_type) ? media_type : "image/png";
+    const allowedImageTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    const isPdf = media_type === "application/pdf";
+    const safeMediaType = isPdf ? "application/pdf" : (allowedImageTypes.includes(media_type) ? media_type : "image/png");
+
+    // PDF는 해상도 손실 없이 그대로 문서로 전달 (이미지로 취급하면 Claude가 읽지 못함)
+    const contentBlock = isPdf
+      ? {
+          type: "document",
+          source: {
+            type: "base64",
+            media_type: "application/pdf",
+            data: image_base64,
+          },
+        }
+      : {
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: safeMediaType,
+            data: image_base64,
+          },
+        };
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -82,14 +102,7 @@ serve(async (req) => {
           {
             role: "user",
             content: [
-              {
-                type: "image",
-                source: {
-                  type: "base64",
-                  media_type: safeMediaType,
-                  data: image_base64,
-                },
-              },
+              contentBlock,
               {
                 type: "text",
                 text: buildExtractPrompt(safeDirection),

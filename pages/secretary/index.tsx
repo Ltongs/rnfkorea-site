@@ -8,6 +8,8 @@ import { useAuth } from "../../lib/auth";
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 type TabKey = "chat"|"schedule"|"status"|"orders"|"hyundaicm"|"taesan"|"finance"|"narumi"|"jinheung"|"email"|"memo"|"financehub"|"exportshop"|"quotation"|"statement";
+// 메뉴 탭 순서 — 상단 탭바 렌더링과 Ctrl+Option+←/→ 단축키 이동이 이 배열 하나를 공유합니다.
+const TAB_ORDER: TabKey[] = ["chat","schedule","status","orders","hyundaicm","taesan","finance","narumi","jinheung","email","memo","financehub","exportshop","quotation","statement"];
 type EmailReport = {
   id:number; created_at:string; report_date:string;
   title:string; content:string; source:string; is_read:boolean;
@@ -106,6 +108,7 @@ type FH_SalesRecord = {
   delivery_date: string | null; delivery_confirmed: boolean;
   wheel_returned: boolean; closing: boolean; note: string | null;
   invoice_id: number | null; is_confirmed: boolean;
+  consultation_id: number | null; // 예전 방식(1:1) 연결 — 매출 생성 시 상담건과 바로 묶인 경우 (개별 계산서발행 흐름에서 생성됨)
 };
 type FH_PurchaseRecord = {
   id: number; purchase_date: string; supplier_name: string; business_no: string | null;
@@ -141,6 +144,36 @@ type FH_InvoiceForm = {
   total_amount: string; items: string;
 };
 type FH_Period = "월간" | "분기" | "반기" | "연간";
+// 매출건(sales_records)에 연결 가능한 진흥주문 후보 — tb_orders(신규 방식)와
+// 레거시 상담 기반 방식(타이어/배터리/수출) 여러 소스를 하나의 모양으로 합쳐서 다룸.
+type FH_OrderCandidate = {
+  key: string;           // "order:<uuid>" | "tire:<id>" | "battery:<id>" | "export:<id>" — 리스트 key 및 선택 상태 식별용
+  source: "order" | "tire" | "battery" | "export";
+  rawId: string | number; // tb_orders.id(uuid) 또는 consultation_id(number)
+  created_at: string;
+  customer_name: string;
+  product_detail: string;
+  status_label: string;
+  price_to_customer: number | null;
+  sales_record_id: number | null;
+};
+// 타이어/진흥주문: 발송(납품) + 휠반납 + 매출연결이 다 되면 종결
+// (개별 계산서발행 여부는 더 이상 종결 기준이 아님 — 매출연결로 대체됨)
+function fhStageLabel(delivered:boolean, wheelDone:boolean, salesLinked:boolean, invoiced:boolean, cancelled?:boolean): string {
+  if (cancelled) return "취소";
+  if (delivered && wheelDone && salesLinked) return "종결";
+  if (invoiced) return "계산서발행";
+  if (delivered) return wheelDone ? "발송(휠반납✓)" : "발송(납품완료)";
+  return "접수(진흥전달)";
+}
+// 배터리/수출: 휠반납 개념이 없으므로 발송(납품) + 매출연결이면 종결
+function fhStageLabelNoWheel(delivered:boolean, salesLinked:boolean, invoiced:boolean, cancelled?:boolean): string {
+  if (cancelled) return "취소";
+  if (delivered && salesLinked) return "종결";
+  if (invoiced) return "계산서발행";
+  if (delivered) return "발송(납품완료)";
+  return "접수(계약)";
+}
 
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
@@ -162,8 +195,11 @@ const ACT_LBL:Record<string,string> = {todo:"✅ 할일",schedule:"📅 일정",
 const CAT_CLR:Record<string,string> = {meeting:"#60a5fa",call:"#fb923c",followup:"#c084fc",task:"#34d399"};
 
 // ─── 유틸 ─────────────────────────────────────────────────────────────────────
-const todayStr = () => { const d=new Date(); d.setHours(d.getHours()+9); return d.toISOString().slice(0,10); };
-const nowTimeStr = () => { const d=new Date(); d.setHours(d.getHours()+9); d.setMinutes(Math.round(d.getMinutes()/10)*10); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+// 브라우저는 이미 로컬(한국) 시간대로 동작하므로 여기서 9시간을 추가로 더하면 안 됨.
+// (기존엔 +9시간 후 toISOString()을 썼는데, 이는 서버가 UTC로 도는 경우에 맞는 보정이라
+//  브라우저 컨텍스트에서는 오후 3시 이후 날짜가 하루 앞으로 밀리는 버그가 있었음)
+const todayStr = () => { const d=new Date(); const p=(n:number)=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
+const nowTimeStr = () => { const d=new Date(); d.setMinutes(Math.round(d.getMinutes()/10)*10); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
 const nowTs = () => new Date().toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}).replace(". ","월 ").replace(". ","일 ");
 const pad2 = (n:number) => String(n).padStart(2,"0");
 const fmtDate = (d:string) => { const dt=new Date(d+(d.includes("T")?"":"T00:00:00")); return `${dt.getMonth()+1}월 ${dt.getDate()}일`; };
@@ -196,18 +232,18 @@ const FH_CAT_COLOR:Record<string,string> = {
 };
 const FH_PERIODS = ["월간","분기","반기","연간"] as const;
 const FH_EMPTY_SALES:FH_SalesFormData = {
-  sale_date:new Date().toISOString().split("T")[0],customer_name:"",business_no:"",
+  sale_date:todayStr(),customer_name:"",business_no:"",
   category:"타이어",trade_type:"내수",maker:"",spec:"",quantity:"",unit_price:"",unit_cost:"",
   tax_invoice:false,payment_confirmed:false,payment_date:"",
   delivery_date:"",delivery_confirmed:false,wheel_returned:false,closing:false,note:"",
 };
 const FH_EMPTY_PURCHASE:FH_PurchaseFormData = {
-  purchase_date:new Date().toISOString().split("T")[0],supplier_name:"",business_no:"",
+  purchase_date:todayStr(),supplier_name:"",business_no:"",
   category:"기타",trade_type:"국내",maker:"",spec:"",quantity:"1",unit_price:"",
   tax_invoice:true,payment_confirmed:false,payment_date:"",note:"",
 };
 const FH_EMPTY_INV:FH_InvoiceForm = {
-  invoice_no:"",issue_date:new Date().toISOString().split("T")[0],
+  invoice_no:"",issue_date:todayStr(),
   customer_name:"",business_no:"",supply_amount:"",tax_amount:"",total_amount:"",items:"",
 };
 const fhFmt = (v:number) => `${Math.round(v||0).toLocaleString("ko-KR")}원`;
@@ -224,11 +260,26 @@ function fhGuessCategory(spec:string):string {
 function fhFileToBase64(file:File):Promise<string>{
   return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res((r.result as string).split(",")[1]||"");r.onerror=()=>rej(new Error("파일 읽기 실패"));r.readAsDataURL(file);});
 }
+// supabase.functions.invoke() 에러는 기본적으로 뭉뚱그려진 메시지("...non-2xx status code")만 담고 있고
+// 실제 원인은 err.context(Response)의 본문에 있음 — 여기서 꺼내서 보여줌.
+async function fhExtractFnErrorMessage(err:any):Promise<string>{
+  try{
+    if(err?.context&&typeof err.context.text==="function"){
+      const bodyText=await err.context.text();
+      try{ const parsed=JSON.parse(bodyText); return parsed?.error||parsed?.message||bodyText||err.message||"알 수 없는 오류"; }
+      catch{ return bodyText||err.message||"알 수 없는 오류"; }
+    }
+  }catch{ /* 무시하고 폴백 */ }
+  return err?.message||"알 수 없는 오류";
+}
 function fhGetDateRange(year:number,month:number,period:FH_Period){
   const pad=(n:number)=>String(n).padStart(2,"0");
-  if(period==="월간"){const from=`${year}-${pad(month)}-01`;const to=new Date(year,month,0).toISOString().split("T")[0];return{from,to};}
-  if(period==="분기"){const q=Math.ceil(month/3);const fm=(q-1)*3+1;const tm=q*3;return{from:`${year}-${pad(fm)}-01`,to:new Date(year,tm,0).toISOString().split("T")[0]};}
-  if(period==="반기"){const h=month<=6?1:2;const fm=h===1?1:7;const tm=h===1?6:12;return{from:`${year}-${pad(fm)}-01`,to:new Date(year,tm,0).toISOString().split("T")[0]};}
+  // new Date(y,m,0).getDate()는 로컬 시간 기준으로 구성/조회하므로 시간대 변환이 개입되지 않아 안전함.
+  // (기존 .toISOString() 방식은 로컬→UTC 변환 중 날짜가 하루 밀려 KST 기준 매달 말일 매출/매입이 누락되는 버그가 있었음)
+  const lastDay=(y:number,m:number)=>new Date(y,m,0).getDate();
+  if(period==="월간"){const from=`${year}-${pad(month)}-01`;const to=`${year}-${pad(month)}-${pad(lastDay(year,month))}`;return{from,to};}
+  if(period==="분기"){const q=Math.ceil(month/3);const fm=(q-1)*3+1;const tm=q*3;return{from:`${year}-${pad(fm)}-01`,to:`${year}-${pad(tm)}-${pad(lastDay(year,tm))}`};}
+  if(period==="반기"){const h=month<=6?1:2;const fm=h===1?1:7;const tm=h===1?6:12;return{from:`${year}-${pad(fm)}-01`,to:`${year}-${pad(tm)}-${pad(lastDay(year,tm))}`};}
   return{from:`${year}-01-01`,to:`${year}-12-31`};
 }
 
@@ -323,6 +374,7 @@ function ExportShopTab({ onNavigate }: { onNavigate:(path:string)=>void }) {
   React.useEffect(()=>{
     if(!selected) return;
     const handler = (e: KeyboardEvent) => {
+      if(e.ctrlKey || e.altKey || e.metaKey) return; // Ctrl+Option 탭 이동 단축키와 충돌 방지
       if(e.key==="Escape") closeModal();
       if(e.key==="ArrowRight") setImgIdx(i=>Math.min(i+1,(selected.images.length||1)-1));
       if(e.key==="ArrowLeft")  setImgIdx(i=>Math.max(i-1,0));
@@ -640,6 +692,16 @@ function FinanceHubTab() {
   const [detailSales, setDetailSales] = React.useState<FH_SalesRecord|null>(null);
   const [detailPurchase, setDetailPurchase] = React.useState<FH_PurchaseRecord|null>(null);
 
+  // 진흥주문 연결 (tb_orders + 레거시 상담기반 consultation_tire_details 통합)
+  const [showOrderLinkModal, setShowOrderLinkModal] = React.useState(false);
+  const [orderLinkTarget, setOrderLinkTarget] = React.useState<FH_SalesRecord|null>(null);
+  const [orderCandidates, setOrderCandidates] = React.useState<FH_OrderCandidate[]>([]);
+  const [orderSearch, setOrderSearch] = React.useState("");
+  const [orderSelectedIds, setOrderSelectedIds] = React.useState<Set<string>>(new Set());
+  const [loadingOrderCandidates, setLoadingOrderCandidates] = React.useState(false);
+  const [orderLinkSaving, setOrderLinkSaving] = React.useState(false);
+  const [linkedOrdersBySales, setLinkedOrdersBySales] = React.useState<Record<number, FH_OrderCandidate[]>>({});
+
   const {from,to} = React.useMemo(()=>fhGetDateRange(year,month,period),[year,month,period]);
 
   React.useEffect(()=>{
@@ -666,6 +728,177 @@ function FinanceHubTab() {
     setAllSales((sa.data||[])as FH_SalesRecord[]);
     setAllPurchases((pa.data||[])as FH_PurchaseRecord[]);
     setLoading(false);
+    const salesIds=(s.data||[]).map((r:any)=>r.id);
+    if(salesIds.length>0) void loadLinkedOrders(salesIds); else setLinkedOrdersBySales({});
+  }
+  // 진흥주문 연결 현황 일괄 조회 — 화면에 보이는 매출건들에 이미 연결된 주문(신규+레거시 타이어/배터리/수출)을 배지로 보여주기 위함
+  async function loadLinkedOrders(salesIds:number[]){
+    const[ordRes,tireRes,battRes,expRes]=await Promise.all([
+      supabase.from("tb_orders").select("*").in("sales_record_id",salesIds),
+      supabase.from("consultation_tire_details").select("consultation_id,process_stage,process_status,wheel_returned_at,price_to_customer,sales_record_id,tire_size,vehicle_info,vehicle_type").in("sales_record_id",salesIds),
+      supabase.from("consultation_battery_details").select("consultation_id,process_stage,sales_record_id,battery_voltage,battery_capacity_ah,battery_vehicle_type,battery_quantity").in("sales_record_id",salesIds),
+      supabase.from("consultation_export_details").select("consultation_id,process_stage,export_stage,sales_record_id,product_name,destination_country").in("sales_record_id",salesIds),
+    ]);
+    const grouped:Record<number,FH_OrderCandidate[]>={};
+    if(!ordRes.error){
+      for(const o of (ordRes.data||[])as any[]){
+        if(o.sales_record_id==null)continue;
+        (grouped[o.sales_record_id]||=[]).push(orderRowToCandidate(o));
+      }
+    }
+    // 레거시 상담 기반(타이어/배터리/수출) — consultation_id로 customer_name 조회 필요
+    const allLegacyRows=[
+      ...((tireRes.error?[]:tireRes.data)||[]).map((d:any)=>({...d,__kind:"tire" as const})),
+      ...((battRes.error?[]:battRes.data)||[]).map((d:any)=>({...d,__kind:"battery" as const})),
+      ...((expRes.error?[]:expRes.data)||[]).map((d:any)=>({...d,__kind:"export" as const})),
+    ];
+    const cids=allLegacyRows.map(d=>d.consultation_id);
+    let nameMap:Record<number,string>={};
+    if(cids.length>0){
+      const{data:cs}=await supabase.from("consultation_cases").select("id,customer_name").in("id",cids);
+      (cs||[]).forEach((c:any)=>{nameMap[c.id]=c.customer_name;});
+    }
+    for(const d of allLegacyRows){
+      if(d.sales_record_id==null)continue;
+      const name=nameMap[d.consultation_id]||"거래처 미확인";
+      const cand=d.__kind==="tire"?tireRowToCandidate(d,name):d.__kind==="battery"?batteryRowToCandidate(d,name):exportRowToCandidate(d,name);
+      (grouped[d.sales_record_id]||=[]).push(cand);
+    }
+    setLinkedOrdersBySales(grouped);
+  }
+  function orderRowToCandidate(o:any):FH_OrderCandidate{
+    const wheelDone=!!o.wheel_returned_at;
+    const invoiced=!!o.invoiced_at||["invoiced","billed_in","payment_in","payment_out","wheel_returned"].includes(o.status);
+    const delivered=!!o.delivered_at||["delivered","wheel_returned","invoiced","billed_in","payment_in","payment_out"].includes(o.status);
+    return {
+      key:`order:${o.id}`, source:"order", rawId:o.id, created_at:o.created_at,
+      customer_name:o.customer_name_raw||"거래처 미입력",
+      product_detail:[o.product_type,o.product_spec].filter(Boolean).join(" / ")+(o.quantity?` (${o.quantity}개)`:""),
+      status_label:fhStageLabel(delivered,wheelDone,!!o.sales_record_id,invoiced),
+      price_to_customer:o.price_to_customer??null, sales_record_id:o.sales_record_id??null,
+    };
+  }
+  function tireRowToCandidate(d:any,customerName:string):FH_OrderCandidate{
+    const wheelDone=!!d.wheel_returned_at;
+    const stage=d.process_stage??d.process_status;
+    const cancelled=stage==="cancelled";
+    const invoiced=stage==="invoiced";
+    const delivered=stage==="delivery"||stage==="invoiced";
+    return {
+      key:`tire:${d.consultation_id}`, source:"tire", rawId:d.consultation_id, created_at:d.created_at??"",
+      customer_name:customerName,
+      product_detail:[d.tire_size,d.vehicle_info,d.vehicle_type].filter(Boolean).join(" / ")||"(상세 미입력)",
+      status_label:fhStageLabel(delivered,wheelDone,!!d.sales_record_id,invoiced,cancelled),
+      price_to_customer:d.price_to_customer??null, sales_record_id:d.sales_record_id??null,
+    };
+  }
+  function batteryRowToCandidate(d:any,customerName:string):FH_OrderCandidate{
+    const stage=d.process_stage;
+    const cancelled=stage==="cancelled";
+    const invoiced=stage==="invoiced";
+    const delivered=stage==="delivery"||stage==="invoiced";
+    return {
+      key:`battery:${d.consultation_id}`, source:"battery", rawId:d.consultation_id, created_at:d.created_at??"",
+      customer_name:customerName,
+      product_detail:[d.battery_vehicle_type,d.battery_voltage?`${d.battery_voltage}V`:null,d.battery_capacity_ah?`${d.battery_capacity_ah}Ah`:null,d.battery_quantity?`${d.battery_quantity}개`:null].filter(Boolean).join(" / ")||"(상세 미입력)",
+      status_label:fhStageLabelNoWheel(delivered,!!d.sales_record_id,invoiced,cancelled),
+      price_to_customer:d.price_to_customer??null, sales_record_id:d.sales_record_id??null,
+    };
+  }
+  function exportRowToCandidate(d:any,customerName:string):FH_OrderCandidate{
+    const stage=d.process_stage??d.export_stage;
+    const cancelled=stage==="cancelled";
+    const invoiced=stage==="invoiced";
+    const delivered=stage==="delivery"||stage==="invoiced";
+    return {
+      key:`export:${d.consultation_id}`, source:"export", rawId:d.consultation_id, created_at:d.created_at??"",
+      customer_name:customerName,
+      product_detail:[d.product_name,d.destination_country].filter(Boolean).join(" / ")||"(상세 미입력)",
+      status_label:fhStageLabelNoWheel(delivered,!!d.sales_record_id,invoiced,cancelled),
+      price_to_customer:d.price_to_customer??null, sales_record_id:d.sales_record_id??null,
+    };
+  }
+  // 진흥주문 연결 모달 열기 — 거래처명으로 우선 검색
+  function openOrderLink(rec:FH_SalesRecord){
+    setOrderLinkTarget(rec);
+    const cleanName=(rec.customer_name||"").replace(/^\(유\)|^\(주\)|^\(재\)|^\(사\)/g,"").trim();
+    setOrderSearch(cleanName);
+    setOrderSelectedIds(new Set((linkedOrdersBySales[rec.id]||[]).map(o=>o.key)));
+    setShowOrderLinkModal(true);
+    void loadOrderCandidates(cleanName);
+  }
+  async function loadOrderCandidates(q:string){
+    setLoadingOrderCandidates(true);
+    setFhError(null);
+    const cleanQ=q.trim().replace(/^\(유\)|^\(재\)|^\(주\)|^\(사\)/g,"").trim();
+    const[ordRes,caseRes]=await Promise.all([
+      (()=>{let query=supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(100);
+        if(cleanQ)query=query.ilike("customer_name_raw",`%${cleanQ}%`); return query;})(),
+      // 매출연결 대상 상담 종류: 타이어/배터리/수출만 (지게차 등은 제외)
+      (()=>{let query=supabase.from("consultation_cases").select("id,customer_name,created_at,work_type").in("work_type",["tire","tire_sales","battery","battery_sales","export"]).order("created_at",{ascending:false}).limit(150);
+        if(cleanQ)query=query.ilike("customer_name",`%${cleanQ}%`); return query;})(),
+    ]);
+    if(ordRes.error)setFhError(ordRes.error.message);
+    const orderCands=((ordRes.data||[])as any[]).map(orderRowToCandidate);
+
+    let legacyCands:FH_OrderCandidate[]=[];
+    const cases=(caseRes.data||[])as any[];
+    if(!caseRes.error&&cases.length>0){
+      const nameMap:Record<number,string>={}; const createdMap:Record<number,string>={};
+      cases.forEach(c=>{nameMap[c.id]=c.customer_name;createdMap[c.id]=c.created_at;});
+      const tireIds=cases.filter(c=>c.work_type==="tire"||c.work_type==="tire_sales").map(c=>c.id);
+      const battIds=cases.filter(c=>c.work_type==="battery"||c.work_type==="battery_sales").map(c=>c.id);
+      const expIds=cases.filter(c=>c.work_type==="export").map(c=>c.id);
+      const[tireR,battR,expR]=await Promise.all([
+        tireIds.length>0?supabase.from("consultation_tire_details").select("consultation_id,process_stage,process_status,wheel_returned_at,price_to_customer,sales_record_id,tire_size,vehicle_info,vehicle_type").in("consultation_id",tireIds):Promise.resolve({data:[],error:null}),
+        battIds.length>0?supabase.from("consultation_battery_details").select("consultation_id,process_stage,sales_record_id,battery_voltage,battery_capacity_ah,battery_vehicle_type,battery_quantity").in("consultation_id",battIds):Promise.resolve({data:[],error:null}),
+        expIds.length>0?supabase.from("consultation_export_details").select("consultation_id,process_stage,export_stage,sales_record_id,product_name,destination_country").in("consultation_id",expIds):Promise.resolve({data:[],error:null}),
+      ]);
+      const tireCands=((tireR.data||[]) as any[]).map(d=>({...tireRowToCandidate(d,nameMap[d.consultation_id]||"거래처 미확인"),created_at:createdMap[d.consultation_id]||""}));
+      const battCands=((battR.data||[]) as any[]).map(d=>({...batteryRowToCandidate(d,nameMap[d.consultation_id]||"거래처 미확인"),created_at:createdMap[d.consultation_id]||""}));
+      const expCands=((expR.data||[]) as any[]).map(d=>({...exportRowToCandidate(d,nameMap[d.consultation_id]||"거래처 미확인"),created_at:createdMap[d.consultation_id]||""}));
+      legacyCands=[...tireCands,...battCands,...expCands];
+      // 조용히 무시하지 않고 화면에 에러를 표시 — sales_record_id 컬럼 마이그레이션이 안 돼 있으면 여기서 걸림
+      const errs=[tireR.error&&`타이어(${tireR.error.message})`,battR.error&&`배터리(${battR.error.message})`,expR.error&&`수출(${expR.error.message})`].filter(Boolean);
+      if(errs.length>0) setFhError("일부 상담 후보 조회 실패 — "+errs.join(", ")+" — 관련 SQL 마이그레이션이 적용됐는지 확인해주세요.");
+    }
+    const merged=[...orderCands,...legacyCands].sort((a,b)=>(b.created_at||"").localeCompare(a.created_at||""));
+    setOrderCandidates(merged);
+    setLoadingOrderCandidates(false);
+  }
+  // 체크된 주문은 이 매출건에 연결, 체크 해제된(이전에 연결돼 있던) 주문은 연결 해제 — 소스별로 나눠서 각 테이블 업데이트
+  async function confirmOrderLink(){
+    if(!orderLinkTarget)return;
+    setOrderLinkSaving(true);setFhError(null);
+    const selected=orderCandidates.filter(c=>orderSelectedIds.has(c.key));
+    const previouslyLinked=orderCandidates.filter(c=>c.sales_record_id===orderLinkTarget.id);
+    const toUnlink=previouslyLinked.filter(c=>!orderSelectedIds.has(c.key));
+
+    const bySource=(list:FH_OrderCandidate[],src:FH_OrderCandidate["source"])=>list.filter(c=>c.source===src).map(c=>c.rawId);
+    const tableFor:Record<FH_OrderCandidate["source"],{table:string;idCol:string}>={
+      order:{table:"tb_orders",idCol:"id"},
+      tire:{table:"consultation_tire_details",idCol:"consultation_id"},
+      battery:{table:"consultation_battery_details",idCol:"consultation_id"},
+      export:{table:"consultation_export_details",idCol:"consultation_id"},
+    };
+    for(const src of ["order","tire","battery","export"] as const){
+      const linkIds=bySource(selected,src);
+      if(linkIds.length>0){
+        const{table,idCol}=tableFor[src];
+        const{error}=await supabase.from(table).update({sales_record_id:orderLinkTarget.id}).in(idCol,linkIds);
+        if(error){setFhError(error.message);setOrderLinkSaving(false);return;}
+      }
+      const unlinkIds=bySource(toUnlink,src);
+      if(unlinkIds.length>0){
+        const{table,idCol}=tableFor[src];
+        await supabase.from(table).update({sales_record_id:null}).in(idCol,unlinkIds);
+      }
+    }
+
+    setShowOrderLinkModal(false);setOrderLinkTarget(null);setOrderSelectedIds(new Set());
+    setOrderLinkSaving(false);
+
+    loadFhAll();
   }
   async function loadFhIncomplete(){
     setLoadingIncomplete(true);
@@ -770,7 +1003,7 @@ function FinanceHubTab() {
   async function deleteSales(id:number){if(!confirm("삭제하시겠습니까?"))return;await supabase.from("sales_records").delete().eq("id",id);loadFhAll();}
   async function quickToggleSales(id:number,field:string,current:boolean){
     const upd:Record<string,unknown>={[field]:!current};
-    if(field==="payment_confirmed"&&!current)upd.payment_date=new Date().toISOString().split("T")[0];
+    if(field==="payment_confirmed"&&!current)upd.payment_date=todayStr();
     await supabase.from("sales_records").update(upd).eq("id",id);loadFhAll();
   }
   function openEditPurchase(r:FH_PurchaseRecord){
@@ -787,7 +1020,7 @@ function FinanceHubTab() {
     setSavingPurchase(false);
   }
   async function deletePurchase(id:number){if(!confirm("삭제하시겠습니까?"))return;await supabase.from("purchase_records").delete().eq("id",id);loadFhAll();}
-  async function quickTogglePurchase(id:number,current:boolean){const upd:Record<string,unknown>={payment_confirmed:!current};if(!current)upd.payment_date=new Date().toISOString().split("T")[0];await supabase.from("purchase_records").update(upd).eq("id",id);loadFhAll();}
+  async function quickTogglePurchase(id:number,current:boolean){const upd:Record<string,unknown>={payment_confirmed:!current};if(!current)upd.payment_date=todayStr();await supabase.from("purchase_records").update(upd).eq("id",id);loadFhAll();}
 
   async function handleSalesInvFile(e:React.ChangeEvent<HTMLInputElement>){
     const file=e.target.files?.[0];if(!file)return;
@@ -800,7 +1033,7 @@ function FinanceHubTab() {
       setInvForm({invoice_no:parsed.invoice_no?String(parsed.invoice_no):"",issue_date:parsed.sale_date||FH_EMPTY_INV.issue_date,customer_name:parsed.customer_name||"",business_no:parsed.business_no?String(parsed.business_no).replace(/[^0-9]/g,""):"",supply_amount:parsed.supply_amount!=null?String(Math.round(parsed.supply_amount)):"",tax_amount:parsed.tax_amount!=null?String(Math.round(parsed.tax_amount)):"",total_amount:parsed.total_amount!=null?String(Math.round(parsed.total_amount)):"",items:parsed.items||""});
       const cleanName=(parsed.customer_name||"").replace(/^\(유\)|^\(주\)|^\(재\)|^\(사\)/g,"").trim();
       setMatchSelectedIds(new Set());setMatchSearch(cleanName);setShowMatchModal(true);loadMatchCandidates(cleanName);
-    }catch(err:any){setFhError("계산서 인식 실패: "+(err?.message||""));}
+    }catch(err:any){const msg=await fhExtractFnErrorMessage(err);setFhError("계산서 인식 실패: "+msg);}
     finally{setParsingSalesInv(false);if(salesInvRef.current)salesInvRef.current.value="";}
   }
   async function loadMatchCandidates(q:string){
@@ -822,7 +1055,21 @@ function FinanceHubTab() {
     const selectedRecords=matchCandidates.filter(c=>matchSelectedIds.has(c.id));
     if(invoiceSupply!=null&&invoiceSupply>0&&selectedRecords.length>0){
       if(selectedRecords.length===1){const rec=selectedRecords[0];const newUnitPrice=rec.quantity>0?Math.round(invoiceSupply/rec.quantity):rec.unit_price;await supabase.from("sales_records").update({unit_price:newUnitPrice,tax_invoice:true,invoice_id:invRow.id}).eq("id",rec.id);}
-      else{const totalExisting=selectedRecords.reduce((s,r)=>s+(r.total_revenue||0),0);for(const rec of selectedRecords){const ratio=totalExisting>0?(rec.total_revenue||0)/totalExisting:1/selectedRecords.length;const allocSupply=Math.round(invoiceSupply*ratio);const newUnitPrice=rec.quantity>0?Math.round(allocSupply/rec.quantity):rec.unit_price;await supabase.from("sales_records").update({unit_price:newUnitPrice,tax_invoice:true,invoice_id:invRow.id}).eq("id",rec.id);}}
+      else{
+        const totalExisting=selectedRecords.reduce((s,r)=>s+(r.total_revenue||0),0);
+        let allocatedSoFar=0;
+        for(let i=0;i<selectedRecords.length;i++){
+          const rec=selectedRecords[i];
+          const isLast=i===selectedRecords.length-1;
+          const ratio=totalExisting>0?(rec.total_revenue||0)/totalExisting:1/selectedRecords.length;
+          // 마지막 건은 반올림하지 않고 "계산서 총액 - 지금까지 배분한 합"으로 역산해서 배분금액 합이 정확히 계산서 총액과 일치하게 함
+          // (각 건을 그냥 반올림해서 더하면 원 단위 오차가 누적될 수 있음 — 마지막 건이 그 오차를 흡수)
+          const allocSupply=isLast?(invoiceSupply-allocatedSoFar):Math.round(invoiceSupply*ratio);
+          allocatedSoFar+=allocSupply;
+          const newUnitPrice=rec.quantity>0?Math.round(allocSupply/rec.quantity):rec.unit_price;
+          await supabase.from("sales_records").update({unit_price:newUnitPrice,tax_invoice:true,invoice_id:invRow.id}).eq("id",rec.id);
+        }
+      }
     }else{await supabase.from("sales_records").update({tax_invoice:true,invoice_id:invRow.id}).in("id",Array.from(matchSelectedIds));}
     setShowMatchModal(false);setInvForm(FH_EMPTY_INV);setMatchSelectedIds(new Set());loadFhAll();setMatchSaving(false);
   }
@@ -834,7 +1081,7 @@ function FinanceHubTab() {
       const invPayload:Record<string,unknown>={
         direction:"sales",
         invoice_no:invForm.invoice_no||null,
-        issue_date:invForm.issue_date||new Date().toISOString().split("T")[0],
+        issue_date:invForm.issue_date||todayStr(),
         customer_name:invForm.customer_name||null,
         business_no:invForm.business_no||null,
         supply_amount:invForm.supply_amount?parseFloat(invForm.supply_amount):null,
@@ -851,7 +1098,7 @@ function FinanceHubTab() {
       const vat=tradeType==="수출"?1:1.1;
       const unitPrice=Math.round(supplyAmt);
       const{error:recErr}=await supabase.from("sales_records").insert({
-        sale_date:invForm.issue_date||new Date().toISOString().split("T")[0],
+        sale_date:invForm.issue_date||todayStr(),
         customer_name:invForm.customer_name||"거래처 미입력",
         business_no:invForm.business_no||null,
         category:fhGuessCategory(invForm.items||invForm.customer_name||""),
@@ -883,12 +1130,12 @@ function FinanceHubTab() {
       const parsed=(data||{})as FH_ParsedInvoice;
       if(!parsed.customer_name&&!parsed.total_amount)throw new Error("인식 실패. 더 선명한 이미지로 다시 시도해주세요.");
       const tradeType:"국내"|"수입"=(parsed.tax_amount??null)===0?"수입":"국내";
-      const{data:invRow,error:invErr}=await supabase.from("tax_invoices").insert({direction:"purchase",invoice_no:parsed.invoice_no||null,issue_date:parsed.sale_date||new Date().toISOString().split("T")[0],customer_name:parsed.customer_name||null,business_no:parsed.business_no?String(parsed.business_no).replace(/[^0-9]/g,""):null,supply_amount:parsed.supply_amount??null,tax_amount:parsed.tax_amount??null,total_amount:parsed.total_amount??null,items:parsed.items||null}).select().single();
+      const{data:invRow,error:invErr}=await supabase.from("tax_invoices").insert({direction:"purchase",invoice_no:parsed.invoice_no||null,issue_date:parsed.sale_date||todayStr(),customer_name:parsed.customer_name||null,business_no:parsed.business_no?String(parsed.business_no).replace(/[^0-9]/g,""):null,supply_amount:parsed.supply_amount??null,tax_amount:parsed.tax_amount??null,total_amount:parsed.total_amount??null,items:parsed.items||null}).select().single();
       if(invErr||!invRow)throw new Error(invErr?.message||"계산서 등록 실패");
-      const{data:newRec}=await supabase.from("purchase_records").insert({purchase_date:parsed.sale_date||new Date().toISOString().split("T")[0],supplier_name:parsed.customer_name||"거래처 미입력",business_no:parsed.business_no?String(parsed.business_no).replace(/[^0-9]/g,""):null,category:fhGuessCategory(parsed.items||""),trade_type:tradeType,maker:null,spec:parsed.items||null,quantity:1,unit_price:Math.round(parsed.supply_amount??0),tax_invoice:true,payment_confirmed:false,payment_date:null,invoice_id:invRow.id,note:`계산서 업로드 자동등록${parsed.invoice_no?` (#${parsed.invoice_no})`:""} — 수량 확인 필요`}).select().single();
+      const{data:newRec}=await supabase.from("purchase_records").insert({purchase_date:parsed.sale_date||todayStr(),supplier_name:parsed.customer_name||"거래처 미입력",business_no:parsed.business_no?String(parsed.business_no).replace(/[^0-9]/g,""):null,category:fhGuessCategory(parsed.items||""),trade_type:tradeType,maker:null,spec:parsed.items||null,quantity:1,unit_price:Math.round(parsed.supply_amount??0),tax_invoice:true,payment_confirmed:false,payment_date:null,invoice_id:invRow.id,note:`계산서 업로드 자동등록${parsed.invoice_no?` (#${parsed.invoice_no})`:""} — 수량 확인 필요`}).select().single();
       await loadFhAll();
       if(newRec){setActiveSubTab("purchases");openEditPurchase(newRec as FH_PurchaseRecord);}
-    }catch(err:any){setFhError("계산서 인식/등록 실패: "+(err?.message||""));}
+    }catch(err:any){const msg=await fhExtractFnErrorMessage(err);setFhError("계산서 인식/등록 실패: "+msg);}
     finally{setParsingPurchInv(false);if(purchInvRef.current)purchInvRef.current.value="";}
   }
   async function handleExcelImport(e:React.ChangeEvent<HTMLInputElement>){
@@ -1067,7 +1314,7 @@ function FinanceHubTab() {
           </button>
           {activeSubTab==="sales"?(
             <>
-              <input ref={salesInvRef} type="file" accept="image/*" className="hidden" onChange={handleSalesInvFile}/>
+              <input ref={salesInvRef} type="file" accept="image/*,.pdf,application/pdf" className="hidden" onChange={handleSalesInvFile}/>
               <button onClick={()=>salesInvRef.current?.click()} disabled={parsingSalesInv} className={fhBtnG}>
                 {parsingSalesInv?<FhLoader2 className="w-3.5 h-3.5 animate-spin"/>:<FhUpload className="w-3.5 h-3.5"/>}
                 {parsingSalesInv?"인식중":"계산서"}
@@ -1079,7 +1326,7 @@ function FinanceHubTab() {
           ):(
             activeSubTab==="purchases"&&(
               <>
-                <input ref={purchInvRef} type="file" accept="image/*" className="hidden" onChange={handlePurchInvFile}/>
+                <input ref={purchInvRef} type="file" accept="image/*,.pdf,application/pdf" className="hidden" onChange={handlePurchInvFile}/>
                 <button onClick={()=>purchInvRef.current?.click()} disabled={parsingPurchInv} className={fhBtnG}>
                   {parsingPurchInv?<FhLoader2 className="w-3.5 h-3.5 animate-spin"/>:<FhUpload className="w-3.5 h-3.5"/>}
                   {parsingPurchInv?"인식중":"계산서"}
@@ -1182,6 +1429,22 @@ function FinanceHubTab() {
                                 <div><p className="text-[11px] text-gray-400 mb-0.5">부가세</p><p className="font-semibold text-gray-500 text-xs">{fhFmt(vat)}</p></div>
                                 <div><p className="text-[11px] text-orange-500 mb-0.5">합계(VAT포함)</p><p className="font-bold text-orange-600 text-sm">{fhFmt(total)}</p></div>
                                 <div><p className="text-[11px] text-gray-400 mb-0.5">계산서</p><p className={`font-semibold text-xs ${r.tax_invoice?"text-emerald-600":"text-gray-400"}`}>{r.tax_invoice?"✅ 발행":"미발행"}</p></div>
+                                <div>
+                                  <p className="text-[11px] text-gray-400 mb-0.5">진흥주문 연결</p>
+                                  <div className="flex items-center gap-1.5">
+                                    {(linkedOrdersBySales[r.id]?.length??0)>0?(
+                                      <p className="font-semibold text-xs text-blue-600">🔗 {linkedOrdersBySales[r.id].length}건</p>
+                                    ):r.consultation_id!=null?(
+                                      <p className="font-semibold text-xs text-blue-600" title="예전 방식(1:1)으로 상담건과 직접 연결된 매출건입니다. 아래 비고란에서 상담건 번호를 확인하세요.">🔗 연결됨 (기존방식)</p>
+                                    ):(
+                                      <p className="font-semibold text-xs text-gray-400">-</p>
+                                    )}
+                                    <button onClick={e=>{e.stopPropagation();openOrderLink(r);}}
+                                      className="text-[10px] px-1.5 py-0.5 rounded-lg bg-blue-50 text-blue-500 hover:bg-blue-100 border border-blue-200 transition-all">
+                                      연결관리
+                                    </button>
+                                  </div>
+                                </div>
                                 <div><p className="text-[11px] text-gray-400 mb-0.5">입금일</p><p className={`font-semibold text-xs ${r.payment_confirmed?"text-emerald-600":"text-red-500"}`}>{r.payment_confirmed?`✅ ${r.payment_date||"완료"}`:"미수"}</p></div>
                                 {r.note&&<div className="w-full"><p className="text-[11px] text-gray-400 mb-0.5">비고</p><p className="text-xs text-gray-600">{r.note}</p></div>}
                               </>);})()}
@@ -1603,6 +1866,71 @@ function FinanceHubTab() {
                   매칭 확정 ({matchSelectedIds.size}건)
                 </button>
               </div>
+            </div>
+          </div>
+        </div>, document.body
+      )}
+
+      {/* ── 진흥주문 연결 모달 ── */}
+      {showOrderLinkModal&&orderLinkTarget&&ReactDOM.createPortal(
+        <div className="fixed inset-0 z-[200] flex items-start justify-center bg-black/40 backdrop-blur-sm overflow-y-auto pt-[140px] pb-8 px-4">
+          <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h2 className="text-sm font-semibold text-[#0f172a]">진흥주문 연결 — {orderLinkTarget.customer_name}</h2>
+              <button onClick={()=>setShowOrderLinkModal(false)} className="text-gray-400 hover:text-gray-600"><FhX className="w-5 h-5"/></button>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              {fhError&&(
+                <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
+                  <FhAlertCircle className="w-4 h-4 shrink-0 mt-0.5"/><span>{fhError}</span>
+                </div>
+              )}
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 flex flex-wrap gap-x-6 gap-y-1 text-xs">
+                <span className="text-gray-400">매출일 <span className="text-[#0f172a] font-medium">{orderLinkTarget.sale_date}</span></span>
+                <span className="text-gray-400">품목 <span className="text-[#0f172a] font-medium">{[orderLinkTarget.maker,orderLinkTarget.spec].filter(Boolean).join(" / ")||"-"}</span></span>
+                <span className="text-gray-400">매출액 <span className="text-[#0f172a] font-medium">{fhFmt(orderLinkTarget.total_revenue||0)}</span></span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <FhSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"/>
+                  <input value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&loadOrderCandidates(orderSearch)}
+                    placeholder="거래처명으로 진흥주문 검색" className="w-full h-9 pl-9 pr-3 rounded-xl border border-gray-200 text-xs focus:outline-none focus:border-orange-400"/>
+                </div>
+                <button onClick={()=>loadOrderCandidates(orderSearch)} className={fhBtnS}><FhSearch className="w-4 h-4"/>검색</button>
+              </div>
+              <div className="border border-gray-100 rounded-xl overflow-hidden max-h-64 overflow-y-auto divide-y divide-gray-50">
+                {loadingOrderCandidates?(
+                  <div className="flex items-center justify-center py-6 text-gray-400 text-xs gap-2"><FhLoader2 className="w-4 h-4 animate-spin text-orange-500"/>불러오는 중...</div>
+                ):orderCandidates.length===0?(
+                  <div className="py-6 text-center text-xs text-gray-400">검색된 진흥주문이 없습니다.</div>
+                ):orderCandidates.map(o=>{
+                  const checked=orderSelectedIds.has(o.key);
+                  const linkedElsewhere=o.sales_record_id!=null&&o.sales_record_id!==orderLinkTarget.id;
+                  return(
+                    <label key={o.key} className={`flex items-center gap-3 px-3 py-2 transition-colors ${linkedElsewhere?"opacity-50 cursor-not-allowed":"cursor-pointer"} ${checked?"bg-blue-50":"hover:bg-gray-50"}`}>
+                      <div onClick={e=>{e.preventDefault();if(linkedElsewhere)return;setOrderSelectedIds(prev=>{const n=new Set(prev);checked?n.delete(o.key):n.add(o.key);return n;});}}
+                        className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 ${checked?"bg-blue-500 border-blue-500":"bg-white border-gray-300"}`}>
+                        {checked&&<FhCheck className="w-3 h-3 text-white"/>}
+                      </div>
+                      <span className="text-[10px] text-gray-400 w-28 shrink-0">{o.created_at?new Date(o.created_at).toLocaleDateString("ko-KR"):"-"}</span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-slate-100 text-slate-500 shrink-0">{o.source==="order"?"진흥주문":o.source==="tire"?"상담(타이어)":o.source==="battery"?"상담(배터리)":"상담(수출)"}</span>
+                      <span className="text-xs font-semibold text-[#0f172a] whitespace-nowrap">{o.customer_name}</span>
+                      <span className="text-[10px] text-gray-500 truncate flex-1">{o.product_detail}</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-600 shrink-0">{o.status_label}</span>
+                      {linkedElsewhere&&<span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-600 font-medium shrink-0">다른 매출건에 연결됨</span>}
+                      {o.price_to_customer!=null&&<span className="text-xs font-semibold text-[#0f172a] whitespace-nowrap">{fhFmt(o.price_to_customer)}</span>}
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-gray-400">체크된 주문이 이 매출건에 연결됩니다. 다른 매출건에 이미 연결된 주문은 그쪽 연결을 먼저 해제해야 선택할 수 있습니다.</p>
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-4 border-t border-gray-100">
+              <button onClick={()=>setShowOrderLinkModal(false)} className={fhBtnS}>취소</button>
+              <button onClick={confirmOrderLink} disabled={orderLinkSaving} className={fhBtnP}>
+                {orderLinkSaving?<FhLoader2 className="w-4 h-4 animate-spin"/>:<FhLink2 className="w-4 h-4"/>}
+                연결 저장 ({orderSelectedIds.size}건)
+              </button>
             </div>
           </div>
         </div>, document.body
@@ -2196,6 +2524,24 @@ const SecretaryPage:React.FC = () => {
   const [tab,setTab] = useState<TabKey>(()=>{ try{return (sessionStorage.getItem("sec_tab") as TabKey)||"schedule";}catch{return "schedule";} });
   const setTabAndSave = (t:TabKey)=>{ try{sessionStorage.setItem("sec_tab",t);}catch{} setTab(t); };
 
+  // 단축키: Ctrl+Option(Alt)+←/→ 로 메뉴 탭 순환 이동 (TAB_ORDER 기준, 배열 끝에서 순환)
+  useEffect(()=>{
+    const handler = (e: KeyboardEvent) => {
+      if(!e.ctrlKey || !e.altKey) return;
+      if(e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if(tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
+      e.preventDefault();
+      const curIdx = TAB_ORDER.indexOf(tab);
+      const delta = e.key === "ArrowRight" ? 1 : -1;
+      const nextIdx = (curIdx + delta + TAB_ORDER.length) % TAB_ORDER.length;
+      setTabAndSave(TAB_ORDER[nextIdx]);
+    };
+    window.addEventListener("keydown", handler);
+    return ()=>window.removeEventListener("keydown", handler);
+  }, [tab]);
+
   // 일정
   const [schedules,setSchedules]     = useState<Schedule[]>([]);
   const [schedLoading,setSchedLoading] = useState(false);
@@ -2288,16 +2634,35 @@ const SecretaryPage:React.FC = () => {
   const [narumiConsults,setNarumiConsults] = useState<OrderView[]>([]);
   const [narumiSelectedId,setNarumiSelectedId] = useState<number|null>(null);
   // 진흥주문 탭
-  const [jFilter,setJFilter] = useState<"active"|"all"|"done">("active");
+  const [jFilter,setJFilter] = useState<"active"|"all"|"done">("all");
+  const [jYear,setJYear] = useState(new Date().getFullYear());
+  const [jMonth,setJMonth] = useState(new Date().getMonth()+1);
+  const {from:jFrom,to:jTo} = useMemo(()=>fhGetDateRange(jYear,jMonth,"월간"),[jYear,jMonth]);
   const [jExpanded,setJExpanded] = useState<string|null>(null);
   const [jLoading,setJLoading] = useState(false);
   const [jList,setJList] = useState<any[]>([]);
   const jListReqRef = useRef(0); // tb_orders 목록 fetch 경쟁 상태 방지용 토큰
+  // 진흥주문 목록을 현재 선택된 연/월 기준으로 다시 불러오는 공용 함수 (여러 곳에서 재사용)
+  async function reloadJList(){
+    const myReq = ++jListReqRef.current;
+    const {data} = await supabase.from("tb_orders").select("*")
+      .gte("created_at", jFrom+"T00:00:00")
+      .lte("created_at", jTo+"T23:59:59")
+      .order("created_at",{ascending:false});
+    if(myReq===jListReqRef.current) setJList(data??[]);
+  }
+  // 진흥주문 ↔ 매출건(sales_records) 연결 표시용 캐시 (상세 펼칠 때 지연 로드)
+  const [orderLinkedSales,setOrderLinkedSales] = useState<Record<string,FH_SalesRecord|null>>({});
+  async function fetchLinkedSalesForOrder(orderId:string, salesRecordId:number){
+    if(orderLinkedSales[orderId]!==undefined) return; // 이미 조회됨(null 포함)
+    const{data}=await supabase.from("sales_records").select("*").eq("id",salesRecordId).maybeSingle();
+    setOrderLinkedSales(prev=>({...prev,[orderId]:(data as FH_SalesRecord)??null}));
+  }
   const [jConsults,setJConsults] = useState<OrderView[]>([]);
   const [jConsultsLoading,setJConsultsLoading] = useState(false);
   const [showJNewForm,setShowJNewForm] = useState(false);
   const [jNewSaving,setJNewSaving] = useState(false);
-  const [jNewForm,setJNewForm] = useState({customer_name:"",product_spec:"",quantity:"",memo:""});
+  const [jNewForm,setJNewForm] = useState({customer_name:"",product_spec:"",quantity:"",memo:"",order_date:todayStr()});
   const [jAmtModal,setJAmtModal] = useState<any|null>(null);
   const [jAmtTo,setJAmtTo] = useState("");
   const [jAmtFrom,setJAmtFrom] = useState("");
@@ -3299,8 +3664,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
     setJLoading(true);
     setJConsultsLoading(true);
     Promise.all([
-      supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60),
-      supabase.from("consultation_cases").select("id,customer_name,work_type,status,summary,created_at,phone,sub_type").in("work_type",["tire","tire_sales"]).order("created_at",{ascending:false}).limit(60),
+      supabase.from("tb_orders").select("*").gte("created_at",jFrom+"T00:00:00").lte("created_at",jTo+"T23:59:59").order("created_at",{ascending:false}),
+      supabase.from("consultation_cases").select("id,customer_name,work_type,status,summary,created_at,phone,sub_type").in("work_type",["tire","tire_sales"]).gte("created_at",jFrom+"T00:00:00").lte("created_at",jTo+"T23:59:59").order("created_at",{ascending:false}),
     ]).then(async([ordRes,cRes])=>{
       if(myReq!==jListReqRef.current) return; // 더 최신 요청(신규등록 후 새로고침 등)이 이미 있었다면 이 결과는 버림
       setJList(ordRes.data??[]);
@@ -3308,10 +3673,10 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       const cases = cRes.data??[];
       // tire details에서 process_status + 휠반납/금액 조회
       const ids = cases.map((c:any)=>c.id);
-      let tireMap:Record<number,{stage:string|null;wheel_returned_at:string|null;price_to_customer:number|null;price_from_jinheung:number|null}> = {};
+      let tireMap:Record<number,{stage:string|null;wheel_returned_at:string|null;price_to_customer:number|null;price_from_jinheung:number|null;sales_record_id:number|null}> = {};
       if(ids.length>0){
         const {data:tds} = await supabase.from("consultation_tire_details")
-          .select("consultation_id,process_status,process_stage,tire_size,vehicle_info,vehicle_type,wheel_returned_at,price_to_customer,price_from_jinheung")
+          .select("consultation_id,process_status,process_stage,tire_size,vehicle_info,vehicle_type,wheel_returned_at,price_to_customer,price_from_jinheung,sales_record_id")
           .in("consultation_id",ids);
         (tds??[]).forEach((d:any)=>{
           tireMap[d.consultation_id] = {
@@ -3319,6 +3684,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
             wheel_returned_at: d.wheel_returned_at ?? null,
             price_to_customer: d.price_to_customer ?? null,
             price_from_jinheung: d.price_from_jinheung ?? null,
+            sales_record_id: d.sales_record_id ?? null,
           };
         });
       }
@@ -3329,11 +3695,12 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
         wheel_returned_at: tireMap[c.id]?.wheel_returned_at ?? null,
         price_to_customer: tireMap[c.id]?.price_to_customer ?? null,
         price_from_jinheung: tireMap[c.id]?.price_from_jinheung ?? null,
+        sales_record_id: tireMap[c.id]?.sales_record_id ?? null,
         product_detail:null,
       })));
       setJConsultsLoading(false);
     });
-  },[tab]);
+  },[tab,jYear,jMonth]);
   useEffect(()=>{if(tab==="email"){void loadEmailReports();}},[tab,loadEmailReports]);
   useEffect(()=>{if(tab==="memo"){void loadMemos();}},[tab,loadMemos]);
 
@@ -4026,9 +4393,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               }
             }}
           >
-            {([...["chat","schedule","status","orders","hyundaicm","taesan","finance","narumi","jinheung","email","memo","financehub","exportshop","quotation","statement"],
-               ...["chat","schedule","status","orders","hyundaicm","taesan","finance","narumi","jinheung","email","memo","financehub","exportshop","quotation","statement"],
-               ...["chat","schedule","status","orders","hyundaicm","taesan","finance","narumi","jinheung","email","memo","financehub","exportshop","quotation","statement"]] as TabKey[]).map((t,i)=>(
+            {([...TAB_ORDER, ...TAB_ORDER, ...TAB_ORDER]).map((t,i)=>(
               <button key={`${t}-${i}`} className={`${TB} ${tab===t?TA:TI}`} style={{flexShrink:0,whiteSpace:"nowrap"}} onClick={()=>setTabAndSave(t)}>
                 {t==="email"
                   ? <span className="flex items-center gap-1">📧 이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
@@ -5220,13 +5585,14 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
             <div className="space-y-3 pb-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <p className="text-sm font-semibold text-[#0f172a]">🔧 진흥주문 관리</p>
-                <div className="flex gap-1.5 flex-wrap">
-                  <button className={BTG} onClick={()=>{
-                    const myReq = ++jListReqRef.current;
-                    setJLoading(true);
-                    supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60)
-                      .then(({data})=>{ if(myReq!==jListReqRef.current) return; setJList(data??[]);setJLoading(false);});
-                  }}>새로고침</button>
+                <div className="flex gap-1.5 flex-wrap items-center">
+                  <select value={jYear} onChange={e=>setJYear(Number(e.target.value))} className="px-2 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-600 bg-white focus:outline-none focus:border-orange-400 transition-all">
+                    {Array.from({length:5},(_,i)=>new Date().getFullYear()-2+i).map(y=><option key={y} value={y}>{y}년</option>)}
+                  </select>
+                  <select value={jMonth} onChange={e=>setJMonth(Number(e.target.value))} className="px-2 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-600 bg-white focus:outline-none focus:border-orange-400 transition-all">
+                    {Array.from({length:12},(_,i)=>i+1).map(m=><option key={m} value={m}>{m}월</option>)}
+                  </select>
+                  <button className={BTG} onClick={()=>{setJLoading(true);void reloadJList().then(()=>setJLoading(false));}}>새로고침</button>
                   <button className={BTP} onClick={()=>setShowJNewForm(v=>!v)}>{showJNewForm?"닫기":"+ 신규 등록"}</button>
                   <button className={BTO} onClick={()=>navigate("/work/orders")}>전체 페이지 →</button>
                 </div>
@@ -5246,16 +5612,20 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                       <input className={CTRL} placeholder="예: 18*7-8 솔리드 4개" value={jNewForm.product_spec} onChange={e=>setJNewForm(p=>({...p,product_spec:e.target.value}))}/>
                     </div>
                     <div>
+                      <label className={LBL}>주문일자</label>
+                      <input type="date" className={CTRL} value={jNewForm.order_date} onChange={e=>setJNewForm(p=>({...p,order_date:e.target.value}))}/>
+                    </div>
+                    <div>
                       <label className={LBL}>수량</label>
                       <input type="number" className={CTRL} placeholder="수량" value={jNewForm.quantity} onChange={e=>setJNewForm(p=>({...p,quantity:e.target.value}))}/>
                     </div>
-                    <div>
+                    <div className="col-span-2">
                       <label className={LBL}>메모</label>
                       <input className={CTRL} placeholder="특이사항" value={jNewForm.memo} onChange={e=>setJNewForm(p=>({...p,memo:e.target.value}))}/>
                     </div>
                   </div>
                   <div className="flex justify-end gap-2">
-                    <button className={BTS} onClick={()=>{setShowJNewForm(false);setJNewForm({customer_name:"",product_spec:"",quantity:"",memo:""});}}>취소</button>
+                    <button className={BTS} onClick={()=>{setShowJNewForm(false);setJNewForm({customer_name:"",product_spec:"",quantity:"",memo:"",order_date:todayStr()});}}>취소</button>
                     <button className={BTP} disabled={jNewSaving||!jNewForm.customer_name||!jNewForm.product_spec}
                       onClick={async()=>{
                         setJNewSaving(true);
@@ -5267,6 +5637,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                           inbound_channel:"other",
                           status:"received",
                           memo:jNewForm.memo||null,
+                          created_at:jNewForm.order_date?new Date(jNewForm.order_date+"T09:00:00").toISOString():undefined,
                         }).select().single();
                         setJNewSaving(false);
                         if(error){
@@ -5275,12 +5646,14 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                           return; // 입력값 유지 — 폼 닫지 않음
                         }
                         setShowJNewForm(false);
-                        setJNewForm({customer_name:"",product_spec:"",quantity:"",memo:""});
-                        // 목록 새로고침 후 신규 카드 자동 펼침
-                        const myReq = ++jListReqRef.current;
-                        const{data:list,error:listErr}=await supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60);
-                        if(listErr){ console.error("진흥주문 목록 갱신 실패:", listErr); }
-                        if(myReq===jListReqRef.current) setJList(list??[]);
+                        const savedOrderDate=jNewForm.order_date;
+                        setJNewForm({customer_name:"",product_spec:"",quantity:"",memo:"",order_date:todayStr()});
+                        // 등록한 주문일자가 지금 보고 있는 월과 다르면 그 달로 필터를 옮겨서 바로 보이게 함
+                        if(savedOrderDate){
+                          const d=new Date(savedOrderDate+"T00:00:00");
+                          if(d.getFullYear()!==jYear||d.getMonth()+1!==jMonth){ setJYear(d.getFullYear()); setJMonth(d.getMonth()+1); }
+                          else { await reloadJList(); }
+                        } else { await reloadJList(); }
                         if(data?.id) setJExpanded(data.id);
                       }}>
                       {jNewSaving?"저장 중...":"저장"}
@@ -5307,19 +5680,20 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                     {/* ── tb_orders 기반 항목 ── */}
                     {jList.filter((o:any)=>{
                       const wheelDone=!!o.wheel_returned_at;
-                      const invoiced=!!o.invoiced_at||["invoiced","billed_in","payment_in","payment_out","wheel_returned"].includes(o.status);
-                      const closed=invoiced&&wheelDone;
+                      const delivered=!!o.delivered_at||["delivered","wheel_returned","invoiced","billed_in","payment_in","payment_out"].includes(o.status);
+                      const closed=delivered&&wheelDone&&!!o.sales_record_id;
                       return jFilter==="active"?!closed:jFilter==="done"?closed:true;
                     }).map((o:any)=>{
                       const wheelDone=!!o.wheel_returned_at;
                       const invoiced=!!o.invoiced_at||["invoiced","billed_in","payment_in","payment_out","wheel_returned"].includes(o.status);
                       const delivered=!!o.delivered_at||["delivered","wheel_returned","invoiced","billed_in","payment_in","payment_out"].includes(o.status);
-                      const closed=invoiced&&wheelDone;
+                      // 종결 조건: 발송(납품완료) + 휠반납 + 매출건 연결 (계산서 개별발행 여부는 더 이상 종결 기준이 아님)
+                      const closed=delivered&&wheelDone&&!!o.sales_record_id;
                       const jStage:"received"|"delivered"|"invoiced"|"closed" = closed?"closed":invoiced?"invoiced":delivered?"delivered":"received";
                       const JSLBL:Record<string,string>={received:"접수(진흥전달)",delivered:"발송(납품완료)",invoiced:"계산서발행",closed:"종결"};
                       const JSCLR:Record<string,string>={received:"bg-gray-100 text-gray-600 border-gray-200",delivered:"bg-blue-100 text-blue-700 border-blue-200",invoiced:"bg-orange-100 text-orange-700 border-orange-200",closed:"bg-emerald-100 text-emerald-700 border-emerald-200"};
                       const isExp=jExpanded===o.id;
-                      const reload=()=>{const myReq=++jListReqRef.current;supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60).then(({data})=>{if(myReq===jListReqRef.current)setJList(data??[]);});};
+                      const reload=()=>{ void reloadJList(); };
                       return (
                         <div key={`jo-${o.id}`} id={`jorder-${o.id}`} className={`${CARD} overflow-hidden`}>
                           <div className="p-3.5">
@@ -5331,6 +5705,9 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                                   {jStage!=="closed"&&jStage!=="received"&&(
                                     <span className={`text-[11px] px-2 py-0.5 rounded-full border font-medium ${wheelDone?"bg-purple-100 text-purple-700 border-purple-200":"bg-white text-gray-300 border-gray-200"}`}>휠반납 {wheelDone?"✓":"-"}</span>
                                   )}
+                                  {o.sales_record_id&&(
+                                    <span className="text-[11px] px-2 py-0.5 rounded-full border font-medium bg-blue-50 text-blue-600 border-blue-200">🧾 세금계산서 발행</span>
+                                  )}
                                 </div>
                                 {o.product_spec&&<p className="text-xs text-gray-600 mt-0.5 font-medium">{o.product_spec}{o.quantity?` × ${o.quantity}개`:""}</p>}
                                 <div className="flex items-center gap-2 mt-1 flex-wrap text-xs">
@@ -5340,6 +5717,18 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                                 </div>
                                 {isExp&&(
                                   <div className="mt-2 pt-2 border-t border-gray-100 space-y-2">
+                                    {o.sales_record_id&&(
+                                      <div className="rounded-lg bg-blue-50 border border-blue-100 px-2.5 py-2 text-xs">
+                                        <p className="text-blue-600 font-semibold mb-0.5">🔗 연결된 매출건</p>
+                                        {orderLinkedSales[o.id]===undefined?(
+                                          <p className="text-gray-400">불러오는 중...</p>
+                                        ):orderLinkedSales[o.id]?(
+                                          <p className="text-gray-600">{orderLinkedSales[o.id]!.sale_date} · {orderLinkedSales[o.id]!.customer_name} · {Number(orderLinkedSales[o.id]!.total_revenue||0).toLocaleString("ko-KR")}원</p>
+                                        ):(
+                                          <p className="text-gray-400">매출건 정보를 찾을 수 없습니다 (삭제되었을 수 있음).</p>
+                                        )}
+                                      </div>
+                                    )}
                                     <div className="grid grid-cols-3 gap-2 text-xs">
                                       <div><p className="text-gray-400">고객청구(매출)</p><p className="font-semibold text-orange-600">{o.price_to_customer?`${Number(o.price_to_customer).toLocaleString("ko-KR")}원`:"-"}</p></div>
                                       <div><p className="text-gray-400">진흥매입</p><p className="font-semibold text-gray-700">{o.price_from_jinheung?`${Number(o.price_from_jinheung).toLocaleString("ko-KR")}원`:"-"}</p></div>
@@ -5354,7 +5743,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                                             if(next&&invoiced) await supabase.from("sales_records").update({wheel_returned:true}).eq("jinheung_order_id",o.id);
                                             reload();
                                           }}/>
-                                        휠반납 완료{jStage==="invoiced"&&!wheelDone&&<span className="text-gray-400">(체크 시 자동 종결)</span>}
+                                        휠반납 완료{delivered&&o.sales_record_id&&!wheelDone&&<span className="text-gray-400">(체크 시 자동 종결)</span>}
                                       </label>
                                       <button className={`${BTG} text-xs`} onClick={e=>{e.stopPropagation();setJAmtModal(o);setJAmtTo(o.price_to_customer?.toLocaleString("ko-KR")??"");setJAmtFrom(o.price_from_jinheung?.toLocaleString("ko-KR")??"");}}>💰 매출금액 입력</button>
                                     </div>
@@ -5369,10 +5758,10 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                                     reload();
                                   }}>발송(납품완료) →</button>
                                 )}
-                                {jStage==="delivered"&&(
+                                {jStage==="delivered"&&!o.sales_record_id&&(
                                   <button className={BTO} onClick={()=>setJInvoiceModal(o)}>계산서발행 →</button>
                                 )}
-                                <button className={BTG} onClick={()=>setJExpanded(isExp?null:o.id)}>{isExp?"접기":"상세"}</button>
+                                <button className={BTG} onClick={()=>{ const next=isExp?null:o.id; setJExpanded(next); if(next&&o.sales_record_id) void fetchLinkedSalesForOrder(o.id,o.sales_record_id); }}>{isExp?"접기":"상세"}</button>
                                 <button
                                   className="px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-red-400 hover:border-red-300 hover:bg-red-50 transition-all"
                                   onClick={async()=>{
@@ -5393,13 +5782,16 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                     {/* ── 상담(consultation_cases) 기반 타이어 항목 ── */}
                     {jConsults.filter((c:any)=>{
                       const wheelDone=!!c.wheel_returned_at;
-                      const closed=(c.progress_stage==="invoiced"&&wheelDone)||c.progress_stage==="cancelled";
+                      const delivered=c.progress_stage==="delivery"||c.progress_stage==="invoiced";
+                      const closed=(delivered&&wheelDone&&!!c.sales_record_id)||c.progress_stage==="cancelled";
                       return jFilter==="active"?!closed:jFilter==="done"?closed:true;
                     }).map((c:any)=>{
                       const wheelDone=!!c.wheel_returned_at;
                       const invoiced=c.progress_stage==="invoiced";
                       const cancelled=c.progress_stage==="cancelled";
-                      const closed=invoiced&&wheelDone;
+                      const delivered=c.progress_stage==="delivery"||c.progress_stage==="invoiced";
+                      // 종결 조건: 발송(납품완료) + 휠반납 + 매출건 연결 (계산서 개별발행 여부는 더 이상 종결 기준이 아님)
+                      const closed=delivered&&wheelDone&&!!c.sales_record_id;
                       const curStage=c.progress_stage??"contract";
                       const badgeLabel = cancelled?"취소":closed?"종결":invoiced?"계산서발행":curStage==="delivery"?"발송(납품완료)":"접수(계약)";
                       const badgeColor = cancelled?"bg-red-100 text-red-500 border-red-200":closed?"bg-emerald-100 text-emerald-700 border-emerald-200":invoiced?"bg-orange-100 text-orange-700 border-orange-200":curStage==="delivery"?"bg-blue-100 text-blue-700 border-blue-200":"bg-gray-100 text-gray-600 border-gray-200";
@@ -5424,6 +5816,9 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                                   {!cancelled&&curStage!=="contract"&&(
                                     <span className={`text-[11px] px-2 py-0.5 rounded-full border font-medium ${wheelDone?"bg-purple-100 text-purple-700 border-purple-200":"bg-white text-gray-300 border-gray-200"}`}>휠반납 {wheelDone?"✓":"-"}</span>
                                   )}
+                                  {c.sales_record_id&&(
+                                    <span className="text-[11px] px-2 py-0.5 rounded-full border font-medium bg-blue-50 text-blue-600 border-blue-200">🧾 세금계산서 발행</span>
+                                  )}
                                 </div>
                                 {c.product_detail&&<p className="text-xs text-gray-600 mt-0.5 font-medium">{c.product_detail}</p>}
                                 <div className="flex items-center gap-2 mt-1 flex-wrap text-xs">
@@ -5443,7 +5838,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                                       {!cancelled&&curStage!=="contract"?(
                                         <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none">
                                           <input type="checkbox" checked={wheelDone} className="w-4 h-4 rounded border-gray-300 accent-purple-600" onChange={toggleWheel}/>
-                                          휠반납 완료{invoiced&&!wheelDone&&<span className="text-gray-400">(체크 시 자동 종결)</span>}
+                                          휠반납 완료{delivered&&c.sales_record_id&&!wheelDone&&<span className="text-gray-400">(체크 시 자동 종결)</span>}
                                         </label>
                                       ):<span/>}
                                       <button className={`${BTG} text-xs`} onClick={()=>{setJAmtModal({...c,__consult:true});setJAmtTo(c.price_to_customer?.toLocaleString("ko-KR")??"");setJAmtFrom(c.price_from_jinheung?.toLocaleString("ko-KR")??"");}}>💰 매출금액 입력</button>
@@ -5467,7 +5862,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                                     setJConsults((prev:any)=>prev.map((x:any)=>x.id===c.id?{...x,progress_stage:"delivery"}:x));
                                   }}>발송(납품완료) →</button>
                                 )}
-                                {curStage==="delivery"&&(
+                                {curStage==="delivery"&&!c.sales_record_id&&(
                                   <button className={BTO} onClick={()=>{setOrderInvoiceModal(c);setOrderInvoiceAmtTo(c.price_to_customer?.toLocaleString("ko-KR")??"");setOrderInvoiceAmtFrom(c.price_from_jinheung?.toLocaleString("ko-KR")??"");}}>계산서발행 →</button>
                                 )}
                                 <button className={BTG} onClick={()=>setJExpanded(isExp?null:`c-${c.id}`)}>{isExp?"접기":"상세"}</button>
@@ -5967,7 +6362,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                     price_from_jinheung: amtFrom,
                   }).eq("id",jAmtModal.id);
                   await supabase.from("sales_records").update({ unit_price: amtTo??0, unit_cost: amtFrom??0 }).eq("jinheung_order_id",jAmtModal.id);
-                  {const myReq=++jListReqRef.current;supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60).then(({data})=>{if(myReq===jListReqRef.current)setJList(data??[]);});}
+                  { void reloadJList(); }
                 }
                 setJSaving(false); setJAmtModal(null);
               }} className="px-4 py-2 rounded-xl bg-[#0f172a] text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40">저장</button>
@@ -6015,7 +6410,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
 
                     // 2. 매출(sales_records) 자동 반영
                     await supabase.from("sales_records").insert({
-                      sale_date: new Date().toISOString().split("T")[0],
+                      sale_date: todayStr(),
                       customer_name: o.customer_name_raw || "미확인",
                       business_no: null,
                       category: "타이어",
@@ -6040,7 +6435,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
 
                     setJInvoiceModal(null); setJInvoiceFile(null); setJInvoiceUploading(false);
                     showToast("계산서발행 완료 + 매출관리 자동 등록됨");
-                    {const myReq=++jListReqRef.current;supabase.from("tb_orders").select("*").order("created_at",{ascending:false}).limit(60).then(({data})=>{if(myReq===jListReqRef.current)setJList(data??[]);});}
+                    { void reloadJList(); }
                   }catch(err){
                     console.error(err);
                     alert("처리 중 오류가 발생했습니다.");
@@ -6113,7 +6508,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                     const { data: existing } = await supabase.from("sales_records").select("id").eq("consultation_id", o.id).maybeSingle();
                     if(!existing){
                       await supabase.from("sales_records").insert({
-                        sale_date: new Date().toISOString().split("T")[0],
+                        sale_date: todayStr(),
                         customer_name: o.customer_name,
                         business_no: null,
                         category: ["tire","tire_sales"].includes(o.work_type) ? "타이어" : "배터리(LFP)",
@@ -6221,7 +6616,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                       const { data: existing } = await supabase.from("sales_records").select("id").eq("consultation_id", o.id).maybeSingle();
                       if(!existing){
                         await supabase.from("sales_records").insert({
-                          sale_date: new Date().toISOString().split("T")[0],
+                          sale_date: todayStr(),
                           customer_name: o.customer_name,
                           business_no: null,
                           category: ["tire","tire_sales"].includes(o.work_type) ? "타이어" : "배터리(LFP)",

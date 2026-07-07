@@ -4,6 +4,14 @@ import { Settings } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
+// 브라우저 로컬(한국) 시간 기준 오늘 날짜 — toISOString()은 UTC 변환 과정에서
+// 자정 근처 시간대에 하루가 밀리는 문제가 있어 사용하지 않음.
+function todayLocalStr(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 type TabKey = "new" | "list" | "followups";
 type WorkType =
   | ""
@@ -187,16 +195,18 @@ type InvoiceRegForm = {
   items: string;
 };
 
-const EMPTY_INVOICE_REG_FORM: InvoiceRegForm = {
-  invoice_no: "",
-  issue_date: new Date().toISOString().split("T")[0],
-  customer_name: "",
-  business_no: "",
-  supply_amount: "",
-  tax_amount: "",
-  total_amount: "",
-  items: "",
-};
+function makeEmptyInvoiceRegForm(): InvoiceRegForm {
+  return {
+    invoice_no: "",
+    issue_date: todayLocalStr(),
+    customer_name: "",
+    business_no: "",
+    supply_amount: "",
+    tax_amount: "",
+    total_amount: "",
+    items: "",
+  };
+}
 
 type InvoiceRegRow = {
   consultation_id: number;
@@ -492,7 +502,7 @@ const CallManagementPage: React.FC = () => {
   const customerNameInputRef = useRef<HTMLInputElement | null>(null);
   const appliedNarumiPrefillRef = useRef<string>("");
 
-  const [callDatetime, setCallDatetime] = useState("");
+  const [callDatetime, setCallDatetime] = useState(todayLocalStr());
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
   const [telecomProvider, setTelecomProvider] = useState("");
@@ -521,8 +531,8 @@ const CallManagementPage: React.FC = () => {
   const [insuranceType, setInsuranceType] = useState("automobile");
   const [insuranceJob, setInsuranceJob] = useState("");
   const [insuranceCompany, setInsuranceCompany] = useState("");
-  const [insuranceStartDate, setInsuranceStartDate] = useState("");
-  const [insuranceEndDate, setInsuranceEndDate] = useState("");
+  const [insuranceStartDate, setInsuranceStartDate] = useState(todayLocalStr());
+  const [insuranceEndDate, setInsuranceEndDate] = useState(todayLocalStr());
   const [designRequested, setDesignRequested] = useState(false);
   const [applicationIssued, setApplicationIssued] = useState(false);
   const [paymentCompleted, setPaymentCompleted] = useState(false);
@@ -569,7 +579,7 @@ const CallManagementPage: React.FC = () => {
   const [batteryVoltage, setBatteryVoltage] = useState("");
   const [batteryCapacityAh, setBatteryCapacityAh] = useState("");
   const [batterySizeL, setBatterySizeL] = useState("");
-  const [batteryDueDate, setBatteryDueDate] = useState("");
+  const [batteryDueDate, setBatteryDueDate] = useState(todayLocalStr());
   const [batteryWeightKg, setBatteryWeightKg] = useState("");
   const [batteryUnitPricePerKwh, setBatteryUnitPricePerKwh] = useState("");
   const [batteryExchangeRate, setBatteryExchangeRate] = useState("");
@@ -602,7 +612,7 @@ const CallManagementPage: React.FC = () => {
   const [invoiceRegMode, setInvoiceRegMode] = useState<"manual" | "image">("manual");
   const [invoiceRegParsing, setInvoiceRegParsing] = useState(false);
   const [invoiceRegSaving, setInvoiceRegSaving] = useState(false);
-  const [invoiceRegForm, setInvoiceRegForm] = useState<InvoiceRegForm>(EMPTY_INVOICE_REG_FORM);
+  const [invoiceRegForm, setInvoiceRegForm] = useState<InvoiceRegForm>(makeEmptyInvoiceRegForm());
   const [invoiceRegRows, setInvoiceRegRows] = useState<InvoiceRegRow[]>([]);
   const invoiceRegFileRef = useRef<HTMLInputElement>(null);
 
@@ -1490,7 +1500,7 @@ const CallManagementPage: React.FC = () => {
     const customerName = customerKeys[0];
 
     setInvoiceRegForm({
-      ...EMPTY_INVOICE_REG_FORM,
+      ...makeEmptyInvoiceRegForm(),
       customer_name: customerName,
     });
     setInvoiceRegRows(selectedRows.map(buildInvoiceRegRow));
@@ -1500,7 +1510,7 @@ const CallManagementPage: React.FC = () => {
 
   function closeInvoiceRegModal() {
     setShowInvoiceRegModal(false);
-    setInvoiceRegForm(EMPTY_INVOICE_REG_FORM);
+    setInvoiceRegForm(makeEmptyInvoiceRegForm());
     setInvoiceRegRows([]);
     setInvoiceRegMode("manual");
   }
@@ -1680,8 +1690,8 @@ const CallManagementPage: React.FC = () => {
     setInsuranceType("automobile");
     setInsuranceJob("");
     setInsuranceCompany("");
-    setInsuranceStartDate("");
-    setInsuranceEndDate("");
+    setInsuranceStartDate(todayLocalStr());
+    setInsuranceEndDate(todayLocalStr());
     setDesignRequested(false);
     setApplicationIssued(false);
     setPaymentCompleted(false);
@@ -1719,7 +1729,7 @@ const CallManagementPage: React.FC = () => {
     setBatteryVoltage("");
     setBatteryCapacityAh("");
     setBatterySizeL("");
-    setBatteryDueDate("");
+    setBatteryDueDate(todayLocalStr());
     setBatteryWeightKg("");
     setBatteryUnitPricePerKwh("");
     setBatteryExchangeRate("");
@@ -1730,7 +1740,7 @@ const CallManagementPage: React.FC = () => {
 
   const resetForm = () => {
     setEditingCaseId(null);
-    setCallDatetime("");
+    setCallDatetime(todayLocalStr());
     setCustomerName("");
     setPhone("");
     setTelecomProvider("");
@@ -2408,7 +2418,7 @@ const CallManagementPage: React.FC = () => {
     setTab("new");
     setEditingCaseId(null);
     setWorkType("registration_insurance");
-    setCallDatetime(payload.callDatetime || new Date().toISOString().slice(0, 10));
+    setCallDatetime(payload.callDatetime || todayLocalStr());
     setCustomerName(prefillCustomerName);
     setPhone(formatPhoneInput(payload.phone || ""));
     setInsuranceVehicleNo(payload.vehicleNo || payload.vehicle_no || payload.vin || "");
@@ -2429,7 +2439,7 @@ const CallManagementPage: React.FC = () => {
           const { data: inserted, error: insertErr } = await supabase
             .from("consultations")
             .insert({
-              call_datetime:  payload.callDatetime || new Date().toISOString().slice(0, 10),
+              call_datetime:  payload.callDatetime || todayLocalStr(),
               customer_name:  prefillCustomerName,
               phone:          (payload.phone || "").replace(/\D/g, "").replace(/(\d{3})(\d{3,4})(\d{4})/, "$1-$2-$3"),
               work_type:      "registration_insurance",
