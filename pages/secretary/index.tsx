@@ -2729,6 +2729,23 @@ const SecretaryPage:React.FC = () => {
   const tabScrollRef = useRef<HTMLDivElement>(null);
   const [headerBarHeight, setHeaderBarHeight] = useState(128);
 
+  // 활성 탭이 항상 화면(가로 스크롤 영역) 안에 보이도록 자동 스크롤 (클릭 이동·단축키 이동 모두 적용)
+  useEffect(()=>{
+    const el = tabScrollRef.current;
+    if(!el) return;
+    const buttons = el.querySelectorAll<HTMLButtonElement>(`[data-tab-key="${tab}"]`);
+    if(buttons.length===0) return;
+    // 무한 스크롤용으로 탭이 3벌 복제되어 있으므로, 현재 스크롤 위치에서 가장 가까운 사본을 선택
+    let closest = buttons[0];
+    let minDist = Infinity;
+    buttons.forEach(btn=>{
+      const dist = Math.abs(btn.offsetLeft - el.scrollLeft);
+      if(dist < minDist){ minDist = dist; closest = btn; }
+    });
+    closest.scrollIntoView({ behavior:"smooth", inline:"center", block:"nearest" });
+  }, [tab]);
+
+
   // 달력 데이터
   const [calSch,setCalSch] = useState<CalSch[]>([]);
   const [calTdo,setCalTdo] = useState<CalTdo[]>([]);
@@ -4394,7 +4411,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
             }}
           >
             {([...TAB_ORDER, ...TAB_ORDER, ...TAB_ORDER]).map((t,i)=>(
-              <button key={`${t}-${i}`} className={`${TB} ${tab===t?TA:TI}`} style={{flexShrink:0,whiteSpace:"nowrap"}} onClick={()=>setTabAndSave(t)}>
+              <button key={`${t}-${i}`} data-tab-key={t} className={`${TB} ${tab===t?TA:TI}`} style={{flexShrink:0,whiteSpace:"nowrap"}} onClick={()=>setTabAndSave(t)}>
                 {t==="email"
                   ? <span className="flex items-center gap-1">📧 이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
                   : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",hyundaicm:"🏗 현대CM",taesan:"🚛 태산통운",finance:"🏦 금융상담",narumi:"🚛 나르미",jinheung:"🔧 진흥주문",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비",quotation:"📋 견적서",statement:"📑 거래명세서"}[t as string]
