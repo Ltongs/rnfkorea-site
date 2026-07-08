@@ -1,15 +1,5 @@
-// supabase/functions/send-quote-sms/index.ts
-// 견적서 MMS 발송 (Solapi) — send-hcm-repayment와 동일 패턴
-//
-// Secrets 필요 (기존 설정 재사용):
-//   SOLAPI_API_KEY
-//   SOLAPI_API_SECRET
-//   SOLAPI_SENDER   (발신번호, 예: 15511873)
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import {
-  createHmac,
-} from "https://deno.land/std@0.168.0/node/crypto.ts";
+import { createHmac } from "node:crypto";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -75,10 +65,9 @@ serve(async (req) => {
         "Content-Type":  "application/json",
       },
       body: JSON.stringify({
-        file:        pureBase64,
-        fileType:    "MMS",
-        type:        "image/jpeg",
-        name:        `quote_${Date.now()}.jpg`,
+        file: pureBase64,
+        type: "MMS",
+        name: `quote_${Date.now()}.jpg`,
       }),
     });
 
@@ -119,6 +108,7 @@ serve(async (req) => {
       JSON.stringify({ success: true, messageId: sendData.messageId }),
       { headers: { ...CORS, "Content-Type": "application/json" } }
     );
+
   } catch (e: any) {
     return new Response(
       JSON.stringify({ error: e.message }),

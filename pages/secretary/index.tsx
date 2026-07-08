@@ -887,6 +887,18 @@ function FinanceHubTab() {
         const{table,idCol}=tableFor[src];
         const{error}=await supabase.from(table).update({sales_record_id:orderLinkTarget.id}).in(idCol,linkIds);
         if(error){setFhError(error.message);setOrderLinkSaving(false);return;}
+        // 매출과 연결되는 순간 해당 상담건의 진행단계도 '계산서발행'으로 동기화
+        // (order/tb_orders는 delivered·wheel_returned 플래그 + sales_record_id 유무로 상태를 계산하므로 별도 컬럼 갱신 불필요)
+        if(src==="tire"){
+          const{error:stageErr}=await supabase.from(table).update({process_stage:"invoiced",process_status:"invoiced"}).in(idCol,linkIds);
+          if(stageErr){setFhError("연결은 완료됐지만 타이어 진행단계 갱신 실패: "+stageErr.message);}
+        }else if(src==="battery"){
+          const{error:stageErr}=await supabase.from(table).update({process_stage:"invoiced"}).in(idCol,linkIds);
+          if(stageErr){setFhError("연결은 완료됐지만 배터리 진행단계 갱신 실패: "+stageErr.message);}
+        }else if(src==="export"){
+          const{error:stageErr}=await supabase.from(table).update({process_stage:"invoiced",export_stage:"invoiced"}).in(idCol,linkIds);
+          if(stageErr){setFhError("연결은 완료됐지만 수출 진행단계 갱신 실패: "+stageErr.message);}
+        }
       }
       const unlinkIds=bySource(toUnlink,src);
       if(unlinkIds.length>0){
