@@ -29,6 +29,7 @@ interface ForkliftForm extends SendInfo {
   items:Item[];
   downPayment:string; balance:string; stampFee:string;
   registrationFee:string; installmentRate:string; installmentPrincipal:string;
+  installmentMonths:string;
   notes:string[];
 }
 interface InstallmentForm extends SendInfo {
@@ -93,7 +94,7 @@ const FF0: ForkliftForm = {
     ...Array(3).fill(null).map(()=>({...EM})),
   ],
   downPayment:'', balance:'', stampFee:'-', registrationFee:'-',
-  installmentRate:'6.5', installmentPrincipal:'',
+  installmentRate:'6.5', installmentPrincipal:'', installmentMonths:'36',
   notes:[
     '※ 1년/2,000시간 중 선도래분 적용 (소모품/고객과실 제외 무상 A/S)',
     '※ 5년/10,000시간 LFP 배터리 무상 보증 (고객과실 제외)',
@@ -161,21 +162,169 @@ const Label = ({children}:{children:React.ReactNode}) =>
 const Input = (p:React.InputHTMLAttributes<HTMLInputElement>) =>
   <input {...p} className={`w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 ${p.className??''}`}/>;
 
+// ─── 이메일 칩 입력 (Gmail 스타일) ─────────────────────────
+function EmailChipInput({
+  label, emails, onChange, placeholder, suggestions,
+}: {
+  label: string;
+  emails: string[];
+  onChange: (emails: string[]) => void;
+  placeholder?: string;
+  suggestions?: string[];
+}) {
+  const [input, setInput] = useState('');
+  const [showSug, setShowSug] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const isValidEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
+
+  const addEmail = (raw: string) => {
+    const parts = raw.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+    const valid  = parts.filter(isValidEmail).filter(e => !emails.includes(e));
+    if (valid.length) onChange([...emails, ...valid]);
+    setInput(''); setShowSug(false);
+  };
+
+  const removeEmail = (idx: number) => onChange(emails.filter((_, i) => i !== idx));
+
+  const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (['Enter', ',', ';', 'Tab'].includes(e.key)) {
+      e.preventDefault();
+      if (input.trim()) addEmail(input);
+    } else if (e.key === 'Backspace' && !input && emails.length > 0) {
+      removeEmail(emails.length - 1);
+    }
+  };
+
+  const filtered = (suggestions ?? []).filter(s =>
+    s.toLowerCase().includes(input.toLowerCase()) && !emails.includes(s)
+  ).slice(0, 6);
+
+  return (
+    <div>
+      <Label>{label}</Label>
+      <div
+        className="min-h-[40px] border border-gray-300 rounded px-2 py-1.5 flex flex-wrap gap-1.5 cursor-text focus-within:ring-2 focus-within:ring-orange-400 bg-white"
+        onClick={() => inputRef.current?.focus()}
+      >
+        {emails.map((e, i) => (
+          <span key={i} className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full">
+            {e}
+            <button type="button" onClick={() => removeEmail(i)} className="text-blue-500 hover:text-blue-800 leading-none">✕</button>
+          </span>
+        ))}
+        <div className="relative flex-1 min-w-[140px]">
+          <input
+            ref={inputRef}
+            value={input}
+            onChange={e => { setInput(e.target.value); setShowSug(true); }}
+            onKeyDown={handleKey}
+            onBlur={() => { if(input.trim()) addEmail(input); setTimeout(()=>setShowSug(false),150); }}
+            placeholder={emails.length === 0 ? (placeholder ?? '이메일 입력 후 Enter 또는 ","') : ''}
+            className="w-full border-0 outline-none text-sm bg-transparent py-0.5"
+          />
+          {showSug && filtered.length > 0 && (
+            <div className="absolute left-0 top-full z-50 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[240px] mt-1">
+              {filtered.map(s => (
+                <button
+                  key={s} type="button"
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-orange-50 hover:text-orange-700"
+                  onMouseDown={() => { onChange([...emails, s]); setInput(''); setShowSug(false); }}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      <p className="text-xs text-gray-400 mt-0.5">Enter, 쉼표, Tab으로 추가 | Backspace로 삭제</p>
+    </div>
+  );
+}
+
 // ─── 발송 정보 공통 폼 ──────────────────────────────────────
-function SendInfoForm({v, onChange}: {v:SendInfo; onChange:(k:keyof SendInfo, val:string)=>void}) {
+function SendInfoForm({
+  v, onSendChange, emailSuggestions,
+}: {
+  v: SendInfo;
+  onSendChange: (patch: Partial<SendInfo>) => void;
+  emailSuggestions: string[];
+}) {
+  // 내부적으로 이메일을 배열로 관리
+  const toEmails  = v.email1 ? [v.email1, ...(v.email2 ? [v.email2] : [])] : [];
+  const ccEmails  = v.cc1    ? [v.cc1,    ...(v.cc2    ? [v.cc2]    : [])] : [];
+  const toPhones  = v.phone1 ? [v.phone1, ...(v.phone2 ? [v.phone2] : [])] : [];
+
+  const setToEmails = (arr: string[]) =>
+    onSendChange({ email1: arr[0] ?? '', email2: arr[1] ?? '' });
+  const setCcEmails = (arr: string[]) =>
+    onSendChange({ cc1: arr[0] ?? '', cc2: arr[1] ?? '' });
+  const setPhones = (arr: string[]) =>
+    onSendChange({ phone1: arr[0] ?? '', phone2: arr[1] ?? '' });
+
   return (
     <div className="bg-white rounded-lg border p-5 space-y-4">
       <h2 className="font-semibold text-gray-800 text-sm">발송 정보</h2>
-      <div className="grid grid-cols-3 gap-3">
-        <div><Label>수신인 *</Label><Input value={v.recipient} onChange={e=>onChange('recipient',e.target.value)} placeholder="홍길동 부장님"/></div>
-        <div><Label>수신 이메일 1 *</Label><Input type="email" value={v.email1} onChange={e=>onChange('email1',e.target.value)} placeholder="to@company.com"/></div>
-        <div><Label>수신 이메일 2</Label><Input type="email" value={v.email2} onChange={e=>onChange('email2',e.target.value)} placeholder="to2@company.com"/></div>
-        <div><Label>참조(CC) 1</Label><Input type="email" value={v.cc1} onChange={e=>onChange('cc1',e.target.value)}/></div>
-        <div><Label>참조(CC) 2</Label><Input type="email" value={v.cc2} onChange={e=>onChange('cc2',e.target.value)}/></div>
-        <div><Label>견적일자</Label><Input type="date" value={v.quoteDate} onChange={e=>onChange('quoteDate',e.target.value)}/></div>
-        <div><Label>전화번호 1 (SMS)</Label><Input value={v.phone1} onChange={e=>onChange('phone1',e.target.value)} placeholder="010-0000-0000"/></div>
-        <div><Label>전화번호 2 (SMS)</Label><Input value={v.phone2} onChange={e=>onChange('phone2',e.target.value)} placeholder="010-0000-0000"/></div>
-        <div><Label>추가 메시지</Label><Input value={v.extraMsg} onChange={e=>onChange('extraMsg',e.target.value)} placeholder="이메일 본문 추가 내용"/></div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>수신인 *</Label>
+          <Input value={v.recipient} onChange={e=>onSendChange({recipient:e.target.value})} placeholder="홍길동 부장님"/>
+        </div>
+        <div>
+          <Label>견적일자</Label>
+          <Input type="date" value={v.quoteDate} onChange={e=>onSendChange({quoteDate:e.target.value})}/>
+        </div>
+      </div>
+      <EmailChipInput
+        label="수신 이메일 (최대 2개)"
+        emails={toEmails.filter(Boolean)}
+        onChange={setToEmails}
+        suggestions={emailSuggestions}
+        placeholder="받는 사람 이메일"
+      />
+      <EmailChipInput
+        label="참조(CC)"
+        emails={ccEmails.filter(Boolean)}
+        onChange={setCcEmails}
+        suggestions={emailSuggestions}
+        placeholder="참조 이메일"
+      />
+      <div>
+        <Label>전화번호 (SMS/MMS, 최대 2개)</Label>
+        <div className="flex flex-wrap gap-1.5 border border-gray-300 rounded px-2 py-1.5 min-h-[40px] cursor-text bg-white" onClick={()=>{}}>
+          {toPhones.map((ph,i)=>(
+            <span key={i} className="inline-flex items-center gap-1 bg-green-100 text-green-800 text-xs px-2 py-0.5 rounded-full">
+              {ph}
+              <button type="button" onClick={()=>setPhones(toPhones.filter((_,idx)=>idx!==i))} className="text-green-500 hover:text-green-800">✕</button>
+            </span>
+          ))}
+          {toPhones.length < 2 && (
+            <input
+              placeholder={toPhones.length===0?'010-0000-0000':'전화번호 2'}
+              onKeyDown={e=>{
+                const inp = e.currentTarget;
+                if(['Enter',','].includes(e.key)&&inp.value.trim()){
+                  e.preventDefault();
+                  if(toPhones.length<2) setPhones([...toPhones,inp.value.trim()]);
+                  inp.value='';
+                }
+              }}
+              onBlur={e=>{
+                if(e.target.value.trim()&&toPhones.length<2){
+                  setPhones([...toPhones,e.target.value.trim()]);
+                  e.target.value='';
+                }
+              }}
+              className="flex-1 min-w-[140px] border-0 outline-none text-sm bg-transparent py-0.5"
+            />
+          )}
+        </div>
+        <p className="text-xs text-gray-400 mt-0.5">Enter 또는 쉼표로 추가</p>
+      </div>
+      <div>
+        <Label>추가 메시지</Label>
+        <Input value={v.extraMsg} onChange={e=>onSendChange({extraMsg:e.target.value})} placeholder="이메일 본문 추가 내용"/>
       </div>
     </div>
   );
@@ -283,7 +432,7 @@ function buildQuoteHTML(type:'battery'|'forklift', form:BatteryForm|ForkliftForm
   return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
 <title>${typeLabel} 견적서 ${quoteNo}</title>
 <style>
-  @page{size:A4;margin:15mm 14mm;}
+  @page{size:A4;margin:15mm 14mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}
   *{box-sizing:border-box;}
   body{font-family:'맑은 고딕','Malgun Gothic',sans-serif;font-size:12px;color:#1e293b;margin:0;}
   table{border-collapse:collapse;width:100%;}
@@ -370,7 +519,7 @@ function buildPurchaseHTML(form:PurchaseForm, poNo:string) {
     </tr>`;
   }).join('');
   return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>발주서 ${poNo}</title>
-<style>@page{size:A4;margin:15mm 14mm;}*{box-sizing:border-box;}body{font-family:'맑은 고딕','Malgun Gothic',sans-serif;font-size:12px;color:#1e293b;margin:0;}table{border-collapse:collapse;width:100%;}</style>
+<style>@page{size:A4;margin:15mm 14mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}*{box-sizing:border-box;}body{font-family:'맑은 고딕','Malgun Gothic',sans-serif;font-size:12px;color:#1e293b;margin:0;}table{border-collapse:collapse;width:100%;}</style>
 </head><body>
 <div style="background:#0a192f;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;border-radius:6px;margin-bottom:14px">
   <div><div style="font-size:20px;font-weight:700;color:#fff">RNF KOREA</div>
@@ -438,6 +587,7 @@ export default function QuotationPage() {
   const [msg, setMsg]                   = useState('');
   const [previewHtml, setPreviewHtml]   = useState('');
   const [previewOpen, setPreviewOpen]   = useState(false);
+  const [emailSuggestions, setEmailSuggestions] = useState<string[]>([]);
   const [history, setHistory]           = useState<HistoryRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
@@ -484,9 +634,53 @@ export default function QuotationPage() {
   const fTotal = calcTotal(ff.items);
   const pTotal = calcTotal(pf.items);
 
+  // ── 이메일 자동완성 소스 로드 (기존 발송 이력 + 기본값)
+  useEffect(() => {
+    // 기존 발송 이력에서 이메일 수집
+    supabase.from('tb_quotations')
+      .select('recipient_email')
+      .not('recipient_email','is',null)
+      .order('created_at',{ascending:false})
+      .limit(50)
+      .then(async ({data}) => {
+        const base = Array.from(new Set([
+          'admin@rnfkorea.co.kr',
+          'ltongs7@gmail.com',
+          ...(data??[]).map((r:any)=>r.recipient_email).filter(Boolean),
+        ]));
+
+        // Google 주소록에서 연락처 이메일 추가 (google-calendar-tokens 재활용)
+        try {
+          const { data: tokenRow } = await supabase
+            .from('google_calendar_tokens')
+            .select('access_token')
+            .eq('user_email','admin@rnfkorea.co.kr')
+            .maybeSingle();
+
+          if (tokenRow?.access_token) {
+            const res = await fetch(
+              'https://people.googleapis.com/v1/people/me/connections?personFields=emailAddresses,names&pageSize=200&sortOrder=LAST_MODIFIED_DESCENDING',
+              { headers: { Authorization: `Bearer ${tokenRow.access_token}` } }
+            );
+            if (res.ok) {
+              const d = await res.json();
+              const googleEmails = (d.connections ?? [])
+                .flatMap((p:any) => (p.emailAddresses ?? []).map((e:any) => e.value))
+                .filter(Boolean);
+              const merged = Array.from(new Set([...base, ...googleEmails]));
+              setEmailSuggestions(merged);
+              return;
+            }
+          }
+        } catch { /* Google 연락처 로드 실패 시 기존 이력만 사용 */ }
+
+        setEmailSuggestions(base);
+      });
+  }, []);
+
   // ── 공통 발송정보 업데이터
-  const updSend = (setter:any) => (k:keyof SendInfo, v:string) =>
-    setter((f:any) => ({...f, [k]:v}));
+  const updSend = (setter:any) => (patch: Partial<SendInfo>) =>
+    setter((f:any) => ({...f, ...patch}));
 
   // ── 히스토리 로드
   const loadHistory = useCallback(async () => {
@@ -648,7 +842,7 @@ export default function QuotationPage() {
       <td style="text-align:right">${fmtN(row.interest)}</td><td style="text-align:right">${fmtN(row.balance)}</td>
     </tr>`).join('');
     const html=`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>할부견적서</title>
-<style>@page{size:A4;margin:15mm 14mm;}*{box-sizing:border-box;}body{font-family:'맑은 고딕',sans-serif;font-size:11px;color:#1e293b;}
+<style>@page{size:A4;margin:15mm 14mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}*{box-sizing:border-box;}body{font-family:'맑은 고딕',sans-serif;font-size:11px;color:#1e293b;}
 table{border-collapse:collapse;width:100%;}th{background:#0a192f;color:#fff;padding:6px 4px;font-size:10px;}
 td{padding:5px 4px;border-bottom:1px solid #f1f5f9;}tr:nth-child(even) td{background:#f8fafc;}
 tr.grace td{color:#94a3b8;font-style:italic;}.tfoot td{background:#e2e8f0;font-weight:700;border-top:2px solid #94a3b8;}</style></head><body>
@@ -779,7 +973,7 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
 
         {/* ══ 배터리 탭 ══ */}
         {tab==='battery' && <>
-          <SendInfoForm v={bf} onChange={updSend(setBf)}/>
+          <SendInfoForm v={bf} onSendChange={updSend(setBf)} emailSuggestions={emailSuggestions}/>
           <div className="bg-white rounded-lg border p-5 space-y-3">
             <div className="grid grid-cols-3 gap-3">
               <div><Label>유효기간</Label><Input value={bf.validPeriod} onChange={e=>setBf(f=>({...f,validPeriod:e.target.value}))}/></div>
@@ -799,7 +993,7 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
 
         {/* ══ 지게차 탭 ══ */}
         {tab==='forklift' && <>
-          <SendInfoForm v={ff} onChange={updSend(setFf)}/>
+          <SendInfoForm v={ff} onSendChange={updSend(setFf)} emailSuggestions={emailSuggestions}/>
           <div className="bg-white rounded-lg border p-5">
             <div className="grid grid-cols-3 gap-3">
               <div><Label>유효기간</Label><Input value={ff.validPeriod} onChange={e=>setFf(f=>({...f,validPeriod:e.target.value}))}/></div>
@@ -847,7 +1041,7 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
 
         {/* ══ 할부 탭 ══ */}
         {tab==='installment' && <>
-          <SendInfoForm v={iff} onChange={updSend(setIff)}/>
+          <SendInfoForm v={iff} onSendChange={updSend(setIff)} emailSuggestions={emailSuggestions}/>
           <div className="bg-white rounded-lg border p-5">
             <h2 className="font-semibold text-gray-800 mb-4 text-sm">기본 정보</h2>
             <div className="grid grid-cols-3 gap-3">
@@ -908,7 +1102,7 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
 
         {/* ══ 발주서 탭 ══ */}
         {tab==='purchase' && <>
-          <SendInfoForm v={pf} onChange={updSend(setPf)}/>
+          <SendInfoForm v={pf} onSendChange={updSend(setPf)} emailSuggestions={emailSuggestions}/>
           <div className="bg-white rounded-lg border p-5">
             <h2 className="font-semibold text-gray-800 mb-3 text-sm">기본 정보</h2>
             <div className="grid grid-cols-2 gap-3">
