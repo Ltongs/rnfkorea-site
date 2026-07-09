@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Phone, Loader2, Send, LogIn } from "lucide-react";
 import { Battery, Truck, Wallet, Check } from "lucide-react";
@@ -19,6 +19,22 @@ const heroShowcaseItems: HeroShowcaseItem[] = [
     subtitle: "타미우스CC",
     description: "기존 납산 배터리 대체용 LFP 배터리 공급 사례",
     image: "/home/golfcart_tamius.png",
+    to: "/battery",
+  },
+  {
+    eyebrow: "최근 납품실적",
+    title: "골프카트용 LFP 배터리 추가납품",
+    subtitle: "타미우스CC",
+    description: "운영대수 확대에 따른 LFP 배터리 추가 공급 사례",
+    image: ["/home/golfcart_tamius_add_1.jpg", "/home/golfcart_tamius_add_2.jpg"],
+    to: "/battery",
+  },
+  {
+    eyebrow: "최근 납품실적",
+    title: "하이리치 LFP 배터리 장착 (광양)",
+    subtitle: "예일이큅먼트 (Yale)",
+    description: "물류센터 하이리치에 LFP 배터리 장착 공급 사례",
+    image: ["/home/yale_reach_lfp_1.jpg", "/home/yale_reach_lfp_2.jpg"],
     to: "/battery",
   },
   {
@@ -66,6 +82,65 @@ const heroShowcaseItems: HeroShowcaseItem[] = [
 
 const HeroShowcaseSlider: React.FC = () => {
   const loopItems = [...heroShowcaseItems, ...heroShowcaseItems];
+  const containerRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [isHovering, setIsHovering] = useState(false);
+  const maxScrollRef = useRef(0);
+  const latestXRef = useRef(0);
+  const rafIdRef = useRef<number | null>(null);
+
+  const applyTransform = (clientX: number) => {
+    const container = containerRef.current;
+    const track = trackRef.current;
+    if (!container || !track) return;
+    const rect = container.getBoundingClientRect();
+    const ratio = Math.min(Math.max((clientX - rect.left) / rect.width, 0), 1);
+    // Track should pan in the same direction the cursor moves: cursor at
+    // the right edge keeps the track at its start (0), cursor at the left
+    // edge pans it fully to the left (-maxScroll).
+    const x = (ratio - 1) * maxScrollRef.current;
+    track.style.transform = `translateX(${x}px)`;
+  };
+
+  const handleMouseEnter = () => {
+    const container = containerRef.current;
+    const track = trackRef.current;
+    if (container && track) {
+      // loopItems is the original list duplicated once for the seamless
+      // marquee loop, so the meaningfully scrollable range is only the
+      // first half of the track. Measured once on entry, not per move.
+      const containerWidth = container.getBoundingClientRect().width;
+      maxScrollRef.current = Math.max(track.scrollWidth / 2 - containerWidth, 0);
+    }
+    setIsHovering(true);
+  };
+
+  const handleMouseLeave = () => {
+    setIsHovering(false);
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+    if (trackRef.current) {
+      trackRef.current.style.transform = "";
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    latestXRef.current = e.clientX;
+    if (rafIdRef.current === null) {
+      rafIdRef.current = requestAnimationFrame(() => {
+        applyTransform(latestXRef.current);
+        rafIdRef.current = null;
+      });
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (rafIdRef.current !== null) cancelAnimationFrame(rafIdRef.current);
+    };
+  }, []);
 
   return (
     <div className="mt-10 md:mt-12 w-full">
@@ -80,13 +155,25 @@ const HeroShowcaseSlider: React.FC = () => {
         </div>
       </div>
 
-      <div className="relative overflow-hidden rounded-[24px] border border-white/10 bg-white/5 backdrop-blur-[2px]">
+      <div
+        ref={containerRef}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        onMouseMove={handleMouseMove}
+        className="relative overflow-hidden rounded-[24px] border border-white/10 bg-white/5 backdrop-blur-[2px]"
+      >
         <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 bg-gradient-to-r from-[#0a192f] to-transparent" />
         <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-gradient-to-l from-[#0a192f] to-transparent" />
 
-        <div className="flex w-max gap-4 px-4 py-4 [animation:heroCaseMarquee_26s_linear_infinite] hover:[animation-play-state:paused]">
+        <div
+          ref={trackRef}
+          className={`flex w-max gap-4 px-4 py-4 ${
+            !isHovering ? "[animation:heroCaseMarquee_26s_linear_infinite]" : ""
+          }`}
+        >
           {loopItems.map((item, idx) => (
             <Link
+
               key={`${item.title}-${idx}`}
               to={item.to}
               className="group relative h-[220px] w-[300px] md:h-[236px] md:w-[360px] shrink-0 overflow-hidden rounded-[20px] border border-white/10 bg-[#10233c]"
@@ -562,7 +649,7 @@ const HomePage: React.FC = () => (
       >
         <div className="relative z-10 p-6 md:p-7 pr-24 md:pr-40">
           <h3 className="text-xl font-semibold mb-2 hover:text-orange-600 transition-colors">
-  타이어 구매 프로젝트
+  타이어 구매 프로그램
 </h3>
 <p className="text-gray-600">
   타이어 공급 + 금융 적용 구조
@@ -589,7 +676,7 @@ const HomePage: React.FC = () => (
       >
         <div className="relative z-10 p-6 md:p-7 pr-24 md:pr-40">
           <h3 className="text-xl font-semibold mb-2 hover:text-orange-600 transition-colors">
-  배터리 전환 프로젝트
+  배터리 전환 프로그램
 </h3>
 <p className="text-gray-600">
   LFP 전환 + 금융 결합 구조 설계
@@ -616,7 +703,7 @@ const HomePage: React.FC = () => (
       >
         <div className="relative z-10 p-6 md:p-7 pr-24 md:pr-40">
           <h3 className="text-xl font-semibold mb-2 hover:text-orange-600 transition-colors">
-  장비 재상품화 프로젝트
+  장비 재상품화 프로그램
 </h3>
 <p className="text-gray-600">
   노후 산업장비 선별·정비·수출 구조 설계
