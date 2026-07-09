@@ -1103,7 +1103,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         status:                  "접수" as TaesanStatus,
         phone_scrubbed_at:       null,
         doc_id_card: null, doc_employment: null, doc_income: null,
-        doc_estimate: null, doc_excavator_license: null, doc_etc: null,
+        doc_estimate: null, doc_excavator_license: null,
         closed_at: null,
       };
       const { data: inserted, error } = await supabase

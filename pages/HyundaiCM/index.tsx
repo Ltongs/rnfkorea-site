@@ -17,6 +17,70 @@ type HCMStatus    = "접수" | "신용조회" | "승인" | "보완" | "거절" |
 
 type FinanceCompany = "NH캐피탈" | "오릭스캐피탈" | "우리금융캐피탈";
 
+// ─── 탭 ─────────────────────────────────────────────────
+type ActiveTab = "할부금융" | "보험" | "수출";
+
+// ─── 보험 타입 ────────────────────────────────────────────
+type InsuranceStatus = "접수" | "진행중" | "완료" | "취소";
+type InsuranceTask = {
+  id: string | number;
+  customer_type: CustomerType;
+  customer_name: string;
+  customer_phone: string | null;
+  company_name: string | null;
+  insurance_type: string | null;
+  insurance_company: string | null;
+  premium_amount: number | null;
+  coverage_start: string | null;
+  coverage_end: string | null;
+  sales_rep: string | null;
+  status: InsuranceStatus;
+  special_note: string | null;
+  created_at?: string;
+  closed_at?: string | null;
+};
+
+// ─── 수출 타입 ────────────────────────────────────────────
+type ExportStatus = "접수" | "계약" | "선적" | "완료" | "취소";
+type ExportTask = {
+  id: string | number;
+  customer_type: CustomerType;
+  customer_name: string;
+  customer_phone: string | null;
+  company_name: string | null;
+  export_country: string | null;
+  equipment_model: string | null;
+  export_amount: number | null;
+  bl_number: string | null;
+  sales_rep: string | null;
+  status: ExportStatus;
+  special_note: string | null;
+  created_at?: string;
+  closed_at?: string | null;
+};
+
+const INS_STATUS_ORDER: InsuranceStatus[] = ["접수", "진행중", "완료", "취소"];
+function insStatusStyle(status: InsuranceStatus) {
+  switch (status) {
+    case "접수":   return "bg-gray-100 text-gray-600 border-gray-200";
+    case "진행중": return "bg-orange-50 text-orange-600 border-orange-200";
+    case "완료":   return "bg-emerald-100 text-emerald-800 border-emerald-300";
+    case "취소":   return "bg-red-50 text-red-600 border-red-200";
+    default:       return "bg-gray-50 text-gray-500 border-gray-200";
+  }
+}
+const EXP_STATUS_ORDER: ExportStatus[] = ["접수", "계약", "선적", "완료", "취소"];
+function expStatusStyle(status: ExportStatus) {
+  switch (status) {
+    case "접수": return "bg-gray-100 text-gray-600 border-gray-200";
+    case "계약": return "bg-blue-50 text-blue-600 border-blue-200";
+    case "선적": return "bg-purple-50 text-purple-700 border-purple-200";
+    case "완료": return "bg-emerald-100 text-emerald-800 border-emerald-300";
+    case "취소": return "bg-red-50 text-red-600 border-red-200";
+    default:     return "bg-gray-50 text-gray-500 border-gray-200";
+  }
+}
+
 type HCMTask = {
   id: string | number;
   customer_type: CustomerType;
@@ -262,6 +326,83 @@ export default function HyundaiCMPage() {
   const [searchText,      setSearchText]      = useState("");
   const [statusFilter,    setStatusFilter]    = useState<HCMStatus | "all">("all");
   const [showClosed,      setShowClosed]      = useState(false);
+
+  // ── 탭 ──
+  const [activeTab, setActiveTab] = useState<ActiveTab>("할부금융");
+
+  // ── 보험 탭 상태 ──
+  const [insRows,        setInsRows]        = useState<InsuranceTask[]>([]);
+  const [insLoading,     setInsLoading]     = useState(false);
+  const [insLoaded,      setInsLoaded]      = useState(false);
+  const [insShowCreate,  setInsShowCreate]  = useState(false);
+  const [insShowSearch,  setInsShowSearch]  = useState(false);
+  const [insSearch,      setInsSearch]      = useState("");
+  const [insStatusFilter, setInsStatusFilter] = useState<InsuranceStatus | "all">("all");
+  const [insSaving,      setInsSaving]      = useState(false);
+  const [insDeleteId,    setInsDeleteId]    = useState<string | number | null>(null);
+  const [insDeleting,    setInsDeleting]    = useState(false);
+  const [insMemoDrafts,  setInsMemoDrafts]  = useState<Record<string, string>>({});
+  const [insMemoSavingId, setInsMemoSavingId] = useState<string | number | null>(null);
+  const [insEditRow,     setInsEditRow]     = useState<InsuranceTask | null>(null);
+  const [insEditSaving,  setInsEditSaving]  = useState(false);
+  // 보험 신규 폼
+  const [insCustType,    setInsCustType]    = useState<CustomerType>("개인");
+  const [insCustName,    setInsCustName]    = useState("");
+  const [insCustPhone,   setInsCustPhone]   = useState("");
+  const [insInsType,     setInsInsType]     = useState("");
+  const [insInsCompany,  setInsInsCompany]  = useState("");
+  const [insPremium,     setInsPremium]     = useState("");
+  const [insCovStart,    setInsCovStart]    = useState("");
+  const [insCovEnd,      setInsCovEnd]      = useState("");
+  const [insSalesRep,    setInsSalesRep]    = useState("");
+  const [insNote,        setInsNote]        = useState("");
+  // 보험 수정 폼
+  const [insEditCustType,   setInsEditCustType]   = useState<CustomerType>("개인");
+  const [insEditCustName,   setInsEditCustName]   = useState("");
+  const [insEditCustPhone,  setInsEditCustPhone]  = useState("");
+  const [insEditInsType,    setInsEditInsType]    = useState("");
+  const [insEditInsCompany, setInsEditInsCompany] = useState("");
+  const [insEditPremium,    setInsEditPremium]    = useState("");
+  const [insEditCovStart,   setInsEditCovStart]   = useState("");
+  const [insEditCovEnd,     setInsEditCovEnd]     = useState("");
+  const [insEditSalesRep,   setInsEditSalesRep]   = useState("");
+  const [insEditNote,       setInsEditNote]       = useState("");
+
+  // ── 수출 탭 상태 ──
+  const [expRows,        setExpRows]        = useState<ExportTask[]>([]);
+  const [expLoading,     setExpLoading]     = useState(false);
+  const [expLoaded,      setExpLoaded]      = useState(false);
+  const [expShowCreate,  setExpShowCreate]  = useState(false);
+  const [expShowSearch,  setExpShowSearch]  = useState(false);
+  const [expSearch,      setExpSearch]      = useState("");
+  const [expStatusFilter, setExpStatusFilter] = useState<ExportStatus | "all">("all");
+  const [expSaving,      setExpSaving]      = useState(false);
+  const [expDeleteId,    setExpDeleteId]    = useState<string | number | null>(null);
+  const [expDeleting,    setExpDeleting]    = useState(false);
+  const [expMemoDrafts,  setExpMemoDrafts]  = useState<Record<string, string>>({});
+  const [expMemoSavingId, setExpMemoSavingId] = useState<string | number | null>(null);
+  const [expEditRow,     setExpEditRow]     = useState<ExportTask | null>(null);
+  const [expEditSaving,  setExpEditSaving]  = useState(false);
+  // 수출 신규 폼
+  const [expCustType,    setExpCustType]    = useState<CustomerType>("개인");
+  const [expCustName,    setExpCustName]    = useState("");
+  const [expCustPhone,   setExpCustPhone]   = useState("");
+  const [expCountry,     setExpCountry]     = useState("");
+  const [expModel,       setExpModel]       = useState("");
+  const [expAmount,      setExpAmount]      = useState("");
+  const [expBLNumber,    setExpBLNumber]    = useState("");
+  const [expSalesRep,    setExpSalesRep]    = useState("");
+  const [expNote,        setExpNote]        = useState("");
+  // 수출 수정 폼
+  const [expEditCustType,  setExpEditCustType]  = useState<CustomerType>("개인");
+  const [expEditCustName,  setExpEditCustName]  = useState("");
+  const [expEditCustPhone, setExpEditCustPhone] = useState("");
+  const [expEditCountry,   setExpEditCountry]   = useState("");
+  const [expEditModel,     setExpEditModel]     = useState("");
+  const [expEditAmount,    setExpEditAmount]    = useState("");
+  const [expEditBLNumber,  setExpEditBLNumber]  = useState("");
+  const [expEditSalesRep,  setExpEditSalesRep]  = useState("");
+  const [expEditNote,      setExpEditNote]      = useState("");
   const [statsMonth,      setStatsMonth]      = useState<string>(() => {
     const n = new Date();
     return n.getFullYear().toString() + String(n.getMonth() + 1).padStart(2, "0");
@@ -1609,6 +1750,157 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     finally { setDeleting(false); }
   };
 
+  // ─── 보험 / 수출 fetch ───────────────────────────────────
+  const fetchInsRows = async () => {
+    setInsLoading(true);
+    try {
+      const { data, error } = await supabase.from("insurance_tasks").select("*").order("created_at", { ascending: false });
+      if (error) throw error;
+      setInsRows(data ?? []);
+      setInsLoaded(true);
+    } catch (e: any) { console.error("[insurance_tasks]", e); }
+    finally { setInsLoading(false); }
+  };
+  const fetchExpRows = async () => {
+    setExpLoading(true);
+    try {
+      const { data, error } = await supabase.from("export_tasks").select("*").order("created_at", { ascending: false });
+      if (error) throw error;
+      setExpRows(data ?? []);
+      setExpLoaded(true);
+    } catch (e: any) { console.error("[export_tasks]", e); }
+    finally { setExpLoading(false); }
+  };
+  useEffect(() => { if (activeTab === "보험"  && !insLoaded) fetchInsRows(); }, [activeTab]); // eslint-disable-line
+  useEffect(() => { if (activeTab === "수출"  && !expLoaded) fetchExpRows(); }, [activeTab]); // eslint-disable-line
+
+  const filteredInsRows = useMemo(() => {
+    let r = [...insRows];
+    if (insStatusFilter !== "all") r = r.filter((x) => x.status === insStatusFilter);
+    const q = insSearch.trim().toLowerCase();
+    if (q) r = r.filter((x) => (x.customer_name ?? "").toLowerCase().includes(q) || (x.insurance_type ?? "").toLowerCase().includes(q) || (x.insurance_company ?? "").toLowerCase().includes(q) || (x.sales_rep ?? "").toLowerCase().includes(q) || onlyDigits(x.customer_phone ?? "").includes(onlyDigits(q)));
+    return r;
+  }, [insRows, insStatusFilter, insSearch]);
+
+  const filteredExpRows = useMemo(() => {
+    let r = [...expRows];
+    if (expStatusFilter !== "all") r = r.filter((x) => x.status === expStatusFilter);
+    const q = expSearch.trim().toLowerCase();
+    if (q) r = r.filter((x) => (x.customer_name ?? "").toLowerCase().includes(q) || (x.export_country ?? "").toLowerCase().includes(q) || (x.equipment_model ?? "").toLowerCase().includes(q) || (x.sales_rep ?? "").toLowerCase().includes(q) || (x.bl_number ?? "").toLowerCase().includes(q) || onlyDigits(x.customer_phone ?? "").includes(onlyDigits(q)));
+    return r;
+  }, [expRows, expStatusFilter, expSearch]);
+
+  const insStatusCounts = useMemo(() => INS_STATUS_ORDER.reduce((acc, s) => { acc[s] = insRows.filter((r) => r.status === s).length; return acc; }, {} as Record<InsuranceStatus, number>), [insRows]);
+  const expStatusCounts = useMemo(() => EXP_STATUS_ORDER.reduce((acc, s) => { acc[s] = expRows.filter((r) => r.status === s).length; return acc; }, {} as Record<ExportStatus, number>), [expRows]);
+
+  // ─── 보험 핸들러 ──────────────────────────────────────────
+  const insReset = () => { setInsCustType("개인"); setInsCustName(""); setInsCustPhone(""); setInsInsType(""); setInsInsCompany(""); setInsPremium(""); setInsCovStart(""); setInsCovEnd(""); setInsSalesRep(""); setInsNote(""); };
+  const insAdd = async () => {
+    if (!insCustName.trim()) { alert("고객명을 입력해주세요."); return; }
+    if (!insSalesRep.trim()) { alert("영업사원을 입력해주세요."); return; }
+    setInsSaving(true);
+    try {
+      const { error } = await supabase.from("insurance_tasks").insert({ customer_type: insCustType, customer_name: insCustName.trim(), customer_phone: onlyDigits(insCustPhone) || null, company_name: insCustType === "법인" ? insCustName.trim() : null, insurance_type: insInsType.trim() || null, insurance_company: insInsCompany.trim() || null, premium_amount: insPremium.trim() ? parseInt(onlyDigits(insPremium), 10) || null : null, coverage_start: insCovStart || null, coverage_end: insCovEnd || null, sales_rep: insSalesRep.trim(), special_note: insNote.trim() || null, status: "접수" as InsuranceStatus, closed_at: null });
+      if (error) throw error;
+      insReset(); setInsShowCreate(false); await fetchInsRows();
+    } catch (e: any) { alert(e?.message || "등록 실패"); }
+    finally { setInsSaving(false); }
+  };
+  const insChangeStatus = async (row: InsuranceTask, next: InsuranceStatus) => {
+    if (row.status === next) return;
+    const patch: Partial<InsuranceTask> = { status: next, ...((next === "완료" || next === "취소") ? { closed_at: new Date().toISOString() } : {}) };
+    setInsRows((prev) => prev.map((r) => String(r.id) === String(row.id) ? { ...r, ...patch } : r));
+    const { error } = await supabase.from("insurance_tasks").update(patch).eq("id", row.id as any);
+    if (error) { setInsRows((prev) => prev.map((r) => String(r.id) === String(row.id) ? { ...r, status: row.status } : r)); alert(error.message); }
+  };
+  const insOpenEdit = (row: InsuranceTask) => { setInsEditRow(row); setInsEditCustType(row.customer_type ?? "개인"); setInsEditCustName(row.customer_name ?? ""); setInsEditCustPhone(formatPhoneKR(row.customer_phone ?? "")); setInsEditInsType(row.insurance_type ?? ""); setInsEditInsCompany(row.insurance_company ?? ""); setInsEditPremium(row.premium_amount != null ? String(row.premium_amount) : ""); setInsEditCovStart(row.coverage_start ?? ""); setInsEditCovEnd(row.coverage_end ?? ""); setInsEditSalesRep(row.sales_rep ?? ""); setInsEditNote(row.special_note ?? ""); };
+  const insSaveEdit = async () => {
+    if (!insEditRow || !insEditCustName.trim()) { alert("고객명을 입력해주세요."); return; }
+    setInsEditSaving(true);
+    try {
+      const patch = { customer_type: insEditCustType, customer_name: insEditCustName.trim(), customer_phone: onlyDigits(insEditCustPhone) || null, company_name: insEditCustType === "법인" ? insEditCustName.trim() : null, insurance_type: insEditInsType.trim() || null, insurance_company: insEditInsCompany.trim() || null, premium_amount: insEditPremium.trim() ? parseInt(onlyDigits(insEditPremium), 10) || null : null, coverage_start: insEditCovStart || null, coverage_end: insEditCovEnd || null, sales_rep: insEditSalesRep.trim() || null, special_note: insEditNote.trim() || null };
+      const { error } = await supabase.from("insurance_tasks").update(patch).eq("id", insEditRow.id as any);
+      if (error) throw error;
+      setInsRows((prev) => prev.map((r) => String(r.id) === String(insEditRow.id) ? { ...r, ...patch } : r));
+      setInsEditRow(null);
+    } catch (e: any) { alert(e?.message || "수정 실패"); }
+    finally { setInsEditSaving(false); }
+  };
+  const insDeleteRow = async (rowId: string | number) => {
+    setInsDeleting(true);
+    try {
+      const { error } = await supabase.from("insurance_tasks").delete().eq("id", rowId as any);
+      if (error) throw error;
+      setInsRows((prev) => prev.filter((r) => String(r.id) !== String(rowId)));
+      setInsDeleteId(null);
+    } catch (e: any) { alert(`삭제 실패: ${e?.message}`); }
+    finally { setInsDeleting(false); }
+  };
+  const insSaveMemo = async (rowId: string | number) => {
+    setInsMemoSavingId(rowId);
+    try {
+      const note = insMemoDrafts[String(rowId)] ?? "";
+      const { error } = await supabase.from("insurance_tasks").update({ special_note: note || null }).eq("id", rowId as any);
+      if (error) throw error;
+      setInsRows((prev) => prev.map((r) => String(r.id) === String(rowId) ? { ...r, special_note: note || null } : r));
+    } catch (e: any) { alert(e?.message || "메모 저장 실패"); }
+    finally { setInsMemoSavingId(null); }
+  };
+
+  // ─── 수출 핸들러 ──────────────────────────────────────────
+  const expReset = () => { setExpCustType("개인"); setExpCustName(""); setExpCustPhone(""); setExpCountry(""); setExpModel(""); setExpAmount(""); setExpBLNumber(""); setExpSalesRep(""); setExpNote(""); };
+  const expAdd = async () => {
+    if (!expCustName.trim()) { alert("고객명을 입력해주세요."); return; }
+    if (!expSalesRep.trim()) { alert("영업사원을 입력해주세요."); return; }
+    setExpSaving(true);
+    try {
+      const { error } = await supabase.from("export_tasks").insert({ customer_type: expCustType, customer_name: expCustName.trim(), customer_phone: onlyDigits(expCustPhone) || null, company_name: expCustType === "법인" ? expCustName.trim() : null, export_country: expCountry.trim() || null, equipment_model: expModel.trim() || null, export_amount: expAmount.trim() ? parseInt(onlyDigits(expAmount), 10) || null : null, bl_number: expBLNumber.trim() || null, sales_rep: expSalesRep.trim(), special_note: expNote.trim() || null, status: "접수" as ExportStatus, closed_at: null });
+      if (error) throw error;
+      expReset(); setExpShowCreate(false); await fetchExpRows();
+    } catch (e: any) { alert(e?.message || "등록 실패"); }
+    finally { setExpSaving(false); }
+  };
+  const expChangeStatus = async (row: ExportTask, next: ExportStatus) => {
+    if (row.status === next) return;
+    const patch: Partial<ExportTask> = { status: next, ...((next === "완료" || next === "취소") ? { closed_at: new Date().toISOString() } : {}) };
+    setExpRows((prev) => prev.map((r) => String(r.id) === String(row.id) ? { ...r, ...patch } : r));
+    const { error } = await supabase.from("export_tasks").update(patch).eq("id", row.id as any);
+    if (error) { setExpRows((prev) => prev.map((r) => String(r.id) === String(row.id) ? { ...r, status: row.status } : r)); alert(error.message); }
+  };
+  const expOpenEdit = (row: ExportTask) => { setExpEditRow(row); setExpEditCustType(row.customer_type ?? "개인"); setExpEditCustName(row.customer_name ?? ""); setExpEditCustPhone(formatPhoneKR(row.customer_phone ?? "")); setExpEditCountry(row.export_country ?? ""); setExpEditModel(row.equipment_model ?? ""); setExpEditAmount(row.export_amount != null ? String(row.export_amount) : ""); setExpEditBLNumber(row.bl_number ?? ""); setExpEditSalesRep(row.sales_rep ?? ""); setExpEditNote(row.special_note ?? ""); };
+  const expSaveEdit = async () => {
+    if (!expEditRow || !expEditCustName.trim()) { alert("고객명을 입력해주세요."); return; }
+    setExpEditSaving(true);
+    try {
+      const patch = { customer_type: expEditCustType, customer_name: expEditCustName.trim(), customer_phone: onlyDigits(expEditCustPhone) || null, company_name: expEditCustType === "법인" ? expEditCustName.trim() : null, export_country: expEditCountry.trim() || null, equipment_model: expEditModel.trim() || null, export_amount: expEditAmount.trim() ? parseInt(onlyDigits(expEditAmount), 10) || null : null, bl_number: expEditBLNumber.trim() || null, sales_rep: expEditSalesRep.trim() || null, special_note: expEditNote.trim() || null };
+      const { error } = await supabase.from("export_tasks").update(patch).eq("id", expEditRow.id as any);
+      if (error) throw error;
+      setExpRows((prev) => prev.map((r) => String(r.id) === String(expEditRow.id) ? { ...r, ...patch } : r));
+      setExpEditRow(null);
+    } catch (e: any) { alert(e?.message || "수정 실패"); }
+    finally { setExpEditSaving(false); }
+  };
+  const expDeleteRow = async (rowId: string | number) => {
+    setExpDeleting(true);
+    try {
+      const { error } = await supabase.from("export_tasks").delete().eq("id", rowId as any);
+      if (error) throw error;
+      setExpRows((prev) => prev.filter((r) => String(r.id) !== String(rowId)));
+      setExpDeleteId(null);
+    } catch (e: any) { alert(`삭제 실패: ${e?.message}`); }
+    finally { setExpDeleting(false); }
+  };
+  const expSaveMemo = async (rowId: string | number) => {
+    setExpMemoSavingId(rowId);
+    try {
+      const note = expMemoDrafts[String(rowId)] ?? "";
+      const { error } = await supabase.from("export_tasks").update({ special_note: note || null }).eq("id", rowId as any);
+      if (error) throw error;
+      setExpRows((prev) => prev.map((r) => String(r.id) === String(rowId) ? { ...r, special_note: note || null } : r));
+    } catch (e: any) { alert(e?.message || "메모 저장 실패"); }
+    finally { setExpMemoSavingId(null); }
+  };
+
   // ─── JSX ─────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-white">
@@ -1728,6 +2020,30 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         </div>
       </div>
 
+      {/* ── 탭 네비게이션 ── */}
+      <div className="border-b border-gray-200 bg-white sticky top-[49px] z-20">
+        <div className="px-4 flex gap-0">
+          {([
+            { key: "할부금융", label: "🏗 할부금융" },
+            { key: "보험",     label: "🛡 보험" },
+            { key: "수출",     label: "🚢 수출" },
+          ] as const).map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setActiveTab(t.key)}
+              className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-all -mb-px ${
+                activeTab === t.key
+                  ? "border-orange-500 text-orange-600"
+                  : "border-transparent text-gray-400 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {activeTab === "할부금융" && (
       <div className="px-4 py-3 space-y-3">
 
         {/* ── 상태 요약 뱃지 ── */}
@@ -2569,6 +2885,330 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           })}
         </div>
       </div>
+      )} {/* end 할부금융 tab */}
+
+      {/* ══════════════ 보험 탭 ══════════════ */}
+      {activeTab === "보험" && (
+        <div className="p-4 space-y-4">
+          {/* 상태 뱃지 */}
+          <div className="flex flex-wrap gap-2">
+            {INS_STATUS_ORDER.map((s) => (
+              <button key={s} onClick={() => setInsStatusFilter(insStatusFilter === s ? "all" : s)}
+                className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold border transition-all ${insStatusFilter === s ? insStatusStyle(s) + " ring-2 ring-orange-400" : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
+                {s} <span className="font-bold">{insStatusCounts[s] ?? 0}</span>
+              </button>
+            ))}
+            {insStatusFilter !== "all" && <button onClick={() => setInsStatusFilter("all")} className="px-2 py-1 text-xs text-gray-400 hover:text-gray-600">✕ 필터 해제</button>}
+          </div>
+          {/* 검색 & 신규 */}
+          <div className="flex gap-2">
+            <button onClick={() => setInsShowSearch((v) => !v)} className="flex items-center gap-1 px-3 py-2 text-sm bg-white border border-gray-200 rounded-xl text-gray-600 hover:border-orange-300 hover:text-orange-600 transition-all">
+              🔍 {insShowSearch ? "검색 닫기" : "검색"}
+            </button>
+            <button onClick={() => setInsShowCreate((v) => !v)}
+              className={`flex items-center gap-1 px-4 py-2 text-sm rounded-xl font-semibold transition-all ${insShowCreate ? "bg-gray-100 text-gray-600" : "bg-orange-500 text-white hover:bg-orange-600"}`}>
+              {insShowCreate ? "✕ 닫기" : "+ 신규 접수"}
+            </button>
+          </div>
+          {insShowSearch && (
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <input type="text" placeholder="고객명 / 전화번호 / 보험사 / 영업사원 검색"
+                value={insSearch} onChange={(e) => setInsSearch(e.target.value)} className={inputClass + " w-full"} />
+            </div>
+          )}
+          {/* 신규 접수 폼 */}
+          {insShowCreate && (
+            <div className="bg-white border border-orange-100 rounded-xl p-4 space-y-3 shadow-sm">
+              <h3 className="text-sm font-bold text-orange-600">보험 신규 접수</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className={labelClass}>고객 구분</label>
+                  <select value={insCustType} onChange={(e) => setInsCustType(e.target.value as CustomerType)} className={inputClass}><option>개인</option><option>법인</option></select></div>
+                <div><label className={labelClass}>고객명 *</label>
+                  <input value={insCustName} onChange={(e) => setInsCustName(e.target.value)} className={inputClass} placeholder="홍길동" /></div>
+                <div><label className={labelClass}>전화번호</label>
+                  <input value={insCustPhone} onChange={(e) => setInsCustPhone(e.target.value)} className={inputClass} placeholder="010-0000-0000" /></div>
+                <div><label className={labelClass}>보험 종류</label>
+                  <input value={insInsType} onChange={(e) => setInsInsType(e.target.value)} className={inputClass} placeholder="예: 건설기계 종합보험" /></div>
+                <div><label className={labelClass}>보험사</label>
+                  <input value={insInsCompany} onChange={(e) => setInsInsCompany(e.target.value)} className={inputClass} placeholder="예: DB손해보험" /></div>
+                <div><label className={labelClass}>보험료</label>
+                  <input value={insPremium} onChange={(e) => setInsPremium(e.target.value)} className={inputClass} placeholder="0" /></div>
+                <div><label className={labelClass}>보장 시작일</label>
+                  <input type="date" value={insCovStart} onChange={(e) => setInsCovStart(e.target.value)} className={inputClass} /></div>
+                <div><label className={labelClass}>보장 종료일</label>
+                  <input type="date" value={insCovEnd} onChange={(e) => setInsCovEnd(e.target.value)} className={inputClass} /></div>
+                <div><label className={labelClass}>영업사원 *</label>
+                  <input value={insSalesRep} onChange={(e) => setInsSalesRep(e.target.value)} className={inputClass} placeholder="담당자명" /></div>
+                <div className="col-span-2"><label className={labelClass}>특이사항</label>
+                  <textarea value={insNote} onChange={(e) => setInsNote(e.target.value)} className={inputClass + " resize-none h-16"} placeholder="특이사항" /></div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button onClick={insAdd} disabled={insSaving} className={btnPrimary}>{insSaving ? "저장 중…" : "접수 등록"}</button>
+                <button onClick={() => { insReset(); setInsShowCreate(false); }} className={btnSecondary}>취소</button>
+              </div>
+            </div>
+          )}
+          {/* 카드 목록 */}
+          {insLoading ? (
+            <div className="text-center py-10 text-gray-400 text-sm">불러오는 중…</div>
+          ) : filteredInsRows.length === 0 ? (
+            <div className="text-center py-10 text-gray-400 text-sm">데이터가 없습니다.</div>
+          ) : (
+            <div className="space-y-3">
+              {filteredInsRows.map((row) => {
+                const rid = String(row.id);
+                return (
+                  <div key={rid} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-[#0f172a] text-base">{row.customer_type === "법인" && row.company_name ? row.company_name : row.customer_name}</span>
+                          {row.customer_type === "법인" && <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">법인</span>}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-0.5 space-x-2">
+                          {row.customer_phone && <span>📞 {formatPhoneKR(row.customer_phone)}</span>}
+                          {row.sales_rep && <span>👤 {row.sales_rep}</span>}
+                          {row.created_at && <span>{new Date(row.created_at).toLocaleDateString("ko-KR")}</span>}
+                        </div>
+                      </div>
+                      <span className={`text-xs font-bold px-2 py-1 rounded-full border ${insStatusStyle(row.status)}`}>{row.status}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
+                      {row.insurance_type && <span>🛡 {row.insurance_type}</span>}
+                      {row.insurance_company && <span>🏢 {row.insurance_company}</span>}
+                      {row.premium_amount && <span>💰 {Number(row.premium_amount).toLocaleString("ko-KR")}원</span>}
+                      {row.coverage_start && <span>📅 {row.coverage_start}{row.coverage_end ? ` ~ ${row.coverage_end}` : ""}</span>}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {INS_STATUS_ORDER.map((s) => (
+                        <button key={s} onClick={() => insChangeStatus(row, s)} disabled={row.status === s}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${row.status === s ? insStatusStyle(s) + " cursor-default" : "bg-white border-gray-200 text-gray-400 hover:border-orange-300 hover:text-orange-600"}`}>
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <textarea value={insMemoDrafts[rid] ?? row.special_note ?? ""} onChange={(e) => setInsMemoDrafts((prev) => ({ ...prev, [rid]: e.target.value }))}
+                        placeholder="특이사항 메모" className={inputClass + " flex-1 resize-none h-14 text-xs"} />
+                      <button onClick={() => insSaveMemo(row.id)} disabled={insMemoSavingId === row.id}
+                        className="px-3 py-1.5 text-xs bg-orange-50 text-orange-600 border border-orange-200 rounded-lg hover:bg-orange-100 transition-all self-end">
+                        {insMemoSavingId === row.id ? "저장중" : "메모저장"}
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      <button onClick={() => insOpenEdit(row)} className={btnGhost + " text-xs"}>✏️ 수정</button>
+                      <button onClick={() => setInsDeleteId(row.id)} className="px-2.5 py-1.5 text-xs rounded-lg border border-red-100 text-red-400 hover:bg-red-50 hover:text-red-600 transition-all">🗑 삭제</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {/* 보험 삭제 확인 */}
+          {insDeleteId !== null && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm space-y-4">
+                <p className="text-sm font-semibold text-[#0f172a]">이 보험 케이스를 삭제하시겠습니까?</p>
+                <div className="flex gap-2">
+                  <button onClick={() => insDeleteRow(insDeleteId)} disabled={insDeleting} className="flex-1 py-2 text-sm bg-red-500 text-white rounded-xl font-semibold">{insDeleting ? "삭제 중…" : "삭제"}</button>
+                  <button onClick={() => setInsDeleteId(null)} className="flex-1 py-2 text-sm border border-gray-200 rounded-xl text-gray-600">취소</button>
+                </div>
+              </div>
+            </div>
+          )}
+          {/* 보험 수정 모달 */}
+          {insEditRow && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+              <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                <div className="sticky top-0 bg-white border-b border-gray-100 px-5 py-3 flex items-center justify-between">
+                  <h3 className="font-bold text-[#0f172a]">보험 케이스 수정</h3>
+                  <button onClick={() => setInsEditRow(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+                </div>
+                <div className="p-5 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><label className={labelClass}>고객 구분</label>
+                      <select value={insEditCustType} onChange={(e) => setInsEditCustType(e.target.value as CustomerType)} className={inputClass}><option>개인</option><option>법인</option></select></div>
+                    <div><label className={labelClass}>고객명</label><input value={insEditCustName} onChange={(e) => setInsEditCustName(e.target.value)} className={inputClass} /></div>
+                    <div><label className={labelClass}>전화번호</label><input value={insEditCustPhone} onChange={(e) => setInsEditCustPhone(e.target.value)} className={inputClass} /></div>
+                    <div><label className={labelClass}>보험 종류</label><input value={insEditInsType} onChange={(e) => setInsEditInsType(e.target.value)} className={inputClass} /></div>
+                    <div><label className={labelClass}>보험사</label><input value={insEditInsCompany} onChange={(e) => setInsEditInsCompany(e.target.value)} className={inputClass} /></div>
+                    <div><label className={labelClass}>보험료</label><input value={insEditPremium} onChange={(e) => setInsEditPremium(e.target.value)} className={inputClass} /></div>
+                    <div><label className={labelClass}>보장 시작일</label><input type="date" value={insEditCovStart} onChange={(e) => setInsEditCovStart(e.target.value)} className={inputClass} /></div>
+                    <div><label className={labelClass}>보장 종료일</label><input type="date" value={insEditCovEnd} onChange={(e) => setInsEditCovEnd(e.target.value)} className={inputClass} /></div>
+                    <div><label className={labelClass}>영업사원</label><input value={insEditSalesRep} onChange={(e) => setInsEditSalesRep(e.target.value)} className={inputClass} /></div>
+                    <div className="col-span-2"><label className={labelClass}>특이사항</label>
+                      <textarea value={insEditNote} onChange={(e) => setInsEditNote(e.target.value)} className={inputClass + " resize-none h-16"} /></div>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button onClick={insSaveEdit} disabled={insEditSaving} className={btnPrimary}>{insEditSaving ? "저장 중…" : "저장"}</button>
+                    <button onClick={() => setInsEditRow(null)} className={btnSecondary}>취소</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══════════════ 수출 탭 ══════════════ */}
+      {activeTab === "수출" && (
+        <div className="p-4 space-y-4">
+          {/* 상태 뱃지 */}
+          <div className="flex flex-wrap gap-2">
+            {EXP_STATUS_ORDER.map((s) => (
+              <button key={s} onClick={() => setExpStatusFilter(expStatusFilter === s ? "all" : s)}
+                className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold border transition-all ${expStatusFilter === s ? expStatusStyle(s) + " ring-2 ring-orange-400" : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
+                {s} <span className="font-bold">{expStatusCounts[s] ?? 0}</span>
+              </button>
+            ))}
+            {expStatusFilter !== "all" && <button onClick={() => setExpStatusFilter("all")} className="px-2 py-1 text-xs text-gray-400 hover:text-gray-600">✕ 필터 해제</button>}
+          </div>
+          {/* 검색 & 신규 */}
+          <div className="flex gap-2">
+            <button onClick={() => setExpShowSearch((v) => !v)} className="flex items-center gap-1 px-3 py-2 text-sm bg-white border border-gray-200 rounded-xl text-gray-600 hover:border-orange-300 hover:text-orange-600 transition-all">
+              🔍 {expShowSearch ? "검색 닫기" : "검색"}
+            </button>
+            <button onClick={() => setExpShowCreate((v) => !v)}
+              className={`flex items-center gap-1 px-4 py-2 text-sm rounded-xl font-semibold transition-all ${expShowCreate ? "bg-gray-100 text-gray-600" : "bg-orange-500 text-white hover:bg-orange-600"}`}>
+              {expShowCreate ? "✕ 닫기" : "+ 신규 접수"}
+            </button>
+          </div>
+          {expShowSearch && (
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <input type="text" placeholder="고객명 / 전화번호 / 국가 / 모델 / B/L / 영업사원 검색"
+                value={expSearch} onChange={(e) => setExpSearch(e.target.value)} className={inputClass + " w-full"} />
+            </div>
+          )}
+          {/* 신규 접수 폼 */}
+          {expShowCreate && (
+            <div className="bg-white border border-orange-100 rounded-xl p-4 space-y-3 shadow-sm">
+              <h3 className="text-sm font-bold text-orange-600">수출 신규 접수</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className={labelClass}>고객 구분</label>
+                  <select value={expCustType} onChange={(e) => setExpCustType(e.target.value as CustomerType)} className={inputClass}><option>개인</option><option>법인</option></select></div>
+                <div><label className={labelClass}>고객명 *</label>
+                  <input value={expCustName} onChange={(e) => setExpCustName(e.target.value)} className={inputClass} placeholder="홍길동" /></div>
+                <div><label className={labelClass}>전화번호</label>
+                  <input value={expCustPhone} onChange={(e) => setExpCustPhone(e.target.value)} className={inputClass} placeholder="010-0000-0000" /></div>
+                <div><label className={labelClass}>수출 국가</label>
+                  <input value={expCountry} onChange={(e) => setExpCountry(e.target.value)} className={inputClass} placeholder="예: 베트남" /></div>
+                <div><label className={labelClass}>장비 모델</label>
+                  <input value={expModel} onChange={(e) => setExpModel(e.target.value)} className={inputClass} placeholder="예: HX210A" /></div>
+                <div><label className={labelClass}>수출 금액 (USD)</label>
+                  <input value={expAmount} onChange={(e) => setExpAmount(e.target.value)} className={inputClass} placeholder="0" /></div>
+                <div><label className={labelClass}>B/L 번호</label>
+                  <input value={expBLNumber} onChange={(e) => setExpBLNumber(e.target.value)} className={inputClass} placeholder="B/L No." /></div>
+                <div><label className={labelClass}>영업사원 *</label>
+                  <input value={expSalesRep} onChange={(e) => setExpSalesRep(e.target.value)} className={inputClass} placeholder="담당자명" /></div>
+                <div className="col-span-2"><label className={labelClass}>특이사항</label>
+                  <textarea value={expNote} onChange={(e) => setExpNote(e.target.value)} className={inputClass + " resize-none h-16"} placeholder="특이사항" /></div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button onClick={expAdd} disabled={expSaving} className={btnPrimary}>{expSaving ? "저장 중…" : "접수 등록"}</button>
+                <button onClick={() => { expReset(); setExpShowCreate(false); }} className={btnSecondary}>취소</button>
+              </div>
+            </div>
+          )}
+          {/* 카드 목록 */}
+          {expLoading ? (
+            <div className="text-center py-10 text-gray-400 text-sm">불러오는 중…</div>
+          ) : filteredExpRows.length === 0 ? (
+            <div className="text-center py-10 text-gray-400 text-sm">데이터가 없습니다.</div>
+          ) : (
+            <div className="space-y-3">
+              {filteredExpRows.map((row) => {
+                const rid = String(row.id);
+                return (
+                  <div key={rid} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-[#0f172a] text-base">{row.customer_type === "법인" && row.company_name ? row.company_name : row.customer_name}</span>
+                          {row.customer_type === "법인" && <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">법인</span>}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-0.5 space-x-2">
+                          {row.customer_phone && <span>📞 {formatPhoneKR(row.customer_phone)}</span>}
+                          {row.sales_rep && <span>👤 {row.sales_rep}</span>}
+                          {row.created_at && <span>{new Date(row.created_at).toLocaleDateString("ko-KR")}</span>}
+                        </div>
+                      </div>
+                      <span className={`text-xs font-bold px-2 py-1 rounded-full border ${expStatusStyle(row.status)}`}>{row.status}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
+                      {row.export_country && <span>🌏 {row.export_country}</span>}
+                      {row.equipment_model && <span>🚜 {row.equipment_model}</span>}
+                      {row.export_amount && <span>💵 USD {Number(row.export_amount).toLocaleString("en-US")}</span>}
+                      {row.bl_number && <span>📦 B/L: {row.bl_number}</span>}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {EXP_STATUS_ORDER.map((s) => (
+                        <button key={s} onClick={() => expChangeStatus(row, s)} disabled={row.status === s}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${row.status === s ? expStatusStyle(s) + " cursor-default" : "bg-white border-gray-200 text-gray-400 hover:border-orange-300 hover:text-orange-600"}`}>
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <textarea value={expMemoDrafts[rid] ?? row.special_note ?? ""} onChange={(e) => setExpMemoDrafts((prev) => ({ ...prev, [rid]: e.target.value }))}
+                        placeholder="특이사항 메모" className={inputClass + " flex-1 resize-none h-14 text-xs"} />
+                      <button onClick={() => expSaveMemo(row.id)} disabled={expMemoSavingId === row.id}
+                        className="px-3 py-1.5 text-xs bg-orange-50 text-orange-600 border border-orange-200 rounded-lg hover:bg-orange-100 transition-all self-end">
+                        {expMemoSavingId === row.id ? "저장중" : "메모저장"}
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      <button onClick={() => expOpenEdit(row)} className={btnGhost + " text-xs"}>✏️ 수정</button>
+                      <button onClick={() => setExpDeleteId(row.id)} className="px-2.5 py-1.5 text-xs rounded-lg border border-red-100 text-red-400 hover:bg-red-50 hover:text-red-600 transition-all">🗑 삭제</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {/* 수출 삭제 확인 */}
+          {expDeleteId !== null && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm space-y-4">
+                <p className="text-sm font-semibold text-[#0f172a]">이 수출 케이스를 삭제하시겠습니까?</p>
+                <div className="flex gap-2">
+                  <button onClick={() => expDeleteRow(expDeleteId)} disabled={expDeleting} className="flex-1 py-2 text-sm bg-red-500 text-white rounded-xl font-semibold">{expDeleting ? "삭제 중…" : "삭제"}</button>
+                  <button onClick={() => setExpDeleteId(null)} className="flex-1 py-2 text-sm border border-gray-200 rounded-xl text-gray-600">취소</button>
+                </div>
+              </div>
+            </div>
+          )}
+          {/* 수출 수정 모달 */}
+          {expEditRow && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+              <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                <div className="sticky top-0 bg-white border-b border-gray-100 px-5 py-3 flex items-center justify-between">
+                  <h3 className="font-bold text-[#0f172a]">수출 케이스 수정</h3>
+                  <button onClick={() => setExpEditRow(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+                </div>
+                <div className="p-5 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><label className={labelClass}>고객 구분</label>
+                      <select value={expEditCustType} onChange={(e) => setExpEditCustType(e.target.value as CustomerType)} className={inputClass}><option>개인</option><option>법인</option></select></div>
+                    <div><label className={labelClass}>고객명</label><input value={expEditCustName} onChange={(e) => setExpEditCustName(e.target.value)} className={inputClass} /></div>
+                    <div><label className={labelClass}>전화번호</label><input value={expEditCustPhone} onChange={(e) => setExpEditCustPhone(e.target.value)} className={inputClass} /></div>
+                    <div><label className={labelClass}>수출 국가</label><input value={expEditCountry} onChange={(e) => setExpEditCountry(e.target.value)} className={inputClass} /></div>
+                    <div><label className={labelClass}>장비 모델</label><input value={expEditModel} onChange={(e) => setExpEditModel(e.target.value)} className={inputClass} /></div>
+                    <div><label className={labelClass}>수출 금액</label><input value={expEditAmount} onChange={(e) => setExpEditAmount(e.target.value)} className={inputClass} /></div>
+                    <div><label className={labelClass}>B/L 번호</label><input value={expEditBLNumber} onChange={(e) => setExpEditBLNumber(e.target.value)} className={inputClass} /></div>
+                    <div><label className={labelClass}>영업사원</label><input value={expEditSalesRep} onChange={(e) => setExpEditSalesRep(e.target.value)} className={inputClass} /></div>
+                    <div className="col-span-2"><label className={labelClass}>특이사항</label>
+                      <textarea value={expEditNote} onChange={(e) => setExpEditNote(e.target.value)} className={inputClass + " resize-none h-16"} /></div>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button onClick={expSaveEdit} disabled={expEditSaving} className={btnPrimary}>{expEditSaving ? "저장 중…" : "저장"}</button>
+                    <button onClick={() => setExpEditRow(null)} className={btnSecondary}>취소</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── 수정 모달 ── */}
       {editRow && (

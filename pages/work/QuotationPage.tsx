@@ -276,6 +276,7 @@ function EmailChipInput({
             onKeyDown={handleKey}
             onBlur={() => { if(input.trim()&&isValidEmail(input)) addEmail(input); setTimeout(()=>setShowSug(false),200); }}
             placeholder={emails.length===0?(placeholder??'이름 또는 이메일 입력'):''}
+            autoComplete="off"
             className="w-full border-0 outline-none text-sm bg-transparent py-0.5"
           />
           {showSug && input.trim().length > 0 && (
@@ -716,7 +717,7 @@ export default function QuotationPage() {
           const { data: tokenRow } = await supabase
             .from('google_calendar_tokens')
             .select('access_token')
-            .eq('user_email','admin@rnfkorea.co.kr')
+            .eq('gcal_email','admin@rnfkorea.co.kr')
             .maybeSingle();
 
           if (tokenRow?.access_token) {
@@ -787,7 +788,7 @@ export default function QuotationPage() {
         notes: tab==='battery'?bf.notes:null,
         total_amount: total, vat_amount: vat, grand_total: total+vat,
         created_by:'admin@rnfkorea.co.kr',
-      }).then(()=>{});
+      }).then(({error})=>{ if(error) console.error('[이력저장오류]', error.message, error.details); });
       printHTML(html);
     }
   };

@@ -297,10 +297,10 @@ const textareaClass =
   "w-full min-h-[96px] rounded-xl border border-gray-200 px-3 py-2 text-sm text-[#0f172a] bg-white resize-none " +
   "focus:outline-none focus:border-orange-400 transition-all";
 
-const labelClass = "block text-sm font-medium text-navy-900 mb-2";
+const labelClass = "block text-xs font-medium text-gray-500 mb-1";
 const compactLabelClass = "block text-xs font-medium text-gray-600 mb-1";
 const compactInputClass =
-  "w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300";
+  "w-full rounded-xl border border-gray-200 px-2 py-1.5 text-xs focus:outline-none focus:border-orange-400 transition-all";
 
 const thClass =
   "px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase border-b border-gray-100 whitespace-nowrap";
@@ -318,7 +318,7 @@ const sectionTitleClass =
 const detailLabelClass = "text-[10px] text-gray-400 mr-0.5";
 const detailValueClass = "text-[12px] text-gray-800 font-semibold";
 const inlineDetailBoxClass =
-  "bg-gray-50 border border-orange-100 rounded-lg px-3 py-2 w-full";
+  "bg-gray-50 border border-orange-100 rounded-xl px-3 py-2 w-full";
 // dl 행: 인라인 쌍
 const dlRowClass = "inline-flex items-baseline gap-0.5 mr-4 mb-0.5";
 
@@ -3123,7 +3123,7 @@ const CallManagementPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-gray-50">
 
       {/* 매출 등록(계산서 매칭) 모달 */}
       {showInvoiceRegModal && (
@@ -3344,7 +3344,7 @@ const CallManagementPage: React.FC = () => {
             <div className="flex justify-end gap-2">
               <button className={actionBtnClass} onClick={closeInvoiceRegModal}>취소</button>
               <button
-                className="px-4 py-2 rounded-xl bg-emerald-500 text-white text-sm font-semibold hover:bg-emerald-600 disabled:opacity-50"
+                className="px-4 py-1.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition-all disabled:opacity-40"
                 onClick={handleConfirmInvoiceReg}
                 disabled={invoiceRegSaving}
               >
@@ -3377,7 +3377,7 @@ const CallManagementPage: React.FC = () => {
                     </div>
                     <div className="flex gap-1.5">
                       <button
-                        className="px-3 py-1 rounded-lg bg-red-500 text-white text-xs font-semibold hover:bg-red-600"
+                        className="px-3 py-1 rounded-xl bg-red-500 text-white text-xs font-semibold hover:bg-red-600"
                         onClick={async()=>{
                           await supabase.from("consultation_cases").update({status:"closed"}).eq("id",r.id);
                           void completeConsultGcalTask(r.id);
@@ -3386,7 +3386,7 @@ const CallManagementPage: React.FC = () => {
                         }}
                       >취소처리</button>
                       <button
-                        className="px-3 py-1 rounded-lg border border-gray-300 text-xs text-gray-600 hover:bg-gray-100"
+                        className="px-3 py-1 rounded-xl border border-gray-200 text-xs text-gray-600 hover:border-gray-300 hover:bg-gray-50 transition-all"
                         onClick={()=>setOverdueRows(prev=>prev.filter(x=>x.id!==r.id))}
                       >유지</button>
                     </div>
@@ -3396,7 +3396,7 @@ const CallManagementPage: React.FC = () => {
             </div>
             <div className="flex gap-2">
               <button
-                className="flex-1 py-2 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600"
+                className="flex-1 py-1.5 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition-all"
                 onClick={async()=>{
                   await Promise.all(overdueRows.map(r=>supabase.from("consultation_cases").update({status:"closed"}).eq("id",r.id)));
                   overdueRows.forEach(r=>void completeConsultGcalTask(r.id));
@@ -3406,7 +3406,7 @@ const CallManagementPage: React.FC = () => {
                 }}
               >전체 취소처리</button>
               <button
-                className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50"
+                className="flex-1 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:border-gray-300 transition-all"
                 onClick={()=>setShowOverdueModal(false)}
               >전체 유지</button>
             </div>
@@ -3454,13 +3454,13 @@ const CallManagementPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="px-4 py-3 space-y-3">
+      <div className="max-w-5xl mx-auto w-full px-4 py-3 space-y-3">
 
 
 
       <div className={card}>
-        <div className="flex flex-col gap-3 mb-4 md:flex-row md:items-center md:justify-between">
-          <div className="text-lg font-semibold text-navy-900">{title}</div>
+        <div className="flex flex-col gap-2.5 px-4 pt-3 pb-3 md:flex-row md:items-center md:justify-between">
+          <div className="text-base font-semibold text-[#0f172a]">{title}</div>
 
           {tab === "new" && (
             <>
@@ -3593,7 +3593,7 @@ const CallManagementPage: React.FC = () => {
             <div className="rounded-2xl border border-gray-200 bg-gray-50/70 px-4 py-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold text-navy-900">To-Do</div>
+                  <div className="text-sm font-semibold text-[#0f172a]">To-Do</div>
                   <div className="text-xs text-gray-500">사후관리의 당일 + 익일 할 일 목록</div>
                 </div>
 
@@ -4478,7 +4478,7 @@ const CallManagementPage: React.FC = () => {
             <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
-                className="px-6 py-2 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-50"
+                className="px-4 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-600 font-semibold hover:border-gray-300 transition-all"
                 onClick={resetForm}
               >
                 초기화
@@ -4487,7 +4487,7 @@ const CallManagementPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="px-6 py-2 rounded-xl bg-orange-500 text-white font-medium hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-1.5 rounded-xl bg-[#0f172a] text-white text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-40"
               >
                 {isSubmitting ? "저장 중..." : editingCaseId ? "수정 저장" : "저장"}
               </button>
@@ -4497,7 +4497,7 @@ const CallManagementPage: React.FC = () => {
             <div className={`${dashboardGridClass} pt-2`}>
               <div className={dashboardCard}>
                 <div className="flex items-center justify-between mb-3">
-                  <div className="text-sm font-semibold text-navy-900">
+                  <div className="text-sm font-semibold text-[#0f172a]">
                     보험만기예정
                   </div>
                   <div className="text-xs font-medium text-orange-600">
@@ -4534,7 +4534,7 @@ const CallManagementPage: React.FC = () => {
                             className="rounded-xl border border-gray-200 p-3"
                           >
                             <div className="flex items-center justify-between gap-3">
-                              <div className="text-sm font-medium text-navy-900">
+                              <div className="text-sm font-medium text-[#0f172a]">
                                 {c?.customer_name || "-"}
                               </div>
                               <div className="text-xs font-medium text-red-600">
@@ -4560,7 +4560,7 @@ const CallManagementPage: React.FC = () => {
 
               <div className={dashboardCard}>
                 <div className="flex items-center justify-between mb-3">
-                  <div className="text-sm font-semibold text-navy-900">
+                  <div className="text-sm font-semibold text-[#0f172a]">
                     최근상담
                   </div>
                   <div className="text-xs font-medium text-gray-500">
@@ -4582,7 +4582,7 @@ const CallManagementPage: React.FC = () => {
                         }}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <div className="text-sm font-medium text-navy-900">
+                          <div className="text-sm font-medium text-[#0f172a]">
                             {row.customer_name}
                           </div>
                           <div className="text-xs font-medium text-gray-500">
@@ -4606,7 +4606,7 @@ const CallManagementPage: React.FC = () => {
 
               <div className={dashboardCard}>
                 <div className="flex items-center justify-between mb-3">
-                  <div className="text-sm font-semibold text-navy-900">
+                  <div className="text-sm font-semibold text-[#0f172a]">
                     빠른연락
                   </div>
                   <div className="text-xs font-medium text-gray-500">
@@ -4627,7 +4627,7 @@ const CallManagementPage: React.FC = () => {
                     <div className="text-xs font-medium text-gray-500">
                       전체 상담
                     </div>
-                    <div className="text-2xl font-semibold text-navy-900 mt-1">
+                    <div className="text-xl font-semibold text-[#0f172a] mt-1">
                       {rows.length}
                     </div>
                   </button>
@@ -4644,7 +4644,7 @@ const CallManagementPage: React.FC = () => {
                     <div className="text-xs font-medium text-gray-500">
                       사후관리 필요
                     </div>
-                    <div className="text-2xl font-semibold text-orange-600 mt-1">
+                    <div className="text-xl font-semibold text-orange-600 mt-1">
                       {rows.filter((r) => r.followup_needed).length}
                     </div>
                   </button>
@@ -4657,7 +4657,7 @@ const CallManagementPage: React.FC = () => {
                       className="flex items-center justify-between rounded-xl border border-gray-200 px-3 py-2"
                     >
                       <div>
-                        <div className="text-sm font-medium text-navy-900">
+                        <div className="text-sm font-medium text-[#0f172a]">
                           {row.customer_name}
                         </div>
                         <div className="text-xs text-gray-500">
@@ -4666,7 +4666,7 @@ const CallManagementPage: React.FC = () => {
                       </div>
                       <a
                         href={`tel:${onlyDigits(row.phone)}`}
-                        className="px-3 py-1.5 rounded-lg text-xs font-medium border border-orange-300 text-orange-600 hover:bg-orange-50"
+                        className="px-3 py-1.5 rounded-xl text-xs font-medium border border-orange-300 text-orange-600 hover:bg-orange-50"
                       >
                         전화
                       </a>
@@ -4682,13 +4682,13 @@ const CallManagementPage: React.FC = () => {
           <div className="space-y-4">
             <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
-                <div className="text-sm font-semibold text-navy-900">
+                <div className="text-sm font-semibold text-[#0f172a]">
                   상담내역 검색 / 필터
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowListFilters((prev) => !prev)}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-base font-semibold text-gray-700 hover:bg-gray-50"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-gray-200 bg-white text-base font-semibold text-gray-700 hover:bg-gray-50"
                   title={showListFilters ? "접기" : "펼치기"}
                 >
                   {showListFilters ? "−" : "+"}
@@ -4873,7 +4873,7 @@ const CallManagementPage: React.FC = () => {
                                 )}
                               </td>
                               <td className={tdClass}>
-                                <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-100">
+                                <span className="text-xs font-semibold px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200">
                                   {externalFinanceSourceLabel(row._source)}
                                 </span>
                               </td>
@@ -4959,7 +4959,7 @@ const CallManagementPage: React.FC = () => {
                                                 type="button"
                                                 disabled={externalFinanceSaving || s === row.status}
                                                 onClick={(e) => { e.stopPropagation(); changeExternalFinanceStatus(row, s); }}
-                                                className={`px-2 py-0.5 rounded-lg text-[11px] font-medium border transition-all ${
+                                                className={`px-2 py-0.5 rounded-xl text-[11px] font-medium border transition-all ${
                                                   s === row.status
                                                     ? "bg-[#0f172a] text-white border-[#0f172a]"
                                                     : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
@@ -5138,7 +5138,7 @@ const CallManagementPage: React.FC = () => {
                                       <div className="flex gap-1.5">
                                         {["tire_sales","forklift_sales","battery_sales","export"].includes(row.work_type) && (
                                           salesRegisteredIds.has(row.id) ? (
-                                            <span className="px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-50 text-emerald-600 border border-emerald-100">
+                                            <span className="px-2.5 py-1 rounded-xl text-xs font-medium bg-emerald-50 text-emerald-600 border border-emerald-100">
                                               매출등록됨
                                             </span>
                                           ) : (
@@ -5264,13 +5264,13 @@ const CallManagementPage: React.FC = () => {
           <div className="space-y-4">
             <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
-                <div className="text-sm font-semibold text-navy-900">
+                <div className="text-sm font-semibold text-[#0f172a]">
                   사후관리 검색 / 필터
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowFollowupFilters((prev) => !prev)}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-base font-semibold text-gray-700 hover:bg-gray-50"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-gray-200 bg-white text-base font-semibold text-gray-700 hover:bg-gray-50"
                   title={showFollowupFilters ? "접기" : "펼치기"}
                 >
                   {showFollowupFilters ? "−" : "+"}

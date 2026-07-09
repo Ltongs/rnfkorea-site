@@ -3419,7 +3419,7 @@ const SecretaryInsPage:React.FC = () => {
                             </div>
                           </div>
                           <div className="flex flex-col gap-1 shrink-0">
-                            <button className={BTO} onClick={()=>navigate("/narumi")}>이동</button>
+                            <button className={BTO} onClick={()=>navigate(`/narumi?id=${t.id}`)}>이동</button>
                           </div>
                         </div>
                       </div>

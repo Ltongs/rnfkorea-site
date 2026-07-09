@@ -7,9 +7,17 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
-type TabKey = "chat"|"schedule"|"status"|"orders"|"hyundaicm"|"taesan"|"finance"|"narumi"|"jinheung"|"email"|"memo"|"financehub"|"exportshop"|"quotation"|"statement";
+type TabKey = "chat"|"schedule"|"status"|"orders"|"hyundaicm"|"taesan"|"finance"|"narumi"|"jinheung"|"email"|"memo"|"financehub"|"exportshop"|"quotation"|"statement"|"cns";
 // 메뉴 탭 순서 — 상단 탭바 렌더링과 Ctrl+Option+←/→ 단축키 이동이 이 배열 하나를 공유합니다.
-const TAB_ORDER: TabKey[] = ["chat","schedule","status","orders","hyundaicm","taesan","finance","narumi","jinheung","email","memo","financehub","exportshop","quotation","statement"];
+const TAB_ORDER: TabKey[] = ["chat","schedule","status","orders","hyundaicm","taesan","finance","narumi","jinheung","email","memo","financehub","exportshop","quotation","statement","cns"];
+// 통합상담 탭 서브필터
+type CnsActiveTab = "할부금융" | "보험" | "수출" | "통합상담";
+const CNS_WORK_TYPES: Record<CnsActiveTab, string[]> = {
+  "할부금융": ["finance"],
+  "보험": ["registration_insurance"],
+  "수출": ["export"],
+  "통합상담": ["finance","registration_insurance","forklift_sales","battery_sales","tire_sales","narumi","export"],
+};
 type EmailReport = {
   id:number; created_at:string; report_date:string;
   title:string; content:string; source:string; is_read:boolean;
@@ -2676,6 +2684,408 @@ const SecretaryPage:React.FC = () => {
   const [jNewSaving,setJNewSaving] = useState(false);
   const [jNewForm,setJNewForm] = useState({customer_name:"",product_spec:"",quantity:"",memo:"",order_date:todayStr()});
   const [jAmtModal,setJAmtModal] = useState<any|null>(null);
+
+  // ── 통합상담(cns) 탭 ──────────────────────────────────────────────────────────
+  const [cnsRows,setCnsRows]               = useState<any[]>([]);
+  const [cnsLoading,setCnsLoading]         = useState(false);
+  const [cnsLoaded,setCnsLoaded]           = useState(false);
+  const [cnsSaving,setCnsSaving]           = useState(false);
+  const [cnsShowCreate,setCnsShowCreate]   = useState(false);
+  // 신규 등록 폼 필드
+  const [cnsWorkType,setCnsWorkType]       = useState("finance");
+  const [cnsSub,setCnsSub]                 = useState("");
+  const [cnsCustName,setCnsCustName]       = useState("");
+  const [cnsCustPhone,setCnsCustPhone]     = useState("");
+  const [cnsCompanyName,setCnsCompanyName] = useState("");
+  const [cnsRegion,setCnsRegion]           = useState("");
+  const [cnsCallDatetime,setCnsCallDatetime] = useState(todayStr());
+  const [cnsInflowChannel,setCnsInflowChannel] = useState("phone");
+  const [cnsSummary,setCnsSummary]         = useState("");
+  const [cnsDetailMemo,setCnsDetailMemo]   = useState("");
+  const [cnsTelecomProvider,setCnsTelecomProvider] = useState("");
+  const [cnsFollowupNeeded,setCnsFollowupNeeded]   = useState(false);
+  const [cnsNextFollowupDate,setCnsNextFollowupDate] = useState("");
+  // 금융 상세 (consultation_finance_details)
+  const [cnsFinanceCategory,setCnsFinanceCategory]         = useState("");
+  const [cnsFinanceVehicleModel,setCnsFinanceVehicleModel] = useState("");
+  const [cnsFinanceProduct,setCnsFinanceProduct]           = useState("");
+  const [cnsFinanceCompany,setCnsFinanceCompany]           = useState("");
+  const [cnsFinanceAmount,setCnsFinanceAmount]             = useState("");   // 숫자 문자열 (쉼표 없이)
+  const [cnsFinancePeriod,setCnsFinancePeriod]             = useState("");
+  const [cnsFinanceInterestRate,setCnsFinanceInterestRate] = useState("");
+  const [cnsFinanceIncentive,setCnsFinanceIncentive]       = useState("");
+  const [cnsFinanceStage,setCnsFinanceStage]               = useState("received");
+  const [cnsFinanceNote,setCnsFinanceNote]                 = useState("");
+  // ── 보험 상세 (consultation_insurance_details)
+  const [cnsInsVehicleNo,    setCnsInsVehicleNo]    = useState("");
+  const [cnsInsVehicleModel, setCnsInsVehicleModel] = useState("2.5톤 이하");
+  const [cnsInsVehicleUse,   setCnsInsVehicleUse]   = useState("");
+  const [cnsInsRequest,      setCnsInsRequest]      = useState("");
+  const [cnsInsType,         setCnsInsType]         = useState("automobile");
+  const [cnsInsCompany,      setCnsInsCompany]      = useState("");
+  const [cnsInsStartDate,    setCnsInsStartDate]    = useState("");
+  const [cnsInsEndDate,      setCnsInsEndDate]      = useState("");
+  const [cnsInsStatus,       setCnsInsStatus]       = useState<"requested"|"issued">("requested");
+  const [cnsInsNote,         setCnsInsNote]         = useState("");
+  // ── 타이어 상세 (consultation_tire_details)
+  const [cnsTireFrontSize,   setCnsTireFrontSize]   = useState("");
+  const [cnsTireRearSize,    setCnsTireRearSize]    = useState("");
+  const [cnsTireVehicleType, setCnsTireVehicleType] = useState("");
+  const [cnsTireVehicleInfo, setCnsTireVehicleInfo] = useState("");
+  const [cnsTireFrontQty,    setCnsTireFrontQty]    = useState("");
+  const [cnsTireRearQty,     setCnsTireRearQty]     = useState("");
+  const [cnsTireInflow,      setCnsTireInflow]      = useState("");
+  const [cnsTireAssoc,       setCnsTireAssoc]       = useState("");
+  const [cnsTireStage,       setCnsTireStage]       = useState("received");
+  const [cnsTireNote,        setCnsTireNote]        = useState("");
+  // ── 지게차 상세 (견적)
+  const [cnsFklBrand, setCnsFklBrand] = useState("");
+  const [cnsFklModel, setCnsFklModel] = useState("");
+  const [cnsFklTon,   setCnsFklTon]   = useState("");
+  const [cnsFklYear,  setCnsFklYear]  = useState("");
+  const [cnsFklFuel,  setCnsFklFuel]  = useState("");
+  const [cnsFklMast,  setCnsFklMast]  = useState("");
+  const [cnsFklQty,   setCnsFklQty]   = useState("1");
+  const [cnsFklPrice, setCnsFklPrice] = useState("");
+  const [cnsFklNote,  setCnsFklNote]  = useState("");
+  // ── 배터리 상세 (견적)
+  const [cnsBattVehicleType, setCnsBattVehicleType] = useState("");
+  const [cnsBattVoltage,     setCnsBattVoltage]     = useState("");
+  const [cnsBattCapacity,    setCnsBattCapacity]    = useState("");
+  const [cnsBattSpec,        setCnsBattSpec]        = useState("");
+  const [cnsBattQty,         setCnsBattQty]         = useState("1");
+  const [cnsBattPrice,       setCnsBattPrice]       = useState("");
+  const [cnsBattNote,        setCnsBattNote]        = useState("");
+  // ── 나르미
+  const [cnsNarumiVin,            setCnsNarumiVin]            = useState("");
+  const [cnsNarumiDeliveryText,   setCnsNarumiDeliveryText]   = useState("");  // YYYY.MM.DD
+  const [cnsNarumiLotte,          setCnsNarumiLotte]          = useState(false);
+  const [cnsNarumiSalesRep,       setCnsNarumiSalesRep]       = useState("");
+  const [cnsNarumiSalesRepPhone,  setCnsNarumiSalesRepPhone]  = useState("");
+  const [cnsNarumiVehicleUseType, setCnsNarumiVehicleUseType] = useState<"자가용"|"영업용">("자가용");
+  const [cnsNarumiSpecialNote,    setCnsNarumiSpecialNote]    = useState("");
+  // ── 현대CM / 태산통운 전용 (hyundaicm_tasks / taesan_tasks)
+  const [cnsHcmCustomerType,  setCnsHcmCustomerType]  = useState("");
+  const [cnsHcmCompanyName,   setCnsHcmCompanyName]   = useState("");
+  const [cnsHcmEquipmentTon,  setCnsHcmEquipmentTon]  = useState("");
+  const [cnsHcmFinanceCompany,setCnsHcmFinanceCompany]= useState("");
+  const [cnsHcmPrincipal,     setCnsHcmPrincipal]     = useState("");  // 할부원금 숫자 문자열
+  const [cnsHcmInterestRate,  setCnsHcmInterestRate]  = useState("");
+  const [cnsHcmLoanPeriod,    setCnsHcmLoanPeriod]    = useState("");
+  const [cnsHcmStatus,        setCnsHcmStatus]        = useState("접수");
+  const [cnsHcmSalesRep,      setCnsHcmSalesRep]      = useState("");
+  const [cnsHcmVatDeferred,   setCnsHcmVatDeferred]   = useState(false);
+  // 목록 필터
+  const [cnsActiveTab,setCnsActiveTab]     = useState<CnsActiveTab>("통합상담");
+  const [cnsSearchQ,setCnsSearchQ]         = useState("");
+  const [cnsStatusFilter,setCnsStatusFilter] = useState<"active"|"all"|"done">("active");
+
+  async function fetchCnsRows(){
+    setCnsLoading(true);
+    const wtypes = CNS_WORK_TYPES[cnsActiveTab];
+    const {data} = await supabase.from("consultation_cases")
+      .select("id,customer_name,phone,telecom_provider,work_type,sub_type,status,summary,followup_needed,next_followup_date,created_at")
+      .in("work_type", wtypes)
+      .order("created_at",{ascending:false})
+      .limit(120);
+    setCnsRows(data??[]);
+    setCnsLoading(false);
+    setCnsLoaded(true);
+  }
+
+  function cnsReset(){
+    setCnsWorkType("finance"); setCnsSub(""); setCnsCustName(""); setCnsCustPhone("");
+    setCnsCompanyName(""); setCnsRegion(""); setCnsCallDatetime(todayStr());
+    setCnsInflowChannel("phone"); setCnsSummary(""); setCnsDetailMemo("");
+    setCnsTelecomProvider(""); setCnsFollowupNeeded(false); setCnsNextFollowupDate("");
+    // 금융
+    setCnsFinanceCategory(""); setCnsFinanceVehicleModel(""); setCnsFinanceProduct("");
+    setCnsFinanceCompany(""); setCnsFinanceAmount(""); setCnsFinancePeriod("");
+    setCnsFinanceInterestRate(""); setCnsFinanceIncentive("");
+    setCnsFinanceStage("received"); setCnsFinanceNote("");
+    // 보험
+    setCnsInsVehicleNo(""); setCnsInsVehicleModel("2.5톤 이하"); setCnsInsVehicleUse("");
+    setCnsInsRequest(""); setCnsInsType("automobile"); setCnsInsCompany("");
+    setCnsInsStartDate(""); setCnsInsEndDate(""); setCnsInsStatus("requested"); setCnsInsNote("");
+    // 타이어
+    setCnsTireFrontSize(""); setCnsTireRearSize(""); setCnsTireVehicleType("");
+    setCnsTireVehicleInfo(""); setCnsTireFrontQty(""); setCnsTireRearQty("");
+    setCnsTireInflow(""); setCnsTireAssoc(""); setCnsTireStage("received"); setCnsTireNote("");
+    // 지게차
+    setCnsFklBrand(""); setCnsFklModel(""); setCnsFklTon(""); setCnsFklYear("");
+    setCnsFklFuel(""); setCnsFklMast(""); setCnsFklQty("1"); setCnsFklPrice(""); setCnsFklNote("");
+    // 배터리
+    setCnsBattVehicleType(""); setCnsBattVoltage(""); setCnsBattCapacity("");
+    setCnsBattSpec(""); setCnsBattQty("1"); setCnsBattPrice(""); setCnsBattNote("");
+    // 나르미
+    setCnsNarumiVin(""); setCnsNarumiDeliveryText(""); setCnsNarumiLotte(false);
+    setCnsNarumiSalesRep(""); setCnsNarumiSalesRepPhone(""); setCnsNarumiVehicleUseType("자가용"); setCnsNarumiSpecialNote("");
+    // 현대CM/태산통운
+    setCnsHcmCustomerType(""); setCnsHcmCompanyName(""); setCnsHcmEquipmentTon("");
+    setCnsHcmFinanceCompany(""); setCnsHcmPrincipal(""); setCnsHcmInterestRate("");
+    setCnsHcmLoanPeriod(""); setCnsHcmStatus("접수"); setCnsHcmSalesRep(""); setCnsHcmVatDeferred(false);
+  }
+
+  async function cnsSave(){
+    const wt = cnsWorkType;
+    const isFinance  = wt==="finance";
+    const isIns      = wt==="registration_insurance";
+    const isTire     = wt==="tire_sales";
+    const isFkl      = wt==="forklift_sales";
+    const isBatt     = wt==="battery_sales";
+    const isNarumi   = wt==="narumi";
+    const isHcm      = isFinance && cnsSub==="현대CM";
+    const isTaesan   = isFinance && cnsSub==="태산통운";
+    const isGenFin   = isFinance && !isHcm && !isTaesan;
+    const needsManualSummary = !isFinance&&!isIns&&!isTire&&!isFkl&&!isBatt&&!isNarumi;
+    if(!cnsCustName){ alert("고객명은 필수입니다."); return; }
+    if(needsManualSummary&&!cnsSummary){ alert("상담 요약은 필수입니다."); return; }
+    // 나르미 필수값 검증
+    if(isNarumi){
+      if(!cnsNarumiVin.trim()){ alert("차대번호를 입력해주세요."); return; }
+      if(!cnsCustPhone.trim()){ alert("고객 전화번호를 입력해주세요."); return; }
+      if(cnsNarumiDeliveryText.length!==10){ alert("출고일자는 YYYY.MM.DD 형식으로 입력해주세요."); return; }
+      if(!cnsNarumiSalesRep.trim()){ alert("영업사원을 입력해주세요."); return; }
+      if(!cnsNarumiSalesRepPhone.trim()){ alert("영업사원 연락처를 입력해주세요."); return; }
+    }
+    setCnsSaving(true);
+
+    // ── 요약 자동 조합 ──
+    const autoSummary =
+      isHcm    ? ([cnsHcmCustomerType,cnsHcmEquipmentTon,cnsHcmFinanceCompany,cnsHcmPrincipal?`${parseInt(cnsHcmPrincipal,10).toLocaleString("ko-KR")}원`:""].filter(Boolean).join(" / ")||"현대CM 상담")
+    : isTaesan ? ([cnsHcmCustomerType,cnsHcmEquipmentTon,cnsHcmFinanceCompany,cnsHcmPrincipal?`${parseInt(cnsHcmPrincipal,10).toLocaleString("ko-KR")}원`:""].filter(Boolean).join(" / ")||"태산통운 상담")
+    : isGenFin ? ([cnsFinanceCategory,cnsFinanceVehicleModel,cnsFinanceProduct,cnsFinanceCompany,cnsFinanceAmount?`${parseInt(cnsFinanceAmount,10).toLocaleString("ko-KR")}원`:""].filter(Boolean).join(" / ")||"금융 상담")
+    : isIns    ? ([cnsInsVehicleNo,cnsInsVehicleModel,cnsInsRequest,cnsInsCompany].filter(Boolean).join(" / ")||"보험 상담")
+    : isTire   ? ([cnsTireFrontSize,cnsTireRearSize,cnsTireVehicleType,cnsTireVehicleInfo].filter(Boolean).join(" / ")||"타이어 상담")
+    : isFkl    ? ([cnsFklBrand,cnsFklModel,cnsFklTon?cnsFklTon+"톤":""].filter(Boolean).join(" ")||"지게차 견적")
+    : isBatt   ? ([cnsBattVehicleType,cnsBattVoltage,cnsBattCapacity?cnsBattCapacity+"AH":"",cnsBattSpec].filter(Boolean).join(" / ")||"배터리 견적")
+    : isNarumi ? `나르미 - VIN:${cnsNarumiVin.trim().toUpperCase()}`
+    : cnsSummary;
+
+    // ── 나르미: narumi_tasks 저장 ──
+    if(isNarumi){
+      const {error} = await supabase.from("narumi_tasks").insert({
+        vin:               cnsNarumiVin.trim().toUpperCase(),
+        vin_last6:         cnsNarumiVin.trim().slice(-6),
+        customer_name:     cnsCustName,
+        customer_phone:    cnsCustPhone,
+        delivery_date_text:cnsNarumiDeliveryText,
+        is_lotte_autolease:cnsNarumiLotte,
+        sales_rep:         cnsNarumiSalesRep.trim(),
+        sales_rep_phone:   cnsNarumiSalesRepPhone.trim(),
+        vehicle_use_type:  cnsNarumiVehicleUseType,
+        special_note:      cnsNarumiSpecialNote.trim()||null,
+        customer_phone_set_at: new Date().toISOString(),
+        customer_phone_scrubbed_at: null,
+        on_hold: false, has_insurance: false,
+        docs_ready: false, is_registering: false, is_registered: false,
+        status: "todo",
+        vehicle_doc_path: null, manufacture_doc_path: null,
+      });
+      setCnsSaving(false);
+      if(error){ alert("저장 오류: "+error.message); return; }
+      cnsReset(); setCnsShowCreate(false);
+      showToast("나르미 접수 완료"); void fetchCnsRows(); return;
+    }
+
+    // ── 현대CM: hyundaicm_tasks 저장 → consultation_cases도 생성 ──
+    if(isHcm){
+      const {error} = await supabase.from("hyundaicm_tasks").insert({
+        customer_name:         cnsCustName,
+        company_name:          cnsHcmCompanyName||null,
+        customer_type:         cnsHcmCustomerType||null,
+        equipment_ton:         cnsHcmEquipmentTon||null,
+        finance_company:       cnsHcmFinanceCompany||null,
+        installment_principal: cnsHcmPrincipal ? parseInt(cnsHcmPrincipal,10) : null,
+        interest_rate:         cnsHcmInterestRate ? parseFloat(cnsHcmInterestRate) : null,
+        loan_period:           cnsHcmLoanPeriod ? parseInt(cnsHcmLoanPeriod,10) : null,
+        status:                cnsHcmStatus||"접수",
+        sales_rep:             cnsHcmSalesRep||null,
+        vat_deferred:          cnsHcmVatDeferred,
+        purchase_amount:       cnsHcmPrincipal ? parseInt(cnsHcmPrincipal,10) : null,
+      });
+      setCnsSaving(false);
+      if(error){ alert("저장 오류: "+error.message); return; }
+      // cns 목록용 consultation_cases 기록
+      await supabase.from("consultation_cases").insert({
+        customer_name:cnsCustName, phone:cnsCustPhone||null, work_type:"finance",
+        sub_type:"현대CM", status:"new", summary:autoSummary,
+        call_datetime:cnsCallDatetime?new Date(cnsCallDatetime+"T09:00:00").toISOString():new Date().toISOString(),
+      });
+      cnsReset(); setCnsShowCreate(false);
+      showToast("현대CM 등록 완료"); void fetchCnsRows(); return;
+    }
+
+    // ── 태산통운: taesan_tasks 저장 → consultation_cases도 생성 ──
+    if(isTaesan){
+      const {error} = await supabase.from("taesan_tasks").insert({
+        customer_name:         cnsCustName,
+        company_name:          cnsHcmCompanyName||null,
+        customer_type:         cnsHcmCustomerType||null,
+        equipment_ton:         cnsHcmEquipmentTon||null,
+        finance_company:       cnsHcmFinanceCompany||null,
+        installment_principal: cnsHcmPrincipal ? parseInt(cnsHcmPrincipal,10) : null,
+        interest_rate:         cnsHcmInterestRate ? parseFloat(cnsHcmInterestRate) : null,
+        loan_period:           cnsHcmLoanPeriod ? parseInt(cnsHcmLoanPeriod,10) : null,
+        status:                cnsHcmStatus||"접수",
+        sales_rep:             cnsHcmSalesRep||null,
+        vat_deferred:          cnsHcmVatDeferred,
+        purchase_amount:       cnsHcmPrincipal ? parseInt(cnsHcmPrincipal,10) : null,
+      });
+      setCnsSaving(false);
+      if(error){ alert("저장 오류: "+error.message); return; }
+      await supabase.from("consultation_cases").insert({
+        customer_name:cnsCustName, phone:cnsCustPhone||null, work_type:"finance",
+        sub_type:"태산통운", status:"new", summary:autoSummary,
+        call_datetime:cnsCallDatetime?new Date(cnsCallDatetime+"T09:00:00").toISOString():new Date().toISOString(),
+      });
+      cnsReset(); setCnsShowCreate(false);
+      showToast("태산통운 등록 완료"); void fetchCnsRows(); return;
+    }
+
+    // ── 나머지: consultation_cases 저장 ──
+    const {data:caseData,error} = await supabase.from("consultation_cases").insert({
+      customer_name:      cnsCustName,
+      phone:              cnsCustPhone||null,
+      telecom_provider:   isIns ? (cnsTelecomProvider||null) : null,
+      work_type:          wt,
+      sub_type:           cnsSub||null,
+      status:             "new",
+      summary:            autoSummary,
+      detail_memo:        isGenFin?(cnsFinanceNote||null):isIns?(cnsInsNote||null):isTire?(cnsTireNote||null):isFkl?(cnsFklNote||null):isBatt?(cnsBattNote||null):(cnsDetailMemo||null),
+      followup_needed:    cnsFollowupNeeded,
+      next_followup_date: cnsNextFollowupDate||null,
+      call_datetime:      cnsCallDatetime?new Date(cnsCallDatetime+"T09:00:00").toISOString():new Date().toISOString(),
+    }).select("id").single();
+    if(error){ setCnsSaving(false); alert("저장 오류: "+error.message); return; }
+
+    const cid = caseData?.id;
+    if(cid){
+      if(isGenFin){
+        await supabase.from("consultation_finance_details").insert({
+          consultation_id:      cid,
+          finance_category:     cnsFinanceCategory||null,
+          finance_vehicle_model:cnsFinanceVehicleModel||null,
+          finance_product:      cnsFinanceProduct||null,
+          finance_company:      cnsFinanceCompany||null,
+          finance_amount:       cnsFinanceAmount    ?parseInt(cnsFinanceAmount,10):null,
+          finance_period:       cnsFinancePeriod    ?parseInt(cnsFinancePeriod,10):null,
+          finance_interest_rate:cnsFinanceInterestRate?parseFloat(cnsFinanceInterestRate):null,
+          finance_incentive:    cnsFinanceIncentive ?parseFloat(cnsFinanceIncentive):null,
+          finance_stage:        cnsFinanceStage||"received",
+        });
+      }
+      if(isIns){
+        await supabase.from("consultation_insurance_details").insert({
+          consultation_id:   cid,
+          vehicle_no:        cnsInsVehicleNo||null,
+          vehicle_model:     cnsInsVehicleModel||null,
+          vehicle_use:       cnsInsVehicleUse||null,
+          insurance_request: cnsInsRequest||null,
+          insurance_type:    cnsInsType||null,
+          insurance_company: cnsInsCompany||null,
+          insurance_start_date: cnsInsStartDate||null,
+          insurance_end_date:   cnsInsEndDate||null,
+          policy_issued:     cnsInsStatus==="issued",
+          design_requested:  cnsInsStatus==="requested",
+        });
+      }
+      if(isTire){
+        await supabase.from("consultation_tire_details").insert({
+          consultation_id: cid,
+          tire_size:       cnsTireFrontSize||null,
+          vehicle_type:    cnsTireVehicleType||null,
+          vehicle_info:    cnsTireVehicleInfo||null,
+          process_stage:   cnsTireStage||"received",
+          process_status:  cnsTireStage||"received",
+        });
+      }
+      // ── 지게차: tb_quotations 저장 (견적서 이력)
+      if(isFkl){
+        const qNo  = `FL-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+        const unitP = cnsFklPrice ? parseInt(cnsFklPrice,10) : 0;
+        const qty   = cnsFklQty  ? parseInt(cnsFklQty,10)   : 1;
+        const total = unitP * qty;
+        const vat   = Math.round(total * 0.1);
+        await supabase.from("tb_quotations").insert({
+          quote_type:      "forklift",
+          quote_no:        qNo,
+          quote_date:      todayStr(),
+          recipient:       cnsCustName,
+          recipient_email: null,
+          items: [{
+            brand:      cnsFklBrand||null,
+            model:      cnsFklModel||null,
+            ton:        cnsFklTon||null,
+            year:       cnsFklYear||null,
+            fuel:       cnsFklFuel||null,
+            mast:       cnsFklMast||null,
+            qty:        cnsFklQty||"1",
+            unit_price: unitP,
+          }],
+          notes:        cnsFklNote||null,
+          total_amount: total,
+          vat_amount:   vat,
+          grand_total:  total + vat,
+          created_by:   "admin@rnfkorea.co.kr",
+        });
+      }
+      // ── 배터리: tb_quotations 저장 (견적서 이력)
+      if(isBatt){
+        const qNo  = `BT-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+        const unitP = cnsBattPrice ? parseInt(cnsBattPrice,10) : 0;
+        const qty   = cnsBattQty  ? parseInt(cnsBattQty,10)   : 1;
+        const total = unitP * qty;
+        const vat   = Math.round(total * 0.1);
+        await supabase.from("tb_quotations").insert({
+          quote_type:      "battery",
+          quote_no:        qNo,
+          quote_date:      todayStr(),
+          recipient:       cnsCustName,
+          recipient_email: null,
+          items: [{
+            vehicle_type: cnsBattVehicleType||null,
+            voltage:      cnsBattVoltage||null,
+            capacity:     cnsBattCapacity||null,
+            spec:         cnsBattSpec||null,
+            qty:          cnsBattQty||"1",
+            unit_price:   unitP,
+          }],
+          notes:        cnsBattNote||null,
+          total_amount: total,
+          vat_amount:   vat,
+          grand_total:  total + vat,
+          created_by:   "admin@rnfkorea.co.kr",
+        });
+      }
+    }
+    setCnsSaving(false);
+    cnsReset(); setCnsShowCreate(false);
+    showToast("상담 등록 완료"); void fetchCnsRows();
+  }
+
+  async function cnsUpdateStatus(id:number, status:string){
+    await supabase.from("consultation_cases").update({status}).eq("id",id);
+    setCnsRows(prev=>prev.map(r=>r.id===id?{...r,status}:r));
+  }
+
+  const filteredCnsRows = useMemo(()=>{
+    const wtypes = CNS_WORK_TYPES[cnsActiveTab];
+    return cnsRows
+      .filter(r=>{
+        if(!wtypes.includes(r.work_type)) return false;
+        if(cnsStatusFilter==="active") return !["done","closed","cancelled","rejected","completed"].includes(r.status);
+        if(cnsStatusFilter==="done")   return ["done","closed","cancelled","rejected","completed"].includes(r.status);
+        return true;
+      })
+      .filter(r=>{
+        if(!cnsSearchQ) return true;
+        const q=cnsSearchQ.toLowerCase();
+        return (r.customer_name??"").toLowerCase().includes(q)
+          ||(r.summary??"").toLowerCase().includes(q)
+          ||(r.phone??"").includes(q);
+      });
+  },[cnsRows,cnsActiveTab,cnsStatusFilter,cnsSearchQ]);
   const [jAmtTo,setJAmtTo] = useState("");
   const [jAmtFrom,setJAmtFrom] = useState("");
   const [jSaving,setJSaving] = useState(false);
@@ -4426,7 +4836,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               <button key={`${t}-${i}`} data-tab-key={t} className={`${TB} ${tab===t?TA:TI}`} style={{flexShrink:0,whiteSpace:"nowrap"}} onClick={()=>setTabAndSave(t)}>
                 {t==="email"
                   ? <span className="flex items-center gap-1">📧 이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
-                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",hyundaicm:"🏗 현대CM",taesan:"🚛 태산통운",finance:"🏦 금융상담",narumi:"🚛 나르미",jinheung:"🔧 진흥주문",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비",quotation:"📋 견적서",statement:"📑 거래명세서"}[t as string]
+                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",hyundaicm:"🏗 현대CM",taesan:"🚛 태산통운",finance:"🏦 금융상담",narumi:"🚛 나르미",jinheung:"🔧 진흥주문",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비",quotation:"📋 견적서",statement:"📑 거래명세서",cns:"🗂 통합상담"}[t as string]
                 }
               </button>
             ))}
@@ -6316,6 +6726,757 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                   📑 거래명세서 작성하기
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* ══ 통합상담 탭 ══ */}
+          {tab==="cns"&&(
+            <div className="space-y-3 pb-4">
+              {/* ── 헤더 ── */}
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <p className="text-sm font-semibold text-[#0f172a]">🗂 통합상담 관리</p>
+                <div className="flex gap-1.5 flex-wrap">
+                  <button className={BTG} onClick={()=>{ void fetchCnsRows(); }}>새로고침</button>
+                  <button className={BTO} onClick={()=>navigate("/work/call-management")}>전체 페이지 →</button>
+                  <button className={BTP} onClick={()=>{setCnsShowCreate(v=>!v); if(!cnsLoaded) void fetchCnsRows();}}>
+                    {cnsShowCreate?"닫기":"+ 신규 등록"}
+                  </button>
+                </div>
+              </div>
+
+              {/* ── 신규 상담 등록 폼 ── */}
+              {cnsShowCreate&&(
+                <div className={`${CARD} p-4 space-y-3`}>
+                  <p className="text-sm font-semibold text-[#0f172a]">신규 상담 등록</p>
+
+                  {/* work_type 선택 그리드 */}
+                  <div>
+                    <label className={LBL}>업무 유형 *</label>
+                    <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
+                      {[
+                        {key:"finance",     label:"💳 할부금융"},
+                        {key:"registration_insurance", label:"🛡 보험"},
+                        {key:"export",      label:"🌏 수출"},
+                        {key:"forklift_sales", label:"🚜 지게차"},
+                        {key:"battery_sales",  label:"🔋 배터리"},
+                        {key:"tire_sales",     label:"🔧 타이어"},
+                        {key:"narumi",         label:"🚛 나르미"},
+                      ].map(({key,label})=>(
+                        <button key={key}
+                          onClick={()=>{setCnsWorkType(key); setCnsSub("");}}
+                          className={`py-2 rounded-xl text-xs font-semibold border transition-all ${cnsWorkType===key?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200 hover:border-gray-400"}`}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 할부금융 → 세부 유형 선택 */}
+                  {cnsWorkType==="finance"&&(
+                    <div>
+                      <label className={LBL}>금융 유형</label>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {[{k:"",l:"일반"},{k:"현대CM",l:"현대CM"},{k:"태산통운",l:"태산통운"},{k:"기타금융",l:"기타금융"}].map(({k,l})=>(
+                          <button key={k} onClick={()=>setCnsSub(k)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${cnsSub===k?"bg-blue-600 text-white border-blue-600":"bg-white text-gray-500 border-gray-200 hover:border-gray-400"}`}>
+                            {l}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── 공통: 고객명 · 연락처 · 상담일자 ── */}
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className={LBL}>고객명 *</label>
+                      <input className={CTRL} placeholder="홍길동" value={cnsCustName} onChange={e=>setCnsCustName(e.target.value)}/>
+                    </div>
+                    <div>
+                      <label className={LBL}>연락처</label>
+                      <input className={CTRL} placeholder="010-0000-0000" value={cnsCustPhone} onChange={e=>setCnsCustPhone(e.target.value)}/>
+                    </div>
+                    <div>
+                      <label className={LBL}>상담일자</label>
+                      <input type="date" className={CTRL} value={cnsCallDatetime} onChange={e=>setCnsCallDatetime(e.target.value)}/>
+                    </div>
+                  </div>
+
+                  {/* ══════════════ 1. 할부금융 전용 상세 필드 ══════════════ */}
+                  {cnsWorkType==="finance"&&(
+                    <>
+                      {/* ── 1-A 현대CM / 1-B 태산통운 공통 폼 ── */}
+                      {(cnsSub==="현대CM"||cnsSub==="태산통운")&&(
+                        <div className="pt-1">
+                          <p className="text-xs font-semibold text-orange-500 mb-2">{cnsSub==="현대CM"?"현대건설기계 상담":"태산통운 상담"}</p>
+                          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                            <div>
+                              <label className={LBL}>고객 구분</label>
+                              <select className={CTRL} value={cnsHcmCustomerType} onChange={e=>setCnsHcmCustomerType(e.target.value)}>
+                                <option value="">선택</option>
+                                <option value="법인">법인</option>
+                                <option value="개인">개인</option>
+                                <option value="개인사업자">개인사업자</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className={LBL}>법인명</label>
+                              <input className={CTRL} placeholder="예: 주식회사 ..." value={cnsHcmCompanyName} onChange={e=>setCnsHcmCompanyName(e.target.value)}/>
+                            </div>
+                            <div>
+                              <label className={LBL}>장비 톤수</label>
+                              <input className={CTRL} placeholder="예: 3.5톤" value={cnsHcmEquipmentTon} onChange={e=>setCnsHcmEquipmentTon(e.target.value)}/>
+                            </div>
+                            <div>
+                              <label className={LBL}>금융사</label>
+                              <select className={CTRL} value={cnsHcmFinanceCompany} onChange={e=>setCnsHcmFinanceCompany(e.target.value)}>
+                                <option value="">선택</option>
+                                {["KB캐피탈","NH캐피탈","오릭스","HCI","BNK캐피탈","메리츠캐피탈","롯데오토리스","농협","우리금융","BSON"].map(c=><option key={c} value={c}>{c}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <label className={LBL}>할부원금</label>
+                              <div className="relative">
+                                <input type="text" inputMode="numeric" className={`${CTRL} pr-8`}
+                                  placeholder="예: 50,000,000"
+                                  value={cnsHcmPrincipal?parseInt(cnsHcmPrincipal,10).toLocaleString("ko-KR"):""}
+                                  onChange={e=>setCnsHcmPrincipal(e.target.value.replace(/\D/g,""))}/>
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">원</span>
+                              </div>
+                            </div>
+                            <div>
+                              <label className={LBL}>금리</label>
+                              <div className="relative">
+                                <input type="text" inputMode="decimal" className={`${CTRL} pr-7`} placeholder="예: 5.9"
+                                  value={cnsHcmInterestRate} onChange={e=>setCnsHcmInterestRate(e.target.value.replace(/[^0-9.]/g,""))}/>
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+                              </div>
+                            </div>
+                            <div>
+                              <label className={LBL}>기간</label>
+                              <input type="text" inputMode="numeric" className={CTRL} placeholder="예: 60"
+                                value={cnsHcmLoanPeriod} onChange={e=>setCnsHcmLoanPeriod(e.target.value.replace(/\D/g,""))}/>
+                            </div>
+                            <div>
+                              <label className={LBL}>영업사원</label>
+                              <input className={CTRL} placeholder="홍길동" value={cnsHcmSalesRep} onChange={e=>setCnsHcmSalesRep(e.target.value)}/>
+                            </div>
+                            <div>
+                              <label className={LBL}>진행단계</label>
+                              <select className={CTRL} value={cnsHcmStatus} onChange={e=>setCnsHcmStatus(e.target.value)}>
+                                {["접수","신용조회","승인","보완","거절","서류등록","전자계약발송","확정","취소"].map(s=><option key={s} value={s}>{s}</option>)}
+                              </select>
+                            </div>
+                            <div className="col-span-2 sm:col-span-3">
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <div className={`w-9 h-5 rounded-full relative transition-colors ${cnsHcmVatDeferred?"bg-emerald-500":"bg-gray-300"}`} onClick={()=>setCnsHcmVatDeferred(v=>!v)}>
+                                  <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${cnsHcmVatDeferred?"translate-x-4":"translate-x-0.5"}`}/>
+                                </div>
+                                <span className="text-xs font-medium text-gray-600">부가세 유예</span>
+                              </label>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── 1-C 일반 / 기타금융 폼 ── */}
+                      {cnsSub!=="현대CM"&&cnsSub!=="태산통운"&&(
+                        <div className="pt-1">
+                          <p className="text-xs font-semibold text-orange-500 mb-2">금융 상세</p>
+                          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                            <div>
+                              <label className={LBL}>종목</label>
+                              <select className={CTRL} value={cnsFinanceCategory} onChange={e=>setCnsFinanceCategory(e.target.value)}>
+                                <option value="">선택</option>
+                                <option value="화물">화물</option>
+                                <option value="건설">건설</option>
+                                <option value="고소작업대">고소작업대</option>
+                                <option value="배터리">배터리</option>
+                                <option value="기타">기타</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className={LBL}>차종</label>
+                              <input className={CTRL} placeholder="예: 포터2 / 3.5톤 카고" value={cnsFinanceVehicleModel} onChange={e=>setCnsFinanceVehicleModel(e.target.value)}/>
+                            </div>
+                            <div>
+                              <label className={LBL}>상품</label>
+                              <select className={CTRL} value={cnsFinanceProduct} onChange={e=>setCnsFinanceProduct(e.target.value)}>
+                                <option value="">선택</option>
+                                <option value="할부">할부</option>
+                                <option value="리스">리스</option>
+                                <option value="렌탈">렌탈</option>
+                                <option value="일반리스">일반리스</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className={LBL}>금융사</label>
+                              <select className={CTRL} value={cnsFinanceCompany} onChange={e=>setCnsFinanceCompany(e.target.value)}>
+                                <option value="">선택</option>
+                                {["KB캐피탈","NH캐피탈","오릭스","HCI","BNK캐피탈","메리츠캐피탈","롯데오토리스","농협","우리금융","BSON"].map(c=><option key={c} value={c}>{c}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <label className={LBL}>취급액</label>
+                              <div className="relative">
+                                <input type="text" inputMode="numeric" className={`${CTRL} pr-8`}
+                                  placeholder="예: 50,000,000"
+                                  value={cnsFinanceAmount?parseInt(cnsFinanceAmount,10).toLocaleString("ko-KR"):""}
+                                  onChange={e=>setCnsFinanceAmount(e.target.value.replace(/\D/g,""))}/>
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">원</span>
+                              </div>
+                            </div>
+                            <div>
+                              <label className={LBL}>기간</label>
+                              <input type="text" inputMode="numeric" className={CTRL} placeholder="예: 36"
+                                value={cnsFinancePeriod} onChange={e=>setCnsFinancePeriod(e.target.value.replace(/\D/g,""))}/>
+                            </div>
+                            <div>
+                              <label className={LBL}>금리</label>
+                              <div className="relative">
+                                <input type="text" inputMode="decimal" className={`${CTRL} pr-7`} placeholder="예: 5.9"
+                                  value={cnsFinanceInterestRate} onChange={e=>setCnsFinanceInterestRate(e.target.value.replace(/[^0-9.]/g,""))}/>
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+                              </div>
+                            </div>
+                            <div>
+                              <label className={LBL}>인센티브</label>
+                              <div className="relative">
+                                <input type="text" inputMode="decimal" className={`${CTRL} pr-7`} placeholder="예: 2.5"
+                                  value={cnsFinanceIncentive} onChange={e=>setCnsFinanceIncentive(e.target.value.replace(/[^0-9.]/g,""))}/>
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+                              </div>
+                            </div>
+                            <div>
+                              <label className={LBL}>진행단계</label>
+                              <select className={CTRL} value={cnsFinanceStage} onChange={e=>setCnsFinanceStage(e.target.value)}>
+                                <option value="received">접수</option>
+                                <option value="credit_check">신용조회</option>
+                                <option value="approved">승인</option>
+                                <option value="supplement">보완</option>
+                                <option value="rejected">거절</option>
+                                <option value="doc_registration">서류등록</option>
+                                <option value="contract_sent">전자계약발송</option>
+                                <option value="confirmed">확정</option>
+                                <option value="cancelled">취소</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div className="mt-2.5">
+                            <label className={LBL}>상담내용</label>
+                            <textarea className={`${TA2} min-h-[72px]`}
+                              placeholder="금융조건, 요청사항, 진행 메모 등을 입력하세요."
+                              value={cnsFinanceNote} onChange={e=>setCnsFinanceNote(e.target.value)}/>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* ══════════════ 2. 보험 ══════════════ */}
+                  {cnsWorkType==="registration_insurance"&&(
+                    <>
+                      <div className="pt-1">
+                        <p className="text-xs font-semibold text-orange-500 mb-2">보험 상세</p>
+                        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                          <div>
+                            <label className={LBL}>통신사</label>
+                            <select className={CTRL} value={cnsTelecomProvider} onChange={e=>setCnsTelecomProvider(e.target.value)}>
+                              <option value="">선택</option>
+                              <option value="SKT">SKT</option>
+                              <option value="KT">KT</option>
+                              <option value="LGU+">LGU+</option>
+                              <option value="알뜰폰">알뜰폰</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className={LBL}>차량번호</label>
+                            <input className={CTRL} placeholder="예: 123가4567" value={cnsInsVehicleNo} onChange={e=>setCnsInsVehicleNo(e.target.value)}/>
+                          </div>
+                          <div>
+                            <label className={LBL}>차종/모델</label>
+                            <select className={CTRL} value={cnsInsVehicleModel} onChange={e=>setCnsInsVehicleModel(e.target.value)}>
+                              <option value="">선택</option>
+                              <option value="2.5톤 이하">2.5톤 이하</option>
+                              <option value="2.5톤 이상">2.5톤 이상</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className={LBL}>사용용도</label>
+                            <select className={CTRL} value={cnsInsVehicleUse} onChange={e=>setCnsInsVehicleUse(e.target.value)}>
+                              <option value="">선택</option>
+                              <option value="영업용">영업용</option>
+                              <option value="개인용">개인용</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className={LBL}>보험 요청 내용</label>
+                            <select className={CTRL} value={cnsInsRequest} onChange={e=>setCnsInsRequest(e.target.value)}>
+                              <option value="">선택</option>
+                              <option value="신규">신규</option>
+                              <option value="갱신">갱신</option>
+                              <option value="해지">해지</option>
+                              <option value="비교견적">비교견적</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className={LBL}>보험종류</label>
+                            <select className={CTRL} value={cnsInsType} onChange={e=>setCnsInsType(e.target.value)}>
+                              <option value="automobile">자동차보험</option>
+                              <option value="cargo">적재물보험</option>
+                              <option value="general">일반보험</option>
+                              <option value="health">건강보험</option>
+                            </select>
+                          </div>
+                          <div className="col-span-2 sm:col-span-3">
+                            <label className={LBL}>가입 보험사</label>
+                            <select className={CTRL} value={cnsInsCompany} onChange={e=>setCnsInsCompany(e.target.value)}>
+                              <option value="">선택</option>
+                              <optgroup label="손해보험">
+                                {["삼성화재","현대해상","DB손보","KB손보","메리츠화재","한화손보","흥국화재","MG손보","캐롯손보","악사손보"].map(n=><option key={n} value={n}>{n}</option>)}
+                              </optgroup>
+                              <optgroup label="생명보험">
+                                {["삼성생명","한화생명","교보생명","NH농협생명","신한라이프","라이나생명","AIA생명"].map(n=><option key={n} value={n}>{n}</option>)}
+                              </optgroup>
+                            </select>
+                          </div>
+                          <div>
+                            <label className={LBL}>가입일자</label>
+                            <input type="date" className={CTRL} value={cnsInsStartDate} onChange={e=>setCnsInsStartDate(e.target.value)}/>
+                          </div>
+                          <div>
+                            <label className={LBL}>만기일자</label>
+                            <input type="date" className={CTRL} value={cnsInsEndDate} onChange={e=>setCnsInsEndDate(e.target.value)}/>
+                          </div>
+                          <div>
+                            <label className={LBL}>진행상태</label>
+                            <select className={CTRL} value={cnsInsStatus} onChange={e=>setCnsInsStatus(e.target.value as "requested"|"issued")}>
+                              <option value="requested">설계요청</option>
+                              <option value="issued">증권발급</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <label className={LBL}>상담내용</label>
+                        <textarea className={`${TA2} min-h-[72px]`} placeholder="보험 문의 배경, 요청 조건, 진행 메모 등을 입력하세요." value={cnsInsNote} onChange={e=>setCnsInsNote(e.target.value)}/>
+                      </div>
+                    </>
+                  )}
+
+                  {/* ══════════════ 3. 지게차 견적 ══════════════ */}
+                  {cnsWorkType==="forklift_sales"&&(
+                    <>
+                      <div className="pt-1">
+                        <p className="text-xs font-semibold text-orange-500 mb-2">지게차 견적</p>
+                        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                          <div>
+                            <label className={LBL}>브랜드</label>
+                            <select className={CTRL} value={cnsFklBrand} onChange={e=>setCnsFklBrand(e.target.value)}>
+                              <option value="">선택</option>
+                              {["현대","두산","도요타","TCM","클라크","미쓰비시","닛산","기타"].map(b=><option key={b} value={b}>{b}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className={LBL}>모델</label>
+                            <input className={CTRL} placeholder="예: 35BH-7" value={cnsFklModel} onChange={e=>setCnsFklModel(e.target.value)}/>
+                          </div>
+                          <div>
+                            <label className={LBL}>톤수</label>
+                            <select className={CTRL} value={cnsFklTon} onChange={e=>setCnsFklTon(e.target.value)}>
+                              <option value="">선택</option>
+                              {["1","1.5","2","2.5","3","3.5","4","5","7","10"].map(t=><option key={t} value={t}>{t}톤</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className={LBL}>연식</label>
+                            <input className={CTRL} placeholder="예: 2020" value={cnsFklYear} onChange={e=>setCnsFklYear(e.target.value.replace(/\D/g,""))} maxLength={4}/>
+                          </div>
+                          <div>
+                            <label className={LBL}>연료</label>
+                            <select className={CTRL} value={cnsFklFuel} onChange={e=>setCnsFklFuel(e.target.value)}>
+                              <option value="">선택</option>
+                              <option value="디젤">디젤</option>
+                              <option value="LPG">LPG</option>
+                              <option value="전동">전동</option>
+                              <option value="하이브리드">하이브리드</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className={LBL}>마스트</label>
+                            <select className={CTRL} value={cnsFklMast} onChange={e=>setCnsFklMast(e.target.value)}>
+                              <option value="">선택</option>
+                              <option value="심플렉스">심플렉스</option>
+                              <option value="듀플렉스">듀플렉스</option>
+                              <option value="트리플렉스">트리플렉스</option>
+                              <option value="쿼드">쿼드</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className={LBL}>수량</label>
+                            <input type="text" inputMode="numeric" className={CTRL} placeholder="1" value={cnsFklQty} onChange={e=>setCnsFklQty(e.target.value.replace(/\D/g,""))}/>
+                          </div>
+                          <div>
+                            <label className={LBL}>견적가</label>
+                            <div className="relative">
+                              <input type="text" inputMode="numeric" className={`${CTRL} pr-8`}
+                                placeholder="예: 25,000,000"
+                                value={cnsFklPrice?parseInt(cnsFklPrice,10).toLocaleString("ko-KR"):""}
+                                onChange={e=>setCnsFklPrice(e.target.value.replace(/\D/g,""))}/>
+                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">원</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <label className={LBL}>비고</label>
+                        <textarea className={`${TA2} min-h-[64px]`} placeholder="특이사항, 요청사항 등을 입력하세요." value={cnsFklNote} onChange={e=>setCnsFklNote(e.target.value)}/>
+                      </div>
+                    </>
+                  )}
+
+                  {/* ══════════════ 4. 배터리 견적 ══════════════ */}
+                  {cnsWorkType==="battery_sales"&&(
+                    <>
+                      <div className="pt-1">
+                        <p className="text-xs font-semibold text-orange-500 mb-2">배터리 견적</p>
+                        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                          <div>
+                            <label className={LBL}>차량 종류</label>
+                            <select className={CTRL} value={cnsBattVehicleType} onChange={e=>setCnsBattVehicleType(e.target.value)}>
+                              <option value="">선택</option>
+                              <option value="지게차">지게차</option>
+                              <option value="고소작업대">고소작업대</option>
+                              <option value="농기계">농기계</option>
+                              <option value="기타">기타</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className={LBL}>전압</label>
+                            <select className={CTRL} value={cnsBattVoltage} onChange={e=>setCnsBattVoltage(e.target.value)}>
+                              <option value="">선택</option>
+                              {["12V","24V","36V","48V","72V","80V","기타"].map(v=><option key={v} value={v}>{v}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className={LBL}>용량(AH)</label>
+                            <input type="text" inputMode="numeric" className={CTRL} placeholder="예: 600" value={cnsBattCapacity} onChange={e=>setCnsBattCapacity(e.target.value.replace(/\D/g,""))}/>
+                          </div>
+                          <div>
+                            <label className={LBL}>규격</label>
+                            <input className={CTRL} placeholder="예: 12PzS600 / LFP 150AH" value={cnsBattSpec} onChange={e=>setCnsBattSpec(e.target.value)}/>
+                          </div>
+                          <div>
+                            <label className={LBL}>수량</label>
+                            <input type="text" inputMode="numeric" className={CTRL} placeholder="1" value={cnsBattQty} onChange={e=>setCnsBattQty(e.target.value.replace(/\D/g,""))}/>
+                          </div>
+                          <div>
+                            <label className={LBL}>견적가</label>
+                            <div className="relative">
+                              <input type="text" inputMode="numeric" className={`${CTRL} pr-8`}
+                                placeholder="예: 3,200,000"
+                                value={cnsBattPrice?parseInt(cnsBattPrice,10).toLocaleString("ko-KR"):""}
+                                onChange={e=>setCnsBattPrice(e.target.value.replace(/\D/g,""))}/>
+                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">원</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <label className={LBL}>비고</label>
+                        <textarea className={`${TA2} min-h-[64px]`} placeholder="특이사항, 현재 배터리 상태 등을 입력하세요." value={cnsBattNote} onChange={e=>setCnsBattNote(e.target.value)}/>
+                      </div>
+                    </>
+                  )}
+
+                  {/* ══════════════ 5. 타이어 ══════════════ */}
+                  {cnsWorkType==="tire_sales"&&(
+                    <>
+                      <div className="pt-1">
+                        <p className="text-xs font-semibold text-orange-500 mb-2">타이어 상세</p>
+                        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                          <div>
+                            <label className={LBL}>앞 타이어 규격</label>
+                            <input className={CTRL} placeholder="예: 8.25R15" value={cnsTireFrontSize} onChange={e=>setCnsTireFrontSize(e.target.value)}/>
+                          </div>
+                          <div>
+                            <label className={LBL}>앞 수량</label>
+                            <input type="text" inputMode="numeric" className={CTRL} placeholder="예: 2" value={cnsTireFrontQty} onChange={e=>setCnsTireFrontQty(e.target.value.replace(/\D/g,""))}/>
+                          </div>
+                          <div>
+                            <label className={LBL}>뒤 타이어 규격</label>
+                            <input className={CTRL} placeholder="예: 8.25R15" value={cnsTireRearSize} onChange={e=>setCnsTireRearSize(e.target.value)}/>
+                          </div>
+                          <div>
+                            <label className={LBL}>뒤 수량</label>
+                            <input type="text" inputMode="numeric" className={CTRL} placeholder="예: 4" value={cnsTireRearQty} onChange={e=>setCnsTireRearQty(e.target.value.replace(/\D/g,""))}/>
+                          </div>
+                          <div>
+                            <label className={LBL}>차량 종류</label>
+                            <select className={CTRL} value={cnsTireVehicleType} onChange={e=>setCnsTireVehicleType(e.target.value)}>
+                              <option value="">선택</option>
+                              {["화물차","지게차","고소작업대","덤프","믹서","레미콘","기타"].map(v=><option key={v} value={v}>{v}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className={LBL}>차량 정보</label>
+                            <input className={CTRL} placeholder="예: 5톤 덤프 / 포터2" value={cnsTireVehicleInfo} onChange={e=>setCnsTireVehicleInfo(e.target.value)}/>
+                          </div>
+                          <div>
+                            <label className={LBL}>유입경로</label>
+                            <select className={CTRL} value={cnsTireInflow} onChange={e=>{setCnsTireInflow(e.target.value); setCnsTireAssoc("");}}>
+                              <option value="">선택</option>
+                              <option value="association">협회</option>
+                              <option value="gotruck">고트럭</option>
+                              <option value="etc">기타</option>
+                            </select>
+                          </div>
+                          {cnsTireInflow==="association"&&(
+                            <div>
+                              <label className={LBL}>협회명</label>
+                              <select className={CTRL} value={cnsTireAssoc} onChange={e=>setCnsTireAssoc(e.target.value)}>
+                                <option value="">선택</option>
+                                {["서울","광주","경북","경남"].map(a=><option key={a} value={a}>{a}</option>)}
+                              </select>
+                            </div>
+                          )}
+                          <div>
+                            <label className={LBL}>진행단계</label>
+                            <select className={CTRL} value={cnsTireStage} onChange={e=>setCnsTireStage(e.target.value)}>
+                              <option value="received">접수</option>
+                              <option value="delivery">납품완료</option>
+                              <option value="invoiced">계산서발행</option>
+                              <option value="cancelled">취소</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <label className={LBL}>상담내용</label>
+                        <textarea className={`${TA2} min-h-[64px]`} placeholder="규격 문의, 장착 위치, 교체 일정, 현장 요청사항 등을 입력하세요." value={cnsTireNote} onChange={e=>setCnsTireNote(e.target.value)}/>
+                      </div>
+                    </>
+                  )}
+
+                  {/* ══════════════ 6. 나르미 ══════════════ */}
+                  {cnsWorkType==="narumi"&&(
+                    <>
+                      <div className="pt-1">
+                        <p className="text-xs font-semibold text-orange-500 mb-2">나르미 접수</p>
+                        {/* 1행: VIN · 고객명 · 전화번호 (고객명은 공통 필드 사용) */}
+                        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 mb-2.5">
+                          <div className="sm:col-span-2">
+                            <label className={LBL}>차대번호(VIN) *</label>
+                            <input className={CTRL} placeholder="예: KMH..."
+                              value={cnsNarumiVin}
+                              onChange={e=>setCnsNarumiVin(e.target.value.trim().toUpperCase())}/>
+                          </div>
+                        </div>
+                        {/* 2행: 출고일자 · 롯데오토리스 · 영업사원 · 영업사원연락처 · 용도구분 */}
+                        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                          <div>
+                            <label className={LBL}>출고일자 * (YYYY.MM.DD)</label>
+                            <input className={CTRL} placeholder="2026.01.01" inputMode="numeric"
+                              value={cnsNarumiDeliveryText}
+                              onChange={e=>{
+                                const d=e.target.value.replace(/\D/g,"").slice(0,8);
+                                const y=d.slice(0,4),m=d.slice(4,6),dd=d.slice(6,8);
+                                setCnsNarumiDeliveryText(d.length<=4?y:d.length<=6?`${y}.${m}`:`${y}.${m}.${dd}`);
+                              }}/>
+                          </div>
+                          <div>
+                            <label className={LBL}>롯데오토리스</label>
+                            <div className="h-10 w-full rounded-xl border border-gray-200 bg-white flex items-center gap-4 px-3">
+                              <label className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-700 cursor-pointer">
+                                <input type="radio" name="cnsNarumiLotte" checked={cnsNarumiLotte===true} onChange={()=>setCnsNarumiLotte(true)} className="h-4 w-4 accent-orange-500"/> Y
+                              </label>
+                              <label className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-700 cursor-pointer">
+                                <input type="radio" name="cnsNarumiLotte" checked={cnsNarumiLotte===false} onChange={()=>setCnsNarumiLotte(false)} className="h-4 w-4 accent-orange-500"/> N
+                              </label>
+                            </div>
+                          </div>
+                          <div>
+                            <label className={LBL}>영업사원 *</label>
+                            <input className={CTRL} placeholder="홍길동"
+                              value={cnsNarumiSalesRep} onChange={e=>setCnsNarumiSalesRep(e.target.value)}/>
+                          </div>
+                          <div>
+                            <label className={LBL}>영업사원 연락처 *</label>
+                            <input className={CTRL} placeholder="010-0000-0000" inputMode="tel"
+                              value={cnsNarumiSalesRepPhone}
+                              onChange={e=>{
+                                const d=e.target.value.replace(/\D/g,"").slice(0,11);
+                                setCnsNarumiSalesRepPhone(d.length<=3?d:d.length<=7?`${d.slice(0,3)}-${d.slice(3)}`:`${d.slice(0,3)}-${d.slice(3,7)}-${d.slice(7)}`);
+                              }}/>
+                          </div>
+                          <div>
+                            <label className={LBL}>용도 구분 *</label>
+                            <select className={CTRL} value={cnsNarumiVehicleUseType} onChange={e=>setCnsNarumiVehicleUseType(e.target.value as "자가용"|"영업용")}>
+                              <option value="자가용">자가용</option>
+                              <option value="영업용">영업용</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <label className={LBL}>특이사항</label>
+                        <textarea className={`${TA2} min-h-[72px]`}
+                          placeholder="고객 요청사항 / 특이사항 / 보험사 정보..."
+                          value={cnsNarumiSpecialNote} onChange={e=>setCnsNarumiSpecialNote(e.target.value)}/>
+                      </div>
+                    </>
+                  )}
+
+                  {/* ══════════════ 기타(수출) 공통 필드 ══════════════ */}
+                  {!["finance","registration_insurance","forklift_sales","battery_sales","tire_sales","narumi"].includes(cnsWorkType)&&(
+                    <>
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div>
+                          <label className={LBL}>법인명</label>
+                          <input className={CTRL} placeholder="주식회사 ..." value={cnsCompanyName} onChange={e=>setCnsCompanyName(e.target.value)}/>
+                        </div>
+                        <div>
+                          <label className={LBL}>지역</label>
+                          <input className={CTRL} placeholder="경기 안산" value={cnsRegion} onChange={e=>setCnsRegion(e.target.value)}/>
+                        </div>
+                        <div>
+                          <label className={LBL}>유입경로</label>
+                          <select className={CTRL} value={cnsInflowChannel} onChange={e=>setCnsInflowChannel(e.target.value)}>
+                            {["phone","kakao","visit","web","referral","other"].map(c=>(
+                              <option key={c} value={c}>{{phone:"전화",kakao:"카카오",visit:"방문",web:"웹/홈페이지",referral:"소개",other:"기타"}[c]}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className={LBL}>상담 요약 *</label>
+                        <input className={CTRL} placeholder="한 줄 요약" value={cnsSummary} onChange={e=>setCnsSummary(e.target.value)}/>
+                      </div>
+                      <div>
+                        <label className={LBL}>상세 메모</label>
+                        <textarea className={`${TA2} min-h-[64px]`} placeholder="필요 시 상세 내용 입력" value={cnsDetailMemo} onChange={e=>setCnsDetailMemo(e.target.value)}/>
+                      </div>
+                    </>
+                  )}
+
+                  {/* 팔로업 토글 + 날짜 */}
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <div className={`w-9 h-5 rounded-full relative transition-colors ${cnsFollowupNeeded?"bg-emerald-500":"bg-gray-300"}`}
+                        onClick={()=>setCnsFollowupNeeded(v=>!v)}>
+                        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${cnsFollowupNeeded?"translate-x-4":"translate-x-0.5"}`}/>
+                      </div>
+                      <span className="text-xs font-medium text-gray-600">사후관리 필요</span>
+                    </label>
+                    {cnsFollowupNeeded&&(
+                      <input type="date" className={`${CTRL} w-auto flex-1 min-w-[140px]`}
+                        value={cnsNextFollowupDate} onChange={e=>setCnsNextFollowupDate(e.target.value)}/>
+                    )}
+                  </div>
+
+                  {/* 저장/취소 */}
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button className={BTS} onClick={()=>{setCnsShowCreate(false); cnsReset();}}>취소</button>
+                    <button className={BTP}
+                      disabled={cnsSaving||!cnsCustName||(!["finance","registration_insurance","forklift_sales","battery_sales","tire_sales","narumi"].includes(cnsWorkType)&&!cnsSummary)}
+                      onClick={()=>void cnsSave()}>
+                      {cnsSaving?"저장 중...":"저장"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── 서브 탭 필터 ── */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex gap-1 flex-wrap">
+                  {(["통합상담","할부금융","보험","수출"] as CnsActiveTab[]).map(t=>(
+                    <button key={t} onClick={()=>{setCnsActiveTab(t); if(!cnsLoaded) void fetchCnsRows(); else {
+                      setCnsLoading(true);
+                      const wtypes=CNS_WORK_TYPES[t];
+                      supabase.from("consultation_cases")
+                        .select("id,customer_name,phone,telecom_provider,work_type,sub_type,status,summary,followup_needed,next_followup_date,created_at")
+                        .in("work_type",wtypes).order("created_at",{ascending:false}).limit(120)
+                        .then(({data})=>{setCnsRows(data??[]);setCnsLoading(false);setCnsLoaded(true);});
+                    }}}
+                      className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${cnsActiveTab===t?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
+                      {t}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-1 ml-auto">
+                  {(["active","all","done"] as const).map(f=>(
+                    <button key={f} onClick={()=>setCnsStatusFilter(f)}
+                      className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold border transition-all ${cnsStatusFilter===f?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-400 border-gray-200 hover:border-gray-300"}`}>
+                      {{active:"진행중",all:"전체",done:"완료"}[f]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── 검색 ── */}
+              <div className="relative">
+                <input className={`${CTRL} pr-8`} placeholder="고객명 · 요약 · 연락처 검색"
+                  value={cnsSearchQ} onChange={e=>setCnsSearchQ(e.target.value)}/>
+                {cnsSearchQ&&(
+                  <button onClick={()=>setCnsSearchQ("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm">✕</button>
+                )}
+              </div>
+
+              {/* ── 상담 목록 ── */}
+              {!cnsLoaded?(
+                <div className="text-center py-8">
+                  <button className={BTP} onClick={()=>void fetchCnsRows()}>상담 내역 불러오기</button>
+                </div>
+              ):cnsLoading?(
+                <p className="text-sm text-gray-400 text-center py-6">불러오는 중...</p>
+              ):filteredCnsRows.length===0?(
+                <p className="text-sm text-gray-400 text-center py-6">해당 조건의 상담이 없습니다.</p>
+              ):(
+                <div className={`${CARD} divide-y divide-gray-100`}>
+                  {filteredCnsRows.map((r:any)=>{
+                    const isDone=["done","closed","cancelled","rejected","completed"].includes(r.status);
+                    const WL2:Record<string,string>={finance:"할부금융",registration_insurance:"보험",export:"수출",forklift_sales:"지게차",battery_sales:"배터리",tire_sales:"타이어",narumi:"나르미"};
+                    const CLR2:Record<string,string>={finance:"bg-blue-100 text-blue-700",registration_insurance:"bg-orange-100 text-orange-700",export:"bg-amber-100 text-amber-700",forklift_sales:"bg-purple-100 text-purple-700",battery_sales:"bg-emerald-100 text-emerald-700",tire_sales:"bg-sky-100 text-sky-700",narumi:"bg-indigo-100 text-indigo-700"};
+                    return (
+                      <div key={r.id} className={`p-3 hover:bg-gray-50 transition-all ${isDone?"opacity-60":""}`}>
+                        <div className="flex items-start gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${CLR2[r.work_type]??"bg-gray-100 text-gray-600"}`}>
+                                {WL2[r.work_type]??r.work_type}
+                              </span>
+                              {r.sub_type&&<span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">{r.sub_type}</span>}
+                              <StsBadge s={r.status}/>
+                              {r.followup_needed&&r.next_followup_date&&(
+                                <span className="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded-full">📅 {fmtDate(r.next_followup_date)}</span>
+                              )}
+                            </div>
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-sm font-semibold text-[#0f172a]">{r.customer_name}</span>
+                              {r.phone&&<span className="text-xs text-gray-400">{r.phone}</span>}
+                              {r.telecom_provider&&<span className="text-xs text-gray-400">({r.telecom_provider})</span>}
+                            </div>
+                            <p className="text-xs text-gray-500 truncate mt-0.5">{r.summary}</p>
+                            <p className="text-[10px] text-gray-300 mt-0.5">#{r.id} · {fmtDate(r.created_at)}</p>
+                          </div>
+                          <div className="flex flex-col gap-1 flex-shrink-0">
+                            <button onClick={()=>navigate(`/work/call-management?id=${r.id}`)}
+                              className="px-2 py-1 rounded-lg text-[11px] border border-gray-200 text-gray-500 hover:border-gray-300 hover:bg-gray-50 transition-all">열기</button>
+                            {isDone?(
+                              <button onClick={()=>void cnsUpdateStatus(r.id,"in_progress")}
+                                className="px-2 py-1 rounded-lg text-[11px] border border-emerald-200 text-emerald-600 hover:bg-emerald-50 transition-all">재개</button>
+                            ):(
+                              <button onClick={()=>void cnsUpdateStatus(r.id,"closed")}
+                                className="px-2 py-1 rounded-lg text-[11px] border border-gray-200 text-gray-400 hover:border-gray-300 hover:bg-gray-50 transition-all">종료</button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
