@@ -3,7 +3,7 @@
 // 수신 이메일 2개 + 참조 2개 + 전화번호 2개
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import html2canvas from 'html2canvas';
 import { supabase } from '../../lib/supabase';
 
@@ -160,7 +160,7 @@ function calcAmortization(p:number, annualRate:number, months:number, startYM:st
 const Label = ({children}:{children:React.ReactNode}) =>
   <label className="block text-xs font-medium text-gray-600 mb-1">{children}</label>;
 const Input = (p:React.InputHTMLAttributes<HTMLInputElement>) =>
-  <input {...p} className={`w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 ${p.className??''}`}/>;
+  <input autoComplete="off" {...p} className={`w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 ${p.className??''}`}/>;
 
 // ─── Google People API 실시간 연락처 검색 ──────────────────
 async function searchGoogleContacts(query: string): Promise<{name:string;email:string}[]> {
@@ -204,7 +204,7 @@ function EmailChipInput({
   const [suggestions, setSuggestions] = useState<{name:string;email:string}[]>([]);
   const [searching, setSearching]     = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 
@@ -276,7 +276,7 @@ function EmailChipInput({
             onKeyDown={handleKey}
             onBlur={() => { if(input.trim()&&isValidEmail(input)) addEmail(input); setTimeout(()=>setShowSug(false),200); }}
             placeholder={emails.length===0?(placeholder??'이름 또는 이메일 입력'):''}
-            autoComplete="off"
+            autoComplete="new-password"
             className="w-full border-0 outline-none text-sm bg-transparent py-0.5"
           />
           {showSug && input.trim().length > 0 && (
@@ -365,6 +365,7 @@ function SendInfoForm({
           {toPhones.length < 2 && (
             <input
               placeholder={toPhones.length===0?'010-0000-0000':'전화번호 2'}
+              autoComplete="new-password"
               onKeyDown={e=>{
                 const inp = e.currentTarget;
                 if(['Enter',','].includes(e.key)&&inp.value.trim()){
@@ -632,6 +633,7 @@ ${form.note?`<div style="background:#f8fafc;border-radius:6px;padding:10px;margi
 type TabType = 'battery'|'forklift'|'installment'|'purchase'|'history';
 
 export default function QuotationPage() {
+  const navigate = useNavigate();
   const [tab, setTab] = useState<TabType>('battery');
   const [searchParams] = useSearchParams();
   useEffect(() => {
@@ -660,6 +662,45 @@ export default function QuotationPage() {
   const purchasePreviewRef   = useRef<HTMLDivElement>(null);
 
   const flash = (m:string) => { setMsg(m); setTimeout(()=>setMsg(''),5000); };
+
+  // ── 이력 → 폼 불러오기
+  const loadFromHistory = (row: HistoryRow) => {
+    const type = row.quote_type as TabType;
+    const baseInfo = {
+      recipient: row.recipient || '',
+      email1:    row.recipient_email || '',
+      email2:    '',
+      quoteDate: TODAY,
+    };
+    if (type === 'battery') {
+      setBf(prev => ({
+        ...prev, ...baseInfo,
+        items: row.items?.length ? row.items : prev.items,
+        notes: row.notes?.length ? row.notes : prev.notes,
+      }));
+      setTab('battery');
+    } else if (type === 'forklift') {
+      setFf(prev => ({
+        ...prev, ...baseInfo,
+        items: row.items?.length ? row.items : prev.items,
+        notes: row.notes?.length ? row.notes : prev.notes,
+      }));
+      setTab('forklift');
+    } else if (type === 'installment') {
+      setIff(prev => ({ ...prev, ...baseInfo }));
+      setTab('installment');
+    } else if (type === 'purchase') {
+      setPf(prev => ({
+        ...prev, ...baseInfo,
+        items: row.items?.length ? row.items : prev.items,
+      }));
+      setTab('purchase');
+    } else {
+      flash('지원하지 않는 유형입니다.');
+      return;
+    }
+    flash(`✅ ${row.recipient} 데이터를 불러왔습니다. 수정 후 발송하세요.`);
+  };
 
   // ── 미리보기 생성
   const handlePreview = () => {
@@ -994,9 +1035,17 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
       {/* 헤더 */}
       <div className="bg-[#0a192f] text-white px-6 py-5">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold">견적서 · 발주서</h1>
-            <p className="text-blue-300 text-sm mt-0.5">PDF 출력 · 이메일 · SMS 발송</p>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={()=>navigate('/work/secretary?tab=quotation')}
+              className="bg-white/10 hover:bg-white/20 text-white border border-white/20 px-3 py-1.5 rounded text-xs font-medium flex items-center gap-1.5 transition-colors"
+            >
+              ← AI비서
+            </button>
+            <div>
+              <h1 className="text-xl font-bold">견적서 · 발주서</h1>
+              <p className="text-blue-300 text-sm mt-0.5">PDF 출력 · 이메일 · SMS 발송</p>
+            </div>
           </div>
           {tab!=='history' && (
             <div className="flex gap-2 flex-wrap justify-end">
@@ -1199,13 +1248,13 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
             ) : (
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-gray-600">
-                  <tr>{['구분','견적번호','일자','수신인','총액','이메일발송','재출력'].map(h=>(
+                  <tr>{['구분','견적번호','일자','수신인','총액','이메일발송','불러오기','재출력'].map(h=>(
                     <th key={h} className="px-3 py-2.5 text-left font-medium text-xs border-b">{h}</th>
                   ))}</tr>
                 </thead>
                 <tbody>
                   {history.map(row=>(
-                    <tr key={row.id} className="border-b hover:bg-gray-50">
+                    <tr key={row.id} className="border-b hover:bg-orange-50 transition-colors">
                       <td className="px-3 py-2">
                         <span className={`text-xs px-2 py-0.5 rounded-full ${
                           row.quote_type==='battery'?'bg-green-100 text-green-700':
@@ -1222,6 +1271,12 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
                       <td className="px-3 py-2 text-right">{fmt(row.grand_total||0)}원</td>
                       <td className="px-3 py-2 text-center">
                         {row.email_sent?<span className="text-green-600 text-xs">✅ 발송</span>:<span className="text-gray-400 text-xs">-</span>}
+                      </td>
+                      <td className="px-3 py-2">
+                        <button
+                          onClick={()=>loadFromHistory(row)}
+                          className="text-xs bg-orange-500 text-white px-2.5 py-1 rounded hover:bg-orange-600 transition-colors font-medium"
+                        >불러오기</button>
                       </td>
                       <td className="px-3 py-2">
                         <button
