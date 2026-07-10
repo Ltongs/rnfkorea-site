@@ -131,7 +131,8 @@ const calcTotal = (items:Item[]) =>
 function pmt(p:number, rate:number, months:number) {
   const r = rate/100/12;
   if(r===0||p===0) return 0;
-  return Math.round(p*r*Math.pow(1+r,months)/(Math.pow(1+r,months)-1));
+  const raw = p*r*Math.pow(1+r,months)/(Math.pow(1+r,months)-1);
+  return Math.ceil(raw/1000)*1000; // 엑셀 ROUNDUP(...,-3) 과 동일: 천단위 올림
 }
 
 function calcAmortization(p:number, annualRate:number, months:number, startYM:string, grace=0) {
@@ -738,6 +739,29 @@ export default function QuotationPage() {
   const fTotal = calcTotal(ff.items);
   const pTotal = calcTotal(pf.items);
 
+  // 지게차: 품목 합계 변경 시 선수금·잔금·할부원금 자동계산 (엑셀 수식 기준)
+  useEffect(()=>{
+    if(tab!=='forklift') return;
+    if(fTotal <= 0) return;
+    setFf(f=>{
+      const grand      = fTotal + Math.round(fTotal * 0.1);          // 총액(VAT포함) = 합계+VAT
+      // 잔금 = ROUNDDOWN(총액 × 0.9, -5) → 십만단위 절사
+      const balanceAmt = Math.floor(grand * 0.9 / 100000) * 100000;
+      // 선수금 = 총액 - 잔금
+      const dpAmt      = grand - balanceAmt;
+      // 할부원금: 비어있을 때만 자동 (선수금 뺀 나머지)
+      const ipAmt      = n0(f.installmentPrincipal) > 0
+        ? n0(f.installmentPrincipal)
+        : grand - dpAmt;
+      return {
+        ...f,
+        balance:             String(balanceAmt),
+        downPayment:         String(dpAmt),
+        installmentPrincipal: String(ipAmt),
+      };
+    });
+  }, [fTotal, tab]);
+
   // ── 이메일 자동완성 소스 로드 (기존 발송 이력 + 기본값)
   useEffect(() => {
     // 기존 발송 이력에서 이메일 수집
@@ -1142,24 +1166,59 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
           <div className="bg-white rounded-lg border p-5">
             <h2 className="font-semibold text-gray-800 mb-4 text-sm">구입조건</h2>
             <div className="grid grid-cols-3 gap-3">
-              <div><Label>선수금</Label><Input type="number" value={ff.downPayment} onChange={e=>setFf(f=>({...f,downPayment:e.target.value}))} placeholder="0"/></div>
+              <div><Label>선수금</Label><Input type="number" value={ff.downPayment} onChange={e=>{
+                const dp = n0(e.target.value);
+                const grand = fTotal + Math.round(fTotal*.1);
+                setFf(f=>({...f, downPayment:e.target.value, balance:String(grand-dp), installmentPrincipal:String(grand-dp)}));
+              }} placeholder="자동계산"/></div>
               <div><Label>잔금</Label><Input type="number" value={ff.balance} onChange={e=>setFf(f=>({...f,balance:e.target.value}))}/></div>
               <div><Label>인지대</Label><Input value={ff.stampFee} onChange={e=>setFf(f=>({...f,stampFee:e.target.value}))}/></div>
               <div><Label>등록비</Label><Input value={ff.registrationFee} onChange={e=>setFf(f=>({...f,registrationFee:e.target.value}))}/></div>
-              <div><Label>할부금리(%)</Label><Input type="number" value={ff.installmentRate} onChange={e=>setFf(f=>({...f,installmentRate:e.target.value}))}/></div>
-              <div><Label>할부원금</Label><Input type="number" value={ff.installmentPrincipal} onChange={e=>setFf(f=>({...f,installmentPrincipal:e.target.value}))}/></div>
+              <div><Label>할부금리 (%)</Label><Input type="number" step="0.1" value={ff.installmentRate} onChange={e=>setFf(f=>({...f,installmentRate:e.target.value}))} placeholder="예: 6.5"/></div>
+              <div>
+                <Label>할부원금 (원)</Label>
+                <div className="flex gap-1.5">
+                  <Input type="number" value={ff.installmentPrincipal} onChange={e=>setFf(f=>({...f,installmentPrincipal:e.target.value}))} placeholder="자동계산"/>
+                  {fTotal>0&&(
+                    <button type="button"
+                      onClick={()=>setFf(f=>{
+                        const grand = fTotal+Math.round(fTotal*.1);
+                        const bal   = Math.floor(grand*.9/100000)*100000;
+                        const dp    = grand - bal;
+                        return {...f, downPayment:String(dp), balance:String(bal), installmentPrincipal:String(bal)};
+                      })}
+                      className="shrink-0 px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 whitespace-nowrap">
+                      총액 적용
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div>
+                <Label>할부기간</Label>
+                <div className="flex gap-1.5">
+                  {[36,48,60].map(m=>(
+                    <button key={m} type="button"
+                      onClick={()=>setFf(f=>({...f,installmentMonths:String(m)}))}
+                      className={`flex-1 py-2 text-xs font-semibold rounded border transition-colors ${ff.installmentMonths===String(m)?'bg-[#0a192f] text-white border-[#0a192f]':'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+                      {m}개월
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-            {n0(ff.installmentRate)>0&&fTotal>0&&(()=>{
-              const ip=n0(ff.installmentPrincipal)||(fTotal+Math.round(fTotal*.1)-n0(ff.downPayment));
-              const r=n0(ff.installmentRate);
-              return(
-                <div className="mt-4 bg-gray-50 rounded p-3">
-                  <p className="text-xs text-gray-500 mb-2">할부 월납입금 (원금 {fmt(ip)}원)</p>
-                  <div className="flex gap-8">
+            {n0(ff.installmentRate)>0&&(()=>{
+              const ip = n0(ff.installmentPrincipal) || (fTotal>0 ? fTotal+Math.round(fTotal*.1)-n0(ff.downPayment) : 0);
+              const r  = n0(ff.installmentRate);
+              const selectedM = n0(ff.installmentMonths)||36;
+              if(ip<=0||r<=0) return null;
+              return (
+                <div className="mt-4 bg-[#f1f5f9] rounded-lg p-4">
+                  <p className="text-xs text-gray-500 mb-3">할부 월납입금 — 원금 <strong>{fmt(ip)}원</strong> / 연이율 {r}%</p>
+                  <div className="flex gap-6 items-end">
                     {[36,48,60].map(m=>(
-                      <div key={m} className="text-center">
-                        <p className="text-xs text-gray-500">{m}개월</p>
-                        <p className="font-bold text-[#0a192f] text-sm">{fmt(pmt(ip,r,m))}원</p>
+                      <div key={m} className={`text-center transition-all ${m===selectedM?'scale-110':''}`}>
+                        <p className={`text-xs mb-1 ${m===selectedM?'text-orange-500 font-bold':'text-gray-400'}`}>{m}개월{m===selectedM?' ★':''}</p>
+                        <p className={`font-bold text-sm ${m===selectedM?'text-orange-600':'text-[#0a192f]'}`}>{fmt(pmt(ip,r,m))}원</p>
                       </div>
                     ))}
                   </div>
