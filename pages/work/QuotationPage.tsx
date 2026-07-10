@@ -397,6 +397,22 @@ function SendInfoForm({
 
 // ─── 품목 테이블 (최상위 컴포넌트 — IME 한글 입력 안정화) ──
 function ItemTable({items, upd, total}: {items:Item[]; upd:(i:number,k:keyof Item,v:any)=>void; total:number}) {
+  // 방향키로 셀 이동 (row=행, col=0:품명 1:규격 2:수량 3:단가)
+  const moveFocus = (row:number, col:number, dr:number, dc:number) => {
+    let r = row+dr, c = col+dc;
+    if(c < 0){ c = 3; r--; }
+    if(c > 3){ c = 0; r++; }
+    if(r < 0 || r >= items.length) return;
+    const target = document.querySelector<HTMLInputElement>(`[data-item-row="${r}"][data-item-col="${c}"]`);
+    if(target){ target.focus(); target.select?.(); }
+  };
+  const cellKey = (e:React.KeyboardEvent<HTMLInputElement>, row:number, col:number) => {
+    const map:Record<string,[number,number]> = {ArrowDown:[1,0],ArrowUp:[-1,0],ArrowRight:[0,1],ArrowLeft:[0,-1]};
+    const d = map[e.key];
+    if(!d) return;
+    e.preventDefault();
+    moveFocus(row, col, d[0], d[1]);
+  };
   return (
     <>
       <table className="w-full text-sm">
@@ -412,14 +428,14 @@ function ItemTable({items, upd, total}: {items:Item[]; upd:(i:number,k:keyof Ite
             return (
               <tr key={i} className={`border-b ${i%2===0?'bg-gray-50':'bg-white'}`}>
                 <td className="px-3 py-1.5 text-gray-400 text-xs text-center w-8">{i+1}</td>
-                <td className="px-2 py-1"><input value={it.name} onChange={e=>upd(i,'name',e.target.value)} className="w-full border-0 bg-transparent text-sm focus:outline-none focus:ring-1 focus:ring-orange-400 rounded px-1"/></td>
-                <td className="px-2 py-1"><input value={it.spec} onChange={e=>upd(i,'spec',e.target.value)} className="w-28 border-0 bg-transparent text-sm focus:outline-none focus:ring-1 focus:ring-orange-400 rounded px-1"/></td>
-                <td className="px-2 py-1"><input type="number" value={it.qty} onChange={e=>upd(i,'qty',e.target.value)} className="w-14 border-0 bg-transparent text-sm text-center focus:outline-none focus:ring-1 focus:ring-orange-400 rounded px-1"/></td>
+                <td className="px-2 py-1"><input data-item-row={i} data-item-col={0} value={it.name} onChange={e=>upd(i,'name',e.target.value)} onKeyDown={e=>cellKey(e,i,0)} className="w-full border-0 bg-transparent text-sm focus:outline-none focus:ring-1 focus:ring-orange-400 rounded px-1"/></td>
+                <td className="px-2 py-1"><input data-item-row={i} data-item-col={1} value={it.spec} onChange={e=>upd(i,'spec',e.target.value)} onKeyDown={e=>cellKey(e,i,1)} className="w-28 border-0 bg-transparent text-sm focus:outline-none focus:ring-1 focus:ring-orange-400 rounded px-1"/></td>
+                <td className="px-2 py-1"><input data-item-row={i} data-item-col={2} type="number" value={it.qty} onChange={e=>upd(i,'qty',e.target.value)} onKeyDown={e=>cellKey(e,i,2)} className="w-14 border-0 bg-transparent text-sm text-center focus:outline-none focus:ring-1 focus:ring-orange-400 rounded px-1"/></td>
                 <td className="px-2 py-1">
                   <div className="flex items-center gap-1.5">
                     <input type="checkbox" checked={inc} onChange={e=>upd(i,'price',e.target.checked?'포함':'')}/>
                     <span className="text-xs text-gray-400">포함</span>
-                    {!inc&&<input type="number" value={it.price} onChange={e=>upd(i,'price',e.target.value)} className="w-28 border-0 bg-transparent text-sm text-right focus:outline-none focus:ring-1 focus:ring-orange-400 rounded px-1"/>}
+                    {!inc&&<input data-item-row={i} data-item-col={3} type="number" value={it.price} onChange={e=>upd(i,'price',e.target.value)} onKeyDown={e=>cellKey(e,i,3)} className="w-28 border-0 bg-transparent text-sm text-right focus:outline-none focus:ring-1 focus:ring-orange-400 rounded px-1"/>}
                   </div>
                 </td>
                 <td className="px-3 py-1.5 text-right text-gray-700 font-medium w-28">

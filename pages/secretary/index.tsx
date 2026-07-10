@@ -7,9 +7,9 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
-type TabKey = "chat"|"schedule"|"status"|"orders"|"jinheung"|"email"|"memo"|"financehub"|"exportshop"|"quotation"|"cns"|"performance";
+type TabKey = "chat"|"schedule"|"status"|"orders"|"jinheung"|"narumi"|"email"|"memo"|"financehub"|"exportshop"|"quotation"|"cns"|"performance";
 // 메뉴 탭 순서 — 상단 탭바 렌더링과 Ctrl+Option+←/→ 단축키 이동이 이 배열 하나를 공유합니다.
-const TAB_ORDER: TabKey[] = ["chat","schedule","status","cns","orders","jinheung","quotation","performance","exportshop","financehub","email","memo"];
+const TAB_ORDER: TabKey[] = ["chat","schedule","status","cns","orders","jinheung","narumi","quotation","performance","exportshop","financehub","email","memo"];
 // 통합상담 탭 서브필터
 type CnsActiveTab = "통합상담" | "할부금융" | "보험" | "지게차" | "배터리" | "타이어" | "나르미";
 const CNS_WORK_TYPES: Record<CnsActiveTab, string[]> = {
@@ -4274,6 +4274,14 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
   useEffect(()=>{if(tab==="cns"){ void fetchCnsRows(); }},[tab]);
   useEffect(()=>{if(tab==="quotation"){ setQuotMode("write"); }},[tab]);
   useEffect(()=>{if(tab==="performance"){ void loadPerfData(); }},[tab]);
+  useEffect(()=>{
+    if(tab!=="narumi") return;
+    setNarumiLoading2(true);
+    supabase.from("narumi_tasks")
+      .select("id,customer_name,vin,delivery_date_text,delivery_date,status,is_registered,is_urgent,docs_ready,memo,created_at,special_note,sales_rep")
+      .order("created_at",{ascending:false}).limit(40)
+      .then(({data})=>{ setNarumiList((data??[]) as any[]); setNarumiLoading2(false); });
+  },[tab]);
 
   // ─── 일정 CRUD ──────────────────────────────────────────────────────────────
   async function addSchedule(){
@@ -4968,7 +4976,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               <button key={`${t}-${i}`} data-tab-key={t} className={`${TB} ${tab===t?TA:TI}`} style={{flexShrink:0,whiteSpace:"nowrap"}} onClick={()=>setTabAndSave(t)}>
                 {t==="email"
                   ? <span className="flex items-center gap-1">📧 이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
-                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",jinheung:"🔧 진흥주문",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비",quotation:"📋 견적서",cns:"🗂 통합상담",performance:"📈 실적관리"}[t as string]
+                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",jinheung:"🔧 진흥주문",narumi:"🚛 나르미",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비",quotation:"📋 견적서",cns:"🗂 통합상담",performance:"📈 실적관리"}[t as string]
                 }
               </button>
             ))}
@@ -5897,6 +5905,77 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                 </div>
               ):(
                 <div className={`${CARD} p-8 text-center text-gray-400 text-sm`}>주문/상담 내역이 없습니다</div>
+              )}
+            </div>
+          )}
+
+          {/* ══ 나르미 탭 ══ */}
+          {tab==="narumi"&&(
+            <div className="space-y-3 pb-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <p className="text-sm font-semibold text-[#0f172a]">🚛 나르미</p>
+                <div className="flex gap-1.5 flex-wrap">
+                  <button className={BTG} onClick={()=>{
+                    setNarumiLoading2(true);
+                    supabase.from("narumi_tasks").select("id,customer_name,vin,delivery_date_text,delivery_date,status,is_registered,is_urgent,docs_ready,memo,created_at,special_note,sales_rep").order("created_at",{ascending:false}).limit(40)
+                      .then(({data})=>{ setNarumiList((data??[]) as any[]); setNarumiLoading2(false); });
+                  }}>새로고침</button>
+                  <button className={BTO} onClick={()=>navigate("/work/narumi")}>전체 페이지 →</button>
+                  <button className={BTP} onClick={()=>{
+                    setCnsWorkType("narumi"); setCnsShowCreate(true); setTabAndSave("cns");
+                  }}>+ 나르미 접수</button>
+                </div>
+              </div>
+
+              {/* 요약 카드 */}
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  {label:"전체",    cnt:narumiList.length,              color:"text-[#0f172a]"},
+                  {label:"진행중",  cnt:narumiList.filter((n:any)=>!n.is_registered&&!["completed","done","registered"].includes(n.status??"")).length, color:"text-orange-600"},
+                  {label:"등록완료",cnt:narumiList.filter((n:any)=>n.is_registered||["completed","done","registered"].includes(n.status??"")).length, color:"text-emerald-600"},
+                ].map(({label,cnt,color})=>(
+                  <div key={label} className={`${CARD} p-3 text-center`}>
+                    <p className="text-[11px] text-gray-400 mb-0.5">{label}</p>
+                    <p className={`text-lg font-bold ${color}`}>{cnt}건</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* 목록 */}
+              {narumiLoading2?(
+                <p className="text-sm text-gray-400 text-center py-6">불러오는 중...</p>
+              ):narumiList.length===0?(
+                <p className="text-sm text-gray-400 text-center py-6">나르미 건이 없습니다.</p>
+              ):(
+                <div className={`${CARD} divide-y divide-gray-100`}>
+                  {(narumiList as any[]).map((n:any)=>{
+                    const done = n.is_registered||["completed","done","registered"].includes(n.status??"");
+                    return (
+                      <div key={n.id} className={`p-3 hover:bg-gray-50 transition-all ${done?"opacity-50":""}`}>
+                        <div className="flex items-start gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                              <span className="text-sm font-semibold text-[#0f172a]">{n.customer_name||"(이름 없음)"}</span>
+                              {done
+                                ? <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">등록완료</span>
+                                : <StsBadge s={n.status||"todo"}/>
+                              }
+                            </div>
+                            {n.vin&&<p className="text-xs text-gray-400 font-mono">VIN: {n.vin}</p>}
+                            <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                              {n.delivery_date_text&&<span className="text-[11px] text-gray-400">📅 출고 {n.delivery_date_text}</span>}
+                              {n.sales_rep&&<span className="text-[11px] text-gray-400">담당: {n.sales_rep}</span>}
+                            </div>
+                          </div>
+                          <button onClick={()=>navigate("/work/narumi")}
+                            className="px-2 py-1 rounded-xl text-[11px] border border-gray-200 text-gray-500 hover:border-orange-300 hover:text-orange-600 transition-all flex-shrink-0">
+                            열기
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           )}
