@@ -901,7 +901,29 @@ export default function QuotationPage() {
     if(!ref.current) { flash('미리보기 영역을 찾을 수 없습니다.'); return; }
     setSmsSending(true);
     try {
-      let canvas = await html2canvas(ref.current,{scale:1.5,backgroundColor:'#ffffff'});
+      // html2canvas가 off-screen 요소를 완전히 캡처하도록 임시로 위치 이동
+      const outer = ref.current.parentElement as HTMLElement|null;
+      const prevStyle = outer?.getAttribute('style') ?? '';
+      if(outer){
+        outer.style.position = 'fixed';
+        outer.style.left = '0';
+        outer.style.top = '-9999px';
+        outer.style.visibility = 'hidden';
+        outer.style.zIndex = '-1';
+      }
+      await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))); // 레이아웃 확정 대기
+      let canvas = await html2canvas(ref.current,{
+        scale:1.5,
+        backgroundColor:'#ffffff',
+        useCORS:true,
+        allowTaint:true,
+        scrollX:0,
+        scrollY:0,
+        windowWidth: ref.current.offsetWidth + 40,
+        windowHeight: ref.current.offsetHeight + 40,
+      });
+      // 원래 스타일 복원
+      if(outer) outer.setAttribute('style', prevStyle);
       const MAX_W=1500, MAX_H=1440;
       if(canvas.width>MAX_W||canvas.height>MAX_H){
         const ratio=Math.min(MAX_W/canvas.width,MAX_H/canvas.height);
@@ -1339,7 +1361,7 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
           </div>
         </div>
       )}
-      <div style={{position:'absolute',left:'-9999px',top:0,width:'600px'}}>
+      <div style={{position:'fixed',left:'-9999px',top:'-9999px',width:'600px',visibility:'hidden',zIndex:-1}}>
         <div ref={batteryPreviewRef} style={{fontFamily:"'Malgun Gothic',sans-serif",background:'#fff',padding:'20px',width:'600px'}}>
           <div style={{background:'#0a192f',padding:'14px 18px',borderRadius:'6px',marginBottom:'12px',display:'flex',justifyContent:'space-between'}}>
             <div style={{color:'#fff',fontSize:'16px',fontWeight:700}}>RNF KOREA</div>
@@ -1350,25 +1372,25 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
             {[['공급가액',fmt(bTotal)+'원',false],['VAT',fmt(Math.round(bTotal*.1))+'원',false],['총액',fmt(bTotal+Math.round(bTotal*.1))+'원',true]].map(([l,v,dk])=>(
               <div key={l as string} style={{background:dk?'#0a192f':'#f1f5f9',borderRadius:'4px',padding:'8px',textAlign:'center'}}>
                 <div style={{fontSize:'9px',color:dk?'#94a3b8':'#64748b'}}>{l}</div>
-                <div style={{fontSize:'12px',fontWeight:700,color:dk?'#f97316':'#0a192f'}}>{v}</div>
+                <div style={{fontSize:'11px',fontWeight:700,color:dk?'#f97316':'#0a192f',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{v}</div>
               </div>
             ))}
           </div>
-          <table style={{width:'100%',borderCollapse:'collapse',fontSize:'10px'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:'10px',tableLayout:'fixed'}}>
             <thead><tr style={{background:'#0a192f'}}>{['품명','규격','수량','금액'].map(h=><th key={h} style={{color:'#fff',padding:'5px',textAlign:'center'}}>{h}</th>)}</tr></thead>
             <tbody>{bf.items.filter(it=>it.name).map((it,i)=>(
               <tr key={i} style={{background:i%2===0?'#f8fafc':'#fff'}}>
                 <td style={{padding:'4px'}}>{it.name}</td>
                 <td style={{padding:'4px',textAlign:'center'}}>{it.spec}</td>
                 <td style={{padding:'4px',textAlign:'center'}}>{it.qty}</td>
-                <td style={{padding:'4px',textAlign:'right'}}>{it.price==='포함'?'포함':it.price?fmt(n0(it.price)*(n0(it.qty)||1)):''}</td>
+                <td style={{padding:'4px',textAlign:'right',whiteSpace:'nowrap',overflow:'hidden'}}>{it.price==='포함'?'포함':it.price?fmt(n0(it.price)*(n0(it.qty)||1)):''}</td>
               </tr>
             ))}</tbody>
           </table>
           <p style={{marginTop:'8px',fontSize:'8px',color:'#94a3b8',textAlign:'center'}}>주식회사 알앤에프코리아 | 1551-1873</p>
         </div>
       </div>
-      <div style={{position:'absolute',left:'-9999px',top:0,width:'600px'}}>
+      <div style={{position:'fixed',left:'-9999px',top:'-9999px',width:'600px',visibility:'hidden',zIndex:-1}}>
         <div ref={forkliftPreviewRef} style={{fontFamily:"'Malgun Gothic',sans-serif",background:'#fff',padding:'20px',width:'600px'}}>
           <div style={{background:'#0a192f',padding:'14px 18px',borderRadius:'6px',marginBottom:'12px',display:'flex',justifyContent:'space-between'}}>
             <div style={{color:'#fff',fontSize:'16px',fontWeight:700}}>RNF KOREA</div>
@@ -1379,24 +1401,24 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
             {[['공급가액',fmt(fTotal)+'원',false],['VAT',fmt(Math.round(fTotal*.1))+'원',false],['총액',fmt(fTotal+Math.round(fTotal*.1))+'원',true]].map(([l,v,dk])=>(
               <div key={l as string} style={{background:dk?'#0a192f':'#f1f5f9',borderRadius:'4px',padding:'8px',textAlign:'center'}}>
                 <div style={{fontSize:'9px',color:dk?'#94a3b8':'#64748b'}}>{l}</div>
-                <div style={{fontSize:'12px',fontWeight:700,color:dk?'#f97316':'#0a192f'}}>{v}</div>
+                <div style={{fontSize:'11px',fontWeight:700,color:dk?'#f97316':'#0a192f',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{v}</div>
               </div>
             ))}
           </div>
-          <table style={{width:'100%',borderCollapse:'collapse',fontSize:'10px'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:'10px',tableLayout:'fixed'}}>
             <thead><tr style={{background:'#0a192f'}}>{['품명','규격','금액'].map(h=><th key={h} style={{color:'#fff',padding:'5px',textAlign:'center'}}>{h}</th>)}</tr></thead>
             <tbody>{ff.items.filter(it=>it.name).map((it,i)=>(
               <tr key={i} style={{background:i%2===0?'#f8fafc':'#fff'}}>
                 <td style={{padding:'4px'}}>{it.name}</td>
                 <td style={{padding:'4px',textAlign:'center'}}>{it.spec}</td>
-                <td style={{padding:'4px',textAlign:'right'}}>{it.price==='포함'?'포함':it.price?fmt(n0(it.price)*(n0(it.qty)||1)):''}</td>
+                <td style={{padding:'4px',textAlign:'right',whiteSpace:'nowrap',overflow:'hidden'}}>{it.price==='포함'?'포함':it.price?fmt(n0(it.price)*(n0(it.qty)||1)):''}</td>
               </tr>
             ))}</tbody>
           </table>
           <p style={{marginTop:'8px',fontSize:'8px',color:'#94a3b8',textAlign:'center'}}>주식회사 알앤에프코리아 | 1551-1873</p>
         </div>
       </div>
-      <div ref={installmentPreviewRef} style={{position:'absolute',left:'-9999px',top:0,width:'600px',fontFamily:"'Malgun Gothic',sans-serif",background:'#fff',padding:'20px'}}>
+      <div ref={installmentPreviewRef} style={{position:'fixed',left:'-9999px',top:'-9999px',width:'600px',visibility:'hidden',zIndex:-1,fontFamily:"'Malgun Gothic',sans-serif",background:'#fff',padding:'20px'}}>
         <div style={{background:'#0a192f',padding:'14px 18px',borderRadius:'6px',marginBottom:'12px',display:'flex',justifyContent:'space-between'}}>
           <div style={{color:'#fff',fontSize:'16px',fontWeight:700}}>RNF KOREA</div>
           <div style={{color:'#f97316',fontSize:'16px',fontWeight:700}}>할부 견적서</div>
@@ -1418,7 +1440,7 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
           );
         })()}
       </div>
-      <div style={{position:'absolute',left:'-9999px',top:0,width:'600px'}}>
+      <div style={{position:'fixed',left:'-9999px',top:'-9999px',width:'600px',visibility:'hidden',zIndex:-1}}>
         <div ref={purchasePreviewRef} style={{fontFamily:"'Malgun Gothic',sans-serif",background:'#fff',padding:'20px',width:'600px'}}>
           <div style={{background:'#0a192f',padding:'14px 18px',borderRadius:'6px',marginBottom:'12px',display:'flex',justifyContent:'space-between'}}>
             <div style={{color:'#fff',fontSize:'16px',fontWeight:700}}>RNF KOREA</div>
@@ -1429,7 +1451,7 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
             <span style={{fontSize:'10px',color:'#64748b'}}>합계금액 (VAT포함) </span>
             <span style={{fontSize:'15px',fontWeight:700,color:'#0a192f'}}>{fmt(pTotal+Math.round(pTotal*.1))}원</span>
           </div>
-          <table style={{width:'100%',borderCollapse:'collapse',fontSize:'10px'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:'10px',tableLayout:'fixed'}}>
             <thead><tr style={{background:'#0a192f'}}>{['품목','규격','수량','금액'].map(h=><th key={h} style={{color:'#fff',padding:'5px',textAlign:'center'}}>{h}</th>)}</tr></thead>
             <tbody>{pf.items.filter(it=>it.name).map((it,i)=>(
               <tr key={i} style={{background:i%2===0?'#f8fafc':'#fff'}}>

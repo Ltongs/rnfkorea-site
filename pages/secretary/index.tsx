@@ -2689,7 +2689,7 @@ const SecretaryPage:React.FC = () => {
   const [jConsultsLoading,setJConsultsLoading] = useState(false);
   const [showJNewForm,setShowJNewForm] = useState(false);
   const [jNewSaving,setJNewSaving] = useState(false);
-  const [jNewForm,setJNewForm] = useState({customer_name:"",product_spec:"",quantity:"",memo:"",order_date:todayStr(),product_type:"tire"});
+  const [jNewForm,setJNewForm] = useState({customer_name:"",product_spec:"",quantity:"",memo:"",order_date:todayStr(),product_type:"tire",consultation_id:""});
   const [jAmtModal,setJAmtModal] = useState<any|null>(null);
   // ── 견적서 이력관리
   const [quotMode,setQuotMode]         = useState<"write"|"history">("write");
@@ -2762,7 +2762,7 @@ const SecretaryPage:React.FC = () => {
       supabase.from("consultation_cases")
         .select("id,customer_name,sub_type,consultation_finance_details(finance_stage,finance_company,finance_amount,finance_product,finance_category,finance_vehicle_model)")
         .eq("work_type","finance")
-        .not("sub_type","in","(현대CM,태산통운)")
+        .or("sub_type.not.in.(현대CM,태산통운),sub_type.is.null")
         .gte("created_at",dtFrom).lte("created_at",dtTo)
         .then(({data})=>setPerfOtherFin(
           (data??[]).filter((c:any)=>c.consultation_finance_details?.finance_stage==="confirmed")
@@ -2783,12 +2783,25 @@ const SecretaryPage:React.FC = () => {
         .gte("sale_date",from).lte("sale_date",to).order("sale_date",{ascending:false})
         .then(({data})=>setPerfBattery(data??[])),
 
-      // 지게차 — tb_quotations
-      supabase.from("tb_quotations")
-        .select("id,quote_no,recipient,grand_total,total_amount,quote_date,created_at")
-        .eq("quote_type","forklift").gte("created_at",dtFrom).lte("created_at",dtTo)
-        .order("created_at",{ascending:false})
-        .then(({data})=>setPerfForklift(data??[])),
+      // 지게차 — tb_quotations(견적서) + sales_records(세금계산서) 병합
+      Promise.all([
+        supabase.from("tb_quotations")
+          .select("id,quote_no,recipient,grand_total,total_amount,quote_date,created_at")
+          .eq("quote_type","forklift").gte("created_at",dtFrom).lte("created_at",dtTo)
+          .order("created_at",{ascending:false})
+          .then(({data})=>(data??[]).map((r:any)=>({
+            _src:"quotation", _label:r.recipient, _amount:r.grand_total??0,
+            _date:r.quote_date||r.created_at?.slice(0,10), _no:r.quote_no, ...r,
+          }))),
+        supabase.from("sales_records")
+          .select("id,customer_name,spec,total_revenue,sale_date,payment_confirmed")
+          .ilike("category","지게차%").eq("tax_invoice",true)
+          .gte("sale_date",from).lte("sale_date",to).order("sale_date",{ascending:false})
+          .then(({data})=>(data??[]).map((r:any)=>({
+            _src:"sales", _label:r.customer_name, _amount:r.total_revenue??0,
+            _date:r.sale_date, _no:null, ...r,
+          }))),
+      ]).then(([q,s])=>setPerfForklift([...q,...s])),
 
       // 보험 — 취급건
       supabase.from("consultation_cases")
@@ -3047,6 +3060,16 @@ const SecretaryPage:React.FC = () => {
       });
       setCnsSaving(false);
       if(error){ alert("저장 오류: "+error.message); return; }
+      // cns 목록 표시용 consultation_cases 기록 (비동기, 실패해도 메인 저장에 영향 없음)
+      supabase.from("consultation_cases").insert({
+        customer_name:  cnsCustName,
+        phone:          cnsCustPhone||null,
+        work_type:      "narumi",
+        status:         "new",
+        summary:        cnsNarumiVin.trim() ? `나르미 - VIN:${cnsNarumiVin.trim().toUpperCase()}` : "나르미 배송",
+        call_datetime:  new Date().toISOString(),
+        followup_needed:false,
+      }).then(({error:e})=>{ if(e) console.warn("[cns나르미 기록 실패]",e.message); });
       cnsReset(); setCnsShowCreate(false);
       showToast("나르미 접수 완료"); void fetchCnsRows(); return;
     }
@@ -5600,9 +5623,20 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                       <label className={LBL}>메모</label>
                       <input className={CTRL} placeholder="특이사항" value={jNewForm.memo} onChange={e=>setJNewForm(p=>({...p,memo:e.target.value}))}/>
                     </div>
+                    <div className="col-span-2">
+                      <label className={LBL}>상담 연결 <span className="text-gray-400 font-normal text-[10px]">— 입력 시 발송/세금계산서 단계가 상담 현황에 자동 반영</span></label>
+                      <div className="flex gap-2 items-center">
+                        <input type="number" min="1" className={`${CTRL} flex-1`} placeholder="상담 ID (숫자, 선택)"
+                          value={jNewForm.consultation_id}
+                          onChange={e=>setJNewForm(p=>({...p,consultation_id:e.target.value.replace(/\D/g,"")}))}/>
+                        {jNewForm.consultation_id&&(
+                          <span className="text-xs text-gray-400 flex-shrink-0">#{jNewForm.consultation_id}</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                   <div className="flex justify-end gap-2">
-                    <button className={BTS} onClick={()=>{setShowJNewForm(false);setJNewForm({customer_name:"",product_spec:"",quantity:"",memo:"",order_date:todayStr(),product_type:"tire"});}}>취소</button>
+                    <button className={BTS} onClick={()=>{setShowJNewForm(false);setJNewForm({customer_name:"",product_spec:"",quantity:"",memo:"",order_date:todayStr(),product_type:"tire",consultation_id:""});}}>취소</button>
                     <button className={BTP} disabled={jNewSaving||!jNewForm.customer_name||!jNewForm.product_spec}
                       onClick={async()=>{
                         setJNewSaving(true);
@@ -5615,6 +5649,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                           status:"received",
                           memo:jNewForm.memo||null,
                           created_at:jNewForm.order_date?new Date(jNewForm.order_date+"T09:00:00").toISOString():undefined,
+                          consultation_id:jNewForm.consultation_id?parseInt(jNewForm.consultation_id):null,
                         }).select().single();
                         setJNewSaving(false);
                         if(error){
@@ -5624,7 +5659,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                         }
                         setShowJNewForm(false);
                         const savedOrderDate=jNewForm.order_date;
-                        setJNewForm({customer_name:"",product_spec:"",quantity:"",memo:"",order_date:todayStr(),product_type:"tire"});
+                        setJNewForm({customer_name:"",product_spec:"",quantity:"",memo:"",order_date:todayStr(),product_type:"tire",consultation_id:""});
                         // 등록한 주문일자가 지금 보고 있는 월과 다르면 그 달로 필터를 옮겨서 바로 보이게 함
                         if(savedOrderDate){
                           const d=new Date(savedOrderDate+"T00:00:00");
@@ -6368,7 +6403,6 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                 const totalFinCnt = perfHcm.length+perfTaesan.length+perfOtherFin.length;
                 const tireAmt = perfTire.reduce((s,r)=>s+(r.total_revenue??0),0);
                 const battAmt = perfBattery.reduce((s,r)=>s+(r.total_revenue??0),0);
-                const fklAmt  = perfForklift.reduce((s,r)=>s+(r.grand_total??0),0);
                 const narumiDone = perfNarumi2.filter((r:any)=>r.is_registered).length;
 
                 // 재사용 가능한 행 렌더러
@@ -6468,9 +6502,24 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
 
                     {/* ── 지게차 판매 ── */}
                     <Section id="fkl" color="bg-orange-50 border-orange-200" hColor="text-orange-700"
-                      title="🚜 지게차 판매" sub="견적서 발행 기준"
-                      rows={perfForklift} cols={(r:any)=>[r.recipient,r.grand_total?(r.grand_total.toLocaleString("ko-KR")+"원"):"",r.quote_no].filter(Boolean).join(" · ")}>
-                      <RowItem label="지게차 견적서" cnt={perfForklift.length} amt={fklAmt}/>
+                      title="🚜 지게차 판매" sub="견적서·세금계산서 기준"
+                      rows={perfForklift} cols={(r:any)=>[
+                        r._label||"",
+                        r._src==="sales"?`[세금계산서] ${r.spec||""}`:r._no||"",
+                        r._amount>0?(r._amount.toLocaleString("ko-KR")+"원"):"",
+                        r._src==="sales"&&r.payment_confirmed?"입금✓":"",
+                      ].filter(Boolean).join(" · ")}>
+                      {(()=>{
+                        const qRows = perfForklift.filter((r:any)=>r._src==="quotation");
+                        const sRows = perfForklift.filter((r:any)=>r._src==="sales");
+                        const qAmt  = qRows.reduce((s:number,r:any)=>s+(r._amount??0),0);
+                        const sAmt  = sRows.reduce((s:number,r:any)=>s+(r._amount??0),0);
+                        return (<>
+                          {qRows.length>0&&<RowItem label="견적서 발행" cnt={qRows.length} amt={qAmt}/>}
+                          {sRows.length>0&&<RowItem label="세금계산서 발행" cnt={sRows.length} amt={sAmt}/>}
+                          {perfForklift.length===0&&<RowItem label="이번 달 없음" cnt={0}/>}
+                        </>);
+                      })()}
                     </Section>
 
                     {/* ── 보험 취급건수 ── */}
