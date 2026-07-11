@@ -3476,7 +3476,27 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                     if (!scheduleTableRef.current) return;
                     setScheduleSending(true);
                     try {
-                      let canvas = await html2canvas(scheduleTableRef.current, { scale: 1.5, backgroundColor: "#ffffff" });
+                      // document.body에 직접 복사 → 부모 overflow:hidden 제약 우회
+                      const clone = scheduleTableRef.current.cloneNode(true) as HTMLElement;
+                      clone.style.cssText = [
+                        'position:absolute', 'left:-9999px', 'top:0',
+                        'width:560px', 'background:#ffffff', 'z-index:-1',
+                        "font-family:'Malgun Gothic','맑은 고딕',sans-serif",
+                      ].join(';');
+                      document.body.appendChild(clone);
+                      await new Promise(r => setTimeout(r, 100));
+                      const h = clone.scrollHeight || clone.offsetHeight;
+                      let canvas = await html2canvas(clone, {
+                        scale: 1.5,
+                        backgroundColor: "#ffffff",
+                        logging: false,
+                        useCORS: true,
+                        width: 560,
+                        height: h,
+                        windowWidth: 608,
+                        windowHeight: h + 100,
+                      });
+                      document.body.removeChild(clone);
 
                       // Solapi MMS 이미지 크기 제한(가로 1500px, 세로 1440px) 대응
                       const MAX_W = 1500, MAX_H = 1440;
@@ -3575,7 +3595,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
             </div>
 
             {/* 발송용 캡처 전용 숨김 DOM — 전체 상환표를 깔끔하게 렌더링 */}
-            <div style={{ position: "fixed", left: "-9999px", top: 0, width: "560px" }}>
+            <div style={{ position: "absolute", left: "-9999px", top: 0, width: "560px" }}>
               <div ref={scheduleTableRef} style={{ fontFamily: "'Malgun Gothic','맑은 고딕',sans-serif", background: "#fff", padding: "24px", color: "#1e293b" }}>
                 <h1 style={{ fontSize: "18px", fontWeight: 700, margin: "0 0 4px", color: "#0a192f" }}>원리금균등분납 상환스케줄</h1>
                 <p style={{ fontSize: "12px", color: "#64748b", marginBottom: "16px" }}>현대건설기계 할부금융</p>

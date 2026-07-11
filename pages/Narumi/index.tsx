@@ -422,9 +422,10 @@ export default function NarumiPage() {
   };
 
   useEffect(() => {
+    if (!user) return; // auth 아직 로딩 중 → 기다림
     fetchRows();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showOldUploaded, isPrivilegedManager, isNarumi, isInsAI, isLotte]);
+  }, [user, showOldUploaded, isPrivilegedManager, isNarumi, isInsAI, isLotte]);
 
   const searchedRows = useMemo(() => {
     let result = [...rows];
@@ -1447,6 +1448,18 @@ VIN: ${nextVin}`);
     if (isLotte) return "롯데오토리스 조회";
     return "일반";
   }, [isAdmin, isInsuranceManager, isNarumi, isLotte]);
+
+  // auth 로딩 중 → 흰 화면 방지
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-400 text-sm mb-2">🔐 인증 확인 중...</p>
+          <div className="w-6 h-6 border-2 border-orange-400 border-t-transparent rounded-full animate-spin mx-auto"/>
+        </div>
+      </div>
+    );
+  }
 
 
   return (

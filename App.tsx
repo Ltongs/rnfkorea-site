@@ -319,6 +319,7 @@ const AutoSeoHead: React.FC = () => {
   // 업무용 페이지는 검색 노출 차단
   if (
     pathname.startsWith("/narumi") ||
+    pathname.startsWith("/work/narumi") ||
     pathname.startsWith("/bson") ||
     pathname.startsWith("/work/")
   ) {
@@ -517,7 +518,8 @@ function ScrollToTopButton() {
   const hideEntirely = pathname.startsWith("/work/secretary")
     || pathname.startsWith("/work/call-management")
     || pathname.startsWith("/hyundaicm")
-    || pathname.startsWith("/taesan");
+    || pathname.startsWith("/taesan")
+    || pathname.startsWith("/work/narumi");
   const hideOnMobile = pathname.startsWith("/tires-shop");
 
   useEffect(() => {
@@ -1401,6 +1403,7 @@ const AppRoutes = () => {
 
   const hideHeader =
     pathname.startsWith("/work/secretary")
+    || pathname.startsWith("/work/narumi")
     || pathname.startsWith("/work/call-management")
     || pathname.startsWith("/hyundaicm")
     || pathname.startsWith("/taesan")
@@ -1466,6 +1469,15 @@ const AppRoutes = () => {
           />
           <Route
             path="/narumi/admin"
+            element={
+              <ProtectedRoute>
+                <NarumiPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* AI비서에서 접근하는 /work/narumi 경로 */}
+          <Route
+            path="/work/narumi"
             element={
               <ProtectedRoute>
                 <NarumiPage />
