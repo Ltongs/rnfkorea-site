@@ -40,7 +40,7 @@ import {
   IconReview,
   IconProposal,
   IconContract,
-} from "./ProcessIcons";
+} from "./components/ProcessIcons";
 
 /* auth */
 import { AuthProvider, useAuth } from "./lib/auth";
@@ -72,6 +72,7 @@ import CallManagementLoginPage from "./pages/CallManagement/Login";
 import KakaoCallbackPage from "./pages/KakaoCallback";
 import KakaoConnectPage from "./pages/HyundaiCM/KakaoConnect";
 import DashboardPage from "./pages/Dashboard";
+import WorkManualPage from "./pages/WorkManual";
 import BatteryPage from "./pages/Battery/index";
 import HomePage from "./pages/Home";
 import FinancePage from "./pages/Finance/index";
@@ -1409,6 +1410,7 @@ const AppRoutes = () => {
   const hideHeader =
     pathname.startsWith("/work/secretary")
     || pathname.startsWith("/work/narumi")
+    || pathname.startsWith("/work/manual")
     || pathname.startsWith("/work/call-management")
     || pathname.startsWith("/hyundaicm")
     || pathname.startsWith("/taesan")
@@ -1546,6 +1548,10 @@ const AppRoutes = () => {
           <Route
             path="/work/dashboard"
             element={isAdminLevel ? <DashboardPage /> : <Navigate to="/" replace />}
+          />
+          <Route
+            path="/work/manual"
+            element={isAdminLevel ? <WorkManualPage /> : <Navigate to="/" replace />}
           />
 
           {/* AI 비서 */}

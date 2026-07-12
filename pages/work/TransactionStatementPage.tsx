@@ -342,7 +342,7 @@ export default function TransactionStatementPage() {
     try {
       const bytes = buildStatement(sf);
       const b64 = bytesToBase64(bytes);
-      const docNo = `TS-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+      const docNo = ((await supabase.rpc('next_rnf_number')).data as string);
       await supabase.from('tb_transaction_statements').insert({
         doc_no: docNo, issue_date: sf.issueDate,
         customer_name: sf.customerName, customer_biz_no: sf.customerBizNo,

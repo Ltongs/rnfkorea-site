@@ -7,9 +7,9 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
-type TabKey = "chat"|"schedule"|"status"|"orders"|"jinheung"|"narumi"|"email"|"memo"|"financehub"|"exportshop"|"quotation"|"cns"|"performance"|"rentalos"|"hyundaicm";
+type TabKey = "chat"|"schedule"|"status"|"orders"|"jinheung"|"narumi"|"email"|"memo"|"financehub"|"exportshop"|"quotation"|"cns"|"performance"|"rentalos"|"hyundaicm"|"numbersearch";
 // 메뉴 탭 순서 — 상단 탭바 렌더링과 Ctrl+Option+←/→ 단축키 이동이 이 배열 하나를 공유합니다.
-const TAB_ORDER: TabKey[] = ["chat","schedule","status","cns","orders","hyundaicm","jinheung","narumi","quotation","performance","rentalos","exportshop","financehub","email","memo"];
+const TAB_ORDER: TabKey[] = ["chat","schedule","status","cns","orders","hyundaicm","jinheung","narumi","quotation","performance","rentalos","exportshop","financehub","numbersearch","email","memo"];
 // 별도 로그인/RouteGuard를 쓰는 독립 페이지로 즉시 이동만 하는 탭(내용을 이 안에서 렌더링하지 않음).
 // tab 상태를 sessionStorage에 남기면, 이동 후 "AI비서" 페이지가 새로 마운트될 때 저장된 tab 값을
 // 다시 읽어 useEffect가 곧바로 재이동시켜 "뒤로가기가 안 먹히는" 문제가 생기므로 setTabAndSave를 타지 않는다.
@@ -3353,7 +3353,7 @@ const SecretaryPage:React.FC = () => {
       }
       // ── 지게차: tb_quotations 저장 (견적서 이력)
       if(isFkl){
-        const qNo  = `FL-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+        const qNo  = ((await supabase.rpc("next_rnf_number")).data as string);
         const unitP = cnsFklPrice ? parseInt(cnsFklPrice,10) : 0;
         const qty   = cnsFklQty  ? parseInt(cnsFklQty,10)   : 1;
         const total = unitP * qty;
@@ -3383,7 +3383,7 @@ const SecretaryPage:React.FC = () => {
       }
       // ── 배터리: tb_quotations 저장 (견적서 이력)
       if(isBatt){
-        const qNo  = `BT-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+        const qNo  = ((await supabase.rpc("next_rnf_number")).data as string);
         const unitP = cnsBattPrice ? parseInt(cnsBattPrice,10) : 0;
         const qty   = cnsBattQty  ? parseInt(cnsBattQty,10)   : 1;
         const total = unitP * qty;
@@ -3538,6 +3538,22 @@ const SecretaryPage:React.FC = () => {
   const [emailReports,setEmailReports] = useState<EmailReport[]>([]);
   const [emailLoading,setEmailLoading] = useState(false);
   const [emailDetail,setEmailDetail] = useState<EmailReport|null>(null);
+
+  // 번호검색 — RNF-YYMM-NNNNNN(신규) / 구번호 통합 검색
+  type NumberSearchRow = {source:string;label:string;detail:string;status:string|null;created_at:string;path:string};
+  const [numQuery,setNumQuery] = useState("");
+  const [numResults,setNumResults] = useState<NumberSearchRow[]|null>(null);
+  const [numLoading,setNumLoading] = useState(false);
+  const [numSearched,setNumSearched] = useState(false);
+  const runNumberSearch = async () => {
+    const q = numQuery.trim();
+    if(!q) return;
+    setNumLoading(true);
+    setNumSearched(true);
+    const {data,error} = await supabase.rpc("lookup_rnf_number",{p_no:q});
+    setNumResults(error ? [] : ((data as NumberSearchRow[])??[]));
+    setNumLoading(false);
+  };
 
   const loadMemos = useCallback(async()=>{
     setMemoLoading(true);
@@ -5145,7 +5161,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               }}>
                 {t==="email"
                   ? <span className="flex items-center gap-1">📧 이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
-                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",jinheung:"🔧 진흥주문",narumi:"🚛 나르미",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비",quotation:"📋 견적서",cns:"🗂 통합상담",performance:"📈 실적관리",rentalos:"🚐 Rental_O/S",hyundaicm:"🏗 현대CM"}[t as string]
+                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",jinheung:"🔧 진흥주문",narumi:"🚛 나르미",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비",quotation:"📋 견적서",cns:"🗂 통합상담",performance:"📈 실적관리",rentalos:"🚐 Rental_O/S",hyundaicm:"🏗 현대CM",numbersearch:"🔍 번호검색"}[t as string]
                 }
               </button>
             ))}
@@ -5862,7 +5878,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               {(jConsultsLoading||jLoading)?<p className="text-xs text-gray-400">상담내역 불러오는 중...</p>:(jConsults.length>0||jList.length>0)?(
                 <div className={`${CARD} p-3.5`}>
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-semibold text-gray-500">📋 타이어 상담내역 ({jConsults.length}건) / 진흥주문 ({jList.length}건)</p>
+                    <p className="text-xs font-semibold text-gray-500">📋 총 {jConsults.length+jList.length}건 (상담 {jConsults.length} · 진흥주문 {jList.length})</p>
                     <div className="flex gap-1.5">
                       {(["active","all","done"] as const).map(f=>(
                         <button key={f} onClick={()=>setJFilter(f)}
@@ -5873,13 +5889,25 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                     </div>
                   </div>
                   <div className="space-y-2">
-                    {/* ── tb_orders 기반 항목 ── */}
-                    {jList.filter((o:any)=>{
-                      const wheelDone=!!o.wheel_returned_at;
-                      const delivered=!!o.delivered_at||["delivered","wheel_returned","invoiced","billed_in","payment_in","payment_out"].includes(o.status);
-                      const closed=delivered&&wheelDone&&!!o.sales_record_id;
-                      return jFilter==="active"?!closed:jFilter==="done"?closed:true;
-                    }).map((o:any)=>{
+                    {/* tb_orders(진흥주문) + 상담(consultation_tire_details) 항목을 날짜순으로 하나로 합쳐서 표시.
+                        두 카드의 기존 로직/핸들러는 그대로 두고 정렬·필터링만 통합한다. */}
+                    {(() => {
+                      const orderItems = jList.filter((o:any)=>{
+                        const wheelDone=!!o.wheel_returned_at;
+                        const delivered=!!o.delivered_at||["delivered","wheel_returned","invoiced","billed_in","payment_in","payment_out"].includes(o.status);
+                        const closed=delivered&&wheelDone&&!!o.sales_record_id;
+                        return jFilter==="active"?!closed:jFilter==="done"?closed:true;
+                      }).map((o:any)=>({kind:"order" as const, sortAt:o.created_at||"", data:o}));
+                      const consultItems = jConsults.filter((c:any)=>{
+                        const wheelDone=!!c.wheel_returned_at;
+                        const delivered=c.progress_stage==="delivery"||c.progress_stage==="invoiced";
+                        const closed=(delivered&&wheelDone&&!!c.sales_record_id)||c.progress_stage==="cancelled";
+                        return jFilter==="active"?!closed:jFilter==="done"?closed:true;
+                      }).map((c:any)=>({kind:"consult" as const, sortAt:c.created_at||"", data:c}));
+                      const jMerged = [...orderItems,...consultItems].sort((a,b)=>(b.sortAt||"").localeCompare(a.sortAt||""));
+
+                      return jMerged.map(item => item.kind==="order" ? (()=>{
+                    const o=item.data;
                       const wheelDone=!!o.wheel_returned_at;
                       const invoiced=!!o.invoiced_at||["invoiced","billed_in","payment_in","payment_out","wheel_returned"].includes(o.status);
                       const delivered=!!o.delivered_at||["delivered","wheel_returned","invoiced","billed_in","payment_in","payment_out"].includes(o.status);
@@ -5903,6 +5931,9 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                                   )}
                                   {o.sales_record_id&&(
                                     <span className="text-[11px] px-2 py-0.5 rounded-full border font-medium bg-blue-50 text-blue-600 border-blue-200">🧾 세금계산서 발행</span>
+                                  )}
+                                  {!o.consultation_id&&(
+                                    <span className="text-[11px] px-2 py-0.5 rounded-full border font-medium bg-gray-50 text-gray-400 border-gray-200" title="카카오 웹훅/수동입력으로 상담 없이 등록된 주문입니다">상담 연결 없음</span>
                                   )}
                                 </div>
                                 {o.product_spec&&<p className="text-xs text-gray-600 mt-0.5 font-medium">{o.product_spec}{o.quantity?` × ${o.quantity}개`:""}</p>}
@@ -5973,15 +6004,9 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                           </div>
                         </div>
                       );
-                    })}
-
-                    {/* ── 상담(consultation_cases) 기반 타이어 항목 ── */}
-                    {jConsults.filter((c:any)=>{
-                      const wheelDone=!!c.wheel_returned_at;
-                      const delivered=c.progress_stage==="delivery"||c.progress_stage==="invoiced";
-                      const closed=(delivered&&wheelDone&&!!c.sales_record_id)||c.progress_stage==="cancelled";
-                      return jFilter==="active"?!closed:jFilter==="done"?closed:true;
-                    }).map((c:any)=>{
+                    })() : (()=>{
+                    const c=item.data;
+                    const hasOrder = jList.some((x:any)=>x.consultation_id===c.id);
                       const wheelDone=!!c.wheel_returned_at;
                       const invoiced=c.progress_stage==="invoiced";
                       const cancelled=c.progress_stage==="cancelled";
@@ -6013,6 +6038,9 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                                   )}
                                   {c.sales_record_id&&(
                                     <span className="text-[11px] px-2 py-0.5 rounded-full border font-medium bg-blue-50 text-blue-600 border-blue-200">🧾 세금계산서 발행</span>
+                                  )}
+                                  {!hasOrder&&(
+                                    <span className="text-[11px] px-2 py-0.5 rounded-full border font-medium bg-gray-50 text-gray-400 border-gray-200" title="아직 진흥에 발주가 전달되지 않은 상담건입니다">진흥주문 미등록</span>
                                   )}
                                 </div>
                                 {c.product_detail&&<p className="text-xs text-gray-600 mt-0.5 font-medium">{c.product_detail}</p>}
@@ -6076,7 +6104,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                           </div>
                         </div>
                       );
-                    })}
+                    })());
+                    })()}
                   </div>
                 </div>
               ):(
@@ -6157,6 +6186,50 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
           )}
 
           {/* ══ 메모 ══ */}
+          {tab==="numbersearch"&&(
+            <div className="space-y-4 pb-4">
+              <div>
+                <p className="text-sm font-semibold text-[#0f172a]">🔍 번호검색</p>
+                <p className="text-xs text-gray-400 mt-0.5">견적서·RentalOS 딜·수출문의·거래명세서·현대CM/태산통운 케이스를 번호 하나로 찾습니다. 새 번호(RNF-2607-000001)와 예전 번호 둘 다 검색됩니다.</p>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  value={numQuery}
+                  onChange={e=>setNumQuery(e.target.value)}
+                  onKeyDown={e=>{if(e.key==="Enter") void runNumberSearch();}}
+                  placeholder="예: RNF-2607-000013 또는 RO-2026-96506"
+                  className="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-orange-400 transition-all"
+                />
+                <button className={BTO} onClick={()=>void runNumberSearch()} disabled={numLoading || !numQuery.trim()}>
+                  {numLoading?"검색 중...":"검색"}
+                </button>
+              </div>
+
+              {numSearched && !numLoading && (numResults?.length??0)===0 && (
+                <div className={`${CARD} p-6 text-center text-sm text-gray-400`}>일치하는 건이 없습니다. 번호를 다시 확인해주세요.</div>
+              )}
+
+              {(numResults?.length??0)>0 && (
+                <div className="space-y-2">
+                  {numResults!.map((r,i)=>(
+                    <div key={i} className={`${CARD} p-3.5 flex items-center justify-between gap-3 flex-wrap`}>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[11px] font-semibold text-orange-500 uppercase">{r.source}</span>
+                          {r.status && <StsBadge s={r.status}/>}
+                        </div>
+                        <p className="text-sm font-bold text-[#0f172a] truncate">{r.label}</p>
+                        <p className="text-xs text-gray-500 font-mono mt-0.5">{r.detail}</p>
+                        <p className="text-[11px] text-gray-400 mt-0.5">{new Date(r.created_at).toLocaleString("ko-KR")}</p>
+                      </div>
+                      <button className={BTG} onClick={()=>navigate(r.path)}>바로가기 →</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {tab==="memo"&&(
             <div className="space-y-4 pb-4">
               {/* 헤더 */}
@@ -7559,7 +7632,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                     }).eq("id", o.id);
 
                     // 2. 매출(sales_records) 자동 반영
-                    await supabase.from("sales_records").insert({
+                    const { data: jInserted } = await supabase.from("sales_records").insert({
                       sale_date: todayStr(),
                       customer_name: o.customer_name_raw || "미확인",
                       business_no: null,
@@ -7579,7 +7652,13 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                       closing: false,
                       note: `진흥주문 #${o.id} (${o.customer_name_raw}) 자동 연동 — 계산서발행 시 자동 등록`,
                       jinheung_order_id: o.id,
-                    });
+                    }).select("id").single();
+
+                    // 역방향 링크 — 없으면 "종결" 배지가 계산서발행에서 멈춰 보임
+                    if(jInserted?.id){
+                      const { error: jLinkErr } = await supabase.from("tb_orders").update({ sales_record_id: jInserted.id }).eq("id", o.id);
+                      if(jLinkErr) console.error("역방향 매출연결 실패(무시):", jLinkErr);
+                    }
 
                     try{await fetch("https://nfwtsptqloefsbpjvdyu.supabase.co/functions/v1/kakao-order-webhook",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({event:"status_change",orderId:o.id,status:"invoiced",customerName:o.customer_name_raw??"",productSpec:o.product_spec??"",quantity:o.quantity?.toString()??"",amount:String(o.price_to_customer??o.price_from_jinheung??"")})});}catch(e){console.error(e);}
 
@@ -7658,8 +7737,9 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
 
                     // 2. 매출(sales_records) 자동 반영 — 이미 등록된 건이면 중복 방지, 금액은 입력값 사용
                     const { data: existing } = await supabase.from("sales_records").select("id").eq("consultation_id", o.id).maybeSingle();
+                    let orderInvSalesId: number | null = existing?.id ?? null;
                     if(!existing){
-                      await supabase.from("sales_records").insert({
+                      const { data: oiInserted } = await supabase.from("sales_records").insert({
                         sale_date: todayStr(),
                         customer_name: o.customer_name,
                         business_no: null,
@@ -7679,9 +7759,16 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                         closing: false,
                         note: `상담건 #${o.id} (${o.customer_name}) 자동 연동 — 계산서발행 시 자동 등록`,
                         consultation_id: o.id,
-                      });
+                      }).select("id").single();
+                      orderInvSalesId = oiInserted?.id ?? null;
                     } else {
                       await supabase.from("sales_records").update({ unit_price: amtTo, unit_cost: amtFrom }).eq("id", existing.id);
+                    }
+
+                    // 역방향 링크 — 없으면 "종결" 배지가 계산서발행에서 멈춰 보임 (재실행해도 멱등적으로 동작)
+                    if(orderInvSalesId){
+                      const { error: oiLinkErr } = await supabase.from(table).update({ sales_record_id: orderInvSalesId }).eq("consultation_id", o.id);
+                      if(oiLinkErr) console.error("역방향 매출연결 실패(무시):", oiLinkErr);
                     }
 
                     setOrderInvoiceModal(null); setOrderInvoiceFile(null); setOrderInvoiceUploading(false);
@@ -7769,8 +7856,9 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                       }).eq("consultation_id", o.id);
 
                       const { data: existing } = await supabase.from("sales_records").select("id").eq("consultation_id", o.id).maybeSingle();
+                      let bulkSalesId: number | null = existing?.id ?? null;
                       if(!existing){
-                        await supabase.from("sales_records").insert({
+                        const { data: bulkInserted } = await supabase.from("sales_records").insert({
                           sale_date: todayStr(),
                           customer_name: o.customer_name,
                           business_no: null,
@@ -7791,7 +7879,14 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                           note: `상담건 #${o.id} (${o.customer_name}) 묶음 계산서발행 — ${items.length}건 합산 발행, 단가/매입가 확인 필요`,
                           consultation_id: o.id,
                           invoice_group_key: groupKey,
-                        });
+                        }).select("id").single();
+                        bulkSalesId = bulkInserted?.id ?? null;
+                      }
+
+                      // 역방향 링크 — 없으면 "종결" 배지가 계산서발행에서 멈춰 보임
+                      if(bulkSalesId){
+                        const { error: bulkLinkErr } = await supabase.from(table).update({ sales_record_id: bulkSalesId }).eq("consultation_id", o.id);
+                        if(bulkLinkErr) console.error("역방향 매출연결 실패(무시):", bulkLinkErr);
                       }
                     }
 

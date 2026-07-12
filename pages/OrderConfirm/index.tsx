@@ -8,27 +8,11 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
-const KAKAO_EDGE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-hyundaicm-kakao`;
-const SITE_URL = "https://www.rnfkorea.co.kr";
-
 type Status = "loading" | "success" | "already_done" | "error";
 
 const ACTION_MAP: Record<string, { label: string }> = {
   delivered:       { label: "물품발송" },
   completed_order: { label: "휠반납완료" },
-};
-
-// action(URL 파라미터) → 실제 tb_orders.status 컬럼에 들어갈 값
-// tb_orders_status_check 제약조건: received | forwarded | delivered | wheel_returned | invoiced | billed_in | payment_in | payment_out
-const STATUS_MAP: Record<string, string> = {
-  delivered:       "delivered",
-  completed_order: "wheel_returned",
-};
-
-// 각 action이 처리 완료로 간주되는 상태 목록 (STATUS_MAP의 결과값 기준)
-const DONE_MAP: Record<string, string[]> = {
-  delivered:       ["delivered", "wheel_returned", "invoiced", "payment_in", "payment_out"],
-  completed_order: ["wheel_returned", "invoiced", "payment_in", "payment_out"],
 };
 
 export default function OrderConfirmPage() {
@@ -55,69 +39,19 @@ export default function OrderConfirmPage() {
 
   async function processAction() {
     try {
-      const { data: order, error: fetchErr } = await supabase
-        .from("tb_orders")
-        .select("id, status, customer_name_raw, product_spec, quantity")
-        .eq("id", id)
-        .single();
+      // tb_orders는 로그인 계정만 접근 가능하도록 잠갔으므로(보안 점검 2026-07-12),
+      // 이 공개 확인링크는 service_role로 딱 이 주문 한 건만 처리하는 엣지함수를 거친다.
+      const { data, error } = await supabase.functions.invoke("order-confirm", {
+        body: { id, action },
+      });
 
-      if (fetchErr || !order) {
+      if (error || !data || data.status === "error") {
         setStatus("error");
         return;
       }
 
-      setOrderInfo({
-        customer_name_raw: order.customer_name_raw ?? "-",
-        product_spec:      order.product_spec      ?? "-",
-        quantity:          order.quantity,
-      });
-
-      // 이미 처리된 경우 — action별로 다르게 체크
-      const doneStatuses = DONE_MAP[action] ?? [];
-      if (doneStatuses.includes(order.status)) {
-        setStatus("already_done");
-        return;
-      }
-
-      // 상태 업데이트
-      const now = new Date().toISOString();
-      const newStatus = STATUS_MAP[action] ?? action;
-      const patch: Record<string, unknown> = { status: newStatus };
-      if (action === "delivered")        patch.delivered_at      = now;
-      if (action === "completed_order")  patch.wheel_returned_at = now;
-
-      const { error: updateErr } = await supabase
-        .from("tb_orders")
-        .update(patch)
-        .eq("id", id);
-
-      if (updateErr) {
-        setStatus("error");
-        return;
-      }
-
-      // AI 비서 채팅 알림
-      await supabase.from("secretary_chat_logs").insert({
-        role:       "assistant",
-        content:    `📦 **${actionMeta.label} 완료**\n\n**${order.customer_name_raw}** ${order.product_spec ?? ""} ${order.quantity ? order.quantity + "개" : ""}\n주문번호: ${id.slice(-8).toUpperCase()}\n✅ (주)진흥에서 ${actionMeta.label} 처리 완료`,
-        session_id: "main",
-      });
-
-      // 물품발송 확인 시 — 화면에서 "휠반납 요청 알림톡 발송됨"이라고 안내하므로 실제로 발송한다
-      if (action === "delivered") {
-        await supabase.functions.invoke("send-hyundaicm-kakao", {
-          body: {
-            type:             "wheel_return_request",
-            orderNo:          id,
-            customerName:     order.customer_name_raw ?? "-",
-            productSpec:      order.product_spec ?? "-",
-            quantity:         order.quantity ? String(order.quantity) : "-",
-            wheelReturnedUrl: `${SITE_URL}/order/confirm/completed_order/${id}`,
-          },
-        });
-      }
-
-      setStatus("success");
+      if (data.orderInfo) setOrderInfo(data.orderInfo);
+      setStatus(data.status === "already_done" ? "already_done" : "success");
     } catch {
       setStatus("error");
     }

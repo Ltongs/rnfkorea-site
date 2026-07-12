@@ -175,8 +175,9 @@ export default function OrdersPage() {
 
     // 매출관리 중복 등록 방지
     const { data: existing } = await supabase.from("sales_records").select("id").eq("jinheung_order_id", order.id).maybeSingle();
+    let salesRecordId: number | null = existing?.id ?? null;
     if (!existing) {
-      await supabase.from("sales_records").insert({
+      const { data: inserted } = await supabase.from("sales_records").insert({
         sale_date: new Date().toISOString().split("T")[0],
         customer_name: order.customer_name_raw ?? "미확인",
         business_no: null,
@@ -196,7 +197,14 @@ export default function OrdersPage() {
         closing: false,
         note: `진흥주문 #${order.id} (${order.customer_name_raw ?? "미확인"}) 자동 연동 — 계산서발행 시 자동 등록`,
         jinheung_order_id: order.id,
-      });
+      }).select("id").single();
+      salesRecordId = inserted?.id ?? null;
+    }
+
+    // 역방향 링크 — 이게 없으면 "종결" 배지가 영원히 "계산서발행"에 멈춰 보임(sales_records 쪽만 정방향으로 연결되고 tb_orders는 비어있던 버그)
+    if (salesRecordId) {
+      const { error: linkErr } = await supabase.from("tb_orders").update({ sales_record_id: salesRecordId }).eq("id", order.id);
+      if (linkErr) console.error("역방향 매출연결 실패(무시):", linkErr);
     }
 
     await sendKakao(order, "invoiced");

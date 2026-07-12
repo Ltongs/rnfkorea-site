@@ -1906,22 +1906,22 @@ VIN: ${nextVin}`);
                     {/* 제작증 / 차량등록증 다운로드 */}
                     <div className="flex flex-wrap gap-2">
                       {r.manufacture_doc_path && (
-                        <a
-                          href={`${supabase.storage.from("vehicle_docs").getPublicUrl(r.manufacture_doc_path).data.publicUrl}`}
-                          target="_blank" rel="noopener noreferrer"
+                        <button
+                          type="button"
+                          onClick={() => openStorageFile(r.manufacture_doc_path!).catch((e: any) => alert(e?.message || "보기 실패"))}
                           className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-gray-300 bg-white text-navy-900 font-semibold text-xs hover:shadow-md transition-all"
                         >
                           제작증 보기
-                        </a>
+                        </button>
                       )}
                       {r.vehicle_doc_path && (
-                        <a
-                          href={`${supabase.storage.from("vehicle_docs").getPublicUrl(r.vehicle_doc_path).data.publicUrl}`}
-                          target="_blank" rel="noopener noreferrer"
+                        <button
+                          type="button"
+                          onClick={() => openStorageFile(r.vehicle_doc_path!).catch((e: any) => alert(e?.message || "보기 실패"))}
                           className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 font-semibold text-xs hover:shadow-md transition-all"
                         >
                           차량등록증 보기
-                        </a>
+                        </button>
                       )}
                     </div>
                   </div>

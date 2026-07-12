@@ -64,7 +64,12 @@ const fmtFileSize = (n: number | null | undefined) => {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
   return `${(n / 1024 / 1024).toFixed(1)}MB`;
 };
-const genDealNo = () => `RO-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+// 회사 전체가 공유하는 통합 번호(RNF-YYMM-NNNNNN) — 매달 초기화되는 카운터를 DB에서 원자적으로 발급받는다.
+async function genDealNo(): Promise<string> {
+  const { data, error } = await supabase.rpc("next_rnf_number");
+  if (error || !data) throw new Error(error?.message || "번호 발급 실패");
+  return data as string;
+}
 
 const inputClass = "w-full h-[42px] rounded-xl border border-gray-200 px-3 text-sm font-medium text-gray-900 bg-white focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all";
 const labelClass = "block text-xs font-semibold text-gray-500 mb-1.5";
@@ -156,7 +161,7 @@ export default function RentalOSPage() {
     setSaving(true);
     try {
       const payload = {
-        deal_no: genDealNo(),
+        deal_no: await genDealNo(),
         customer_name: form.customer_name.trim(),
         company_name: form.company_name.trim() || null,
         customer_phone: form.customer_phone.trim() || null,

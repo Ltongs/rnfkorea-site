@@ -179,29 +179,14 @@ const Input = (p:React.InputHTMLAttributes<HTMLInputElement>) =>
   <input autoComplete="off" {...p} className={`w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 ${p.className??''}`}/>;
 
 // ─── Google People API 실시간 연락처 검색 ──────────────────
+// google-people-search 엣지함수를 거친다 (원시 OAuth 토큰을 브라우저로 내려보내지 않기 위함).
 async function searchGoogleContacts(query: string): Promise<{name:string;email:string}[]> {
   try {
-    const { data: tokenRow } = await supabase
-      .from('google_calendar_tokens')
-      .select('access_token')
-      .order('expires_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (!tokenRow?.access_token) return [];
-    const res = await fetch(
-      `https://people.googleapis.com/v1/people:searchContacts?query=${encodeURIComponent(query)}&readMask=names,emailAddresses&pageSize=8`,
-      { headers: { Authorization: `Bearer ${tokenRow.access_token}` } }
-    );
-    if (!res.ok) return [];
-    const d = await res.json();
-    const results: {name:string;email:string}[] = [];
-    for (const p of d.results ?? []) {
-      const name = p.person?.names?.[0]?.displayName ?? '';
-      for (const e of (p.person?.emailAddresses ?? [])) {
-        if (e.value) results.push({ name, email: e.value });
-      }
-    }
-    return results;
+    const { data, error } = await supabase.functions.invoke('google-people-search', {
+      body: { mode: 'search', query },
+    });
+    if (error || !data) return [];
+    return data.results ?? [];
   } catch { return []; }
 }
 
@@ -767,9 +752,9 @@ export default function QuotationPage() {
   };
 
   // ── 미리보기 생성
-  const handlePreview = () => {
+  const handlePreview = async () => {
     let html = '';
-    const no = genNo(tab==='battery'?'BT':tab==='forklift'?'FL':tab==='installment'?'HL':'PO');
+    const no = '(발송 시 채번)'; // 미리보기는 실제 문서가 아니므로 번호를 소모하지 않는다
     if(tab==='battery')      html = buildQuoteHTML('battery',  bf, no);
     else if(tab==='forklift')html = buildQuoteHTML('forklift', ff, no);
     else if(tab==='purchase')html = buildPurchaseHTML(pf, no);
@@ -864,28 +849,15 @@ export default function QuotationPage() {
           ...(data??[]).map((r:any)=>r.recipient_email).filter(Boolean),
         ]));
 
-        // Google 주소록에서 연락처 이메일 추가 (google-calendar-tokens 재활용)
+        // Google 주소록에서 연락처 이메일 추가 (google-people-search 엣지함수 경유)
         try {
-          const { data: tokenRow } = await supabase
-            .from('google_calendar_tokens')
-            .select('access_token')
-            .eq('gcal_email','admin@rnfkorea.co.kr')
-            .maybeSingle();
-
-          if (tokenRow?.access_token) {
-            const res = await fetch(
-              'https://people.googleapis.com/v1/people/me/connections?personFields=emailAddresses,names&pageSize=200&sortOrder=LAST_MODIFIED_DESCENDING',
-              { headers: { Authorization: `Bearer ${tokenRow.access_token}` } }
-            );
-            if (res.ok) {
-              const d = await res.json();
-              const googleEmails = (d.connections ?? [])
-                .flatMap((p:any) => (p.emailAddresses ?? []).map((e:any) => e.value))
-                .filter(Boolean);
-              const merged = Array.from(new Set([...base, ...googleEmails]));
-              setEmailSuggestions(merged);
-              return;
-            }
+          const { data: listData, error: listErr } = await supabase.functions.invoke('google-people-search', {
+            body: { mode: 'list' },
+          });
+          if (!listErr && listData?.emails?.length) {
+            const merged = Array.from(new Set([...base, ...listData.emails]));
+            setEmailSuggestions(merged);
+            return;
           }
         } catch { /* Google 연락처 로드 실패 시 기존 이력만 사용 */ }
 
@@ -918,9 +890,12 @@ export default function QuotationPage() {
     flash('이력이 삭제되었습니다.');
   };
 
-  // ── 견적번호 생성
-  const genNo = (prefix:string) =>
-    `${prefix}-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+  // ── 견적번호 생성 — 회사 전체가 공유하는 통합 번호(RNF-YYMM-NNNNNN), 매달 초기화되는 카운터를 DB에서 원자적으로 발급받는다.
+  const genNo = async (): Promise<string> => {
+    const { data, error } = await supabase.rpc('next_rnf_number');
+    if (error || !data) throw new Error(error?.message || '번호 발급 실패');
+    return data as string;
+  };
 
   // ── 현재 폼 정보 추출
   const currentSend = (): SendInfo =>
@@ -930,14 +905,14 @@ export default function QuotationPage() {
     tab==='purchase'?'purchase':tab;
 
   // ── PDF 출력 (인쇄)
-  const handlePrint = () => {
+  const handlePrint = async () => {
     const s = currentSend();
-    const no = genNo(tab==='battery'?'BT':tab==='forklift'?'FL':tab==='installment'?'HL':'PO');
+    if(tab==='installment') { await downloadInstallmentPDF(); return; }
+    const no = await genNo();
     let html = '';
     if(tab==='battery')  html = buildQuoteHTML('battery',  bf, no);
     if(tab==='forklift') html = buildQuoteHTML('forklift', ff, no);
     if(tab==='purchase') html = buildPurchaseHTML(pf, no);
-    if(tab==='installment') { downloadInstallmentPDF(); return; }
     if(html) {
       // 히스토리 저장
       const total = tab==='battery'?bTotal:tab==='forklift'?fTotal:pTotal;
@@ -962,7 +937,7 @@ export default function QuotationPage() {
     if(tab==='installment') { await sendInstallmentEmail(); return; }
     setEmailLoading(true);
     try {
-      const no    = genNo(tab==='battery'?'BT':tab==='forklift'?'FL':'PO');
+      const no    = await genNo();
       const total = tab==='battery'?bTotal:tab==='forklift'?fTotal:pTotal;
       const vat   = Math.round(total*.1);
       const grand = total+vat;
@@ -1026,7 +1001,7 @@ export default function QuotationPage() {
       if(tab==='installment') {
         target = installmentPreviewRef.current;
       } else {
-        const no2 = genNo(tab==='battery'?'BT':tab==='forklift'?'FL':'PO');
+        const no2 = await genNo();
         const htmlStr = tab==='battery' ? buildQuoteHTML('battery', bf, no2)
           : tab==='forklift' ? buildQuoteHTML('forklift', ff, no2)
           : buildPurchaseHTML(pf, no2);
@@ -1083,7 +1058,7 @@ export default function QuotationPage() {
   };
 
   // ── 할부견적서 PDF
-  const downloadInstallmentPDF = () => {
+  const downloadInstallmentPDF = async () => {
     const p=n0(iff.principal),r=n0(iff.annualRate),gp=n0(iff.gracePeriod),im=n0(iff.installmentMonths);
     const months=gp+im;
     if(!p||!r||!months){flash('할부원금, 금리, 기간을 입력해주세요.');return;}
@@ -1132,7 +1107,7 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
 </table>
 <p style="margin-top:10px;font-size:9px;color:#94a3b8;text-align:center">※ 실제 납입액은 금융사 기준일·계산방식에 따라 일부 다를 수 있습니다. | 주식회사 알앤에프코리아 | 1551-1873</p>
 </body></html>`;
-    const no = genNo('HL');
+    const no = await genNo();
     const {principal:princ,...rest}=iff;
     supabase.from('tb_quotations').insert({
       quote_type:'installment',quote_no:no,quote_date:iff.quoteDate,
@@ -1154,7 +1129,7 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
     const fmtN=(n:number)=>(()=>{ const a=Math.abs(Math.round(n)); return (n<0?'-':'')+a.toString().replace(/\B(?=(\d{3})+(?!\d))/g,','); })();
     setEmailLoading(true);
     try{
-      const no=genNo('HL');
+      const no=await genNo();
       const toList=[iff.email1,iff.email2].filter(Boolean);
       const ccList=[iff.cc1,iff.cc2].filter(Boolean);
       await supabase.from('tb_quotations').insert({

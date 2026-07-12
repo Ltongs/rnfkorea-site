@@ -72,18 +72,87 @@ type TbOrder = {
   invoiced_at: string | null;
   wheel_returned_at: string | null;
 };
-// AI비서 > 진흥주문 관리 탭과 동일한 방식으로 상태를 계산 — status 컬럼이 아니라
-// delivered_at/invoiced_at/wheel_returned_at 날짜 필드 유무 기준 (두 화면 표시가 어긋나지 않도록).
-// 종결 조건: 발송(납품완료) + 휠반납 + 매출건 연결 (개별 계산서발행 여부는 더 이상 종결 기준이 아님)
-function orderStageLabel(o: TbOrder): string {
-  const wheelDone = !!o.wheel_returned_at;
-  const invoiced = !!o.invoiced_at || ["invoiced","billed_in","payment_in","payment_out","wheel_returned"].includes(o.status);
-  const delivered = !!o.delivered_at || ["delivered","wheel_returned","invoiced","billed_in","payment_in","payment_out"].includes(o.status);
-  const closed = delivered && wheelDone && !!o.sales_record_id;
-  if (closed) return "종결";
+// 매출건(sales_records)에 연결 가능한 진흥주문 후보 — tb_orders(신규 방식)와 레거시 상담 기반 방식
+// (타이어/배터리/수출) 여러 소스를 하나의 모양으로 합쳐서 다룸. AI비서(secretary/index.tsx)의
+// 매출연결 로직을 그대로 이식 — FinanceHub는 tb_orders만 연결 가능했던 격차를 없앤다.
+type FH_OrderCandidate = {
+  key: string;           // "order:<uuid>" | "tire:<id>" | "battery:<id>" | "export:<id>"
+  source: "order" | "tire" | "battery" | "export";
+  rawId: string | number; // tb_orders.id(uuid) 또는 consultation_id(number)
+  created_at: string;
+  customer_name: string;
+  product_detail: string;
+  status_label: string;
+  price_to_customer: number | null;
+  sales_record_id: number | null;
+};
+// 타이어/진흥주문: 발송(납품) + 휠반납 + 매출연결이 다 되면 종결
+function fhStageLabel(delivered: boolean, wheelDone: boolean, salesLinked: boolean, invoiced: boolean, cancelled?: boolean): string {
+  if (cancelled) return "취소";
+  if (delivered && wheelDone && salesLinked) return "종결";
   if (invoiced) return "계산서발행";
   if (delivered) return wheelDone ? "발송(휠반납✓)" : "발송(납품완료)";
   return "접수(진흥전달)";
+}
+// 배터리/수출: 휠반납 개념이 없으므로 발송(납품) + 매출연결이면 종결
+function fhStageLabelNoWheel(delivered: boolean, salesLinked: boolean, invoiced: boolean, cancelled?: boolean): string {
+  if (cancelled) return "취소";
+  if (delivered && salesLinked) return "종결";
+  if (invoiced) return "계산서발행";
+  if (delivered) return "발송(납품완료)";
+  return "접수(계약)";
+}
+function orderRowToCandidate(o: TbOrder): FH_OrderCandidate {
+  const wheelDone = !!o.wheel_returned_at;
+  const invoiced = !!o.invoiced_at || ["invoiced","billed_in","payment_in","payment_out","wheel_returned"].includes(o.status);
+  const delivered = !!o.delivered_at || ["delivered","wheel_returned","invoiced","billed_in","payment_in","payment_out"].includes(o.status);
+  return {
+    key: `order:${o.id}`, source: "order", rawId: o.id, created_at: o.created_at,
+    customer_name: o.customer_name_raw || "거래처 미입력",
+    product_detail: [o.product_type, o.product_spec].filter(Boolean).join(" / ") + (o.quantity ? ` (${o.quantity}개)` : ""),
+    status_label: fhStageLabel(delivered, wheelDone, !!o.sales_record_id, invoiced),
+    price_to_customer: o.price_to_customer ?? null, sales_record_id: o.sales_record_id ?? null,
+  };
+}
+function tireRowToCandidate(d: any, customerName: string): FH_OrderCandidate {
+  const wheelDone = !!d.wheel_returned_at;
+  const stage = d.process_stage ?? d.process_status;
+  const cancelled = stage === "cancelled";
+  const invoiced = stage === "invoiced";
+  const delivered = stage === "delivery" || stage === "invoiced";
+  return {
+    key: `tire:${d.consultation_id}`, source: "tire", rawId: d.consultation_id, created_at: d.created_at ?? "",
+    customer_name: customerName,
+    product_detail: [d.tire_size, d.vehicle_info, d.vehicle_type].filter(Boolean).join(" / ") || "(상세 미입력)",
+    status_label: fhStageLabel(delivered, wheelDone, !!d.sales_record_id, invoiced, cancelled),
+    price_to_customer: d.price_to_customer ?? null, sales_record_id: d.sales_record_id ?? null,
+  };
+}
+function batteryRowToCandidate(d: any, customerName: string): FH_OrderCandidate {
+  const stage = d.process_stage;
+  const cancelled = stage === "cancelled";
+  const invoiced = stage === "invoiced";
+  const delivered = stage === "delivery" || stage === "invoiced";
+  return {
+    key: `battery:${d.consultation_id}`, source: "battery", rawId: d.consultation_id, created_at: d.created_at ?? "",
+    customer_name: customerName,
+    product_detail: [d.battery_vehicle_type, d.battery_voltage ? `${d.battery_voltage}V` : null, d.battery_capacity_ah ? `${d.battery_capacity_ah}Ah` : null, d.battery_quantity ? `${d.battery_quantity}개` : null].filter(Boolean).join(" / ") || "(상세 미입력)",
+    status_label: fhStageLabelNoWheel(delivered, !!d.sales_record_id, invoiced, cancelled),
+    price_to_customer: d.price_to_customer ?? null, sales_record_id: d.sales_record_id ?? null,
+  };
+}
+function exportRowToCandidate(d: any, customerName: string): FH_OrderCandidate {
+  const stage = d.process_stage ?? d.export_stage;
+  const cancelled = stage === "cancelled";
+  const invoiced = stage === "invoiced";
+  const delivered = stage === "delivery" || stage === "invoiced";
+  return {
+    key: `export:${d.consultation_id}`, source: "export", rawId: d.consultation_id, created_at: d.created_at ?? "",
+    customer_name: customerName,
+    product_detail: [d.product_name, d.destination_country].filter(Boolean).join(" / ") || "(상세 미입력)",
+    status_label: fhStageLabelNoWheel(delivered, !!d.sales_record_id, invoiced, cancelled),
+    price_to_customer: d.price_to_customer ?? null, sales_record_id: d.sales_record_id ?? null,
+  };
 }
 
 type SalesFormData = {
@@ -246,7 +315,7 @@ const FinanceHubPage: React.FC = () => {
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth() + 1);
   const [period, setPeriod] = useState<Period>("월간");
-  const [activeTab, setActiveTab] = useState<"sales" | "purchases" | "incomplete">("sales");
+  const [activeTab, setActiveTab] = useState<"sales" | "purchases" | "incomplete" | "pending">("sales");
   const [filterCategory, setFilterCategory] = useState("전체");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -265,6 +334,11 @@ const FinanceHubPage: React.FC = () => {
   const [loadingIncomplete, setLoadingIncomplete] = useState(false);
   // 인라인 편집: { id, table, field, value }
   const [inlineEdits, setInlineEdits] = useState<Record<string, string>>({});
+
+  // 미청구 확인대기 탭 — 지게차/금융/보험 중 완료·확정 단계인데 sales_records에 없어 보이는 건
+  // (지게차/금융/보험은 sales_record_id 컬럼이 없어 거래처명 매칭으로만 근사 판별 — 자동 매출생성은 하지 않음)
+  const [pendingUnbilled, setPendingUnbilled] = useState<{ forklift: any[]; finance: any[]; insurance: any[] }>({ forklift: [], finance: [], insurance: [] });
+  const [loadingPending, setLoadingPending] = useState(false);
 
   // 매출 폼
   const [showSalesForm, setShowSalesForm] = useState(false);
@@ -299,12 +373,12 @@ const FinanceHubPage: React.FC = () => {
   // 진흥주문(tb_orders) 연결
   const [showOrderLinkModal, setShowOrderLinkModal] = useState(false);
   const [orderLinkTarget, setOrderLinkTarget] = useState<SalesRecord | null>(null);
-  const [orderCandidates, setOrderCandidates] = useState<TbOrder[]>([]);
+  const [orderCandidates, setOrderCandidates] = useState<FH_OrderCandidate[]>([]);
   const [orderSearch, setOrderSearch] = useState("");
   const [orderSelectedIds, setOrderSelectedIds] = useState<Set<string>>(new Set());
   const [loadingOrderCandidates, setLoadingOrderCandidates] = useState(false);
   const [orderLinkSaving, setOrderLinkSaving] = useState(false);
-  const [linkedOrdersBySales, setLinkedOrdersBySales] = useState<Record<number, TbOrder[]>>({});
+  const [linkedOrdersBySales, setLinkedOrdersBySales] = useState<Record<number, FH_OrderCandidate[]>>({});
 
   // 엑셀 일괄등록 (매출/매입 자동 구분)
   const excelRef = useRef<HTMLInputElement>(null);
@@ -348,6 +422,8 @@ const FinanceHubPage: React.FC = () => {
 
   useEffect(() => { loadAll(); }, [from, to]);
   useEffect(() => { if (showUncategorized) loadUncategorized(); }, [year]);
+  // allSales(전체 매출)가 로드된 뒤에야 거래처명 매칭이 정확해지므로 그 시점에 계산
+  useEffect(() => { if (allSales.length > 0) void loadPendingUnbilled(); }, [allSales]);
 
   async function loadAll() {
     setLoading(true); setError(null);
@@ -369,14 +445,38 @@ const FinanceHubPage: React.FC = () => {
     else setLinkedOrdersBySales({});
   }
 
-  // 진흥주문(tb_orders) 연결 현황 일괄 조회 — 화면에 보이는 매출건들에 이미 연결된 주문을 배지로 보여주기 위함
+  // 진흥주문 연결 현황 일괄 조회 — tb_orders(신규) + 레거시 상담 기반(타이어/배터리/수출)까지 모두 조회.
+  // AI비서(secretary/index.tsx)에만 있던 커버리지를 FinanceHub에도 동일하게 적용.
   async function loadLinkedOrders(salesIds: number[]) {
-    const { data, error } = await supabase.from("tb_orders").select("*").in("sales_record_id", salesIds);
-    if (error) return; // 조용히 실패 — tb_orders.sales_record_id 컬럼이 아직 없으면 여기서 에러가 날 수 있음
-    const grouped: Record<number, TbOrder[]> = {};
-    for (const o of (data || []) as TbOrder[]) {
-      if (o.sales_record_id == null) continue;
-      (grouped[o.sales_record_id] ||= []).push(o);
+    const [ordRes, tireRes, battRes, expRes] = await Promise.all([
+      supabase.from("tb_orders").select("*").in("sales_record_id", salesIds),
+      supabase.from("consultation_tire_details").select("consultation_id,process_stage,process_status,wheel_returned_at,price_to_customer,sales_record_id,tire_size,vehicle_info,vehicle_type").in("sales_record_id", salesIds),
+      supabase.from("consultation_battery_details").select("consultation_id,process_stage,sales_record_id,battery_voltage,battery_capacity_ah,battery_vehicle_type,battery_quantity").in("sales_record_id", salesIds),
+      supabase.from("consultation_export_details").select("consultation_id,process_stage,export_stage,sales_record_id,product_name,destination_country").in("sales_record_id", salesIds),
+    ]);
+    const grouped: Record<number, FH_OrderCandidate[]> = {};
+    if (!ordRes.error) {
+      for (const o of (ordRes.data || []) as TbOrder[]) {
+        if (o.sales_record_id == null) continue;
+        (grouped[o.sales_record_id] ||= []).push(orderRowToCandidate(o));
+      }
+    }
+    const allLegacyRows = [
+      ...((tireRes.error ? [] : tireRes.data) || []).map((d: any) => ({ ...d, __kind: "tire" as const })),
+      ...((battRes.error ? [] : battRes.data) || []).map((d: any) => ({ ...d, __kind: "battery" as const })),
+      ...((expRes.error ? [] : expRes.data) || []).map((d: any) => ({ ...d, __kind: "export" as const })),
+    ];
+    const cids = allLegacyRows.map(d => d.consultation_id);
+    let nameMap: Record<number, string> = {};
+    if (cids.length > 0) {
+      const { data: cs } = await supabase.from("consultation_cases").select("id,customer_name").in("id", cids);
+      (cs || []).forEach((c: any) => { nameMap[c.id] = c.customer_name; });
+    }
+    for (const d of allLegacyRows) {
+      if (d.sales_record_id == null) continue;
+      const name = nameMap[d.consultation_id] || "거래처 미확인";
+      const cand = d.__kind === "tire" ? tireRowToCandidate(d, name) : d.__kind === "battery" ? batteryRowToCandidate(d, name) : exportRowToCandidate(d, name);
+      (grouped[d.sales_record_id] ||= []).push(cand);
     }
     setLinkedOrdersBySales(grouped);
   }
@@ -386,37 +486,90 @@ const FinanceHubPage: React.FC = () => {
     setOrderLinkTarget(rec);
     const cleanName = (rec.customer_name || "").replace(/^\(유\)|^\(주\)|^\(재\)|^\(사\)/g, "").trim();
     setOrderSearch(cleanName);
-    setOrderSelectedIds(new Set((linkedOrdersBySales[rec.id] || []).map(o => o.id)));
+    setOrderSelectedIds(new Set((linkedOrdersBySales[rec.id] || []).map(o => o.key)));
     setShowOrderLinkModal(true);
     void loadOrderCandidates(cleanName);
   }
 
   async function loadOrderCandidates(q: string) {
     setLoadingOrderCandidates(true);
-    const cleanQ = q.trim().replace(/^\(유\)|^\(주\)|^\(재\)|^\(사\)/g, "").trim();
-    let query = supabase.from("tb_orders").select("*").order("created_at", { ascending: false }).limit(100);
-    if (cleanQ) query = query.ilike("customer_name_raw", `%${cleanQ}%`);
-    const { data, error } = await query;
-    if (error) setError(error.message);
-    setOrderCandidates((data || []) as TbOrder[]);
+    setError(null);
+    const cleanQ = q.trim().replace(/^\(유\)|^\(재\)|^\(주\)|^\(사\)/g, "").trim();
+    const [ordRes, caseRes] = await Promise.all([
+      (() => { let query = supabase.from("tb_orders").select("*").order("created_at", { ascending: false }).limit(100);
+        if (cleanQ) query = query.ilike("customer_name_raw", `%${cleanQ}%`); return query; })(),
+      // 매출연결 대상 상담 종류: 타이어/배터리/수출만 (지게차 등은 제외 — sales_record_id 컬럼이 없음)
+      (() => { let query = supabase.from("consultation_cases").select("id,customer_name,created_at,work_type").in("work_type", ["tire","tire_sales","battery","battery_sales","export"]).order("created_at", { ascending: false }).limit(150);
+        if (cleanQ) query = query.ilike("customer_name", `%${cleanQ}%`); return query; })(),
+    ]);
+    if (ordRes.error) setError(ordRes.error.message);
+    const orderCands = ((ordRes.data || []) as TbOrder[]).map(orderRowToCandidate);
+
+    let legacyCands: FH_OrderCandidate[] = [];
+    const cases = (caseRes.data || []) as any[];
+    if (!caseRes.error && cases.length > 0) {
+      const nameMap: Record<number, string> = {}; const createdMap: Record<number, string> = {};
+      cases.forEach(c => { nameMap[c.id] = c.customer_name; createdMap[c.id] = c.created_at; });
+      const tireIds = cases.filter(c => c.work_type === "tire" || c.work_type === "tire_sales").map(c => c.id);
+      const battIds = cases.filter(c => c.work_type === "battery" || c.work_type === "battery_sales").map(c => c.id);
+      const expIds = cases.filter(c => c.work_type === "export").map(c => c.id);
+      const [tireR, battR, expR] = await Promise.all([
+        tireIds.length > 0 ? supabase.from("consultation_tire_details").select("consultation_id,process_stage,process_status,wheel_returned_at,price_to_customer,sales_record_id,tire_size,vehicle_info,vehicle_type").in("consultation_id", tireIds) : Promise.resolve({ data: [], error: null }),
+        battIds.length > 0 ? supabase.from("consultation_battery_details").select("consultation_id,process_stage,sales_record_id,battery_voltage,battery_capacity_ah,battery_vehicle_type,battery_quantity").in("consultation_id", battIds) : Promise.resolve({ data: [], error: null }),
+        expIds.length > 0 ? supabase.from("consultation_export_details").select("consultation_id,process_stage,export_stage,sales_record_id,product_name,destination_country").in("consultation_id", expIds) : Promise.resolve({ data: [], error: null }),
+      ]);
+      const tireCands = ((tireR.data || []) as any[]).map(d => ({ ...tireRowToCandidate(d, nameMap[d.consultation_id] || "거래처 미확인"), created_at: createdMap[d.consultation_id] || "" }));
+      const battCands = ((battR.data || []) as any[]).map(d => ({ ...batteryRowToCandidate(d, nameMap[d.consultation_id] || "거래처 미확인"), created_at: createdMap[d.consultation_id] || "" }));
+      const expCands = ((expR.data || []) as any[]).map(d => ({ ...exportRowToCandidate(d, nameMap[d.consultation_id] || "거래처 미확인"), created_at: createdMap[d.consultation_id] || "" }));
+      legacyCands = [...tireCands, ...battCands, ...expCands];
+      const errs = [(tireR as any).error && `타이어(${(tireR as any).error.message})`, (battR as any).error && `배터리(${(battR as any).error.message})`, (expR as any).error && `수출(${(expR as any).error.message})`].filter(Boolean);
+      if (errs.length > 0) setError("일부 상담 후보 조회 실패 — " + errs.join(", "));
+    }
+    const merged = [...orderCands, ...legacyCands].sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+    setOrderCandidates(merged);
     setLoadingOrderCandidates(false);
   }
 
-  // 체크된 주문은 이 매출건에 연결, 체크 해제된(이전에 연결돼 있던) 주문은 연결 해제
+  // 체크된 주문은 이 매출건에 연결, 체크 해제된(이전에 연결돼 있던) 주문은 연결 해제 — 소스별로 나눠서 각 테이블 업데이트
   async function confirmOrderLink() {
     if (!orderLinkTarget) return;
     setOrderLinkSaving(true); setError(null);
-    const toLink = Array.from(orderSelectedIds);
-    const previouslyLinked = orderCandidates.filter(o => o.sales_record_id === orderLinkTarget.id).map(o => o.id);
-    const toUnlink = previouslyLinked.filter(id => !orderSelectedIds.has(id));
+    const selected = orderCandidates.filter(c => orderSelectedIds.has(c.key));
+    const previouslyLinked = orderCandidates.filter(c => c.sales_record_id === orderLinkTarget.id);
+    const toUnlink = previouslyLinked.filter(c => !orderSelectedIds.has(c.key));
 
-    if (toLink.length > 0) {
-      const { error: linkErr } = await supabase.from("tb_orders").update({ sales_record_id: orderLinkTarget.id }).in("id", toLink);
-      if (linkErr) { setError(linkErr.message); setOrderLinkSaving(false); return; }
+    const bySource = (list: FH_OrderCandidate[], src: FH_OrderCandidate["source"]) => list.filter(c => c.source === src).map(c => c.rawId);
+    const tableFor: Record<FH_OrderCandidate["source"], { table: string; idCol: string }> = {
+      order: { table: "tb_orders", idCol: "id" },
+      tire: { table: "consultation_tire_details", idCol: "consultation_id" },
+      battery: { table: "consultation_battery_details", idCol: "consultation_id" },
+      export: { table: "consultation_export_details", idCol: "consultation_id" },
+    };
+    for (const src of ["order", "tire", "battery", "export"] as const) {
+      const linkIds = bySource(selected, src);
+      if (linkIds.length > 0) {
+        const { table, idCol } = tableFor[src];
+        const { error: linkErr } = await supabase.from(table).update({ sales_record_id: orderLinkTarget.id }).in(idCol, linkIds);
+        if (linkErr) { setError(linkErr.message); setOrderLinkSaving(false); return; }
+        // 매출과 연결되는 순간 해당 상담건의 진행단계도 '계산서발행'으로 동기화
+        if (src === "tire") {
+          const { error: stageErr } = await supabase.from(table).update({ process_stage: "invoiced", process_status: "invoiced" }).in(idCol, linkIds);
+          if (stageErr) setError("연결은 완료됐지만 타이어 진행단계 갱신 실패: " + stageErr.message);
+        } else if (src === "battery") {
+          const { error: stageErr } = await supabase.from(table).update({ process_stage: "invoiced" }).in(idCol, linkIds);
+          if (stageErr) setError("연결은 완료됐지만 배터리 진행단계 갱신 실패: " + stageErr.message);
+        } else if (src === "export") {
+          const { error: stageErr } = await supabase.from(table).update({ process_stage: "invoiced", export_stage: "invoiced" }).in(idCol, linkIds);
+          if (stageErr) setError("연결은 완료됐지만 수출 진행단계 갱신 실패: " + stageErr.message);
+        }
+      }
+      const unlinkIds = bySource(toUnlink, src);
+      if (unlinkIds.length > 0) {
+        const { table, idCol } = tableFor[src];
+        await supabase.from(table).update({ sales_record_id: null }).in(idCol, unlinkIds);
+      }
     }
-    if (toUnlink.length > 0) {
-      await supabase.from("tb_orders").update({ sales_record_id: null }).in("id", toUnlink);
-    }
+
     setShowOrderLinkModal(false); setOrderLinkTarget(null); setOrderSelectedIds(new Set());
     setOrderLinkSaving(false);
     loadAll();
@@ -438,6 +591,42 @@ const FinanceHubPage: React.FC = () => {
     setIncompleteSales((s.data || []) as SalesRecord[]);
     setIncompletePurchases((p.data || []) as PurchaseRecord[]);
     setLoadingIncomplete(false);
+  }
+
+  // 지게차/금융/보험 — 완료·확정 단계인데 매출관리(sales_records)에 없어 보이는 건을 거래처명 매칭으로 근사 판별.
+  // 타이어/배터리처럼 sales_record_id 컬럼이 없어 정확한 연결은 불가능하므로, 표기 차이로 인한 오탐 가능성을
+  // 화면에 명시하고 자동으로 매출을 만들지는 않는다(신규매출 폼 프리필 CTA만 제공).
+  async function loadPendingUnbilled() {
+    setLoadingPending(true);
+    const normalize = (name: string) => (name || "").replace(/^\(유\)|^\(주\)|^\(재\)|^\(사\)/g, "").trim();
+    const billedNames = new Set(allSales.map(s => normalize(s.customer_name)));
+
+    const [forkliftRes, financeRes, insuranceRes] = await Promise.all([
+      supabase.from("consultation_cases").select("id,customer_name,created_at,consultation_forklift_details(process_stage,forklift_ton,forklift_type)").in("work_type", ["forklift", "forklift_sales"]),
+      supabase.from("consultation_cases").select("id,customer_name,created_at,sub_type,consultation_finance_details(finance_stage,finance_company,finance_amount,finance_product)").eq("work_type", "finance").or("sub_type.not.in.(현대CM,태산통운),sub_type.is.null"),
+      supabase.from("consultation_cases").select("id,customer_name,created_at,consultation_insurance_details(policy_issued,insurance_type,insurance_company)").eq("work_type", "registration_insurance"),
+    ]);
+
+    const forklift = ((forkliftRes.data || []) as any[])
+      .filter(c => ["delivery", "invoiced"].includes(c.consultation_forklift_details?.process_stage))
+      .filter(c => !billedNames.has(normalize(c.customer_name)));
+    const finance = ((financeRes.data || []) as any[])
+      .filter(c => c.consultation_finance_details?.finance_stage === "confirmed")
+      .filter(c => !billedNames.has(normalize(c.customer_name)));
+    const insurance = ((insuranceRes.data || []) as any[])
+      .filter(c => c.consultation_insurance_details?.policy_issued)
+      .filter(c => !billedNames.has(normalize(c.customer_name)));
+
+    setPendingUnbilled({ forklift, finance, insurance });
+    setLoadingPending(false);
+  }
+
+  // 미청구 확인대기 카드의 "+ 신규 매출" CTA — 거래처명/종류를 미리 채운 채 기존 매출 폼을 연다
+  function openNewSalesPrefilled(customerName: string, category: string, note: string) {
+    setSalesEditId(null);
+    setSalesForm({ ...EMPTY_SALES_FORM, customer_name: customerName, category, note });
+    setCustomerQuery(customerName);
+    setShowSalesForm(true);
   }
 
   // 인라인 편집 값 변경
@@ -1064,19 +1253,23 @@ const FinanceHubPage: React.FC = () => {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-              {(["sales", "purchases", "incomplete"] as const).map(tab => (
+              {(["sales", "purchases", "incomplete", "pending"] as const).map(tab => (
                 <button key={tab} onClick={() => {
                   setActiveTab(tab);
                   setFilterCategory("전체");
                   setSearchQuery("");
                   setShowUncategorized(false);
                   if (tab === "incomplete") loadIncomplete();
+                  if (tab === "pending") loadPendingUnbilled();
                 }}
                   className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${activeTab === tab ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
                   {tab === "sales" ? `매출 (${sales.length}건)`
                     : tab === "purchases" ? `매입 (${purchases.length}건)`
-                    : <span className={`flex items-center gap-1 ${(incompleteSales.length + incompletePurchases.length) > 0 ? "text-amber-600" : ""}`}>
+                    : tab === "incomplete" ? <span className={`flex items-center gap-1 ${(incompleteSales.length + incompletePurchases.length) > 0 ? "text-amber-600" : ""}`}>
                         ⚠ 보완필요 ({incompleteSales.length + incompletePurchases.length}건)
+                      </span>
+                    : <span className={`flex items-center gap-1 ${(pendingUnbilled.forklift.length + pendingUnbilled.finance.length + pendingUnbilled.insurance.length) > 0 ? "text-blue-600" : ""}`}>
+                        미청구 확인대기 ({pendingUnbilled.forklift.length + pendingUnbilled.finance.length + pendingUnbilled.insurance.length}건)
                       </span>
                   }
                 </button>
@@ -1296,7 +1489,7 @@ const FinanceHubPage: React.FC = () => {
                                   </div>
                                   {(linkedOrdersBySales[r.id]?.length ?? 0) > 0 && (
                                     <p className="text-[10px] text-gray-400 mt-1 max-w-[220px]">
-                                      {linkedOrdersBySales[r.id].map(o => o.customer_name_raw).filter((v,i,a)=>a.indexOf(v)===i).join(", ")}
+                                      {linkedOrdersBySales[r.id].map(o => o.customer_name).filter((v,i,a)=>a.indexOf(v)===i).join(", ")}
                                     </p>
                                   )}
                                 </div>
@@ -1667,6 +1860,58 @@ const FinanceHubPage: React.FC = () => {
             </div>
           )
         )}
+
+        {activeTab === "pending" && (
+          loadingPending ? <LoadingBox /> : (pendingUnbilled.forklift.length + pendingUnbilled.finance.length + pendingUnbilled.insurance.length) === 0 ? (
+            <div className={`${card} flex flex-col items-center justify-center py-16 text-gray-400`}>
+              <PackageCheck className="w-10 h-10 mb-3 text-emerald-300" />
+              <p className="text-sm font-medium">확인이 필요한 미청구 건이 없습니다 🎉</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-700">
+                지게차/금융/보험은 타이어·배터리와 달리 매출건과 직접 연결하는 컬럼이 없어, 거래처명 기준으로만 근사 매칭했습니다.
+                실제로는 매출이 등록되었지만 거래처명 표기가 달라(예: "(주)" 유무) 여기 표시될 수 있습니다 — 클릭 전에 매출 탭에서 먼저 확인해주세요.
+              </div>
+              {([
+                { key: "forklift" as const, label: "🚜 지게차", rows: pendingUnbilled.forklift },
+                { key: "finance" as const, label: "💰 금융", rows: pendingUnbilled.finance },
+                { key: "insurance" as const, label: "🛡 보험", rows: pendingUnbilled.insurance },
+              ]).filter(g => g.rows.length > 0).map(g => (
+                <div key={g.key} className={`${card} overflow-hidden`}>
+                  <div className="px-4 py-3 border-b border-gray-100 bg-blue-50">
+                    <p className="text-sm font-semibold text-blue-700">{g.label} — 완료/확정건 중 미청구 확인대기 ({g.rows.length}건)</p>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {g.rows.map((c: any) => {
+                      const detail = g.key === "forklift"
+                        ? [c.consultation_forklift_details?.forklift_ton, c.consultation_forklift_details?.forklift_type].filter(Boolean).join(" / ")
+                        : g.key === "finance"
+                        ? [c.consultation_finance_details?.finance_company, c.consultation_finance_details?.finance_product, c.consultation_finance_details?.finance_amount ? `${Number(c.consultation_finance_details.finance_amount).toLocaleString()}만원` : null].filter(Boolean).join(" / ")
+                        : [c.consultation_insurance_details?.insurance_company, c.consultation_insurance_details?.insurance_type].filter(Boolean).join(" / ");
+                      const category = g.key === "forklift" ? "지게차렌탈" : g.key === "finance" ? "기타" : "기타";
+                      return (
+                        <div key={c.id} className="px-4 py-3 flex flex-wrap items-center gap-3 hover:bg-blue-50/20 transition-colors">
+                          <div className="min-w-[160px]">
+                            <p className="text-sm font-semibold text-gray-900">{c.customer_name}</p>
+                            <p className="text-xs text-gray-400">{c.created_at ? new Date(c.created_at).toLocaleDateString("ko-KR") : "-"}</p>
+                          </div>
+                          <p className="text-xs text-gray-500 truncate flex-1">{detail || "(상세 미입력)"}</p>
+                          <button
+                            onClick={() => openNewSalesPrefilled(c.customer_name, category, `상담건 #${c.id} (${g.label.replace(/^\S+\s/, "")}) — 미청구 확인대기 탭에서 등록`)}
+                            className="text-xs px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 transition-all font-semibold"
+                          >
+                            + 신규 매출
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        )}
       </div>
       {showSalesForm && (
         <Modal title={salesEditId ? "매출 수정" : "새 매출 입력"} onClose={() => setShowSalesForm(false)}>
@@ -1886,18 +2131,19 @@ const FinanceHubPage: React.FC = () => {
               ) : orderCandidates.length === 0 ? (
                 <div className="py-8 text-center text-sm text-gray-400">검색된 진흥주문이 없습니다.</div>
               ) : orderCandidates.map(o => {
-                const checked = orderSelectedIds.has(o.id);
+                const checked = orderSelectedIds.has(o.key);
                 const linkedElsewhere = o.sales_record_id != null && o.sales_record_id !== orderLinkTarget.id;
                 return (
-                  <label key={o.id} className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${linkedElsewhere ? "opacity-50 cursor-not-allowed" : "cursor-pointer"} ${checked ? "bg-blue-50" : "hover:bg-gray-50"}`}>
-                    <div onClick={e => { e.preventDefault(); if (linkedElsewhere) return; setOrderSelectedIds(prev => { const n = new Set(prev); checked ? n.delete(o.id) : n.add(o.id); return n; }); }}
+                  <label key={o.key} className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${linkedElsewhere ? "opacity-50 cursor-not-allowed" : "cursor-pointer"} ${checked ? "bg-blue-50" : "hover:bg-gray-50"}`}>
+                    <div onClick={e => { e.preventDefault(); if (linkedElsewhere) return; setOrderSelectedIds(prev => { const n = new Set(prev); checked ? n.delete(o.key) : n.add(o.key); return n; }); }}
                       className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 ${checked ? "bg-blue-500 border-blue-500" : "bg-white border-gray-300"}`}>
                       {checked && <Check className="w-3 h-3 text-white" />}
                     </div>
-                    <span className="text-xs text-gray-400 w-32 shrink-0">{new Date(o.created_at).toLocaleDateString("ko-KR")}</span>
-                    <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">{o.customer_name_raw || "거래처 미입력"}</span>
-                    <span className="text-xs text-gray-500 truncate flex-1">{[o.product_type, o.product_spec].filter(Boolean).join(" / ") || "-"}{o.quantity ? ` (${o.quantity}개)` : ""}</span>
-                    <span className="text-[11px] px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-600 shrink-0">{orderStageLabel(o)}</span>
+                    <span className="text-xs text-gray-400 w-32 shrink-0">{o.created_at ? new Date(o.created_at).toLocaleDateString("ko-KR") : "-"}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-slate-100 text-slate-500 shrink-0">{o.source === "order" ? "진흥주문" : o.source === "tire" ? "상담(타이어)" : o.source === "battery" ? "상담(배터리)" : "상담(수출)"}</span>
+                    <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">{o.customer_name}</span>
+                    <span className="text-xs text-gray-500 truncate flex-1">{o.product_detail}</span>
+                    <span className="text-[11px] px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-600 shrink-0">{o.status_label}</span>
                     {linkedElsewhere && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-600 font-medium shrink-0">다른 매출건에 연결됨</span>}
                     {o.price_to_customer != null && <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">{fmt(o.price_to_customer)}</span>}
                   </label>

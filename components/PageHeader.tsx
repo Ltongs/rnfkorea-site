@@ -694,6 +694,16 @@ export default function PageHeader() {
                       견적서 작성
                     </button>
                   )}
+
+                  {isAdminLevel && (
+                    <button
+                      type="button"
+                      className={dropItem}
+                      onClick={() => goWorkInternalOnly("/work/manual")}
+                    >
+                      업무 매뉴얼
+                    </button>
+                  )}
                 </div>
               </>
             )}

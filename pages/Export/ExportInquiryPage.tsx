@@ -1,5 +1,5 @@
 // pages/Export/ExportInquiryPage.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { Building2, CheckCircle2, Globe, Loader2, Mail, Package, Phone, User } from "lucide-react";
 import { supabase } from "../../lib/supabase";
@@ -64,15 +64,6 @@ export default function ExportInquiryPage() {
   const [submitted, setSubmitted] = useState<null | { at: string; ref: string }>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const refCode = useMemo(() => {
-    const d = new Date();
-    const y = String(d.getFullYear()).slice(2);
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    const rand = Math.random().toString(36).slice(2, 7).toUpperCase();
-    return `EX-${y}${m}${day}-${rand}`;
-  }, [submitted]);
-
   function update<K extends keyof InquiryForm>(key: K, value: InquiryForm[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
     setErrors((prev) => {
@@ -107,7 +98,10 @@ export default function ExportInquiryPage() {
     setSubmitting(true);
     try {
       const now = new Date();
-      const ref = refCode;
+      // 회사 전체가 공유하는 통합 번호(RNF-YYMM-NNNNNN) — 접수 확정 시점에만 발급받는다
+      const { data: refData, error: refErr } = await supabase.rpc("next_rnf_number");
+      if (refErr || !refData) throw refErr || new Error("접수번호 발급 실패");
+      const ref = refData as string;
 
       // Supabase에 저장
       const { error } = await supabase.from("export_inquiries").insert({

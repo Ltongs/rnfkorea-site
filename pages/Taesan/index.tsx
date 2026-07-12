@@ -60,6 +60,7 @@ type TaesanTask = {
   created_at?: string;
   closed_at?: string | null;
   phone_scrubbed_at?: string | null;
+  case_no?: string | null;
 };
 
 // ─── 유틸 ─────────────────────────────────────────────────
@@ -1051,6 +1052,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
   }, [rows, statsMonth]);
 
   // 월내 순번 맵: 같은 연월의 건들을 created_at 오름차순으로 정렬해 순번 부여
+  // 케이스번호 맵 — 신규 건은 접수 시 발급받은 통합 번호(case_no)를 그대로 쓰고,
+  // 그 이전에 만들어져 case_no가 없는 과거 건만 기존 방식(연월 내 순번)으로 계산해 보여준다.
   const caseNoMap = useMemo(() => {
     const map: Record<string, string> = {};
     const sorted = [...rows].sort((a, b) =>
@@ -1058,6 +1061,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     );
     const monthCount: Record<string, number> = {};
     sorted.forEach((r) => {
+      if (r.case_no) { map[String(r.id)] = r.case_no; return; }
       const d = new Date(r.created_at ?? 0);
       const ym = d.getFullYear().toString() + String(d.getMonth() + 1).padStart(2, "0");
       monthCount[ym] = (monthCount[ym] ?? 0) + 1;
@@ -1083,7 +1087,13 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
     setSaving(true); setErr("");
     try {
+      // 회사 전체가 공유하는 통합 번호(RNF-YYMM-NNNNNN) — 접수 시점에 발급받아 그대로 저장한다.
+      const { data: caseNoData, error: caseNoErr } = await supabase.rpc("next_rnf_number");
+      if (caseNoErr || !caseNoData) throw caseNoErr || new Error("케이스번호 발급 실패");
+      const newCaseNo = caseNoData as string;
+
       const payload = {
+        case_no:                 newCaseNo,
         customer_type:           customerType,
         customer_name:           customerName.trim(),
         customer_phone:          onlyDigits(customerPhone) || null,
@@ -1112,15 +1122,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         .select()
         .single();
       if (error) throw error;
-
-      // 월내 순번 계산 (새 건 포함 후 fetchRows 전이므로 임시 계산)
-      const now = new Date();
-      const ym = now.getFullYear().toString() + String(now.getMonth() + 1).padStart(2, "0");
-      const monthRows = rows.filter((r) => {
-        const d = new Date(r.created_at ?? 0);
-        return d.getFullYear().toString() + String(d.getMonth() + 1).padStart(2, "0") === ym;
-      });
-      const newCaseNo = `${ym}-${String(monthRows.length + 1).padStart(3, "0")}`;
 
       // 카카오 알림 (비동기, 실패해도 업무 영향 없음)
       sendKakaoNotify({
