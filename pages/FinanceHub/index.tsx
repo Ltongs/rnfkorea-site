@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import {
   Plus, Search, Check, X, Pencil, Trash2, Loader2,
   PackageCheck, AlertCircle, Upload, FileText, Link2,
-  ListChecks, FileSpreadsheet,
+  ListChecks, FileSpreadsheet, BarChart3,
 } from "lucide-react";
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
@@ -240,6 +241,7 @@ const btnGhost = "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-x
 
 // ── 컴포넌트 ─────────────────────────────────────────────────────────────────
 const FinanceHubPage: React.FC = () => {
+  const navigate = useNavigate();
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth() + 1);
@@ -530,12 +532,16 @@ const FinanceHubPage: React.FC = () => {
   }
 
   // ── KPI 계산 ──────────────────────────────────────────────────────────────
+  // "매출" 공식 정의 = 세금계산서 발행 기준(tax_invoice=true). 실적관리/대시보드/주간리뷰와 통일.
+  // 목록(sales/filteredSales)은 미발행분도 계속 그대로 보여줘야 하므로(관리용 원장이라 숨기면 안 됨)
+  // 이 useMemo 안에서만 발행분으로 좁혀 KPI 헤더 숫자를 계산한다.
   const kpi = useMemo(() => {
-    const totalRevenue = sales.reduce((s, r) => s + (r.total_revenue || 0), 0);
+    const invoicedSales = sales.filter(r => r.tax_invoice);
+    const totalRevenue = invoicedSales.reduce((s, r) => s + (r.total_revenue || 0), 0);
     const totalCost = purchases.reduce((s, r) => s + (r.total_cost || 0), 0);
-    const totalMargin = sales.reduce((s, r) => s + (r.margin || 0), 0);
+    const totalMargin = invoicedSales.reduce((s, r) => s + (r.margin || 0), 0);
     const netProfit = totalRevenue - totalCost;
-    const unpaidSales = sales.filter(r => !r.payment_confirmed).reduce((s, r) => s + (r.total_revenue || 0), 0);
+    const unpaidSales = invoicedSales.filter(r => !r.payment_confirmed).reduce((s, r) => s + (r.total_revenue || 0), 0);
     const unpaidPurch = purchases.filter(r => !r.payment_confirmed).reduce((s, r) => s + (r.total_cost || 0), 0);
     const profitRate = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
     return { totalRevenue, totalCost, totalMargin, netProfit, unpaidSales, unpaidPurch, profitRate };
@@ -971,6 +977,14 @@ const FinanceHubPage: React.FC = () => {
               <h1 className="mt-1 text-2xl md:text-3xl font-semibold text-white">매출 / 매입 관리</h1>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <button onClick={() => navigate("/work/weekly-review")}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-orange-400/50 bg-orange-500/10 text-orange-300 text-xs font-semibold hover:bg-orange-500/20 transition-colors">
+                <BarChart3 className="w-4 h-4" /> 주간 리뷰
+              </button>
+              <button onClick={() => navigate("/rental-os")}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-white/20 bg-white/10 text-white text-xs font-semibold hover:bg-white/20 transition-colors">
+                🚐 Rental_O/S
+              </button>
               {/* 기간 선택 */}
               <div className="flex rounded-xl overflow-hidden border border-white/20">
                 {PERIODS.map(p => (
@@ -1024,7 +1038,7 @@ const FinanceHubPage: React.FC = () => {
               </div>
             ))}
           </div>
-          <p className="mt-2 text-[11px] text-white/30">{periodLabel} 기준</p>
+          <p className="mt-2 text-[11px] text-white/30">{periodLabel} 기준 · 매출/이익은 세금계산서 발행분만 집계 (아래 목록은 미발행분 포함 전체)</p>
         </div>
       </section>
 

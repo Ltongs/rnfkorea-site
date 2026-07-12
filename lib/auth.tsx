@@ -22,9 +22,10 @@ type AuthContextType = {
   isInsuranceManager: boolean;
   isHyundaiCM: boolean;   // 현대건설기계 (배성구 팀장)
   isNhCapital: boolean;   // 농협캐피탈 (강신규 소장)
-  isNhCapitalStaff: boolean; // NH캐피탈 직원 (조회 전용, NH캐피탈 건만)
+  isNhCapitalStaff: boolean; // NH캐피탈 직원 (NH캐피탈 건만, 상태변경·다운로드는 가능하나 서류 업로드는 불가)
   isInsAI: boolean;       // AI 비서 (Ins) 전용 (everyasset.fc@gmail.com)
   isTaesan: boolean;      // 태산통운 (yj565012@naver.com) - 태산통운 탭 전용, 신규등록/자료첨부만 가능
+  isRentalOS: boolean;    // Rental_O/S (kohd1222@naver.com) - 렌탈 딜 아웃소싱 페이지 전용
   isInternal: boolean;
 
   // page permissions
@@ -61,11 +62,12 @@ function getRoleFlags(emailRaw?: string | null) {
   const isHyundaiCM        = email === "p2001103@hanmail.net";   // 현대건설기계 배성구 팀장
   const isNhCapital        = email === "allbar7555@naver.com"      // 농협캐피탈 강신규 소장
                           || email === "yongbaek_jo@orix.co.kr";  // ORIX 조용백
-  const isNhCapitalStaff   = email === "ehddhks1115@nhcapital.co.kr"; // NH캐피탈 직원 (조회 전용)
+  const isNhCapitalStaff   = email === "ehddhks1115@nhcapital.co.kr"; // NH캐피탈 직원 (상태변경·다운로드 가능, 업로드 불가)
   const isInsAI            = email === "everyasset.fc@gmail.com"; // AI 비서 (Ins) 전용
   const isTaesan            = email === "yj565012@naver.com";      // 태산통운 (신규등록완료) - 태산통운 탭 전용
+  const isRentalOS          = email === "kohd1222@naver.com";      // Rental_O/S (렌탈 딜 아웃소싱) 전용
 
-  // isHyundaiCM / isNhCapital / isTaesan 은 각자 전용 페이지만 볼 수 있으므로
+  // isHyundaiCM / isNhCapital / isTaesan / isRentalOS 는 각자 전용 페이지만 볼 수 있으므로
   // isInternal(나르미 공통 접근)에는 포함하지 않음
   const isInternal = isAdmin || isSubAdmin || isNarumi || isLotte || isInsuranceManager || isInsAI;
 
@@ -81,6 +83,7 @@ function getRoleFlags(emailRaw?: string | null) {
     isNhCapitalStaff,
     isInsAI,
     isTaesan,
+    isRentalOS,
     isInternal,
   };
 }
@@ -97,6 +100,7 @@ function getPermissions(emailRaw?: string | null) {
     isNhCapitalStaff,
     isInsAI,
     isTaesan,
+    isRentalOS,
     isInternal,
   } = getRoleFlags(emailRaw);
 
@@ -113,13 +117,14 @@ function getPermissions(emailRaw?: string | null) {
     isNhCapitalStaff,
     isInsAI,
     isTaesan,
+    isRentalOS,
     isInternal,
 
     // 참고: 아래 canXxx 값들은 상담관리/나르미/보험 등 "공용" 페이지에서 쓰는 값입니다.
-    // 현대CM 페이지와 마찬가지로, 태산통운 페이지(/taesan)는 이 공용 플래그를 쓰지 않고
-    // 컴포넌트 내부에서 isTaesan role flag를 직접 참조해 자체 권한(신규등록 O,
-    // 상태변경 X, 삭제 X, 자료첨부/다운로드 O)을 계산합니다. 따라서 canCreate 등에
-    // isTaesan을 추가하지 않았습니다 (다른 공용 페이지에 의도치 않은 권한이 새는 것을 방지).
+    // 현대CM 페이지와 마찬가지로, 태산통운 페이지(/taesan)와 Rental_O/S 페이지(/rental-os)는
+    // 이 공용 플래그를 쓰지 않고 컴포넌트 내부에서 isTaesan/isRentalOS role flag를 직접
+    // 참조해 자체 권한을 계산합니다. 따라서 canCreate 등에 isTaesan/isRentalOS를 추가하지
+    // 않았습니다 (다른 공용 페이지에 의도치 않은 권한이 새는 것을 방지).
     canViewAll:          isInternal,
     canViewHyundaiCM:    isInternal || isHyundaiCM || isNhCapital || isNhCapitalStaff,
     canCreate:           isAdminLevel || isNarumi || isInsuranceManager || isHyundaiCM || isNhCapital || isInsAI,
@@ -128,8 +133,8 @@ function getPermissions(emailRaw?: string | null) {
     canChangeStatus:     isAdminLevel || isInsuranceManager || isNhCapital || isNhCapitalStaff,
     canEditMemo:         isAdminLevel || isInsuranceManager || isNhCapital,
     canUploadVehicleDoc: isAdminLevel || isInsuranceManager || isNhCapital,
-    canUploadVehicleRegDoc: isHyundaiCM || isAdminLevel || isNhCapital || isNhCapitalStaff,
-    canUploadTaxInvoice: isHyundaiCM || isAdminLevel || isNhCapital || isNhCapitalStaff,  // 세금계산서: isHyundaiCM + admin + NH캐피탈
+    canUploadVehicleRegDoc: isHyundaiCM || isAdminLevel || isNhCapital,  // NH캐피탈 직원(isNhCapitalStaff)은 다운로드만 가능, 업로드 불가
+    canUploadTaxInvoice: isHyundaiCM || isAdminLevel || isNhCapital,  // 세금계산서: isHyundaiCM + admin + NH캐피탈 (직원 계정 제외)
   };
 }
 
@@ -216,6 +221,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isNhCapitalStaff:   permissionState.isNhCapitalStaff,
       isInsAI:            permissionState.isInsAI,
       isTaesan:           permissionState.isTaesan,
+      isRentalOS:         permissionState.isRentalOS,
       isInternal:         permissionState.isInternal,
 
       canViewAll:         permissionState.canViewAll,

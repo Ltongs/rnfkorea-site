@@ -93,7 +93,7 @@ function calcMobileMenuStyle(btnEl: HTMLButtonElement | null): MobileMenuStyle {
 export default function PageHeader() {
   const { pathname } = useLocation();
   const nav = useNavigate();
-  const { user, canViewAll, isAdmin, isSubAdmin, isNarumi, isLotte, isInsuranceManager, isHyundaiCM, isNhCapital, isNhCapitalStaff, isInsAI, isTaesan, logout } = useAuth() as any;
+  const { user, canViewAll, isAdmin, isSubAdmin, isNarumi, isLotte, isInsuranceManager, isHyundaiCM, isNhCapital, isNhCapitalStaff, isInsAI, isTaesan, isRentalOS, logout } = useAuth() as any;
   const isAdminLevel = isAdmin || isSubAdmin;
 
   // 참고: PWA 앱은 manifest.json의 start_url(/work/secretary 등)로 곧장 진입하며,
@@ -287,6 +287,12 @@ export default function PageHeader() {
     // 태산통운: 항상 태산통운 로그인으로 (RouteGuard가 권한 처리)
     if (path === "/taesan") {
       nav("/taesan/login");
+      return;
+    }
+
+    // Rental_O/S: 항상 Rental_O/S 로그인으로 (RouteGuard가 권한 처리)
+    if (path === "/rental-os") {
+      nav("/rental-os/login");
       return;
     }
 
@@ -591,6 +597,16 @@ export default function PageHeader() {
                     </button>
                   )}
 
+                  {(isAdminLevel || isRentalOS || !user) && (
+                    <button
+                      type="button"
+                      className={dropItem}
+                      onClick={() => goWorkInternalOnly("/rental-os")}
+                    >
+                      Rental_O/S업무
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     className={dropItem}
@@ -626,6 +642,26 @@ export default function PageHeader() {
                       onClick={() => goWorkInternalOnly("/work/dashboard")}
                     >
                       운영대시보드
+                    </button>
+                  )}
+
+                  {isAdminLevel && (
+                    <button
+                      type="button"
+                      className={dropItem}
+                      onClick={() => goWorkInternalOnly("/work/call-management")}
+                    >
+                      상담관리
+                    </button>
+                  )}
+
+                  {isAdminLevel && (
+                    <button
+                      type="button"
+                      className={dropItem}
+                      onClick={() => goWorkInternalOnly("/work/weekly-review")}
+                    >
+                      주간리뷰
                     </button>
                   )}
 

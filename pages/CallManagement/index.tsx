@@ -2307,6 +2307,18 @@ const CallManagementPage: React.FC = () => {
     if (targetId) setPendingOpenId(targetId);
   }, [location.search]);
 
+  // AI비서 통합상담 탭 등 외부에서 ?workType=battery_sales 형태로 들어오면 신규 등록 탭을
+  // 해당 업무유형으로 미리 선택해둔다 (예: pages/work/QuotationPage.tsx의 ?type= 패턴과 동일).
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const wt = params.get("workType");
+    const validTypes: WorkType[] = ["registration_insurance", "tire_sales", "finance", "forklift_sales", "battery_sales", "export"];
+    if (wt && (validTypes as string[]).includes(wt)) {
+      setWorkType(wt as WorkType);
+      setTab("new");
+    }
+  }, [location.search]);
+
   useEffect(() => {
     if (user && canAccessConsulting) {
       fetchConsultations();
@@ -2620,8 +2632,8 @@ const CallManagementPage: React.FC = () => {
       customer_name: customerName.trim(),
       phone: phone.trim(),
       telecom_provider: telecomProvider || null,
-      company_name: null,
-      region: null,
+      company_name: companyName.trim() || null,
+      region: region.trim() || null,
       work_type: workType,
       sub_type: subType || null,
       status: isClosing ? "closed" : editingCaseId ? status || "new" : "new",
@@ -2707,7 +2719,7 @@ const CallManagementPage: React.FC = () => {
             vehicle_use: insuranceVehicleUse || null,
             insurance_request: insuranceRequest.trim() || null,
             insurance_type: insuranceType || null,
-            job: null,
+            job: insuranceJob.trim() || null,
             insurance_company: insuranceCompany || null,
             insurance_start_date: insuranceStartDate || null,
             insurance_end_date: insuranceEndDate || null,

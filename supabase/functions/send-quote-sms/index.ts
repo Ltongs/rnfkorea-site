@@ -25,7 +25,7 @@ serve(async (req) => {
       recipientPhone,   // 수신 번호 (010-xxxx-xxxx)
       recipientName,    // 수신인 이름 (선택)
       imageBase64,      // data:image/jpeg;base64,... 또는 순수 base64
-      quoteType,        // 'battery' | 'forklift' | 'installment'
+      quoteType,        // 'battery' | 'forklift' | 'installment' | 'purchase'
     } = await req.json();
 
     if (!recipientPhone || !imageBase64) {
@@ -54,6 +54,7 @@ serve(async (req) => {
       battery:     "배터리",
       forklift:    "지게차",
       installment: "할부",
+      purchase:    "발주서",
     };
     const label = typeLabel[quoteType ?? ""] ?? "견적서";
 

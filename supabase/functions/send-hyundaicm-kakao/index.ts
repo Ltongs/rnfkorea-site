@@ -1369,6 +1369,23 @@ serve(async (req) => {
     const sbKey = Deno.env.get("APP_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const db = createClient(sbUrl, sbKey);
 
+    // ── 업무일(평일 + 공휴일 아님) 판정 헬퍼 ──────────────────────
+    // kr_holidays 테이블에 없는 미래 연도는 주말 판정만 적용됨(매년 초 다음 해 공휴일 추가 필요).
+    const kstDateStr = (d: Date) => {
+      const k = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+      return `${k.getUTCFullYear()}-${String(k.getUTCMonth() + 1).padStart(2, "0")}-${String(k.getUTCDate()).padStart(2, "0")}`;
+    };
+    const isWeekendKST = (d: Date) => {
+      const k = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+      const day = k.getUTCDay(); // 0=일, 6=토
+      return day === 0 || day === 6;
+    };
+    const isHolidayKST = async (d: Date) => {
+      const { data } = await db.from("kr_holidays").select("holiday_date").eq("holiday_date", kstDateStr(d)).maybeSingle();
+      return !!data;
+    };
+    const isBusinessDay = async (d: Date) => !isWeekendKST(d) && !(await isHolidayKST(d));
+
     // ── 진흥 알림톡 실제 발송 헬퍼 (flush_queue에서도 재사용) ────
     const sendJinheungNow = async (q: Record<string, string>) => {
       q.orderNo = await formatOrderNo(q.orderNo);
@@ -1421,8 +1438,15 @@ serve(async (req) => {
       }
     };
 
-    // ── flush_queue: pg_cron이 09:00 KST에 호출 → 큐 일괄 발송 ──
+    // ── flush_queue: pg_cron이 매일 09:00 KST에 호출 → 큐 일괄 발송 ──
+    // 단, 오늘이 주말/공휴일이면 발송하지 않고 큐에 그대로 남겨둠(다음 영업일 09:00에 재시도).
     if (body.type === "flush_queue") {
+      if (!(await isBusinessDay(new Date()))) {
+        return new Response(
+          JSON.stringify({ flushed: 0, message: "오늘은 영업일이 아니라 다음 영업일 09:00에 발송됩니다." }),
+          { headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+        );
+      }
       const { data: items, error } = await db
         .from("pending_kakao_queue")
         .select("*")
@@ -1488,13 +1512,16 @@ serve(async (req) => {
       );
     }
 
-    // ── 업무시간 체크 (KST 09:00~19:00 외 → 큐에 저장) ─────────
-    // 모든 타입(진흥 발주·휠반납·HCM·나르미) 동일 적용
+    // ── 업무시간 체크 (KST 09:00~19:00 외, 또는 주말/공휴일 → 큐에 저장) ─
+    // 모든 타입(진흥 발주·휠반납·HCM·나르미) 동일 적용. 큐는 다음 영업일 09:00에
+    // flush_queue(pg_cron, 매일 09:00 KST 호출)가 업무일 여부를 다시 확인한 뒤 발송한다.
     const nowKST  = new Date(Date.now() + 9 * 60 * 60 * 1000);
     const hourKST = nowKST.getUTCHours(); // KST 기준 시각
-    const isOffHours = hourKST >= 19 || hourKST < 9; // 19시~익일 09시 보류
+    const isOffHours   = hourKST >= 19 || hourKST < 9; // 19시~익일 09시 보류
+    const isNonBizDay  = !(await isBusinessDay(new Date()));
+    const shouldQueue  = isOffHours || isNonBizDay;
 
-    if (isOffHours) {
+    if (shouldQueue) {
       const { error: qErr } = await db
         .from("pending_kakao_queue")
         .insert({ payload: body });
@@ -1503,10 +1530,10 @@ serve(async (req) => {
         console.error("[큐 저장 실패]:", qErr.message);
         // 큐 저장 실패 시 아래 즉시 발송으로 fall-through
       } else {
-        const sendAt = `${nowKST.getUTCFullYear()}-${String(nowKST.getUTCMonth()+1).padStart(2,"0")}-${String(nowKST.getUTCDate()).padStart(2,"0")} 09:00 KST`;
-        console.log(`[큐 저장] type=${body.type} → ${sendAt} 발송 예정`);
+        const reason = isNonBizDay ? "주말/공휴일" : "업무시간 외";
+        console.log(`[큐 저장] type=${body.type} (${reason}) → 다음 영업일 09:00 KST 발송 예정`);
         return new Response(
-          JSON.stringify({ queued: true, send_at: sendAt }),
+          JSON.stringify({ queued: true, reason, send_at: "다음 영업일 09:00 KST" }),
           { headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
         );
       }

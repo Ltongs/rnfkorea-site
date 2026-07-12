@@ -32,6 +32,7 @@ type NarumiTask = {
   customer_name?: string | null;
   created_at?: string;
   vehicle_doc_path?: string | null;
+  vehicle_doc_uploaded_at?: string | null;
   manufacture_doc_path?: string | null;
   customer_phone?: string | null;
   customer_phone_set_at?: string | null;
@@ -1172,6 +1173,7 @@ export default function NarumiPage() {
         .from("narumi_tasks")
         .update({
           vehicle_doc_path: path,
+          vehicle_doc_uploaded_at: new Date().toISOString(),
           manufacture_doc_path: null,
           status: nextStatus,
         })
@@ -1483,8 +1485,8 @@ VIN: ${nextVin}`);
         </div>
         <div className="flex items-center gap-1.5">
           <button type="button" onClick={()=>navigate("/work/secretary")}
-            className="inline-flex items-center px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-medium hover:border-gray-300 transition-all">
-            ← AI비서로
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-semibold hover:border-gray-300 hover:text-gray-700 transition-all">
+            ← AI비서
           </button>
           <button type="button" onClick={fetchRows}
             className="inline-flex items-center px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-medium hover:border-gray-300 transition-all">
@@ -1511,7 +1513,7 @@ VIN: ${nextVin}`);
           <p>* 고객명/전화번호는 입력 후 {UI_MASK_AFTER_HOURS}시간 경과 시 화면에서 마스킹됩니다.</p>
           <p>* 고객명은 전체 마스킹, 고객 전화번호는 뒷 4자리가 마스킹됩니다.</p>
           <p>* 고객 전화번호는 입력 후 {DB_SCRUB_AFTER_HOURS}시간(5일) 경과 시 DB에서 뒷 4자리가 영구 마스킹(삭제)됩니다.</p>
-          <p>* 차량등록증 업로드 완료 건은 일반 사용자는 최근 {HIDE_UPLOADED_AFTER_DAYS_FOR_NON_ADMIN}일 이내만 표시됩니다.</p>
+          <p>* 차량등록증 업로드 완료 건은 일반 사용자는 최근 {HIDE_UPLOADED_AFTER_DAYS_FOR_NON_ADMIN}일 이내만 표시되며, 업로드 후 {HIDE_UPLOADED_AFTER_DAYS_FOR_NON_ADMIN}일이 지나면 파일이 실제로 삭제됩니다.</p>
         </div>
 
         {/* ── 요약 뱃지 ── */}

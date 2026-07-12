@@ -1,6 +1,6 @@
 // pages/Export/ExportShopPage.tsx
 import React, { useCallback, useEffect, useMemo, useState, createContext, useContext } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import { Loader2, Plus, Settings } from "lucide-react";
 import { supabase } from "../../lib/supabase";
@@ -720,7 +720,10 @@ const ExportShopPage: React.FC = () => {
   const navigate = useNavigate();
   const canManage = isHyundaiCM || isAdmin || isSubAdmin;
 
-  const [filter, setFilter] = useState<Filter>("all");
+  const [searchParams] = useSearchParams();
+  const sharedListingId = searchParams.get("id"); // 공유 링크(?id=)로 들어온 특정 매물
+
+  const [filter, setFilter] = useState<Filter>(sharedListingId ? "excavator" : "all");
   const [rows, setRows] = useState<InventoryCsvRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [errMsg, setErrMsg] = useState<string>("");
@@ -772,6 +775,20 @@ const ExportShopPage: React.FC = () => {
     })();
     return () => { alive = false; };
   }, []);
+
+  // 공유 링크(?id=)로 들어온 경우 해당 매물로 스크롤 + 하이라이트
+  useEffect(() => {
+    if (!sharedListingId || dbLoading) return;
+    if (!dbListings.some((l) => l.id === sharedListingId)) return;
+    const el = document.getElementById(`listing-${sharedListingId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("ring-4", "ring-orange-400", "ring-offset-2", "rounded-2xl");
+    const t = setTimeout(() => {
+      el.classList.remove("ring-4", "ring-orange-400", "ring-offset-2", "rounded-2xl");
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [sharedListingId, dbLoading, dbListings]);
 
   const inventory: InventoryItem[] = useMemo(() => {
     return rows.map((r) => {
@@ -1072,7 +1089,7 @@ const ExportShopPage: React.FC = () => {
                   {!dbLoading && dbListings.length > 0 && (
                     <ul className="grid grid-cols-1 md:grid-cols-3 gap-6 list-none p-0">
                       {dbListings.map((item) => (
-                        <li key={item.id}>
+                        <li key={item.id} id={`listing-${item.id}`}>
                           <DbExcavatorCard item={item} />
                         </li>
                       ))}

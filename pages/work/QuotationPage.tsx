@@ -167,6 +167,11 @@ function calcAmortization(p:number, annualRate:number, months:number, startYM:st
   return { payment:Math.round(payment), rows };
 }
 
+// 한 페이지에 맞춰 앞쪽 회차를 최대한 보여주고 마지막 회차는 항상 표시, 그 사이만 줄임표(null)로 축약
+function pickDisplayRows(rows:any[], head=24, tail=4) {
+  return rows.length<=head+tail ? rows : [...rows.slice(0,head), null, ...rows.slice(rows.length-tail)];
+}
+
 // ─── 공통 UI ────────────────────────────────────────────────
 const Label = ({children}:{children:React.ReactNode}) =>
   <label className="block text-xs font-medium text-gray-600 mb-1">{children}</label>;
@@ -702,10 +707,7 @@ export default function QuotationPage() {
   const [history, setHistory]           = useState<HistoryRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  const batteryPreviewRef    = useRef<HTMLDivElement>(null);
-  const forkliftPreviewRef   = useRef<HTMLDivElement>(null);
   const installmentPreviewRef= useRef<HTMLDivElement>(null);
-  const purchasePreviewRef   = useRef<HTMLDivElement>(null);
 
   const flash = (m:string) => { setMsg(m); setTimeout(()=>setMsg(''),5000); };
 
@@ -733,7 +735,23 @@ export default function QuotationPage() {
       }));
       switchTab('forklift');
     } else if (type === 'installment') {
-      setIff(prev => ({ ...prev, ...baseInfo }));
+      const notes = row.notes ?? [];
+      const get = (key:string) => { const n=notes.find((s:string)=>s.startsWith(key+':')); return n?n.slice(key.length+1).replace(/원$/,'').replace(/[,\s]/g,''):''; };
+      const items = row.items ?? [];
+      // 거치기간/할부기간을 분리 저장한 신규 이력, 없으면 구버전(총 기간만 저장) 폴백
+      const gracePeriod = get('거치기간').replace(/개월$/,'');
+      const installmentMonths = get('할부기간').replace(/개월$/,'') || get('기간').replace(/개월$/,'');
+      setIff(prev => ({
+        ...prev, ...baseInfo,
+        principal:       get('할부원금') || (items[0]?.price?String(items[0].price):''),
+        annualRate:      get('연이율').replace(/%$/,'') || prev.annualRate,
+        gracePeriod:     gracePeriod || '0',
+        installmentMonths: installmentMonths || prev.installmentMonths,
+        financeCompany:  get('금융사') || prev.financeCompany,
+        itemName:        items[0]?.name || prev.itemName,
+        itemSpec:        items[0]?.spec || prev.itemSpec,
+        carPrice:        items[0]?.price?String(items[0].price):'',
+      }));
       switchTab('installment');
     } else if (type === 'purchase') {
       setPf(prev => ({
@@ -759,7 +777,20 @@ export default function QuotationPage() {
       // 할부는 간단한 요약 미리보기
       const p2=n0(iff.principal),r=n0(iff.annualRate),gp=n0(iff.gracePeriod),im=n0(iff.installmentMonths);
       if(p2&&r&&im){
-        const{payment}=calcAmortization(p2,r,gp+im,iff.startYM,gp);
+        const{payment,rows}=calcAmortization(p2,r,gp+im,iff.startYM,gp);
+        const fmtN=(n:number)=>Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,',');
+        const shownRows = pickDisplayRows(rows);
+        const tRows = shownRows.map((row:any)=> row===null
+          ? `<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:4px 0">⋯</td></tr>`
+          : `<tr class="${row.principalPmt===0?'grace':''}">
+              <td style="text-align:center;padding:5px 4px;border-bottom:1px solid #f1f5f9">${row.no}</td>
+              <td style="text-align:center;padding:5px 4px;border-bottom:1px solid #f1f5f9">${row.date}</td>
+              <td style="text-align:right;padding:5px 4px;border-bottom:1px solid #f1f5f9">${fmtN(row.payment)}</td>
+              <td style="text-align:right;padding:5px 4px;border-bottom:1px solid #f1f5f9">${fmtN(row.principalPmt)}</td>
+              <td style="text-align:right;padding:5px 4px;border-bottom:1px solid #f1f5f9">${fmtN(row.interest)}</td>
+              <td style="text-align:right;padding:5px 4px;border-bottom:1px solid #f1f5f9">${fmtN(row.balance)}</td>
+            </tr>`
+        ).join('');
         html=`<div style="font-family:'맑은 고딕',sans-serif;padding:20px;font-size:12px">
           <div style="background:#0a192f;padding:14px 18px;border-radius:6px;margin-bottom:12px;display:flex;justify-content:space-between">
             <div style="color:#fff;font-size:16px;font-weight:700">RNF KOREA</div>
@@ -770,10 +801,21 @@ export default function QuotationPage() {
             <div style="background:#f1f5f9;border-radius:4px;padding:10px"><div style="font-size:9px;color:#64748b">할부원금</div><div style="font-size:15px;font-weight:700;color:#0a192f">${fmt(p2)}원</div></div>
             <div style="background:#0a192f;border-radius:4px;padding:10px"><div style="font-size:9px;color:#94a3b8">월 납입액 (${iff.financeCompany})</div><div style="font-size:15px;font-weight:700;color:#f97316">${fmt(payment)}원</div></div>
           </div>
-          <div style="background:#f8fafc;border-radius:4px;padding:10px;font-size:11px">
-            <div>차량/장비: ${iff.itemName} ${iff.itemSpec}</div>
+          <div style="background:#f8fafc;border-radius:4px;padding:10px;font-size:11px;margin-bottom:12px">
+            <div>차량/장비: ${iff.itemName}${iff.itemSpec?' '+iff.itemSpec:''}</div>
             <div>연이율: ${r}% | 기간: ${gp+im}개월${gp>0?` (거치 ${gp}+할부 ${im})`:''}</div>
           </div>
+          <table style="border-collapse:collapse;width:100%">
+            <thead><tr style="background:#0a192f;color:#fff">
+              <th style="padding:6px 4px;font-size:10px;font-weight:600">회차</th>
+              <th style="padding:6px 4px;font-size:10px;font-weight:600">납입일</th>
+              <th style="padding:6px 4px;font-size:10px;font-weight:600">월납입액</th>
+              <th style="padding:6px 4px;font-size:10px;font-weight:600">원금</th>
+              <th style="padding:6px 4px;font-size:10px;font-weight:600">이자</th>
+              <th style="padding:6px 4px;font-size:10px;font-weight:600">잔액</th>
+            </tr></thead>
+            <tbody>${tRows}</tbody>
+          </table>
         </div>`;
       } else { flash('할부원금, 금리, 기간을 먼저 입력해주세요.'); return; }
     }
@@ -867,6 +909,15 @@ export default function QuotationPage() {
 
   useEffect(() => { if(tab==='history') loadHistory(); }, [tab, loadHistory]);
 
+  // ── 히스토리 삭제
+  const deleteHistory = async (row: HistoryRow) => {
+    if(!window.confirm(`'${row.recipient}' (${row.quote_no}) 이력을 삭제하시겠습니까?`)) return;
+    const { error } = await supabase.from('tb_quotations').delete().eq('id', row.id);
+    if(error) { flash(`삭제 오류: ${error.message}`); return; }
+    setHistory(prev => prev.filter(r => r.id !== row.id));
+    flash('이력이 삭제되었습니다.');
+  };
+
   // ── 견적번호 생성
   const genNo = (prefix:string) =>
     `${prefix}-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
@@ -889,13 +940,13 @@ export default function QuotationPage() {
     if(tab==='installment') { downloadInstallmentPDF(); return; }
     if(html) {
       // 히스토리 저장
-      const total = tab==='battery'?bTotal:pTotal;
+      const total = tab==='battery'?bTotal:tab==='forklift'?fTotal:pTotal;
       const vat   = Math.round(total*.1);
       supabase.from('tb_quotations').insert({
         quote_type: currentQuoteType(), quote_no: no,
         quote_date: s.quoteDate, recipient: s.recipient,
-        recipient_email: s.email1, items: tab==='battery'?bf.items:pf.items,
-        notes: tab==='battery'?bf.notes:null,
+        recipient_email: s.email1, items: tab==='battery'?bf.items:tab==='forklift'?ff.items:pf.items,
+        notes: tab==='battery'?bf.notes:tab==='forklift'?ff.notes:null,
         total_amount: total, vat_amount: vat, grand_total: total+vat,
         created_by:'admin@rnfkorea.co.kr',
       }).then(({error})=>{ if(error) console.error('[이력저장오류]', error.message, error.details); });
@@ -965,32 +1016,44 @@ export default function QuotationPage() {
     const s = currentSend();
     const phones = [s.phone1, s.phone2].filter(Boolean);
     if(phones.length===0) { flash('전화번호를 1개 이상 입력해주세요.'); return; }
+    if(tab==='installment' && !(n0(iff.principal)>0&&n0(iff.annualRate)>0&&n0(iff.installmentMonths)>0)) {
+      flash('할부원금, 금리, 기간을 먼저 입력해주세요.'); return;
+    }
     setSmsSending(true);
     try {
-      const no2 = genNo(tab==='battery'?'BT':'FL');
-      const htmlStr = tab==='battery'
-        ? buildQuoteHTML('battery', bf, no2)
-        : buildQuoteHTML('forklift', ff, no2);
-      const bodyMatch = htmlStr.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-      const bodyHTML = bodyMatch ? bodyMatch[1] : htmlStr;
-      const styleMatch = htmlStr.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
-      const styleEl = document.createElement('style');
-      styleEl.textContent = styleMatch ? styleMatch[1] : '';
-      const wrapper = document.createElement('div');
-      wrapper.style.cssText = 'position:absolute;left:-9999px;top:0;width:720px;background:#fff;';
-      wrapper.innerHTML = bodyHTML;
-      document.head.appendChild(styleEl);
-      document.body.appendChild(wrapper);
+      let target: HTMLElement | null = null;
+      let cleanup: (() => void) | null = null;
+      if(tab==='installment') {
+        target = installmentPreviewRef.current;
+      } else {
+        const no2 = genNo(tab==='battery'?'BT':tab==='forklift'?'FL':'PO');
+        const htmlStr = tab==='battery' ? buildQuoteHTML('battery', bf, no2)
+          : tab==='forklift' ? buildQuoteHTML('forklift', ff, no2)
+          : buildPurchaseHTML(pf, no2);
+        const bodyMatch = htmlStr.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+        const bodyHTML = bodyMatch ? bodyMatch[1] : htmlStr;
+        const styleMatch = htmlStr.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+        const styleEl = document.createElement('style');
+        styleEl.textContent = styleMatch ? styleMatch[1] : '';
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'position:absolute;left:-9999px;top:0;width:720px;background:#fff;';
+        wrapper.innerHTML = bodyHTML;
+        document.head.appendChild(styleEl);
+        document.body.appendChild(wrapper);
+        target = wrapper;
+        cleanup = () => { document.head.removeChild(styleEl); document.body.removeChild(wrapper); };
+      }
+      if(!target) { flash('캡처할 내용이 없습니다.'); setSmsSending(false); return; }
       await new Promise(r => setTimeout(r, 300));
-      const wH = wrapper.scrollHeight || wrapper.offsetHeight;
-      let canvas = await html2canvas(wrapper, {
+      const wW = target.offsetWidth || 720;
+      const wH = target.scrollHeight || target.offsetHeight;
+      let canvas = await html2canvas(target, {
         scale: 1.5, backgroundColor: '#ffffff',
         useCORS: true, allowTaint: true, logging: false,
-        width: 720, height: wH,
-        windowWidth: 720, windowHeight: wH + 100,
+        width: wW, height: wH,
+        windowWidth: wW, windowHeight: wH + 100,
       });
-      document.head.removeChild(styleEl);
-      document.body.removeChild(wrapper);
+      cleanup?.();
       const MAX_W=1500, MAX_H=1440;
       if(canvas.width>MAX_W||canvas.height>MAX_H){
         const ratio=Math.min(MAX_W/canvas.width,MAX_H/canvas.height);
@@ -1053,7 +1116,7 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
   </div>`).join('')}
 </div>
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:#f8fafc;border-radius:6px;padding:10px;margin-bottom:12px">
-  ${[['금융사',iff.financeCompany],['연이율',r+'%'],['대출기간',periodLabel],['차량/장비',iff.itemName],['규격',iff.itemSpec],['고객명',iff.recipient]].map(([l,v])=>`
+  ${[['금융사',iff.financeCompany],['연이율',r+'%'],['대출기간',periodLabel],['차량/장비',iff.itemName+(iff.itemSpec?' '+iff.itemSpec:'')],['고객명',iff.recipient]].map(([l,v])=>`
   <div><div style="font-size:9px;color:#94a3b8">${l}</div><div style="font-weight:600;color:#0a192f;font-size:11px">${v}</div></div>`).join('')}
 </div>
 <table>
@@ -1075,7 +1138,7 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
       quote_type:'installment',quote_no:no,quote_date:iff.quoteDate,
       recipient:iff.recipient,recipient_email:iff.email1,
       items:[{name:iff.itemName,spec:iff.itemSpec,qty:1,price:n0(iff.carPrice)||p}],
-      notes:[`할부원금:${fmtN(p)}원`,`연이율:${r}%`,`기간:${months}개월`,`월납입:${fmtN(payment)}원`,`금융사:${iff.financeCompany}`],
+      notes:[`할부원금:${fmtN(p)}원`,`연이율:${r}%`,`거치기간:${gp}개월`,`할부기간:${im}개월`,`월납입:${fmtN(payment)}원`,`금융사:${iff.financeCompany}`],
       total_amount:p,vat_amount:0,grand_total:p,created_by:'admin@rnfkorea.co.kr',
     }).then(()=>{});
     printHTML(html);
@@ -1098,7 +1161,7 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
         quote_type:'installment',quote_no:no,quote_date:iff.quoteDate,
         recipient:iff.recipient,recipient_email:iff.email1,
         items:[{name:iff.itemName,spec:iff.itemSpec,qty:1,price:n0(iff.carPrice)||p}],
-        notes:[`할부원금:${fmtN(p)}원`,`연이율:${r}%`,`기간:${months}개월`,`월납입:${fmtN(payment)}원`,`금융사:${iff.financeCompany}`],
+        notes:[`할부원금:${fmtN(p)}원`,`연이율:${r}%`,`거치기간:${gp}개월`,`할부기간:${im}개월`,`월납입:${fmtN(payment)}원`,`금융사:${iff.financeCompany}`],
         total_amount:p,vat_amount:0,grand_total:p,created_by:'admin@rnfkorea.co.kr',
       });
       const{error}=await supabase.functions.invoke('send-quotation',{
@@ -1127,7 +1190,7 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
           <div className="flex items-center gap-3">
             <button
               onClick={()=>navigate('/work/secretary?tab=quotation')}
-              className="bg-white/10 hover:bg-white/20 text-white border border-white/20 px-3 py-1.5 rounded text-xs font-medium flex items-center gap-1.5 transition-colors"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-white/20 text-white/70 text-xs font-semibold hover:border-white/40 hover:text-white transition-all"
             >
               ← AI비서
             </button>
@@ -1372,7 +1435,7 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
             ) : (
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-gray-600">
-                  <tr>{['구분','견적번호','일자','수신인','총액','이메일발송','불러오기','재출력'].map(h=>(
+                  <tr>{['구분','견적번호','일자','수신인','총액','이메일발송','불러오기','재출력','삭제'].map(h=>(
                     <th key={h} className="px-3 py-2.5 text-left font-medium text-xs border-b">{h}</th>
                   ))}</tr>
                 </thead>
@@ -1412,10 +1475,20 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
                                 :{...FF0,recipient:row.recipient,email1:row.recipient_email,quoteDate:row.quote_date,items:row.items??FF0.items,notes:row.notes??FF0.notes};
                               const html=buildQuoteHTML(type,form as any,row.quote_no);
                               printHTML(html);
-                            } else flash('할부/발주서 재출력은 해당 탭에서 다시 입력해 주세요.');
+                            } else if(type==='purchase'){
+                              const form = {...PF0,recipient:row.recipient,email1:row.recipient_email,quoteDate:row.quote_date,receiverName:row.recipient,items:row.items??PF0.items};
+                              const html=buildPurchaseHTML(form as any,row.quote_no);
+                              printHTML(html);
+                            } else flash('할부 견적서 재출력은 해당 탭에서 다시 입력해 주세요.');
                           }}
                           className="text-xs text-blue-500 hover:underline"
                         >출력</button>
+                      </td>
+                      <td className="px-3 py-2">
+                        <button
+                          onClick={()=>deleteHistory(row)}
+                          className="text-xs text-red-500 hover:underline"
+                        >삭제</button>
                       </td>
                     </tr>
                   ))}
@@ -1463,109 +1536,55 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
           </div>
         </div>
       )}
-      <div style={{position:'absolute',left:'-9999px',top:'0',width:'600px'}}>
-        <div ref={batteryPreviewRef} style={{fontFamily:"'Malgun Gothic',sans-serif",background:'#fff',padding:'20px',width:'600px'}}>
-          <div style={{background:'#0a192f',padding:'14px 18px',borderRadius:'6px',marginBottom:'12px',display:'flex',justifyContent:'space-between'}}>
-            <div style={{color:'#fff',fontSize:'16px',fontWeight:700}}>RNF KOREA</div>
-            <div style={{color:'#f97316',fontSize:'16px',fontWeight:700}}>배터리 견적서</div>
-          </div>
-          {bf.recipient&&<p style={{fontSize:'12px',marginBottom:'8px'}}>수신: <strong>{bf.recipient}</strong> 귀중</p>}
-          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'6px',marginBottom:'10px'}}>
-            {[['공급가액',fmt(bTotal)+'원',false],['VAT',fmt(Math.round(bTotal*.1))+'원',false],['총액',fmt(bTotal+Math.round(bTotal*.1))+'원',true]].map(([l,v,dk])=>(
-              <div key={l as string} style={{background:dk?'#0a192f':'#f1f5f9',borderRadius:'4px',padding:'8px',textAlign:'center'}}>
-                <div style={{fontSize:'9px',color:dk?'#94a3b8':'#64748b'}}>{l}</div>
-                <div style={{fontSize:'11px',fontWeight:700,color:dk?'#f97316':'#0a192f',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{v}</div>
-              </div>
-            ))}
-          </div>
-          <table style={{width:'100%',borderCollapse:'collapse',fontSize:'10px',tableLayout:'fixed'}}>
-            <thead><tr style={{background:'#0a192f'}}>{['품명','규격','수량','금액'].map(h=><th key={h} style={{color:'#fff',padding:'5px',textAlign:'center'}}>{h}</th>)}</tr></thead>
-            <tbody>{bf.items.filter(it=>it.name).map((it,i)=>(
-              <tr key={i} style={{background:i%2===0?'#f8fafc':'#fff'}}>
-                <td style={{padding:'4px'}}>{it.name}</td>
-                <td style={{padding:'4px',textAlign:'center'}}>{it.spec}</td>
-                <td style={{padding:'4px',textAlign:'center'}}>{it.qty}</td>
-                <td style={{padding:'4px',textAlign:'right',whiteSpace:'nowrap',overflow:'hidden'}}>{it.price==='포함'?'포함':it.price?fmt(n0(it.price)*(n0(it.qty)||1)):''}</td>
-              </tr>
-            ))}</tbody>
-          </table>
-          <p style={{marginTop:'8px',fontSize:'8px',color:'#94a3b8',textAlign:'center'}}>주식회사 알앤에프코리아 | 1551-1873</p>
-        </div>
-      </div>
-      <div style={{position:'absolute',left:'-9999px',top:'0',width:'600px'}}>
-        <div ref={forkliftPreviewRef} style={{fontFamily:"'Malgun Gothic',sans-serif",background:'#fff',padding:'20px',width:'600px'}}>
-          <div style={{background:'#0a192f',padding:'14px 18px',borderRadius:'6px',marginBottom:'12px',display:'flex',justifyContent:'space-between'}}>
-            <div style={{color:'#fff',fontSize:'16px',fontWeight:700}}>RNF KOREA</div>
-            <div style={{color:'#f97316',fontSize:'16px',fontWeight:700}}>지게차 견적서</div>
-          </div>
-          {ff.recipient&&<p style={{fontSize:'12px',marginBottom:'8px'}}>수신: <strong>{ff.recipient}</strong> 귀중</p>}
-          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'6px',marginBottom:'10px'}}>
-            {[['공급가액',fmt(fTotal)+'원',false],['VAT',fmt(Math.round(fTotal*.1))+'원',false],['총액',fmt(fTotal+Math.round(fTotal*.1))+'원',true]].map(([l,v,dk])=>(
-              <div key={l as string} style={{background:dk?'#0a192f':'#f1f5f9',borderRadius:'4px',padding:'8px',textAlign:'center'}}>
-                <div style={{fontSize:'9px',color:dk?'#94a3b8':'#64748b'}}>{l}</div>
-                <div style={{fontSize:'11px',fontWeight:700,color:dk?'#f97316':'#0a192f',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{v}</div>
-              </div>
-            ))}
-          </div>
-          <table style={{width:'100%',borderCollapse:'collapse',fontSize:'10px',tableLayout:'fixed'}}>
-            <thead><tr style={{background:'#0a192f'}}>{['품명','규격','금액'].map(h=><th key={h} style={{color:'#fff',padding:'5px',textAlign:'center'}}>{h}</th>)}</tr></thead>
-            <tbody>{ff.items.filter(it=>it.name).map((it,i)=>(
-              <tr key={i} style={{background:i%2===0?'#f8fafc':'#fff'}}>
-                <td style={{padding:'4px'}}>{it.name}</td>
-                <td style={{padding:'4px',textAlign:'center'}}>{it.spec}</td>
-                <td style={{padding:'4px',textAlign:'right',whiteSpace:'nowrap',overflow:'hidden'}}>{it.price==='포함'?'포함':it.price?fmt(n0(it.price)*(n0(it.qty)||1)):''}</td>
-              </tr>
-            ))}</tbody>
-          </table>
-          <p style={{marginTop:'8px',fontSize:'8px',color:'#94a3b8',textAlign:'center'}}>주식회사 알앤에프코리아 | 1551-1873</p>
-        </div>
-      </div>
       <div ref={installmentPreviewRef} style={{position:'absolute',left:'-9999px',top:'0',width:'600px',fontFamily:"'Malgun Gothic',sans-serif",background:'#fff',padding:'20px'}}>
         <div style={{background:'#0a192f',padding:'14px 18px',borderRadius:'6px',marginBottom:'12px',display:'flex',justifyContent:'space-between'}}>
           <div style={{color:'#fff',fontSize:'16px',fontWeight:700}}>RNF KOREA</div>
           <div style={{color:'#f97316',fontSize:'16px',fontWeight:700}}>할부 견적서</div>
         </div>
+        {iff.recipient&&<p style={{fontSize:'12px',marginBottom:'8px'}}>수신: <strong>{iff.recipient}</strong> 귀중</p>}
         {n0(iff.principal)>0&&n0(iff.annualRate)>0&&n0(iff.installmentMonths)>0&&(()=>{
           const p2=n0(iff.principal),r=n0(iff.annualRate),gp=n0(iff.gracePeriod),im=n0(iff.installmentMonths);
-          const{payment}=calcAmortization(p2,r,gp+im,iff.startYM,gp);
+          const{payment,rows}=calcAmortization(p2,r,gp+im,iff.startYM,gp);
+          const fmtN=(n:number)=>Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,',');
+          const shownRows = pickDisplayRows(rows);
           return(
-            <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:'6px'}}>
-              <div style={{background:'#f1f5f9',borderRadius:'4px',padding:'8px'}}>
-                <div style={{fontSize:'9px',color:'#64748b'}}>할부원금</div>
-                <div style={{fontSize:'14px',fontWeight:700,color:'#0a192f'}}>{fmt(p2)}원</div>
+            <>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:'6px',marginBottom:'10px'}}>
+                <div style={{background:'#f1f5f9',borderRadius:'4px',padding:'8px'}}>
+                  <div style={{fontSize:'9px',color:'#64748b'}}>할부원금</div>
+                  <div style={{fontSize:'14px',fontWeight:700,color:'#0a192f'}}>{fmt(p2)}원</div>
+                </div>
+                <div style={{background:'#0a192f',borderRadius:'4px',padding:'8px'}}>
+                  <div style={{fontSize:'9px',color:'#94a3b8'}}>월납입액 ({iff.financeCompany})</div>
+                  <div style={{fontSize:'14px',fontWeight:700,color:'#f97316'}}>{fmt(payment)}원</div>
+                </div>
               </div>
-              <div style={{background:'#0a192f',borderRadius:'4px',padding:'8px'}}>
-                <div style={{fontSize:'9px',color:'#94a3b8'}}>월납입액 ({iff.financeCompany})</div>
-                <div style={{fontSize:'14px',fontWeight:700,color:'#f97316'}}>{fmt(payment)}원</div>
+              <div style={{background:'#f8fafc',borderRadius:'4px',padding:'10px',fontSize:'11px',marginBottom:'10px'}}>
+                <div>차량/장비: {iff.itemName}{iff.itemSpec?` ${iff.itemSpec}`:''}</div>
+                <div>연이율: {r}% | 기간: {gp+im}개월{gp>0?` (거치 ${gp}+할부 ${im})`:''}</div>
               </div>
-            </div>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:'10px'}}>
+                <thead><tr style={{background:'#0a192f'}}>
+                  {['회차','납입일','월납입액','원금','이자','잔액'].map(h=>
+                    <th key={h} style={{color:'#fff',padding:'5px 4px',fontWeight:600}}>{h}</th>
+                  )}
+                </tr></thead>
+                <tbody>{shownRows.map((row:any,i:number)=> row===null
+                  ? <tr key="ellipsis"><td colSpan={6} style={{textAlign:'center',color:'#94a3b8',padding:'3px 0'}}>⋯</td></tr>
+                  : <tr key={row.no} style={{background:i%2===0?'#f8fafc':'#fff',color:row.principalPmt===0?'#94a3b8':'#1e293b'}}>
+                      <td style={{padding:'4px',textAlign:'center',borderBottom:'1px solid #f1f5f9'}}>{row.no}</td>
+                      <td style={{padding:'4px',textAlign:'center',borderBottom:'1px solid #f1f5f9'}}>{row.date}</td>
+                      <td style={{padding:'4px',textAlign:'right',borderBottom:'1px solid #f1f5f9'}}>{fmtN(row.payment)}</td>
+                      <td style={{padding:'4px',textAlign:'right',borderBottom:'1px solid #f1f5f9'}}>{fmtN(row.principalPmt)}</td>
+                      <td style={{padding:'4px',textAlign:'right',borderBottom:'1px solid #f1f5f9'}}>{fmtN(row.interest)}</td>
+                      <td style={{padding:'4px',textAlign:'right',borderBottom:'1px solid #f1f5f9'}}>{fmtN(row.balance)}</td>
+                    </tr>
+                )}</tbody>
+              </table>
+            </>
           );
         })()}
-      </div>
-      <div style={{position:'absolute',left:'-9999px',top:'0',width:'600px'}}>
-        <div ref={purchasePreviewRef} style={{fontFamily:"'Malgun Gothic',sans-serif",background:'#fff',padding:'20px',width:'600px'}}>
-          <div style={{background:'#0a192f',padding:'14px 18px',borderRadius:'6px',marginBottom:'12px',display:'flex',justifyContent:'space-between'}}>
-            <div style={{color:'#fff',fontSize:'16px',fontWeight:700}}>RNF KOREA</div>
-            <div style={{color:'#f97316',fontSize:'16px',fontWeight:700}}>발 주 서</div>
-          </div>
-          {pf.receiverName&&<p style={{fontSize:'12px',marginBottom:'8px'}}>수신: <strong>{pf.receiverName}</strong> 귀중</p>}
-          <div style={{background:'#f1f5f9',borderRadius:'4px',padding:'10px',marginBottom:'10px',textAlign:'center'}}>
-            <span style={{fontSize:'10px',color:'#64748b'}}>합계금액 (VAT포함) </span>
-            <span style={{fontSize:'15px',fontWeight:700,color:'#0a192f'}}>{fmt(pTotal+Math.round(pTotal*.1))}원</span>
-          </div>
-          <table style={{width:'100%',borderCollapse:'collapse',fontSize:'10px',tableLayout:'fixed'}}>
-            <thead><tr style={{background:'#0a192f'}}>{['품목','규격','수량','금액'].map(h=><th key={h} style={{color:'#fff',padding:'5px',textAlign:'center'}}>{h}</th>)}</tr></thead>
-            <tbody>{pf.items.filter(it=>it.name).map((it,i)=>(
-              <tr key={i} style={{background:i%2===0?'#f8fafc':'#fff'}}>
-                <td style={{padding:'4px'}}>{it.name}</td>
-                <td style={{padding:'4px',textAlign:'center'}}>{it.spec}</td>
-                <td style={{padding:'4px',textAlign:'center'}}>{it.qty}</td>
-                <td style={{padding:'4px',textAlign:'right'}}>{it.price?fmt(n0(it.price)*(n0(it.qty)||1)):''}</td>
-              </tr>
-            ))}</tbody>
-          </table>
-          <p style={{marginTop:'8px',fontSize:'8px',color:'#94a3b8',textAlign:'center'}}>주식회사 알앤에프코리아 | 1551-1873</p>
-        </div>
+        <p style={{marginTop:'8px',fontSize:'8px',color:'#94a3b8',textAlign:'center'}}>주식회사 알앤에프코리아 | 1551-1873</p>
       </div>
     </div>
   );

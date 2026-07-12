@@ -103,6 +103,20 @@ export default function OrderConfirmPage() {
         session_id: "main",
       });
 
+      // 물품발송 확인 시 — 화면에서 "휠반납 요청 알림톡 발송됨"이라고 안내하므로 실제로 발송한다
+      if (action === "delivered") {
+        await supabase.functions.invoke("send-hyundaicm-kakao", {
+          body: {
+            type:             "wheel_return_request",
+            orderNo:          id,
+            customerName:     order.customer_name_raw ?? "-",
+            productSpec:      order.product_spec ?? "-",
+            quantity:         order.quantity ? String(order.quantity) : "-",
+            wheelReturnedUrl: `${SITE_URL}/order/confirm/completed_order/${id}`,
+          },
+        });
+      }
+
       setStatus("success");
     } catch {
       setStatus("error");

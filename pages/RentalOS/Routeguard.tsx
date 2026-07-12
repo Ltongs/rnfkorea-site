@@ -1,14 +1,14 @@
-// pages/HyundaiCM/RouteGuard.tsx
+// pages/RentalOS/Routeguard.tsx
 import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../lib/auth";
 
-export default function HyundaiCMRouteGuard({
+export default function RentalOSRouteGuard({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { loading, user, isAdmin, isSubAdmin, isHyundaiCM, isNhCapital, isNhCapitalStaff } = useAuth() as any;
+  const { loading, user, isAdmin, isSubAdmin, isRentalOS } = useAuth() as any;
   const location = useLocation();
 
   if (loading) {
@@ -22,19 +22,19 @@ export default function HyundaiCMRouteGuard({
   if (!user) {
     return (
       <Navigate
-        to="/hyundaicm/login"
+        to="/rental-os/login"
         replace
         state={{ from: location.pathname }}
       />
     );
   }
 
-  // admin, 부관리자, 현대건설기계, 농협캐피탈(파트너), NH캐피탈 직원(상태변경·다운로드만 가능) 계정만 허용
-  if (!isAdmin && !isSubAdmin && !isHyundaiCM && !isNhCapital && !isNhCapitalStaff) {
+  // admin, 부관리자, Rental_O/S 담당자 계정만 허용
+  if (!isAdmin && !isSubAdmin && !isRentalOS) {
     return (
       <div className="container mx-auto px-4 py-16">
         <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm font-semibold">
-          이 계정은 현대건설기계 업무 페이지 접근 권한이 없습니다.
+          이 계정은 Rental_O/S 업무 페이지 접근 권한이 없습니다.
         </div>
       </div>
     );

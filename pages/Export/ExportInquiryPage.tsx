@@ -1,6 +1,6 @@
 // pages/Export/ExportInquiryPage.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { Building2, CheckCircle2, Globe, Loader2, Mail, Package, Phone, User } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 
@@ -25,6 +25,9 @@ function isEmail(v: string) {
 
 export default function ExportInquiryPage() {
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const listingId = searchParams.get("ref");   // 매물 상세에서 "견적 문의 →"로 넘어올 때의 매물 id
+  const listingModel = searchParams.get("model");
 
   useEffect(() => {
     if (location.hash) {
@@ -33,6 +36,14 @@ export default function ExportInquiryPage() {
       if (el) setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
     }
   }, [location.hash]);
+
+  // 특정 매물에서 넘어온 문의면 품목란에 미리 채워둔다
+  useEffect(() => {
+    if (listingModel) {
+      setForm(f => f.items ? f : { ...f, items: listingModel });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listingModel]);
 
   const [form, setForm] = useState<InquiryForm>({
     company: "",
@@ -101,6 +112,7 @@ export default function ExportInquiryPage() {
       // Supabase에 저장
       const { error } = await supabase.from("export_inquiries").insert({
         ref_code:    ref,
+        listing_id:  listingId || null,
         company:     form.company.trim(),
         name:        form.name.trim(),
         phone:       form.phone.trim(),

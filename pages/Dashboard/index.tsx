@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Activity,
   BadgePercent,
@@ -194,14 +195,22 @@ function financeStageLabel(value: string | null) {
   return value || "-";
 }
 
+// 현재 표준 어휘(contract/delivery/invoiced/cancelled, CallManagement의 COMMON_STAGES와 동일)를
+// 우선 처리하고, 과거에 저장된 구버전 값도 같은 라벨로 매핑한다 (pages/CallManagement/index.tsx의
+// formatCommonStage와 동일 로직 — 그 함수는 컴포넌트 내부 로컬 함수라 직접 import는 불가).
 function tireStageLabel(value: string | null) {
-  if (value === "inquiry_received") return "문의접수";
-  if (value === "size_confirming") return "규격확인중";
-  if (value === "quote_sent") return "견적발송";
-  if (value === "waiting_order") return "발주";
-  if (value === "delivery_or_replacement") return "납품";
-  if (value === "completed") return "완료";
-  if (value === "hold") return "보류";
+  if (value === "contract") return "계약";
+  if (value === "delivery") return "납품";
+  if (value === "invoiced") return "계산서발행";
+  if (value === "cancelled") return "취소";
+  // 레거시 값 호환
+  if (value === "inquiry_received" || value === "size_confirming") return "계약";
+  if (value === "quote_sent" || value === "proposal") return "계약";
+  if (value === "consulting" || value === "quote") return "계약";
+  if (value === "waiting_order" || value === "waiting_payment") return "계약";
+  if (value === "delivery_or_replacement" || value === "delivered") return "납품";
+  if (value === "completed" || value === "completed_order") return "계산서발행";
+  if (value === "hold") return "취소";
   return value || "-";
 }
 
@@ -253,6 +262,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 const DashboardPage: React.FC = () => {
+  const navigate = useNavigate();
   const today = new Date();
   const [selectedYear, setSelectedYear] = useState(today.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(today.getMonth() + 1);
@@ -266,6 +276,8 @@ const DashboardPage: React.FC = () => {
   const [narumiTasks, setNarumiTasks] = useState<NarumiTask[]>([]);
   const [tbOrders, setTbOrders] = useState<TbOrder[]>([]);
   const [salesRecords, setSalesRecords] = useState<SalesRecord[]>([]);
+  const [hcmConfirmed, setHcmConfirmed] = useState<any[]>([]);
+  const [taesanConfirmed, setTaesanConfirmed] = useState<any[]>([]);
 
   useEffect(() => {
     let alive = true;
@@ -288,6 +300,8 @@ const DashboardPage: React.FC = () => {
           narumiRes,
           tbOrdersRes,
           salesRes,
+          hcmRes,
+          taesanRes,
         ] = await Promise.all([
           supabase
             .from("consultation_cases")
@@ -331,6 +345,18 @@ const DashboardPage: React.FC = () => {
             .gte("sale_date", yearStartDate)
             .lte("sale_date", yearEndDate)
             .order("sale_date", { ascending: false }),
+          supabase
+            .from("hyundaicm_tasks")
+            .select("id, customer_name, company_name, finance_company, equipment_ton, installment_principal, purchase_amount, created_at")
+            .eq("status", "확정")
+            .gte("created_at", yearStart)
+            .lte("created_at", yearEnd),
+          supabase
+            .from("taesan_tasks")
+            .select("id, customer_name, company_name, finance_company, equipment_ton, installment_principal, purchase_amount, created_at")
+            .eq("status", "확정")
+            .gte("created_at", yearStart)
+            .lte("created_at", yearEnd),
         ]);
 
         const firstError =
@@ -340,12 +366,17 @@ const DashboardPage: React.FC = () => {
           tireRes.error ||
           narumiRes.error ||
           tbOrdersRes.error ||
-          salesRes.error;
+          salesRes.error ||
+          hcmRes.error ||
+          taesanRes.error;
 
         if (firstError) throw firstError;
         if (!alive) return;
 
         setConsultations((consultationsRes.data || []) as ConsultationRow[]);
+        setHcmConfirmed(hcmRes.data || []);
+        setTaesanConfirmed(taesanRes.data || []);
+        setTbOrders((tbOrdersRes.data || []) as TbOrder[]);
 
         const caseIdSet = new Set<number>((consultationsRes.data || []).map((row: any) => row.id));
 
@@ -435,6 +466,18 @@ const DashboardPage: React.FC = () => {
     [salesRecords, selectedYear, selectedMonth]
   );
 
+  // "매출"의 공식 정의 = 세금계산서 발행 기준(tax_invoice=true). 미발행분은 실적관리·주간리뷰와
+  // 동일하게 매출 총액/카테고리별 집계에서 제외한다. (최근 매출 목록 위젯은 발행 여부와 무관하게
+  // 전체를 보여줘야 하므로 monthSalesRecords 원본을 그대로 쓴다 — 아래서 별도 유지)
+  const monthInvoicedSales = useMemo(
+    () => monthSalesRecords.filter((r) => r.tax_invoice),
+    [monthSalesRecords]
+  );
+  const ytdInvoicedSales = useMemo(
+    () => salesRecords.filter((r) => r.tax_invoice),
+    [salesRecords]
+  );
+
   const salesSummary = useMemo(() => {
     const sum = (rows: SalesRecord[], key: keyof SalesRecord) =>
       rows.reduce((acc, r) => acc + safeNumber(r[key] as number), 0);
@@ -461,29 +504,29 @@ const DashboardPage: React.FC = () => {
         .slice(0, 5);
     };
 
-    const unpaidMonth = monthSalesRecords.filter((r) => !r.payment_confirmed);
+    const unpaidMonth = monthInvoicedSales.filter((r) => !r.payment_confirmed);
     const unpaidMonthAmount = sum(unpaidMonth, "total_revenue");
 
     return {
       month: {
-        revenue: sum(monthSalesRecords, "total_revenue"),
-        cost: sum(monthSalesRecords, "total_cost"),
-        margin: sum(monthSalesRecords, "margin"),
-        count: monthSalesRecords.length,
+        revenue: sum(monthInvoicedSales, "total_revenue"),
+        cost: sum(monthInvoicedSales, "total_cost"),
+        margin: sum(monthInvoicedSales, "margin"),
+        count: monthInvoicedSales.length,
         unpaidAmount: unpaidMonthAmount,
         unpaidCount: unpaidMonth.length,
-        byCategory: byCategory(monthSalesRecords),
+        byCategory: byCategory(monthInvoicedSales),
       },
       ytd: {
-        revenue: sum(salesRecords, "total_revenue"),
-        cost: sum(salesRecords, "total_cost"),
-        margin: sum(salesRecords, "margin"),
-        count: salesRecords.length,
-        byCategory: byCategory(salesRecords),
-        topCustomers: topCustomers(salesRecords),
+        revenue: sum(ytdInvoicedSales, "total_revenue"),
+        cost: sum(ytdInvoicedSales, "total_cost"),
+        margin: sum(ytdInvoicedSales, "margin"),
+        count: ytdInvoicedSales.length,
+        byCategory: byCategory(ytdInvoicedSales),
+        topCustomers: topCustomers(ytdInvoicedSales),
       },
     };
-  }, [monthSalesRecords, salesRecords]);
+  }, [monthInvoicedSales, ytdInvoicedSales]);
 
   const metricNewConsultations: Metric = useMemo(
     () => ({ month: monthConsultations.length, ytd: consultations.length }),
@@ -524,6 +567,22 @@ const DashboardPage: React.FC = () => {
       narumiDone: { month: monthNarumiDone, ytd: ytdNarumiDone },
     };
   }, [insuranceMonthRows, insuranceDetails, monthNarumiTasks, narumiTasks]);
+
+  // 현대CM/태산통운 확정 실적 — 실적관리/주간리뷰와 동일 정의(status=확정, created_at 기간 기준).
+  // 두 회사는 중개수수료 구조라 sales_records/세금계산서로 이어지지 않으므로 확정 흐름만 추적한다.
+  const hcmTaesanSummary = useMemo(() => {
+    const inMonth = (rows: any[]) => rows.filter((r) => {
+      const d = new Date(r.created_at);
+      return d.getFullYear() === selectedYear && d.getMonth() + 1 === selectedMonth;
+    });
+    const amountOf = (r: any) => safeNumber(r.installment_principal ?? r.purchase_amount);
+    const sum = (rows: any[]) => rows.reduce((s, r) => s + amountOf(r), 0);
+    const hcmMonth = inMonth(hcmConfirmed), taesanMonth = inMonth(taesanConfirmed);
+    return {
+      month: { hcmCount: hcmMonth.length, hcmAmount: sum(hcmMonth), taesanCount: taesanMonth.length, taesanAmount: sum(taesanMonth) },
+      ytd: { hcmCount: hcmConfirmed.length, hcmAmount: sum(hcmConfirmed), taesanCount: taesanConfirmed.length, taesanAmount: sum(taesanConfirmed) },
+    };
+  }, [hcmConfirmed, taesanConfirmed, selectedYear, selectedMonth]);
 
   const financeSummary = useMemo(() => {
     const stageCount = (rows: FinanceDetailRow[], stage: string) =>
@@ -704,6 +763,19 @@ const DashboardPage: React.FC = () => {
           }}
         />
         <div className="relative max-w-7xl mx-auto px-6 md:px-8 lg:px-10 py-12 md:py-16">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            {[
+              { label: "AI비서", to: "/work/secretary" },
+              { label: "상담관리", to: "/work/call-management" },
+              { label: "주간리뷰", to: "/work/weekly-review" },
+              { label: "매출/매입", to: "/work/finance-hub" },
+            ].map((l) => (
+              <button key={l.to} onClick={() => navigate(l.to)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-white/20 text-white/70 text-xs font-semibold hover:border-white/40 hover:text-white transition-all">
+                {l.label} →
+              </button>
+            ))}
+          </div>
           <div className="flex flex-wrap items-end justify-between gap-6">
             <div>
               <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-400">Operations</p>
@@ -772,6 +844,7 @@ const DashboardPage: React.FC = () => {
                     <Package className="w-5 h-5 text-orange-500" />
                     매출 현황
                   </h2>
+                  <p className="mt-0.5 text-[11px] text-gray-400">세금계산서 발행 기준</p>
                 </div>
                 <a href="/work/sales" className="text-xs font-medium text-orange-500 hover:underline">매출 입력 →</a>
               </div>
@@ -927,10 +1000,10 @@ const DashboardPage: React.FC = () => {
                 },
                 {
                   label: "금융 확정금액",
-                  value: formatCurrency(financeSummary.confirmedAmount.month),
-                  ytd: formatCurrency(financeSummary.confirmedAmount.ytd),
+                  value: formatCurrency(financeSummary.confirmedAmount.month + hcmTaesanSummary.month.hcmAmount + hcmTaesanSummary.month.taesanAmount),
+                  ytd: formatCurrency(financeSummary.confirmedAmount.ytd + hcmTaesanSummary.ytd.hcmAmount + hcmTaesanSummary.ytd.taesanAmount),
                   icon: <CircleDollarSign className="w-4 h-4 text-orange-500" />,
-                  sub: "확정 단계 합계",
+                  sub: "현대CM·태산통운·기타금융 확정 합계",
                 },
                 {
                   label: "타이어 판매전환율",
@@ -1264,6 +1337,49 @@ const DashboardPage: React.FC = () => {
                         <div className={`${subCardClass} text-sm text-gray-400`}>주문 데이터가 없습니다.</div>
                       )}
                     </div>
+                  </div>
+                </section>
+              );
+            })()}
+
+            {/* ── 할부금융 확정 실적 (현대CM/태산통운/기타금융 — 실적관리/주간리뷰와 동일 정의) ── */}
+            {(() => {
+              const otherFinMonth = financeSummary.confirmedAmount.month;
+              const otherFinYtd = financeSummary.confirmedAmount.ytd;
+              const otherFinMonthCnt = financeSummary.confirmed.month;
+              const otherFinYtdCnt = financeSummary.confirmed.ytd;
+              const totalMonthAmt = hcmTaesanSummary.month.hcmAmount + hcmTaesanSummary.month.taesanAmount + otherFinMonth;
+              const totalMonthCnt = hcmTaesanSummary.month.hcmCount + hcmTaesanSummary.month.taesanCount + otherFinMonthCnt;
+
+              return (
+                <section className={`${cardClass} p-6 space-y-5`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className={sectionTitleClass}>Financing</p>
+                      <h2 className="mt-1 text-lg font-semibold text-navy-900 flex items-center gap-2">
+                        <CreditCard className="w-5 h-5 text-orange-500" />
+                        할부금융 확정 실적
+                      </h2>
+                      <p className="mt-0.5 text-[11px] text-gray-400">중개수수료 구조 — 확정 실적만 추적, 매출/세금계산서 연동 없음</p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`${valueClass} text-xl text-navy-900`}>{formatCurrency(totalMonthAmt)}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{monthLabel} 확정 {totalMonthCnt}건</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { label: "🏗 현대CM", month: hcmTaesanSummary.month.hcmAmount, ytd: hcmTaesanSummary.ytd.hcmAmount, cnt: hcmTaesanSummary.month.hcmCount },
+                      { label: "🚛 태산통운", month: hcmTaesanSummary.month.taesanAmount, ytd: hcmTaesanSummary.ytd.taesanAmount, cnt: hcmTaesanSummary.month.taesanCount },
+                      { label: "📋 기타금융", month: otherFinMonth, ytd: otherFinYtd, cnt: otherFinMonthCnt },
+                    ].map((row) => (
+                      <div key={row.label} className={subCardClass}>
+                        <p className={labelClass}>{row.label}</p>
+                        <p className={`${valueClass} text-lg text-navy-900`}>{row.month ? formatCurrency(row.month) : "-"}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">{row.cnt}건 · 누적 {row.ytd ? formatCurrency(row.ytd) : "-"}</p>
+                      </div>
+                    ))}
                   </div>
                 </section>
               );

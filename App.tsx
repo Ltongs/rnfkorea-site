@@ -60,6 +60,9 @@ import HyundaiCMRouteGuard from "./pages/HyundaiCM/Routeguard";
 import TaesanPage from "./pages/Taesan/index";
 import TaesanLoginPage from "./pages/Taesan/Login";
 import TaesanRouteGuard from "./pages/Taesan/Routeguard";
+import RentalOSPage from "./pages/RentalOS/index";
+import RentalOSLoginPage from "./pages/RentalOS/Login";
+import RentalOSRouteGuard from "./pages/RentalOS/Routeguard";
 import SitemapPage from "./pages/Sitemap";
 import IndividualCargoFinancePage from "./pages/IndividualCargoFinance/index";
 import TireShopPage from "./pages/TireShop/index";
@@ -85,6 +88,7 @@ import SecretaryInsPage from "./pages/secretary-ins/index";
 import OrdersPage from "./pages/Orders/index";
 import OrderConfirmPage from "./pages/OrderConfirm/index";
 import FinanceHubPage from "./pages/FinanceHub/index";
+import WeeklyReviewPage from "./pages/WeeklyReview/index";
 import WithholdingPage from "./pages/work/WithholdingPage";
 import QuotationPage from "./pages/work/QuotationPage";
 import TransactionStatementPage from "./pages/work/TransactionStatementPage";
@@ -519,6 +523,7 @@ function ScrollToTopButton() {
     || pathname.startsWith("/work/call-management")
     || pathname.startsWith("/hyundaicm")
     || pathname.startsWith("/taesan")
+    || pathname.startsWith("/rental-os")
     || pathname.startsWith("/work/narumi");
   const hideOnMobile = pathname.startsWith("/tires-shop");
 
@@ -1407,12 +1412,14 @@ const AppRoutes = () => {
     || pathname.startsWith("/work/call-management")
     || pathname.startsWith("/hyundaicm")
     || pathname.startsWith("/taesan")
+    || pathname.startsWith("/rental-os")
     || pathname.startsWith("/narumi");
 
   const hideFooter =
     pathname.startsWith("/work/")
     || pathname.startsWith("/hyundaicm")
     || pathname.startsWith("/taesan")
+    || pathname.startsWith("/rental-os")
     || pathname.startsWith("/narumi");
 
   return (
@@ -1513,6 +1520,17 @@ const AppRoutes = () => {
             }
           />
 
+          {/* Rental_O/S (렌탈 딜 아웃소싱) */}
+          <Route path="/rental-os/login" element={<RentalOSLoginPage />} />
+          <Route
+            path="/rental-os"
+            element={
+              <RentalOSRouteGuard>
+                <RentalOSPage />
+              </RentalOSRouteGuard>
+            }
+          />
+
           {/* BS_ON */}
           <Route path="/bson" element={<BsonWorkPage />} />
           <Route path="/work/bson" element={<Navigate to="/bson" replace />} />
@@ -1558,6 +1576,11 @@ const AppRoutes = () => {
           <Route
             path="/work/finance-hub"
             element={isAdminLevel ? <FinanceHubPage /> : <Navigate to="/" replace />}
+          />
+
+          <Route
+            path="/work/weekly-review"
+            element={isAdminLevel ? <WeeklyReviewPage /> : <Navigate to="/" replace />}
           />
 
           <Route

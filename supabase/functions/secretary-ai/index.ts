@@ -1125,15 +1125,19 @@ serve(async (req: Request) => {
                 tireInsert.vehicle_info   = (tf.vehicle_info as string|null) ?? (brandFound || null);
                 tireInsert.vehicle_type   = (tf.vehicle_type   as string|null) ?? (tonMatch ? tonMatch[1]+"톤" : null);
                 tireInsert.tire_size      = (tf.tire_size      as string|null) ?? (sizeMatch ? sizeMatch[0] : null);
-                // process_status: DB constraint 허용값 매핑
-                const psRaw = (tf.process_status as string|null) ?? "waiting_order";
+                // process_status/process_stage: 앱 전체 공통 어휘(contract/delivery/invoiced/cancelled,
+                // pages/CallManagement/index.tsx의 COMMON_STAGES와 동일)로 매핑. 예전엔 이제 아무 화면도
+                // 안 쓰는 구버전 값(waiting_order 등)을 그대로 저장해 대시보드 등에서 라벨이 깨졌었음.
+                const psRaw = (tf.process_status as string|null) ?? "발주";
                 const psMap: Record<string,string> = {
-                  "발주":"waiting_order", "발주대기":"waiting_order",
-                  "문의접수":"inquiry_received", "규격확인중":"size_confirming",
-                  "견적발송":"quote_sent", "납품":"delivery_or_replacement",
-                  "교체중":"delivery_or_replacement", "완료":"completed", "보류":"hold",
+                  "발주":"contract", "발주대기":"contract",
+                  "문의접수":"contract", "규격확인중":"contract",
+                  "견적발송":"contract", "납품":"delivery",
+                  "교체중":"delivery", "완료":"invoiced", "보류":"cancelled",
                 };
-                tireInsert.process_status = psMap[psRaw] ?? "waiting_order";
+                const mappedStage = psMap[psRaw] ?? "contract";
+                tireInsert.process_status = mappedStage;
+                tireInsert.process_stage = mappedStage;
 
                 const fq = tf.front_quantity ? Number(tf.front_quantity) : (frontMatch ? Number(frontMatch[1]) : 0);
                 const rq = tf.rear_quantity  ? Number(tf.rear_quantity)  : (rearMatch  ? Number(rearMatch[1])  : (qtyMatch ? Number(qtyMatch[1]) : 0));

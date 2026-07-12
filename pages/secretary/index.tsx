@@ -7,9 +7,13 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
-type TabKey = "chat"|"schedule"|"status"|"orders"|"jinheung"|"narumi"|"email"|"memo"|"financehub"|"exportshop"|"quotation"|"cns"|"performance";
+type TabKey = "chat"|"schedule"|"status"|"orders"|"jinheung"|"narumi"|"email"|"memo"|"financehub"|"exportshop"|"quotation"|"cns"|"performance"|"rentalos"|"hyundaicm";
 // 메뉴 탭 순서 — 상단 탭바 렌더링과 Ctrl+Option+←/→ 단축키 이동이 이 배열 하나를 공유합니다.
-const TAB_ORDER: TabKey[] = ["chat","schedule","status","cns","orders","jinheung","narumi","quotation","performance","exportshop","financehub","email","memo"];
+const TAB_ORDER: TabKey[] = ["chat","schedule","status","cns","orders","hyundaicm","jinheung","narumi","quotation","performance","rentalos","exportshop","financehub","email","memo"];
+// 별도 로그인/RouteGuard를 쓰는 독립 페이지로 즉시 이동만 하는 탭(내용을 이 안에서 렌더링하지 않음).
+// tab 상태를 sessionStorage에 남기면, 이동 후 "AI비서" 페이지가 새로 마운트될 때 저장된 tab 값을
+// 다시 읽어 useEffect가 곧바로 재이동시켜 "뒤로가기가 안 먹히는" 문제가 생기므로 setTabAndSave를 타지 않는다.
+const EXTERNAL_TAB_LINKS: Partial<Record<TabKey,string>> = { hyundaicm:"/hyundaicm", rentalos:"/rental-os" };
 // 통합상담 탭 서브필터
 type CnsActiveTab = "통합상담" | "할부금융" | "보험" | "지게차" | "배터리" | "타이어" | "나르미";
 const CNS_WORK_TYPES: Record<CnsActiveTab, string[]> = {
@@ -194,7 +198,7 @@ const WL:Record<string,string> = {
   finance_hcm:"현대CM금융",narumi:"나르미",
 };
 const CAT_LBL:Record<string,string> = {meeting:"미팅",call:"통화",task:"업무",followup:"사후관리"};
-const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료",closed:"종결",waiting_customer:"고객대기",on_hold:"보류",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",confirmed:"확정",approved:"승인",rejected:"거절",supplement:"보완",credit_check:"신용조회",received:"접수",cancelled:"취소",registered:"등록완료",docs:"서류준비",insurance:"보험확인",
+const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료",closed:"종결",waiting_customer:"고객대기",on_hold:"보류",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",confirmed:"확정",approved:"승인",rejected:"거절",supplement:"보완",credit_check:"신용조회",received:"접수",cancelled:"취소",registered:"등록완료",docs:"서류준비",insurance:"보험확인",contacted:"연락완료",
   // 보험 단계
   design_request:"접수(설계요청)", design_requested:"접수(설계요청)", policy_issued:"완료(증권발급)",
   // 레거시 완결 → 계산서발행
@@ -306,7 +310,7 @@ const PriBadge = ({p}:{p:string}) => {
 const StsBadge = ({s}:{s:string}) => {
   const c = s==="new"?"bg-blue-50 text-blue-600"
     :s==="pending"||s==="on_hold"?"bg-amber-50 text-amber-600"
-    :s==="processing"||s==="in_progress"||s==="waiting_customer"?"bg-orange-50 text-orange-600"
+    :s==="processing"||s==="in_progress"||s==="waiting_customer"||s==="contacted"?"bg-orange-50 text-orange-600"
     :s==="completed"||s==="closed"||s==="done"||s==="invoiced"||s==="confirmed"?"bg-emerald-50 text-emerald-600"
     :s==="rejected"||s==="cancelled"?"bg-red-50 text-red-500"
     :s==="approved"||s==="registered"?"bg-blue-50 text-blue-600"
@@ -346,6 +350,25 @@ type ExportListing = {
   created_at: string;
 };
 
+type ExportInquiry = {
+  id: string;
+  ref_code: string;
+  company: string;
+  name: string;
+  phone: string;
+  email: string;
+  country: string;
+  incoterms: string|null;
+  items: string;
+  quantity: string;
+  target_port: string|null;
+  timeline: string|null;
+  notes: string|null;
+  status: string;
+  created_at: string;
+  listing_id: string|null;
+};
+
 const EXPORT_CAT_LBL: Record<string,string> = {
   excavator: "굴삭기", forklift: "지게차", aerial: "고소작업대",
 };
@@ -369,6 +392,9 @@ function ExportShopTab({ onNavigate }: { onNavigate:(path:string)=>void }) {
   const [catFilter, setCatFilter] = React.useState<"all"|"excavator"|"forklift"|"aerial">("all");
   const [selected, setSelected] = React.useState<ExportListing|null>(null);
   const [imgIdx, setImgIdx] = React.useState(0);
+  const [exView, setExView] = React.useState<"listings"|"inquiries">("listings");
+  const [inquiries, setInquiries] = React.useState<ExportInquiry[]>([]);
+  const [inqLoading, setInqLoading] = React.useState(true);
 
   React.useEffect(()=>{
     setLoading(true);
@@ -380,6 +406,24 @@ function ExportShopTab({ onNavigate }: { onNavigate:(path:string)=>void }) {
       .order("created_at",{ascending:false})
       .then(({data})=>{ setItems((data as ExportListing[])??[]); setLoading(false); });
   },[]);
+
+  const loadInquiries = React.useCallback(()=>{
+    setInqLoading(true);
+    supabase
+      .from("export_inquiries")
+      .select("*")
+      .order("created_at",{ascending:false})
+      .then(({data})=>{ setInquiries((data as ExportInquiry[])??[]); setInqLoading(false); });
+  },[]);
+
+  React.useEffect(()=>{ loadInquiries(); },[loadInquiries]);
+
+  const inqPendingCount = inquiries.filter(q=>q.status==="pending").length;
+
+  const setInquiryStatus = async (id:string, status:string) => {
+    setInquiries(prev=>prev.map(q=>q.id===id?{...q,status}:q));
+    await supabase.from("export_inquiries").update({status}).eq("id",id);
+  };
 
   // 모달 열릴 때 이미지 인덱스 초기화
   const openModal = (item: ExportListing) => { setSelected(item); setImgIdx(0); };
@@ -412,13 +456,29 @@ function ExportShopTab({ onNavigate }: { onNavigate:(path:string)=>void }) {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-sm font-semibold text-[#0f172a]">🌏 수출장비 매물</p>
         <div className="flex gap-1.5 flex-wrap">
-          {canManage&&(
+          {canManage&&exView==="listings"&&(
             <button className={BTP} onClick={()=>onNavigate("/export-shop/listing/new")}>+ 매물 등록</button>
           )}
           <button className={BTG} onClick={()=>onNavigate("/export-shop")}>전체 페이지 →</button>
         </div>
       </div>
 
+      {/* 뷰 전환: 매물 / 문의 */}
+      <div className="flex gap-1.5">
+        <button onClick={()=>setExView("listings")}
+          className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${exView==="listings"?"bg-orange-500 text-white border-orange-500":"bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
+          매물 목록
+        </button>
+        <button onClick={()=>setExView("inquiries")}
+          className={`relative px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${exView==="inquiries"?"bg-orange-500 text-white border-orange-500":"bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
+          문의 내역 ({inquiries.length})
+          {inqPendingCount>0&&(
+            <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center">{inqPendingCount}</span>
+          )}
+        </button>
+      </div>
+
+      {exView==="listings"&&(<>
       {/* 카테고리 필터 */}
       <div className="flex gap-1.5 flex-wrap">
         {(["all","excavator","forklift","aerial"] as const).map(c=>(
@@ -498,6 +558,64 @@ function ExportShopTab({ onNavigate }: { onNavigate:(path:string)=>void }) {
           })}
         </div>
       )}
+      </>)}
+
+      {exView==="inquiries"&&(<div className="space-y-2">
+        {inqLoading&&(
+          <div className="flex items-center justify-center py-12 text-gray-400 gap-2">
+            <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+            <span className="text-sm">불러오는 중...</span>
+          </div>
+        )}
+        {!inqLoading&&inquiries.length===0&&(
+          <div className={`${CARD} p-8 flex flex-col items-center gap-2 text-gray-400`}>
+            <p className="text-sm font-semibold">접수된 문의가 없습니다</p>
+          </div>
+        )}
+        {!inqLoading&&inquiries.map(q=>{
+          const linkedListing = q.listing_id ? items.find(i=>i.id===q.listing_id) : null;
+          return (
+            <div key={q.id} className={`${CARD} p-3.5 space-y-2`}>
+              <div className="flex items-start justify-between gap-2 flex-wrap">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="text-sm font-bold text-[#0f172a]">{q.company} · {q.name}</p>
+                    <StsBadge s={q.status}/>
+                    {linkedListing&&(
+                      <button onClick={()=>openModal(linkedListing)}
+                        className="text-[11px] px-1.5 py-0.5 rounded-full bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100">
+                        🔗 {linkedListing.brand}{linkedListing.model?` ${linkedListing.model}`:""}
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-0.5">{q.ref_code} · {new Date(q.created_at).toLocaleString("ko-KR")}</p>
+                </div>
+                <div className="flex gap-1.5 flex-shrink-0">
+                  {q.status!=="contacted"&&(
+                    <button className={BTG} onClick={()=>setInquiryStatus(q.id,"contacted")}>연락완료</button>
+                  )}
+                  {q.status!=="closed"&&(
+                    <button className={BTG} onClick={()=>setInquiryStatus(q.id,"closed")}>종결</button>
+                  )}
+                  {q.status==="closed"&&(
+                    <button className={BTG} onClick={()=>setInquiryStatus(q.id,"pending")}>재오픈</button>
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-1 text-xs text-gray-600 border-t border-gray-100 pt-2">
+                <p><span className="text-gray-400">연락처</span> {q.phone}</p>
+                <p><span className="text-gray-400">이메일</span> {q.email}</p>
+                <p><span className="text-gray-400">국가</span> {q.country}{q.incoterms?` · ${q.incoterms}`:""}</p>
+                <p><span className="text-gray-400">수량</span> {q.quantity}</p>
+                <p className="col-span-2 sm:col-span-4"><span className="text-gray-400">품목</span> {q.items}</p>
+                {q.target_port&&<p><span className="text-gray-400">도착항</span> {q.target_port}</p>}
+                {q.timeline&&<p><span className="text-gray-400">일정</span> {q.timeline}</p>}
+                {q.notes&&<p className="col-span-2 sm:col-span-4"><span className="text-gray-400">메모</span> {q.notes}</p>}
+              </div>
+            </div>
+          );
+        })}
+      </div>)}
 
       {/* ── 상세 모달 ── */}
       {selected&&ReactDOM.createPortal(
@@ -2562,7 +2680,12 @@ const SecretaryPage:React.FC = () => {
       e.preventDefault();
       const curIdx = TAB_ORDER.indexOf(tab);
       const delta = e.key === "ArrowRight" ? 1 : -1;
-      const nextIdx = (curIdx + delta + TAB_ORDER.length) % TAB_ORDER.length;
+      // 외부 페이지로 즉시 이동하는 탭(hyundaicm/rentalos)은 키보드 순환 대상에서 건너뜀
+      let nextIdx = curIdx;
+      for(let step=0; step<TAB_ORDER.length; step++){
+        nextIdx = (nextIdx + delta + TAB_ORDER.length) % TAB_ORDER.length;
+        if(!EXTERNAL_TAB_LINKS[TAB_ORDER[nextIdx]]) break;
+      }
       setTabAndSave(TAB_ORDER[nextIdx]);
     };
     window.addEventListener("keydown", handler);
@@ -2734,6 +2857,9 @@ const SecretaryPage:React.FC = () => {
   const [perfForklift,setPerfForklift]   = useState<any[]>([]);  // 지게차 판매
   const [perfInsurance,setPerfInsurance] = useState<any[]>([]);  // 보험 취급
   const [perfNarumi2,setPerfNarumi2]     = useState<any[]>([]);  // 나르미 수행
+  const [perfRentalOS,setPerfRentalOS]   = useState<any[]>([]);  // Rental_O/S 확정
+  const [perfOrdersCreated,setPerfOrdersCreated] = useState<any[]>([]);  // 진흥 발주
+  const [perfOrdersDelivered,setPerfOrdersDelivered] = useState<any[]>([]);  // 진흥 납품
   const [perfExpanded,setPerfExpanded]   = useState<string|null>(null);
 
   async function loadPerfData(y=perfYear, m=perfMonth){
@@ -2803,18 +2929,39 @@ const SecretaryPage:React.FC = () => {
           }))),
       ]).then(([q,s])=>setPerfForklift([...q,...s])),
 
-      // 보험 — 취급건
+      // 보험 — "완료" 공식 정의 = 증권발급 기준(policy_issued=true). 대시보드/주간리뷰와 통일.
       supabase.from("consultation_cases")
-        .select("id,customer_name,phone,telecom_provider,status,created_at")
+        .select("id,customer_name,phone,telecom_provider,status,created_at,consultation_insurance_details(policy_issued)")
         .eq("work_type","registration_insurance")
         .gte("created_at",dtFrom).lte("created_at",dtTo).order("created_at",{ascending:false})
-        .then(({data})=>setPerfInsurance(data??[])),
+        .then(({data})=>setPerfInsurance((data??[]).filter((c:any)=>c.consultation_insurance_details?.policy_issued))),
 
       // 나르미 — 수행건
       supabase.from("narumi_tasks")
         .select("id,customer_name,vin,delivery_date_text,is_registered,status,created_at")
         .gte("created_at",dtFrom).lte("created_at",dtTo).order("created_at",{ascending:false})
         .then(({data})=>setPerfNarumi2(data??[])),
+
+      // Rental_O/S — 확정
+      supabase.from("rental_os_deals")
+        .select("id,customer_name,company_name,outsourcing_partner,amount,created_at")
+        .eq("status","확정").gte("created_at",dtFrom).lte("created_at",dtTo)
+        .order("created_at",{ascending:false})
+        .then(({data})=>setPerfRentalOS(data??[])),
+
+      // 진흥 발주 (접수일 기준, 주간리뷰/대시보드와 동일 정의)
+      supabase.from("tb_orders")
+        .select("id,customer_name_raw,product_spec,quantity,status,price_to_customer,created_at,delivered_at")
+        .gte("created_at",dtFrom).lte("created_at",dtTo)
+        .order("created_at",{ascending:false})
+        .then(({data})=>setPerfOrdersCreated(data??[])),
+
+      // 진흥 납품 (납품일 기준)
+      supabase.from("tb_orders")
+        .select("id,customer_name_raw,product_spec,quantity,status,price_to_customer,created_at,delivered_at")
+        .gte("delivered_at",dtFrom).lte("delivered_at",dtTo)
+        .order("delivered_at",{ascending:false})
+        .then(({data})=>setPerfOrdersDelivered(data??[])),
     ]);
     setPerfLoading(false);
   }
@@ -2868,7 +3015,7 @@ const SecretaryPage:React.FC = () => {
   const [cnsTireRearQty,     setCnsTireRearQty]     = useState("");
   const [cnsTireInflow,      setCnsTireInflow]      = useState("");
   const [cnsTireAssoc,       setCnsTireAssoc]       = useState("");
-  const [cnsTireStage,       setCnsTireStage]       = useState("received");
+  const [cnsTireStage,       setCnsTireStage]       = useState("contract");
   const [cnsTireNote,        setCnsTireNote]        = useState("");
   // ── 지게차 상세 (견적)
   const [cnsFklBrand, setCnsFklBrand] = useState("");
@@ -3134,6 +3281,8 @@ const SecretaryPage:React.FC = () => {
       customer_name:      cnsCustName,
       phone:              cnsCustPhone||null,
       telecom_provider:   isIns ? (cnsTelecomProvider||null) : null,
+      company_name:       cnsCompanyName||null,
+      region:             cnsRegion||null,
       work_type:          wt,
       sub_type:           cnsSub||null,
       status:             "new",
@@ -3159,9 +3308,15 @@ const SecretaryPage:React.FC = () => {
           finance_interest_rate:cnsFinanceInterestRate?parseFloat(cnsFinanceInterestRate):null,
           finance_incentive:    cnsFinanceIncentive ?parseFloat(cnsFinanceIncentive):null,
           finance_stage:        cnsFinanceStage||"received",
+          finance_aftercare:    !!cnsNextFollowupDate,
+          note:                 cnsFinanceNote||null,
         });
       }
       if(isIns){
+        // CallManagement의 deriveInsuranceProcessStatus와 동일 로직: "증권발급"을 고르면
+        // 그 이전 단계(청약서발행/결제완료)도 함께 완료된 것으로 기록 — 안 하면 이 필드들을
+        // 필터링하는 다른 화면에서 cns로 등록한 발급완료 건이 "미완료"로 잘못 보임.
+        const cnsInsIssued = cnsInsStatus==="issued";
         await supabase.from("consultation_insurance_details").insert({
           consultation_id:   cid,
           vehicle_no:        cnsInsVehicleNo||null,
@@ -3172,18 +3327,28 @@ const SecretaryPage:React.FC = () => {
           insurance_company: cnsInsCompany||null,
           insurance_start_date: cnsInsStartDate||null,
           insurance_end_date:   cnsInsEndDate||null,
-          policy_issued:     cnsInsStatus==="issued",
-          design_requested:  cnsInsStatus==="requested",
+          policy_issued:      cnsInsIssued,
+          payment_completed:  cnsInsIssued,
+          application_issued: cnsInsIssued,
+          design_requested:   true,
+          process_status:     cnsInsIssued ? "policy_issued" : "design_requested",
         });
       }
       if(isTire){
+        const tireFrontQty = cnsTireFrontQty?Number(cnsTireFrontQty):0;
+        const tireRearQty  = cnsTireRearQty?Number(cnsTireRearQty):0;
         await supabase.from("consultation_tire_details").insert({
           consultation_id: cid,
-          tire_size:       cnsTireFrontSize||null,
+          tire_size:       [cnsTireFrontSize,cnsTireRearSize].filter(Boolean).join(" / ")||null,
           vehicle_type:    cnsTireVehicleType||null,
           vehicle_info:    cnsTireVehicleInfo||null,
-          process_stage:   cnsTireStage||"received",
-          process_status:  cnsTireStage||"received",
+          quantity:        (tireFrontQty+tireRearQty)||null,
+          front_quantity:  tireFrontQty||null,
+          rear_quantity:   tireRearQty||null,
+          inflow_channel:  cnsTireInflow||null,
+          association_name: cnsTireInflow==="association"?(cnsTireAssoc||null):null,
+          process_stage:   cnsTireStage||"contract",
+          process_status:  cnsTireStage||"contract",
         });
       }
       // ── 지게차: tb_quotations 저장 (견적서 이력)
@@ -4973,10 +5138,14 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
             }}
           >
             {([...TAB_ORDER,...TAB_ORDER,...TAB_ORDER]).map((t,i)=>(
-              <button key={`${t}-${i}`} data-tab-key={t} className={`${TB} ${tab===t?TA:TI}`} style={{flexShrink:0,whiteSpace:"nowrap"}} onClick={()=>setTabAndSave(t)}>
+              <button key={`${t}-${i}`} data-tab-key={t} className={`${TB} ${tab===t?TA:TI}`} style={{flexShrink:0,whiteSpace:"nowrap"}} onClick={()=>{
+                const link = EXTERNAL_TAB_LINKS[t];
+                if(link){ navigate(link); return; }
+                setTabAndSave(t);
+              }}>
                 {t==="email"
                   ? <span className="flex items-center gap-1">📧 이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
-                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",jinheung:"🔧 진흥주문",narumi:"🚛 나르미",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비",quotation:"📋 견적서",cns:"🗂 통합상담",performance:"📈 실적관리"}[t as string]
+                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",jinheung:"🔧 진흥주문",narumi:"🚛 나르미",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비",quotation:"📋 견적서",cns:"🗂 통합상담",performance:"📈 실적관리",rentalos:"🚐 Rental_O/S",hyundaicm:"🏗 현대CM"}[t as string]
                 }
               </button>
             ))}
@@ -5000,6 +5169,10 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
           <div className="flex gap-2">
             <button onClick={()=>navigate("/work/call-management")} className="flex-1 flex items-center justify-center gap-1 px-2 py-2 rounded-xl border border-gray-200 text-xs text-[#0f172a] font-semibold hover:bg-gray-50 transition-all">📋 상담관리</button>
             <button onClick={()=>navigate("/work/dashboard")} className="flex-1 flex items-center justify-center gap-1 px-2 py-2 rounded-xl border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition-all">📊 대시보드</button>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={()=>navigate("/work/weekly-review")} className="flex-1 flex items-center justify-center gap-1 px-2 py-2 rounded-xl border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition-all">📈 주간 리뷰</button>
+            <button onClick={()=>navigate("/rental-os")} className="flex-1 flex items-center justify-center gap-1 px-2 py-2 rounded-xl border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition-all">🚐 Rental_O/S</button>
           </div>
           {/* 구글 캘린더 연동 */}
           <div className={`${CARD} p-3`}>
@@ -5544,8 +5717,11 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                                       setOrderInvoiceModal(o);
                                       return;
                                     }
-                                    const table = ["tire","tire_sales"].includes(o.work_type) ? "consultation_tire_details" : "consultation_battery_details";
-                                    await supabase.from(table).update({ process_stage: nextStage }).eq("consultation_id", o.id);
+                                    const isTireRow = ["tire","tire_sales"].includes(o.work_type);
+                                    const table = isTireRow ? "consultation_tire_details" : "consultation_battery_details";
+                                    // 타이어만 process_status 컬럼도 있음 — 같이 써서 process_stage와 어긋나지 않게 함
+                                    const stagePayload = isTireRow ? { process_stage: nextStage, process_status: nextStage } : { process_stage: nextStage };
+                                    await supabase.from(table).update(stagePayload).eq("consultation_id", o.id);
                                     void loadOrderViews();
                                     showToast("단계가 변경되었습니다");
                                   }}
@@ -6601,11 +6777,11 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                       })()}
                     </Section>
 
-                    {/* ── 보험 취급건수 ── */}
+                    {/* ── 보험 완료건수 ── */}
                     <Section id="ins" color="bg-rose-50 border-rose-200" hColor="text-rose-700"
-                      title="🛡 보험 취급건수" sub="등록 기준"
+                      title="🛡 보험 완료건수" sub="증권발급 기준"
                       rows={perfInsurance} cols={(r:any)=>[r.customer_name,r.phone,r.telecom_provider,STS_LBL[r.status]??r.status].filter(Boolean).join(" · ")}>
-                      <RowItem label="보험 상담건" cnt={perfInsurance.length}/>
+                      <RowItem label="증권발급 완료" cnt={perfInsurance.length}/>
                     </Section>
 
                     {/* ── 나르미 업무수행건수 ── */}
@@ -6614,6 +6790,22 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                       rows={perfNarumi2} cols={(r:any)=>[r.customer_name,r.vin?`VIN:${r.vin}`:"",r.delivery_date_text,r.is_registered?"등록완료":""].filter(Boolean).join(" · ")}>
                       <RowItem label="전체 접수" cnt={perfNarumi2.length}/>
                       <RowItem label="등록완료" cnt={narumiDone}/>
+                    </Section>
+
+                    {/* ── Rental_O/S 확정건수 ── */}
+                    <Section id="rental" color="bg-teal-50 border-teal-200" hColor="text-teal-700"
+                      title="🚐 Rental_O/S 취급액" sub="확정 기준"
+                      rows={perfRentalOS} cols={(r:any)=>[r.customer_name,r.company_name,r.outsourcing_partner,r.amount?(r.amount.toLocaleString("ko-KR")+"원"):""].filter(Boolean).join(" · ")}>
+                      <RowItem label="확정 건수" cnt={perfRentalOS.length} amt={perfRentalOS.reduce((s:number,r:any)=>s+(r.amount??0),0)}/>
+                    </Section>
+
+                    {/* ── 진흥 발주/납품 (주간리뷰/대시보드와 동일 정의: 발주=접수일, 납품=납품일) ── */}
+                    <Section id="ord" color="bg-purple-50 border-purple-200" hColor="text-purple-700"
+                      title="🚚 진흥 발주/납품" sub="발주=접수일, 납품=납품일 기준"
+                      rows={perfExpanded==="ord"?perfOrdersCreated:undefined}
+                      cols={(r:any)=>[r.customer_name_raw,r.product_spec,r.quantity?r.quantity+"개":"",r.price_to_customer?(r.price_to_customer.toLocaleString("ko-KR")+"원"):"",r.delivered_at?"납품✓":""].filter(Boolean).join(" · ")}>
+                      <RowItem label="발주 건수" cnt={perfOrdersCreated.length} amt={perfOrdersCreated.reduce((s:number,r:any)=>s+(r.price_to_customer??0),0)}/>
+                      <RowItem label="납품 건수" cnt={perfOrdersDelivered.length} amt={perfOrdersDelivered.reduce((s:number,r:any)=>s+(r.price_to_customer??0),0)}/>
                     </Section>
 
                   </div>
@@ -6656,7 +6848,15 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                         {key:"narumi",         label:"🚛 나르미"},
                       ].map(({key,label})=>(
                         <button key={key}
-                          onClick={()=>{setCnsWorkType(key); setCnsSub("");}}
+                          onClick={()=>{
+                            // 배터리/지게차/수출은 상담관리(CallManagement)와 저장 구조 자체가 달라
+                            // 여기서 따로 입력받지 않고 바로 상담관리로 연결한다
+                            if(["export","forklift_sales","battery_sales"].includes(key)){
+                              navigate(`/work/call-management?workType=${key}`);
+                              return;
+                            }
+                            setCnsWorkType(key); setCnsSub("");
+                          }}
                           className={`py-2 rounded-xl text-xs font-semibold border transition-all ${cnsWorkType===key?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200 hover:border-gray-400"}`}>
                           {label}
                         </button>
@@ -6785,7 +6985,6 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                                 <option value="건설">건설</option>
                                 <option value="고소작업대">고소작업대</option>
                                 <option value="배터리">배터리</option>
-                                <option value="기타">기타</option>
                               </select>
                             </div>
                             <div>
@@ -6799,7 +6998,6 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                                 <option value="할부">할부</option>
                                 <option value="리스">리스</option>
                                 <option value="렌탈">렌탈</option>
-                                <option value="일반리스">일반리스</option>
                               </select>
                             </div>
                             <div>
@@ -6957,131 +7155,6 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                     </>
                   )}
 
-                  {/* ══════════════ 3. 지게차 견적 ══════════════ */}
-                  {cnsWorkType==="forklift_sales"&&(
-                    <>
-                      <div className="pt-1">
-                        <p className="text-xs font-semibold text-orange-500 mb-2">지게차 견적</p>
-                        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-                          <div>
-                            <label className={LBL}>브랜드</label>
-                            <select className={CTRL} value={cnsFklBrand} onChange={e=>setCnsFklBrand(e.target.value)}>
-                              <option value="">선택</option>
-                              {["현대","두산","도요타","TCM","클라크","미쓰비시","닛산","기타"].map(b=><option key={b} value={b}>{b}</option>)}
-                            </select>
-                          </div>
-                          <div>
-                            <label className={LBL}>모델</label>
-                            <input className={CTRL} placeholder="예: 35BH-7" value={cnsFklModel} onChange={e=>setCnsFklModel(e.target.value)}/>
-                          </div>
-                          <div>
-                            <label className={LBL}>톤수</label>
-                            <select className={CTRL} value={cnsFklTon} onChange={e=>setCnsFklTon(e.target.value)}>
-                              <option value="">선택</option>
-                              {["1","1.5","2","2.5","3","3.5","4","5","7","10"].map(t=><option key={t} value={t}>{t}톤</option>)}
-                            </select>
-                          </div>
-                          <div>
-                            <label className={LBL}>연식</label>
-                            <input className={CTRL} placeholder="예: 2020" value={cnsFklYear} onChange={e=>setCnsFklYear(e.target.value.replace(/\D/g,""))} maxLength={4}/>
-                          </div>
-                          <div>
-                            <label className={LBL}>연료</label>
-                            <select className={CTRL} value={cnsFklFuel} onChange={e=>setCnsFklFuel(e.target.value)}>
-                              <option value="">선택</option>
-                              <option value="디젤">디젤</option>
-                              <option value="LPG">LPG</option>
-                              <option value="전동">전동</option>
-                              <option value="하이브리드">하이브리드</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className={LBL}>마스트</label>
-                            <select className={CTRL} value={cnsFklMast} onChange={e=>setCnsFklMast(e.target.value)}>
-                              <option value="">선택</option>
-                              <option value="심플렉스">심플렉스</option>
-                              <option value="듀플렉스">듀플렉스</option>
-                              <option value="트리플렉스">트리플렉스</option>
-                              <option value="쿼드">쿼드</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className={LBL}>수량</label>
-                            <input type="text" inputMode="numeric" className={CTRL} placeholder="1" value={cnsFklQty} onChange={e=>setCnsFklQty(e.target.value.replace(/\D/g,""))}/>
-                          </div>
-                          <div>
-                            <label className={LBL}>견적가</label>
-                            <div className="relative">
-                              <input type="text" inputMode="numeric" className={`${CTRL} pr-8`}
-                                placeholder="예: 25,000,000"
-                                value={cnsFklPrice?parseInt(cnsFklPrice,10).toLocaleString("ko-KR"):""}
-                                onChange={e=>setCnsFklPrice(e.target.value.replace(/\D/g,""))}/>
-                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">원</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div>
-                        <label className={LBL}>비고</label>
-                        <textarea className={`${TA2} min-h-[64px]`} placeholder="특이사항, 요청사항 등을 입력하세요." value={cnsFklNote} onChange={e=>setCnsFklNote(e.target.value)}/>
-                      </div>
-                    </>
-                  )}
-
-                  {/* ══════════════ 4. 배터리 견적 ══════════════ */}
-                  {cnsWorkType==="battery_sales"&&(
-                    <>
-                      <div className="pt-1">
-                        <p className="text-xs font-semibold text-orange-500 mb-2">배터리 견적</p>
-                        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-                          <div>
-                            <label className={LBL}>차량 종류</label>
-                            <select className={CTRL} value={cnsBattVehicleType} onChange={e=>setCnsBattVehicleType(e.target.value)}>
-                              <option value="">선택</option>
-                              <option value="지게차">지게차</option>
-                              <option value="고소작업대">고소작업대</option>
-                              <option value="농기계">농기계</option>
-                              <option value="기타">기타</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className={LBL}>전압</label>
-                            <select className={CTRL} value={cnsBattVoltage} onChange={e=>setCnsBattVoltage(e.target.value)}>
-                              <option value="">선택</option>
-                              {["12V","24V","36V","48V","72V","80V","기타"].map(v=><option key={v} value={v}>{v}</option>)}
-                            </select>
-                          </div>
-                          <div>
-                            <label className={LBL}>용량(AH)</label>
-                            <input type="text" inputMode="numeric" className={CTRL} placeholder="예: 600" value={cnsBattCapacity} onChange={e=>setCnsBattCapacity(e.target.value.replace(/\D/g,""))}/>
-                          </div>
-                          <div>
-                            <label className={LBL}>규격</label>
-                            <input className={CTRL} placeholder="예: 12PzS600 / LFP 150AH" value={cnsBattSpec} onChange={e=>setCnsBattSpec(e.target.value)}/>
-                          </div>
-                          <div>
-                            <label className={LBL}>수량</label>
-                            <input type="text" inputMode="numeric" className={CTRL} placeholder="1" value={cnsBattQty} onChange={e=>setCnsBattQty(e.target.value.replace(/\D/g,""))}/>
-                          </div>
-                          <div>
-                            <label className={LBL}>견적가</label>
-                            <div className="relative">
-                              <input type="text" inputMode="numeric" className={`${CTRL} pr-8`}
-                                placeholder="예: 3,200,000"
-                                value={cnsBattPrice?parseInt(cnsBattPrice,10).toLocaleString("ko-KR"):""}
-                                onChange={e=>setCnsBattPrice(e.target.value.replace(/\D/g,""))}/>
-                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">원</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div>
-                        <label className={LBL}>비고</label>
-                        <textarea className={`${TA2} min-h-[64px]`} placeholder="특이사항, 현재 배터리 상태 등을 입력하세요." value={cnsBattNote} onChange={e=>setCnsBattNote(e.target.value)}/>
-                      </div>
-                    </>
-                  )}
-
                   {/* ══════════════ 5. 타이어 ══════════════ */}
                   {cnsWorkType==="tire_sales"&&(
                     <>
@@ -7136,7 +7209,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                           <div>
                             <label className={LBL}>진행단계</label>
                             <select className={CTRL} value={cnsTireStage} onChange={e=>setCnsTireStage(e.target.value)}>
-                              <option value="received">접수</option>
+                              <option value="contract">계약</option>
                               <option value="delivery">납품완료</option>
                               <option value="invoiced">계산서발행</option>
                               <option value="cancelled">취소</option>
@@ -7572,14 +7645,16 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                     const table = ["tire","tire_sales"].includes(o.work_type) ? "consultation_tire_details" : "consultation_battery_details";
                     const updatePatch:any = {
                       process_stage: "invoiced",
-                      process_status: "invoiced",
                       invoice_image_path: path,
                     };
                     if(table==="consultation_tire_details"){
+                      // 타이어만 process_status 컬럼이 있음 — 다른 테이블에 같이 보내면 update 자체가 실패함
+                      updatePatch.process_status = "invoiced";
                       updatePatch.price_to_customer = amtTo;
                       updatePatch.price_from_jinheung = amtFrom;
                     }
-                    await supabase.from(table).update(updatePatch).eq("consultation_id", o.id);
+                    const { error: stageUpdErr } = await supabase.from(table).update(updatePatch).eq("consultation_id", o.id);
+                    if(stageUpdErr){ alert("단계 업데이트 실패: "+stageUpdErr.message); setOrderInvoiceUploading(false); return; }
 
                     // 2. 매출(sales_records) 자동 반영 — 이미 등록된 건이면 중복 방지, 금액은 입력값 사용
                     const { data: existing } = await supabase.from("sales_records").select("id").eq("consultation_id", o.id).maybeSingle();
@@ -7683,9 +7758,12 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                     if(upErr){ alert("업로드 실패: "+upErr.message); setOrderBulkInvoiceUploading(false); return; }
 
                     for(const o of items){
-                      const table = ["tire","tire_sales"].includes(o.work_type) ? "consultation_tire_details" : "consultation_battery_details";
+                      const isTireRow = ["tire","tire_sales"].includes(o.work_type);
+                      const table = isTireRow ? "consultation_tire_details" : "consultation_battery_details";
                       await supabase.from(table).update({
                         process_stage: "invoiced",
+                        // 타이어만 process_status 컬럼이 있음 — 같이 써서 process_stage와 어긋나지 않게 함
+                        ...(isTireRow ? { process_status: "invoiced" } : {}),
                         invoice_image_path: path,
                         invoice_group_key: groupKey,
                       }).eq("consultation_id", o.id);

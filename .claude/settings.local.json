@@ -2,7 +2,16 @@
   "permissions": {
     "allow": [
       "Bash(npx tsc *)",
-      "Bash(supabase functions *)"
+      "Bash(supabase functions *)",
+      "Bash(mkdir -p .claude)",
+      "Bash(node -e ' *)",
+      "Bash(supabase secrets *)",
+      "Bash(supabase --help)",
+      "Bash(supabase db *)",
+      "WebSearch",
+      "Bash(grep -n \"^function \\\\|const .*= async\\\\|const .*=.*=>.*{$\\\\|// ──\" pages/work/QuotationPage.tsx)",
+      "Skill(artifact-design)",
+      "Skill(artifact-design:*)"
     ]
   }
 }
