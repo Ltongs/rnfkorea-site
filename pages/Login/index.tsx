@@ -6,8 +6,28 @@ import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../lib/auth";
 
+// 이 페이지는 "관리자 전용" 화면(예: /work/secretary)에서 비로그인으로 튕겨나온 사람이
+// 로그인 후 그대로 그 관리자 전용 화면으로 다시 보내지는 구조라, 관리자가 아닌 계정(예: RentalOS
+// 담당자)이 여기로 들어오면 로그인에 성공해도 다시 그 화면 접근이 막혀 /login으로 튕기고, 또
+// 로그인 성공 → 다시 튕기고… 하는 무한 루프에 빠졌었다. state.from은 관리자 계정에만 그대로
+// 적용하고, 그 외 역할은 실제로 갈 수 있는 화면으로 보낸다.
+function defaultLandingFor(auth: {
+  isAdmin?: boolean; isSubAdmin?: boolean; isInsAI?: boolean; isRentalOS?: boolean;
+  isHyundaiCM?: boolean; isNhCapital?: boolean; isNhCapitalStaff?: boolean;
+  isTaesan?: boolean; isNarumi?: boolean; isLotte?: boolean; isInsuranceManager?: boolean;
+}): string {
+  if (auth.isAdmin || auth.isSubAdmin) return "/work/secretary";
+  if (auth.isInsAI) return "/work/secretary-ins";
+  if (auth.isRentalOS) return "/rental-os";
+  if (auth.isHyundaiCM || auth.isNhCapital || auth.isNhCapitalStaff) return "/hyundaicm";
+  if (auth.isTaesan) return "/taesan";
+  if (auth.isNarumi || auth.isLotte || auth.isInsuranceManager) return "/narumi";
+  return "/";
+}
+
 export default function LoginPage() {
-  const { user, login, loading } = useAuth() as any;
+  const auth = useAuth() as any;
+  const { user, login, loading, isAdmin, isSubAdmin } = auth;
   const nav  = useNavigate();
   const loc  = useLocation();
 
@@ -19,8 +39,10 @@ export default function LoginPage() {
   // 이미 로그인된 경우 리다이렉트
   useEffect(() => {
     if (!loading && user) {
-      const from = (loc.state as any)?.from ?? "/work/secretary";
-      nav(from, { replace: true });
+      const isAdminLevel = isAdmin || isSubAdmin;
+      const from = (loc.state as any)?.from;
+      const target = from && isAdminLevel ? from : defaultLandingFor(auth);
+      nav(target, { replace: true });
     }
   }, [user, loading]);
 
