@@ -180,6 +180,17 @@ export default function RentalOSPage() {
       const { data, error } = await supabase.from("rental_os_deals").insert(payload).select().single();
       if (error) throw error;
       await addHistory(data.id, "created", { to_status: "접수", note: "딜 등록" });
+      // 통합상담/주문·상담 목록 노출용 consultation_cases 기록 — 비동기, 실패해도 메인 저장에 영향 없음
+      supabase.from("consultation_cases").insert({
+        customer_name: payload.customer_name,
+        phone: payload.customer_phone,
+        company_name: payload.company_name,
+        work_type: "rentalos",
+        status: "new",
+        summary: `Rental_O/S · ${payload.equipment_type ?? "장비 미정"}${payload.equipment_spec ? ` (${payload.equipment_spec})` : ""}${payload.rental_period ? ` · ${payload.rental_period}` : ""}`,
+        call_datetime: new Date().toISOString(),
+        followup_needed: false,
+      }).then(({ error: e }) => { if (e) console.warn("[cns Rental_O/S 기록 실패]", e.message); });
       sendKakaoNotify({
         dealNo: payload.deal_no, customerName: payload.customer_name, companyName: payload.company_name ?? "",
         equipmentType: payload.equipment_type ?? "", equipmentSpec: payload.equipment_spec ?? "",
@@ -266,6 +277,7 @@ export default function RentalOSPage() {
     if (!fileList || fileList.length === 0) return;
     setUploadingId(dealId);
     try {
+      const deal = deals.find(d => d.id === dealId);
       for (const file of Array.from(fileList)) {
         const ext = file.name.includes(".") ? file.name.split(".").pop() : "bin";
         const path = `rental_os/${dealId}/${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
@@ -278,6 +290,13 @@ export default function RentalOSPage() {
         });
         if (dbErr) throw dbErr;
         await addHistory(dealId, "file_upload", { note: file.name });
+        if (deal) {
+          sendKakaoNotify({
+            type: "file_uploaded",
+            dealNo: deal.deal_no ?? "", customerName: deal.customer_name, companyName: deal.company_name ?? "",
+            fileName: file.name, uploadedBy: user?.email ?? "",
+          });
+        }
       }
       await loadFiles(dealId);
     } catch (e: any) {

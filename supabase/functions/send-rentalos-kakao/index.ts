@@ -140,6 +140,20 @@ function buildVariables(body: Record<string, string>): Record<string, string> {
   };
 }
 
+// 파일 업로드 알림 — 신규접수용 승인 템플릿(hcm_new)엔 이 상황에 맞는 문구/변수가 없어
+// 알림톡 대신 자유 문구가 가능한 SMS로 발송한다(전용 템플릿 승인 후 알림톡으로 교체 가능).
+function buildFileUploadSmsText(body: Record<string, string>): string {
+  const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+  return [
+    "[Rental_O/S 파일 업로드]", "",
+    `케이스: ${body.dealNo ?? "-"}`,
+    `고객: ${body.customerName ?? "-"}${body.companyName ? ` (${body.companyName})` : ""}`,
+    `파일: ${body.fileName ?? "-"}`,
+    `업로드: ${body.uploadedBy ?? "-"}`,
+    `시간: ${now}`,
+  ].filter(Boolean).join("\n");
+}
+
 function buildFallbackText(body: Record<string, string>): string {
   const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
   return [
@@ -164,6 +178,16 @@ async function sendNow(body: Record<string, string>): Promise<void> {
     console.warn("[Rental_O/S 알림톡 실패 → SMS 폴백]:", (e as Error).message);
     await sendSms(fallbackText, RECIPIENTS);
   }
+}
+
+// body.type에 따라 신규접수(알림톡+SMS 폴백)인지 파일업로드(SMS 전용)인지 갈라서 실제 발송한다.
+async function dispatchNow(body: Record<string, string>): Promise<void> {
+  if (body.type === "file_uploaded") {
+    await sendSms(buildFileUploadSmsText(body), RECIPIENTS);
+    console.log("[Rental_O/S 파일업로드 SMS 발송 완료]:", body.dealNo, body.fileName);
+    return;
+  }
+  await sendNow(body);
 }
 
 serve(async (req) => {
@@ -196,7 +220,7 @@ serve(async (req) => {
       let flushed = 0;
       for (const item of items ?? []) {
         try {
-          await sendNow(item.payload as Record<string, string>);
+          await dispatchNow(item.payload as Record<string, string>);
           await db.from("pending_kakao_queue").delete().eq("id", item.id);
           flushed++;
         } catch (e) {
@@ -228,7 +252,7 @@ serve(async (req) => {
       }
     }
 
-    await sendNow(body);
+    await dispatchNow(body);
 
     return new Response(
       JSON.stringify({ success: true, recipients: RECIPIENTS }),

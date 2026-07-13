@@ -11,7 +11,10 @@
       "WebSearch",
       "Bash(grep -n \"^function \\\\|const .*= async\\\\|const .*=.*=>.*{$\\\\|// ──\" pages/work/QuotationPage.tsx)",
       "Skill(artifact-design)",
-      "Skill(artifact-design:*)"
+      "Skill(artifact-design:*)",
+      "Bash(git -C /Users/tongsoolee/Desktop/WORKS/Homepage/rnfkorea_deploy_new diff --stat)",
+      "Bash(git -C /Users/tongsoolee/Desktop/WORKS/Homepage/rnfkorea_deploy_new diff pages/secretary/index.tsx)",
+      "Bash(echo \"EXIT:$?\")"
     ]
   }
 }

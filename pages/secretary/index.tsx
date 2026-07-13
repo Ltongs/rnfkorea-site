@@ -16,15 +16,16 @@ const TAB_ORDER: TabKey[] = ["chat","schedule","status","cns","orders","hyundaic
 // 다시 읽어 useEffect가 곧바로 재이동시켜 "뒤로가기가 안 먹히는" 문제가 생기므로 setTabAndSave를 타지 않는다.
 const EXTERNAL_TAB_LINKS: Partial<Record<TabKey,string>> = { hyundaicm:"/hyundaicm", rentalos:"/rental-os", taesan:"/taesan", callmanagement:"/work/call-management" };
 // 통합상담 탭 서브필터
-type CnsActiveTab = "통합상담" | "할부금융" | "보험" | "지게차" | "배터리" | "타이어" | "나르미";
+type CnsActiveTab = "통합상담" | "할부금융" | "보험" | "지게차" | "배터리" | "타이어" | "나르미" | "Rental_O/S";
 const CNS_WORK_TYPES: Record<CnsActiveTab, string[]> = {
-  "통합상담": ["finance","registration_insurance","forklift_sales","battery_sales","battery","tire_sales","tire","narumi","export"],
+  "통합상담": ["finance","registration_insurance","forklift_sales","battery_sales","battery","tire_sales","tire","narumi","export","rentalos"],
   "할부금융": ["finance"],
   "보험":   ["registration_insurance"],
   "지게차":  ["forklift_sales"],
   "배터리":  ["battery_sales","battery"],
   "타이어":  ["tire_sales","tire"],
   "나르미":  ["narumi"],
+  "Rental_O/S": ["rentalos"],
 };
 type EmailReport = {
   id:number; created_at:string; report_date:string;
@@ -44,6 +45,8 @@ type Todo = {
   priority:"urgent"|"normal"|"low"; category:string|null;
   due_date:string|null; is_done:boolean; done_at:string|null; consultation_id:number|null;
 };
+type DormantCustomer = { name:string; lastDate:string };
+type DormantBuckets = { m1:DormantCustomer[]; m3:DormantCustomer[]; m6:DormantCustomer[] };
 type Order = {
   id:number; created_at:string; customer_name:string; phone:string|null;
   channel:"kakao"|"phone"|"visit"|"web"; work_type:string|null;
@@ -224,6 +227,8 @@ const nowTs = () => new Date().toLocaleString("ko-KR",{month:"2-digit",day:"2-di
 const pad2 = (n:number) => String(n).padStart(2,"0");
 const fmtDate = (d:string) => { const dt=new Date(d+(d.includes("T")?"":"T00:00:00")); return `${dt.getMonth()+1}월 ${dt.getDate()}일`; };
 const fmtDT = (d:string) => new Date(d).toLocaleDateString("ko-KR",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});
+const monthsAgoStr = (n:number) => { const d=new Date(); d.setMonth(d.getMonth()-n); const p=(x:number)=>String(x).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
+const DORMANT_CACHE_KEY = "sec_dormant_remind_v1";
 const fmtTime = (t:string|null) => t?t.slice(0,5):"";
 const md2html = (s:string) => s.replace(/\*\*(.*?)\*\*/g,"<strong>$1</strong>").replace(/\[(.*?)\]/g,'<span style="color:#f97316;font-weight:600">[$1]</span>').replace(/\n/g,"<br/>");
 
@@ -2671,6 +2676,10 @@ const SecretaryPage:React.FC = () => {
   const setTabAndSave = (t:TabKey)=>{ try{sessionStorage.setItem("sec_tab",t);}catch{} setTab(t); };
 
   // 단축키: Ctrl+Option(Alt)+←/→ 로 메뉴 탭 순환 이동 (TAB_ORDER 기준, 배열 끝에서 순환)
+  // 현대CM/태산/RentalOS/상담관리는 별도 페이지로 이동하는 탭이라, 단축키가 이 탭들까지 순환에
+  // 포함하면 누를 때마다 페이지 전체가 바뀌면서 뚝뚝 끊기는 느낌을 준다. 이제 그 페이지들도
+  // 각자 동일한 탭바+단축키를 갖추고 있으니(components/AppTabBar.tsx), AI비서 안에서는
+  // 이 페이지 안에서 바로 전환되는 탭들만 매끄럽게 순환하고, 외부 탭은 클릭으로 이동한다.
   useEffect(()=>{
     const handler = (e: KeyboardEvent) => {
       if(!e.ctrlKey || !e.altKey) return;
@@ -2681,13 +2690,12 @@ const SecretaryPage:React.FC = () => {
       e.preventDefault();
       const curIdx = TAB_ORDER.indexOf(tab);
       const delta = e.key === "ArrowRight" ? 1 : -1;
-      const nextIdx = (curIdx + delta + TAB_ORDER.length) % TAB_ORDER.length;
-      const nextTab = TAB_ORDER[nextIdx];
-      // 외부 페이지로 이동하는 탭(hyundaicm/rentalos)도 클릭과 동일하게 실제로 이동한다
-      // (기존엔 건너뛰어서 바로 옆 탭까지 한 번에 스킵되는 것처럼 느껴졌음)
-      const link = EXTERNAL_TAB_LINKS[nextTab];
-      if(link){ navigate(link); return; }
-      setTabAndSave(nextTab);
+      let nextIdx = curIdx;
+      for(let step=0; step<TAB_ORDER.length; step++){
+        nextIdx = (nextIdx + delta + TAB_ORDER.length) % TAB_ORDER.length;
+        if(!EXTERNAL_TAB_LINKS[TAB_ORDER[nextIdx]]) break;
+      }
+      setTabAndSave(TAB_ORDER[nextIdx]);
     };
     window.addEventListener("keydown", handler);
     return ()=>window.removeEventListener("keydown", handler);
@@ -2710,6 +2718,12 @@ const SecretaryPage:React.FC = () => {
   const [dupSelected,setDupSelected] = useState<Set<number>>(new Set());
   const [schedProgress,setSchedProgress] = useState({memo:"",next_date:"",next_time:""});
   const [newSched,setNewSched] = useState({title:"",description:"",schedule_date:todayStr(),start_time:nowTimeStr(),end_time:"",category:"meeting" as Schedule["category"],location:"",related_type:"",consultation_id:""});
+
+  // 무실적 거래처 리마인드 (주 1회 매출이력 전수조사)
+  const [dormantData,setDormantData] = useState<DormantBuckets|null>(null);
+  const [dormantLoading,setDormantLoading] = useState(false);
+  const [dormantCheckedAt,setDormantCheckedAt] = useState<string|null>(null);
+  const [showDormant,setShowDormant] = useState(true);
 
   // 할일
   const [todos,setTodos]             = useState<Todo[]>([]);
@@ -3972,6 +3986,49 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
     }, ms));
   },[]);
 
+  // 무실적 거래처 리마인드 — sales_records 전수조사로 거래처별 최근 매출일을 구하고
+  // 1~3개월/3~6개월/6개월+ 구간(중복 없이)으로 분류. 결과는 localStorage에 캐시해
+  // 7일 이내 재방문 시에는 재조회 없이 그대로 재사용(= 주 1회 점검).
+  const loadDormantCustomers = useCallback(async(force?:boolean)=>{
+    if(!force){
+      try{
+        const raw = localStorage.getItem(DORMANT_CACHE_KEY);
+        if(raw){
+          const cached = JSON.parse(raw) as {checkedAt:string; data:DormantBuckets};
+          if(Date.now() - new Date(cached.checkedAt).getTime() < 7*24*60*60*1000){
+            setDormantData(cached.data);
+            setDormantCheckedAt(cached.checkedAt);
+            return;
+          }
+        }
+      }catch{ /* 캐시 파싱 실패 시 그냥 재조회 */ }
+    }
+    setDormantLoading(true);
+    const {data,error} = await supabase.from("sales_records").select("customer_name,sale_date");
+    if(error){ setDormantLoading(false); showToast("무실적 거래처 조회 실패: "+error.message); return; }
+    const lastSaleMap = new Map<string,string>();
+    (data??[]).forEach((r:{customer_name:string|null;sale_date:string})=>{
+      const name = (r.customer_name||"").trim();
+      if(!name) return;
+      const cur = lastSaleMap.get(name);
+      if(!cur || r.sale_date > cur) lastSaleMap.set(name, r.sale_date);
+    });
+    const c1=monthsAgoStr(1), c3=monthsAgoStr(3), c6=monthsAgoStr(6);
+    const buckets:DormantBuckets = {m1:[],m3:[],m6:[]};
+    lastSaleMap.forEach((lastDate,name)=>{
+      if(lastDate < c6) buckets.m6.push({name,lastDate});
+      else if(lastDate < c3) buckets.m3.push({name,lastDate});
+      else if(lastDate < c1) buckets.m1.push({name,lastDate});
+    });
+    const byOldest = (a:DormantCustomer,b:DormantCustomer)=>a.lastDate<b.lastDate?-1:1;
+    buckets.m1.sort(byOldest); buckets.m3.sort(byOldest); buckets.m6.sort(byOldest);
+    const checkedAt = new Date().toISOString();
+    setDormantData(buckets);
+    setDormantCheckedAt(checkedAt);
+    setDormantLoading(false);
+    try{ localStorage.setItem(DORMANT_CACHE_KEY, JSON.stringify({checkedAt,data:buckets})); }catch{ /* 저장 공간 부족 등은 무시 */ }
+  },[]);
+
   const loadSchedules = useCallback(async()=>{
     setSchedLoading(true);
     const d = new Date(schedDate); d.setDate(d.getDate()+1);
@@ -4424,6 +4481,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       setSchedViewMode("day");
       void loadSchedules();
       void loadTodos();
+      void loadDormantCustomers();
       // 구글 캘린더 → AI비서 자동 역방향 동기화
       if(gcalConnected) void importGcalToLocal(calViewYear, calViewMonth);
     }
@@ -5313,6 +5371,43 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                 <button className={BTP} onClick={()=>setShowSchedForm(v=>!v)}>{showSchedForm?"닫기":"+ 일정 추가"}</button>
                 <button className="ml-auto text-xs text-orange-500 hover:underline" onClick={()=>quickChat("오늘 일정 브리핑해줘")}>AI 브리핑 →</button>
               </div>
+              {dormantData&&(dormantData.m1.length+dormantData.m3.length+dormantData.m6.length>0)&&(
+                <div className={`${CARD} p-4`}>
+                  <div className="flex items-center justify-between mb-2 flex-wrap gap-y-1">
+                    <p className="text-sm font-semibold text-[#0f172a] flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-red-500 inline-block animate-pulse"/>
+                      🔔 무실적 거래처 리마인드 — {dormantData.m1.length+dormantData.m3.length+dormantData.m6.length}곳
+                    </p>
+                    <div className="flex items-center gap-2">
+                      {dormantCheckedAt&&<span className="text-[10px] text-gray-400">{fmtDate(dormantCheckedAt.slice(0,10))} 확인</span>}
+                      <button className={BTG} disabled={dormantLoading} onClick={()=>void loadDormantCustomers(true)}>{dormantLoading?"확인중...":"새로고침"}</button>
+                      <button className="text-xs text-gray-400 hover:text-gray-600" onClick={()=>setShowDormant(v=>!v)}>{showDormant?"접기":"펼치기"}</button>
+                    </div>
+                  </div>
+                  {showDormant&&(
+                    <div className="space-y-3">
+                      {([
+                        {key:"m6" as const, label:"6개월 이상 무실적", textCls:"text-red-600", chipCls:"bg-red-50 text-red-700 border-red-100"},
+                        {key:"m3" as const, label:"3~6개월 무실적", textCls:"text-amber-600", chipCls:"bg-amber-50 text-amber-700 border-amber-100"},
+                        {key:"m1" as const, label:"1~3개월 무실적", textCls:"text-blue-600", chipCls:"bg-blue-50 text-blue-700 border-blue-100"},
+                      ]).map(g=>dormantData[g.key].length>0&&(
+                        <div key={g.key}>
+                          <p className={`text-xs font-semibold mb-1.5 ${g.textCls}`}>{g.label} — {dormantData[g.key].length}건</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {dormantData[g.key].map(c=>(
+                              <span key={c.name} className={`text-xs px-2 py-1 rounded-full border cursor-pointer hover:opacity-70 transition-all ${g.chipCls}`}
+                                title={`최근 거래일: ${fmtDate(c.lastDate)}`}
+                                onClick={()=>{setOrderSearch(c.name);setTabAndSave("orders");}}>
+                                {c.name} <span className="opacity-60">({fmtDate(c.lastDate)})</span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               {showSchedForm&&(
                 <div className={`${CARD} p-4`}>
                   <p className="text-sm font-semibold text-[#0f172a] mb-3">새 일정</p>
@@ -7461,7 +7556,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               {/* ── 서브 탭 필터 ── */}
               <div className="flex items-center gap-2 flex-wrap">
                 <div className="flex gap-1 flex-wrap">
-                  {(["통합상담","할부금융","보험","지게차","배터리","타이어","나르미"] as CnsActiveTab[]).map(t=>(
+                  {(["통합상담","할부금융","보험","지게차","배터리","타이어","나르미","Rental_O/S"] as CnsActiveTab[]).map(t=>(
                     <button key={t} onClick={()=>{setCnsActiveTab(t); void fetchCnsRows(t);}}
                       className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${cnsActiveTab===t?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}>
                       {t}
@@ -7502,8 +7597,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                   {filteredCnsRows.map((r:any)=>{
                     const isDone=cnsIsDone(r);
                     const stageLabel = r.progress_stage || r.status;
-                    const WL2:Record<string,string>={finance:"할부금융",registration_insurance:"보험",export:"수출",forklift_sales:"지게차",battery_sales:"배터리",tire_sales:"타이어",narumi:"나르미"};
-                    const CLR2:Record<string,string>={finance:"bg-blue-100 text-blue-700",registration_insurance:"bg-orange-100 text-orange-700",export:"bg-amber-100 text-amber-700",forklift_sales:"bg-purple-100 text-purple-700",battery_sales:"bg-emerald-100 text-emerald-700",tire_sales:"bg-sky-100 text-sky-700",narumi:"bg-indigo-100 text-indigo-700"};
+                    const WL2:Record<string,string>={finance:"할부금융",registration_insurance:"보험",export:"수출",forklift_sales:"지게차",battery_sales:"배터리",tire_sales:"타이어",narumi:"나르미",rentalos:"Rental_O/S"};
+                    const CLR2:Record<string,string>={finance:"bg-blue-100 text-blue-700",registration_insurance:"bg-orange-100 text-orange-700",export:"bg-amber-100 text-amber-700",forklift_sales:"bg-purple-100 text-purple-700",battery_sales:"bg-emerald-100 text-emerald-700",tire_sales:"bg-sky-100 text-sky-700",narumi:"bg-indigo-100 text-indigo-700",rentalos:"bg-rose-100 text-rose-700"};
                     return (
                       <div key={r.id} className={`p-3 hover:bg-gray-50 transition-all ${isDone?"opacity-60":""}`}>
                         <div className="flex items-start gap-2">
