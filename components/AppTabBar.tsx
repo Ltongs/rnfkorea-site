@@ -35,6 +35,11 @@ const APP_TAB_LABELS: Record<AppTabKey, string> = {
   taesan: "🚚 태산통운", callmanagement: "📞 상담관리", email: "📧 이메일",
 };
 
+// pages/secretary/index.tsx의 탭 버튼 스타일(TB/TA/TI)과 완전히 동일하게 맞춘다.
+const TB = "px-3 py-1.5 rounded-xl text-sm font-semibold border transition-all";
+const TA = "bg-[#0f172a] text-white border-[#0f172a]";
+const TI = "bg-gray-100 text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-700 hover:bg-gray-200";
+
 export default function AppTabBar({ activeTab }: { activeTab: AppTabKey }) {
   const navigate = useNavigate();
   const [unreadEmail, setUnreadEmail] = useState(0);
@@ -55,6 +60,25 @@ export default function AppTabBar({ activeTab }: { activeTab: AppTabKey }) {
     navigate("/work/secretary");
   };
 
+  // AI비서와 동일한 Ctrl+Option(Alt)+←/→ 탭 순환 단축키 — 여기서도 동일하게 동작해야 하므로
+  // AI비서 쪽 로직을 그대로 복제한다(배열 끝에서 순환, 외부 탭은 클릭과 동일하게 실제 이동).
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || !e.altKey) return;
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
+      e.preventDefault();
+      const curIdx = APP_TAB_ORDER.indexOf(activeTab);
+      const delta = e.key === "ArrowRight" ? 1 : -1;
+      const nextIdx = (curIdx + delta + APP_TAB_ORDER.length) % APP_TAB_ORDER.length;
+      goTab(APP_TAB_ORDER[nextIdx]);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [activeTab]);
+
   return (
     <div
       className="app-tab-scroll flex items-center gap-1.5 overflow-x-auto"
@@ -66,11 +90,7 @@ export default function AppTabBar({ activeTab }: { activeTab: AppTabKey }) {
           key={t}
           type="button"
           onClick={() => goTab(t)}
-          className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex-shrink-0 ${
-            activeTab === t
-              ? "bg-[#0f172a] text-white"
-              : "bg-white text-gray-500 border border-gray-200 hover:border-gray-300"
-          }`}
+          className={`${TB} ${activeTab === t ? TA : TI} whitespace-nowrap flex-shrink-0`}
         >
           {t === "email" ? (
             <span className="inline-flex items-center gap-1">
