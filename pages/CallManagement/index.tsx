@@ -2842,9 +2842,12 @@ const CallManagementPage: React.FC = () => {
         // ② 진흥 알림톡 + tb_orders 등록
         try {
           const nowIso = new Date().toISOString();
+          const { data: orderNoData, error: orderNoErr } = await supabase.rpc("next_rnf_number");
+          if (orderNoErr) console.error("[진흥주문 번호 발급 오류]:", orderNoErr.message);
           const { data: tbOrder, error: tbErr } = await supabase
             .from("tb_orders")
             .insert({
+              order_no:          (orderNoData as string) ?? null,
               customer_name_raw: customerName.trim(),
               inbound_channel:   "phone",
               raw_message:       `${tireSize.trim()} ${qtyStr}`.trim(),

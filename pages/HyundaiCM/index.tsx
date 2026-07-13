@@ -2000,29 +2000,28 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         </div>
       )}
 
-      {/* ── 헤더 (AI비서 스타일) ── */}
-      <div className="bg-white border-b border-gray-200 px-3 py-1.5 flex items-center justify-between gap-3 sticky top-0 z-30">
-        <div className="flex items-center gap-2.5">
-          <button onClick={() => nav("/work/secretary")}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-semibold hover:border-gray-300 hover:text-gray-700 transition-all">
-            ← AI비서
-          </button>
-          <span className="text-sm font-semibold text-[#0f172a]">🏗 현대건설기계</span>
+      {/* ── 헤더 + 탭 네비게이션 + 상태 요약 뱃지 + 액션 바 (전부 한 덩어리로 고정) ── */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-30 space-y-3 pb-3">
+        <div className="px-3 pt-1.5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <button onClick={() => nav("/work/secretary")}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-semibold hover:border-gray-300 hover:text-gray-700 transition-all">
+              ← AI비서
+            </button>
+            <span className="text-sm font-semibold text-[#0f172a]">🏗 현대건설기계</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => nav("/hyundaicm/kakao-connect")} title="카카오톡 알림 설정"
+              className="inline-flex items-center justify-center w-7 h-7 rounded-xl border border-gray-200 text-gray-400 hover:border-gray-300 hover:text-gray-600 transition-all">
+              <Settings size={13} />
+            </button>
+            <button onClick={() => { if (window.confirm("로그아웃 하시겠습니까?")) logout(); }}
+              className="inline-flex items-center px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-medium hover:border-gray-300 transition-all">
+              로그아웃
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5">
-          <button onClick={() => nav("/hyundaicm/kakao-connect")} title="카카오톡 알림 설정"
-            className="inline-flex items-center justify-center w-7 h-7 rounded-xl border border-gray-200 text-gray-400 hover:border-gray-300 hover:text-gray-600 transition-all">
-            <Settings size={13} />
-          </button>
-          <button onClick={() => { if (window.confirm("로그아웃 하시겠습니까?")) logout(); }}
-            className="inline-flex items-center px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-medium hover:border-gray-300 transition-all">
-            로그아웃
-          </button>
-        </div>
-      </div>
 
-      {/* ── 탭 네비게이션 + 상태 요약 뱃지 + 액션 바 (전부 한 덩어리로 고정) ── */}
-      <div className="border-b border-gray-200 bg-white sticky top-[49px] z-20 space-y-3 pb-3">
         <div className="px-4 flex gap-0">
           {([
             { key: "할부금융", label: "🏗 할부금융" },
