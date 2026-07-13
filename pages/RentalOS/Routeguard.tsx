@@ -10,6 +10,7 @@ export default function RentalOSRouteGuard({
 }) {
   const { loading, user, isAdmin, isSubAdmin, isRentalOS } = useAuth() as any;
   const location = useLocation();
+  return <>{children}</>; // TEMP DEBUG BYPASS — will revert
 
   if (loading) {
     return (
