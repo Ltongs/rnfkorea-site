@@ -1,10 +1,8 @@
 // @ts-nocheck -- Deno Edge Function: npm/Deno 환경 타입 충돌 회피용
 // supabase/functions/send-rentalos-kakao/index.ts
 // Rental_O/S 신규 딜 등록 시 카카오톡 알림톡(+실패 시 SMS 폴백) 발송.
-// 신규 알림톡 템플릿 승인 절차 없이, 태산통운과 동일하게 기존 현대건설기계 채널의
-// 승인된 템플릿(hcm_new)을 그대로 재사용한다. 이 템플릿의 항목명(예: "금융사",
-// "할부원금")은 할부금융 업무 기준이라 렌탈 딜 아웃소싱과 완전히 들어맞지는 않지만,
-// 문자 발송 자체는 정상 동작한다 (전용 템플릿 승인 후 교체 가능).
+// Rental_O/S 전용 알림톡 템플릿(rentalos_new: 신규접수, rentalos_file: 파일업로드)이
+// 2026-07-13 승인되어, 더 이상 현대건설기계 채널의 hcm_new 템플릿을 재사용하지 않는다.
 //
 // 업무시간(09~19시 KST) 외, 또는 주말/공휴일에 발생한 건은 즉시 보내지 않고
 // pending_kakao_queue 테이블에 channel:"rentalos"로 쌓아두고, pg_cron이 매일 09:00 KST에
@@ -19,10 +17,11 @@ const SENDER_PHONE      = Deno.env.get("SOLAPI_SENDER")     ?? "01050549006";
 const RECIPIENTS_RAW = Deno.env.get("RENTALOS_SMS_RECIPIENTS") ?? "01050549006,01086521222";
 const RECIPIENTS     = RECIPIENTS_RAW.split(",").map((n) => n.replace(/\D/g, "")).filter(Boolean);
 
-// 현대건설기계와 동일 채널(@주식회사알앤에프코리아) + 승인된 신규접수 템플릿 재사용
-const PF_ID       = "KA01PF2606081346516718bsSRTnA56x";
-const TEMPLATE_ID = "KA01TP260609091445221AOdtfTbbsGO"; // hcm_new
-const PAGE_URL    = "https://rnfkorea.co.kr/rental-os";
+// 현대건설기계와 동일 채널(@주식회사알앤에프코리아), Rental_O/S 전용 승인 템플릿 2종
+const PF_ID            = "KA01PF2606081346516718bsSRTnA56x";
+const TEMPLATE_ID      = "KA01TP260713070958826y3wM957GR1Z"; // rentalos_new  (신규접수)
+const FILE_TEMPLATE_ID = "KA01TP260713071055338cNxwWNHP17e"; // rentalos_file (파일업로드)
+const PAGE_URL         = "https://rnfkorea.co.kr/rental-os";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin":  "*",
@@ -92,6 +91,7 @@ async function sendSms(text: string, recipients: string[] = RECIPIENTS): Promise
 
 async function sendAlimtalk(
   to: string,
+  templateId: string,
   variables: Record<string, string>,
   fallbackText: string,
 ): Promise<void> {
@@ -105,7 +105,7 @@ async function sendAlimtalk(
         from: SENDER_PHONE,
         kakaoOptions: {
           pfId: PF_ID,
-          templateId: TEMPLATE_ID,
+          templateId,
           variables,
           disableSms: false,
           buttons: [{
@@ -126,22 +126,34 @@ async function sendAlimtalk(
   }
 }
 
+// rentalos_new 템플릿(KA01TP260713070958826y3wM957GR1Z) 승인 변수 목록에 맞춘 매핑.
 function buildVariables(body: Record<string, string>): Record<string, string> {
   const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
   return {
     "#{케이스번호}": body.dealNo ?? "-",
     "#{고객명}":     body.customerName ?? "-",
-    "#{고객유형}":   body.companyName || "Rental_O/S",
-    "#{장비톤수}":   [body.equipmentType, body.equipmentSpec].filter(Boolean).join(" ") || "-",
-    "#{금융사}":     body.outsourcingPartner || "-",
-    "#{할부원금}":   body.amount ? `${Number(body.amount).toLocaleString("ko-KR")}원` : "-",
-    "#{영업사원}":   body.salesRep ?? "-",
-    "#{시간}":       now,
+    "#{업체명}":     body.companyName || "Rental_O/S",
+    "#{장비정보}":   [body.equipmentType, body.equipmentSpec].filter(Boolean).join(" ") || "-",
+    "#{협력사}":     body.outsourcingPartner || "-",
+    "#{딜금액}":     body.amount ? `${Number(body.amount).toLocaleString("ko-KR")}원` : "-",
+    "#{담당자}":     body.salesRep ?? "-",
+    "#{접수시각}":   now,
   };
 }
 
-// 파일 업로드 알림 — 신규접수용 승인 템플릿(hcm_new)엔 이 상황에 맞는 문구/변수가 없어
-// 알림톡 대신 자유 문구가 가능한 SMS로 발송한다(전용 템플릿 승인 후 알림톡으로 교체 가능).
+// rentalos_file 템플릿(KA01TP260713071055338cNxwWNHP17e) 승인 변수 목록에 맞춘 매핑.
+function buildFileUploadVariables(body: Record<string, string>): Record<string, string> {
+  const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+  return {
+    "#{케이스번호}": body.dealNo ?? "-",
+    "#{고객명}":     body.customerName ?? "-",
+    "#{파일명}":     body.fileName ?? "-",
+    "#{업로드자}":   body.uploadedBy ?? "-",
+    "#{업로드시각}": now,
+  };
+}
+
+// 알림톡 발송 실패 시 SMS 폴백용 자유 문구.
 function buildFileUploadSmsText(body: Record<string, string>): string {
   const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
   return [
@@ -172,7 +184,7 @@ async function sendNow(body: Record<string, string>): Promise<void> {
   const fallbackText = buildFallbackText(body);
   try {
     const variables = buildVariables(body);
-    await Promise.all(RECIPIENTS.map((to) => sendAlimtalk(to, variables, fallbackText)));
+    await Promise.all(RECIPIENTS.map((to) => sendAlimtalk(to, TEMPLATE_ID, variables, fallbackText)));
     console.log("[Rental_O/S 알림톡 발송 완료]:", body.dealNo);
   } catch (e) {
     console.warn("[Rental_O/S 알림톡 실패 → SMS 폴백]:", (e as Error).message);
@@ -180,11 +192,22 @@ async function sendNow(body: Record<string, string>): Promise<void> {
   }
 }
 
-// body.type에 따라 신규접수(알림톡+SMS 폴백)인지 파일업로드(SMS 전용)인지 갈라서 실제 발송한다.
+async function sendFileUploadNow(body: Record<string, string>): Promise<void> {
+  const fallbackText = buildFileUploadSmsText(body);
+  try {
+    const variables = buildFileUploadVariables(body);
+    await Promise.all(RECIPIENTS.map((to) => sendAlimtalk(to, FILE_TEMPLATE_ID, variables, fallbackText)));
+    console.log("[Rental_O/S 파일업로드 알림톡 발송 완료]:", body.dealNo, body.fileName);
+  } catch (e) {
+    console.warn("[Rental_O/S 파일업로드 알림톡 실패 → SMS 폴백]:", (e as Error).message);
+    await sendSms(fallbackText, RECIPIENTS);
+  }
+}
+
+// body.type에 따라 신규접수/파일업로드 템플릿을 갈라서 실제 발송한다(둘 다 알림톡+SMS 폴백).
 async function dispatchNow(body: Record<string, string>): Promise<void> {
   if (body.type === "file_uploaded") {
-    await sendSms(buildFileUploadSmsText(body), RECIPIENTS);
-    console.log("[Rental_O/S 파일업로드 SMS 발송 완료]:", body.dealNo, body.fileName);
+    await sendFileUploadNow(body);
     return;
   }
   await sendNow(body);
