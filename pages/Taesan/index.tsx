@@ -1653,31 +1653,30 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         </div>
       )}
 
-      {/* ── 헤더 (AI비서 스타일) ── */}
-      <div className="bg-white border-b border-gray-200 px-3 py-1.5 flex items-center justify-between gap-3 sticky top-0 z-30">
-        <div className="flex items-center gap-2.5">
-          <button onClick={() => nav("/work/secretary")}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-semibold hover:border-gray-300 hover:text-gray-700 transition-all">
-            ← AI비서
-          </button>
-          <span className="text-sm font-semibold text-[#0f172a]">🚛 태산통운</span>
+      {/* ── 헤더 + 상태 요약 뱃지 + 액션 바 (전부 한 덩어리로 고정) ── */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-30 space-y-3 pb-3">
+        <div className="px-3 pt-1.5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <button onClick={() => nav("/work/secretary")}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-semibold hover:border-gray-300 hover:text-gray-700 transition-all">
+              ← AI비서
+            </button>
+            <span className="text-sm font-semibold text-[#0f172a]">🚛 태산통운</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => nav("/taesan/kakao-connect")} title="카카오톡 알림 설정"
+              className="inline-flex items-center justify-center w-7 h-7 rounded-xl border border-gray-200 text-gray-400 hover:border-gray-300 hover:text-gray-600 transition-all">
+              <Settings size={13} />
+            </button>
+            <button onClick={() => { if (window.confirm("로그아웃 하시겠습니까?")) logout(); }}
+              className="inline-flex items-center px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-medium hover:border-gray-300 transition-all">
+              로그아웃
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5">
-          <button onClick={() => nav("/taesan/kakao-connect")} title="카카오톡 알림 설정"
-            className="inline-flex items-center justify-center w-7 h-7 rounded-xl border border-gray-200 text-gray-400 hover:border-gray-300 hover:text-gray-600 transition-all">
-            <Settings size={13} />
-          </button>
-          <button onClick={() => { if (window.confirm("로그아웃 하시겠습니까?")) logout(); }}
-            className="inline-flex items-center px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-medium hover:border-gray-300 transition-all">
-            로그아웃
-          </button>
-        </div>
-      </div>
-
-      <div className="px-4 py-3 space-y-3">
 
         {/* ── 상태 요약 뱃지 ── */}
-        <div className="flex flex-wrap gap-2">
+        <div className="px-4 flex flex-wrap gap-2">
           {STATUS_ORDER.map((s) => (
             <button
               key={s}
@@ -1699,23 +1698,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           )}
         </div>
 
-        {/* ── focusId: 특정 딜 단독 뷰 배너 ── */}
-        {focusId && (
-          <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-50 border border-blue-200">
-            <button
-              onClick={() => nav("/taesan")}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-blue-200 text-blue-700 text-xs font-semibold hover:bg-blue-50 transition-all shrink-0"
-            >
-              ← 전체 목록
-            </button>
-            <p className="text-sm text-blue-700 font-medium">
-              AI비서에서 선택한 건만 표시 중입니다
-            </p>
-          </div>
-        )}
-
         {/* ── 액션 바 ── */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="px-4 flex flex-wrap items-center gap-2">
           <button onClick={() => setShowCreatePanel((v) => !v)} className={btnPrimary}>
             + 신규 접수
           </button>
@@ -1762,6 +1746,24 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
             </button>
           </div>
         </div>
+      </div>
+
+      <div className="px-4 py-3 space-y-3">
+
+        {/* ── focusId: 특정 딜 단독 뷰 배너 ── */}
+        {focusId && (
+          <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-50 border border-blue-200">
+            <button
+              onClick={() => nav("/taesan")}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-blue-200 text-blue-700 text-xs font-semibold hover:bg-blue-50 transition-all shrink-0"
+            >
+              ← 전체 목록
+            </button>
+            <p className="text-sm text-blue-700 font-medium">
+              AI비서에서 선택한 건만 표시 중입니다
+            </p>
+          </div>
+        )}
 
         {/* ── 검색 패널 ── */}
         {showSearchPanel && (

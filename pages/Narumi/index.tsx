@@ -1476,53 +1476,37 @@ VIN: ${nextVin}`);
       <input ref={fileInputRef} type="file" accept="image/*,.pdf" className="hidden" onChange={onFilePicked} />
       <input ref={manufactureInputRef} type="file" accept="image/*" className="hidden" onChange={onManufacturePicked} />
 
-      {/* ── 헤더 (AI비서 스타일) ── */}
-      <div className="bg-white border-b border-gray-200 px-3 py-1.5 flex items-center justify-between gap-3 sticky top-0 z-30">
-        <div className="flex items-center gap-2.5">
-          <span className="text-sm font-semibold text-[#0f172a]">🚛 나르미 업무 관리</span>
-          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${
-            isAdmin ? "bg-emerald-50 border-emerald-100 text-emerald-600" :
-            isInsuranceManager ? "bg-purple-50 border-purple-100 text-purple-600" :
-            isNarumi ? "bg-orange-50 border-orange-100 text-orange-600" :
-            isLotte ? "bg-blue-50 border-blue-100 text-blue-600" :
-            "bg-gray-50 border-gray-200 text-gray-500"
-          }`}>{loginRoleLabel}</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <button type="button" onClick={()=>navigate("/work/secretary")}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-semibold hover:border-gray-300 hover:text-gray-700 transition-all">
-            ← AI비서
-          </button>
-          <button type="button" onClick={fetchRows}
-            className="inline-flex items-center px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-medium hover:border-gray-300 transition-all">
-            새로고침
-          </button>
-          <button type="button" onClick={logout}
-            className="inline-flex items-center px-2.5 py-1 rounded-xl border border-red-200 text-red-500 text-xs font-medium hover:border-red-300 transition-all">
-            로그아웃
-          </button>
-        </div>
-      </div>
-
-      <div className="px-4 py-3 space-y-3">
-
-        {/* ── 오류 메시지 ── */}
-        {!!err && (
-          <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-3 py-3 text-sm font-medium">
-            {err}
+      {/* ── 헤더 + 요약 뱃지 (전부 한 덩어리로 고정) ── */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-30 space-y-3 pb-3">
+        <div className="px-3 pt-1.5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="text-sm font-semibold text-[#0f172a]">🚛 나르미 업무 관리</span>
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${
+              isAdmin ? "bg-emerald-50 border-emerald-100 text-emerald-600" :
+              isInsuranceManager ? "bg-purple-50 border-purple-100 text-purple-600" :
+              isNarumi ? "bg-orange-50 border-orange-100 text-orange-600" :
+              isLotte ? "bg-blue-50 border-blue-100 text-blue-600" :
+              "bg-gray-50 border-gray-200 text-gray-500"
+            }`}>{loginRoleLabel}</span>
           </div>
-        )}
-
-        {/* ── 안내문 ── */}
-        <div className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-4 text-xs text-orange-700/90 leading-relaxed space-y-0.5">
-          <p>* 고객명/전화번호는 입력 후 {UI_MASK_AFTER_HOURS}시간 경과 시 화면에서 마스킹됩니다.</p>
-          <p>* 고객명은 전체 마스킹, 고객 전화번호는 뒷 4자리가 마스킹됩니다.</p>
-          <p>* 고객 전화번호는 입력 후 {DB_SCRUB_AFTER_HOURS}시간(5일) 경과 시 DB에서 뒷 4자리가 영구 마스킹(삭제)됩니다.</p>
-          <p>* 차량등록증 업로드 완료 건은 일반 사용자는 최근 {HIDE_UPLOADED_AFTER_DAYS_FOR_NON_ADMIN}일 이내만 표시되며, 업로드 후 {HIDE_UPLOADED_AFTER_DAYS_FOR_NON_ADMIN}일이 지나면 파일이 실제로 삭제됩니다.</p>
+          <div className="flex items-center gap-1.5">
+            <button type="button" onClick={()=>navigate("/work/secretary")}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-semibold hover:border-gray-300 hover:text-gray-700 transition-all">
+              ← AI비서
+            </button>
+            <button type="button" onClick={fetchRows}
+              className="inline-flex items-center px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-medium hover:border-gray-300 transition-all">
+              새로고침
+            </button>
+            <button type="button" onClick={logout}
+              className="inline-flex items-center px-2.5 py-1 rounded-xl border border-red-200 text-red-500 text-xs font-medium hover:border-red-300 transition-all">
+              로그아웃
+            </button>
+          </div>
         </div>
 
         {/* ── 요약 뱃지 ── */}
-        <div className="flex flex-wrap gap-2">
+        <div className="px-4 flex flex-wrap gap-2">
           <SummaryBadge
             label="보류" count={summaryCounts.hold}
             className="bg-gray-100 text-gray-600 border-gray-200"
@@ -1562,6 +1546,24 @@ VIN: ${nextVin}`);
               전체 보기
             </button>
           )}
+        </div>
+      </div>
+
+      <div className="px-4 py-3 space-y-3">
+
+        {/* ── 오류 메시지 ── */}
+        {!!err && (
+          <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-3 py-3 text-sm font-medium">
+            {err}
+          </div>
+        )}
+
+        {/* ── 안내문 ── */}
+        <div className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-4 text-xs text-orange-700/90 leading-relaxed space-y-0.5">
+          <p>* 고객명/전화번호는 입력 후 {UI_MASK_AFTER_HOURS}시간 경과 시 화면에서 마스킹됩니다.</p>
+          <p>* 고객명은 전체 마스킹, 고객 전화번호는 뒷 4자리가 마스킹됩니다.</p>
+          <p>* 고객 전화번호는 입력 후 {DB_SCRUB_AFTER_HOURS}시간(5일) 경과 시 DB에서 뒷 4자리가 영구 마스킹(삭제)됩니다.</p>
+          <p>* 차량등록증 업로드 완료 건은 일반 사용자는 최근 {HIDE_UPLOADED_AFTER_DAYS_FOR_NON_ADMIN}일 이내만 표시되며, 업로드 후 {HIDE_UPLOADED_AFTER_DAYS_FOR_NON_ADMIN}일이 지나면 파일이 실제로 삭제됩니다.</p>
         </div>
 
         {/* ── 검색/필터 패널 ── */}

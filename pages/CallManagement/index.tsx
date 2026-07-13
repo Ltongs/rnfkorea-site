@@ -3426,43 +3426,45 @@ const CallManagementPage: React.FC = () => {
         </div>
       )}
 
-      {/* ── 헤더 (AI비서 스타일) ── */}
-      <div className="bg-white border-b border-gray-200 px-4 py-2.5 flex items-center justify-between gap-3 sticky top-0 z-30">
-        <div className="flex items-center gap-2.5">
-          <button
-            onClick={() => navigate("/work/secretary")}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-semibold hover:border-gray-300 hover:text-gray-700 transition-all"
-          >
-            ← AI비서
-          </button>
-          <span className="text-sm font-semibold text-[#0f172a]">📋 상담관리</span>
+      {/* ── 헤더 + 탭 헤더 (전부 한 덩어리로 고정) ── */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-30">
+        <div className="px-4 py-2.5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => navigate("/work/secretary")}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-semibold hover:border-gray-300 hover:text-gray-700 transition-all"
+            >
+              ← AI비서
+            </button>
+            <span className="text-sm font-semibold text-[#0f172a]">📋 상담관리</span>
+          </div>
         </div>
-      </div>
 
-      {/* ── 탭 헤더 ── */}
-      <div className="border-b border-gray-100 bg-white">
-        <div className="px-4 py-2 flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            className={`${tabBase} ${tab === "new" ? tabActive : tabInactive}`}
-            onClick={() => setTab("new")}
-          >
-            상담등록
-          </button>
-          <button
-            type="button"
-            className={`${tabBase} ${tab === "list" ? tabActive : tabInactive}`}
-            onClick={() => setTab("list")}
-          >
-            상담내역
-          </button>
-          <button
-            type="button"
-            className={`${tabBase} ${tab === "followups" ? tabActive : tabInactive}`}
-            onClick={() => setTab("followups")}
-          >
-            사후관리
-          </button>
+        {/* ── 탭 헤더 ── */}
+        <div className="border-t border-gray-100">
+          <div className="px-4 py-2 flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              className={`${tabBase} ${tab === "new" ? tabActive : tabInactive}`}
+              onClick={() => setTab("new")}
+            >
+              상담등록
+            </button>
+            <button
+              type="button"
+              className={`${tabBase} ${tab === "list" ? tabActive : tabInactive}`}
+              onClick={() => setTab("list")}
+            >
+              상담내역
+            </button>
+            <button
+              type="button"
+              className={`${tabBase} ${tab === "followups" ? tabActive : tabInactive}`}
+              onClick={() => setTab("followups")}
+            >
+              사후관리
+            </button>
+          </div>
         </div>
       </div>
 

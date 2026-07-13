@@ -353,9 +353,9 @@ export default function RentalOSPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* ── 헤더 ── */}
-      <div className="sticky top-0 z-20 bg-white border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-4 md:px-6 py-3 flex items-center justify-between">
+      {/* ── 헤더 + 상태필터 + 액션바 (전부 한 덩어리로 고정) ── */}
+      <div className="sticky top-0 z-20 bg-white border-b border-gray-200 space-y-3 pb-3">
+        <div className="max-w-6xl mx-auto px-4 md:px-6 pt-3 flex items-center justify-between">
           <button onClick={() => navigate("/work/secretary")}
             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-semibold hover:border-gray-300 hover:text-gray-700 transition-all">
             ← AI비서
@@ -363,12 +363,9 @@ export default function RentalOSPage() {
           <p className="text-sm font-semibold text-[#0a192f]">🚐 Rental_O/S <span className="text-xs font-normal text-gray-400">렌탈 딜 아웃소싱</span></p>
           <button onClick={() => void logout()} className="text-xs text-gray-400 hover:text-gray-600">로그아웃</button>
         </div>
-      </div>
-
-      <div className="max-w-6xl mx-auto px-4 md:px-6 py-6 space-y-4">
 
         {/* ── 상태 요약 배지 ── */}
-        <div className="flex flex-wrap gap-2">
+        <div className="max-w-6xl mx-auto px-4 md:px-6 flex flex-wrap gap-2">
           <button onClick={() => setStatusFilter("전체")}
             className={`text-xs px-3 py-1.5 rounded-full font-semibold border transition-all ${statusFilter === "전체" ? "bg-[#0a192f] text-white border-[#0a192f]" : "bg-white text-gray-500 border-gray-200 hover:border-gray-400"}`}>
             전체 {deals.length}
@@ -385,7 +382,7 @@ export default function RentalOSPage() {
         </div>
 
         {/* ── 액션바 ── */}
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="max-w-6xl mx-auto px-4 md:px-6 flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             {canManage && (
               <button onClick={() => setShowForm(s => !s)} className={btnPrimary}>
@@ -406,6 +403,9 @@ export default function RentalOSPage() {
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} 새로고침
           </button>
         </div>
+      </div>
+
+      <div className="max-w-6xl mx-auto px-4 md:px-6 py-6 space-y-4">
 
         {/* ── 신규 등록 폼 ── */}
         {showForm && (

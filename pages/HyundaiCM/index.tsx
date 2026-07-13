@@ -2021,8 +2021,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         </div>
       </div>
 
-      {/* ── 탭 네비게이션 ── */}
-      <div className="border-b border-gray-200 bg-white sticky top-[49px] z-20">
+      {/* ── 탭 네비게이션 + 상태 요약 뱃지 + 액션 바 (전부 한 덩어리로 고정) ── */}
+      <div className="border-b border-gray-200 bg-white sticky top-[49px] z-20 space-y-3 pb-3">
         <div className="px-4 flex gap-0">
           {([
             { key: "할부금융", label: "🏗 할부금융" },
@@ -2040,13 +2040,9 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
             </button>
           ))}
         </div>
-      </div>
-
-      {activeTab === "할부금융" && (
-      <div className="px-4 py-3 space-y-3">
 
         {/* ── 상태 요약 뱃지 ── */}
-        <div className="flex flex-wrap gap-2">
+        <div className="px-4 flex flex-wrap gap-2">
           {STATUS_ORDER.map((s) => (
             <button
               key={s}
@@ -2068,23 +2064,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           )}
         </div>
 
-        {/* ── focusId: 특정 딜 단독 뷰 배너 ── */}
-        {focusId && (
-          <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-50 border border-blue-200">
-            <button
-              onClick={() => nav("/hyundaicm")}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-blue-200 text-blue-700 text-xs font-semibold hover:bg-blue-50 transition-all shrink-0"
-            >
-              ← 전체 목록
-            </button>
-            <p className="text-sm text-blue-700 font-medium">
-              AI비서에서 선택한 건만 표시 중입니다
-            </p>
-          </div>
-        )}
-
         {/* ── 액션 바 ── */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="px-4 flex flex-wrap items-center gap-2">
           <button onClick={() => setShowCreatePanel((v) => !v)} className={btnPrimary}>
             + 신규 접수
           </button>
@@ -2131,6 +2112,25 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
             </button>
           </div>
         </div>
+      </div>
+
+      {activeTab === "할부금융" && (
+      <div className="px-4 py-3 space-y-3">
+
+        {/* ── focusId: 특정 딜 단독 뷰 배너 ── */}
+        {focusId && (
+          <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-50 border border-blue-200">
+            <button
+              onClick={() => nav("/hyundaicm")}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-blue-200 text-blue-700 text-xs font-semibold hover:bg-blue-50 transition-all shrink-0"
+            >
+              ← 전체 목록
+            </button>
+            <p className="text-sm text-blue-700 font-medium">
+              AI비서에서 선택한 건만 표시 중입니다
+            </p>
+          </div>
+        )}
 
         {/* ── 검색 패널 ── */}
         {showSearchPanel && (
