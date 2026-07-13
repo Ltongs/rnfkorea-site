@@ -10,7 +10,6 @@ export default function HyundaiCMRouteGuard({
 }) {
   const { loading, user, isAdmin, isSubAdmin, isHyundaiCM, isNhCapital, isNhCapitalStaff } = useAuth() as any;
   const location = useLocation();
-  return <>{children}</>; // TEMP DEBUG BYPASS — will revert
 
   if (loading) {
     return (

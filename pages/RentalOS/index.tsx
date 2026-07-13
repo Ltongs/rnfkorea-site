@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
+import AppTabBar from "../../components/AppTabBar";
 import {
   Plus, Search, Loader2, Upload, Download, Trash2, Pencil, X, Check,
   ChevronDown, ChevronUp, RefreshCw, FileText, Clock,
@@ -362,6 +363,10 @@ export default function RentalOSPage() {
           </button>
           <p className="text-sm font-semibold text-[#0a192f]">🚐 Rental_O/S <span className="text-xs font-normal text-gray-400">렌탈 딜 아웃소싱</span></p>
           <button onClick={() => void logout()} className="text-xs text-gray-400 hover:text-gray-600">로그아웃</button>
+        </div>
+
+        <div className="max-w-6xl mx-auto px-4 md:px-6">
+          <AppTabBar activeTab="rentalos" />
         </div>
 
         {/* ── 상태 요약 배지 ── */}

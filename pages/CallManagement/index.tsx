@@ -3,6 +3,7 @@ import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Settings } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
+import AppTabBar from "../../components/AppTabBar";
 
 // 브라우저 로컬(한국) 시간 기준 오늘 날짜 — toISOString()은 UTC 변환 과정에서
 // 자정 근처 시간대에 하루가 밀리는 문제가 있어 사용하지 않음.
@@ -3441,6 +3442,10 @@ const CallManagementPage: React.FC = () => {
             </button>
             <span className="text-sm font-semibold text-[#0f172a]">📋 상담관리</span>
           </div>
+        </div>
+
+        <div className="px-4 pb-2.5">
+          <AppTabBar activeTab="callmanagement" />
         </div>
 
         {/* ── 탭 헤더 ── */}

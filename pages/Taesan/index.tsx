@@ -5,6 +5,7 @@ import { Settings } from "lucide-react";
 import html2canvas from "html2canvas";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
+import AppTabBar from "../../components/AppTabBar";
 
 // ─── 정책 ─────────────────────────────────────────────────
 const HIDE_CLOSED_AFTER_DAYS_FOR_NON_ADMIN = 30;
@@ -1673,6 +1674,10 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               로그아웃
             </button>
           </div>
+        </div>
+
+        <div className="px-4">
+          <AppTabBar activeTab="taesan" />
         </div>
 
         {/* ── 상태 요약 뱃지 ── */}

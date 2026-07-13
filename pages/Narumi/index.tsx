@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
+import AppTabBar from "../../components/AppTabBar";
 
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -1503,6 +1504,10 @@ VIN: ${nextVin}`);
               로그아웃
             </button>
           </div>
+        </div>
+
+        <div className="px-4">
+          <AppTabBar activeTab="narumi" />
         </div>
 
         {/* ── 요약 뱃지 ── */}

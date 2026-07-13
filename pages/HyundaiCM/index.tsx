@@ -5,6 +5,7 @@ import { Settings } from "lucide-react";
 import html2canvas from "html2canvas";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
+import AppTabBar from "../../components/AppTabBar";
 
 // ─── 정책 ─────────────────────────────────────────────────
 const HIDE_CLOSED_AFTER_DAYS_FOR_NON_ADMIN = 30;
@@ -2022,22 +2023,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           </div>
         </div>
 
-        <div className="px-4 flex gap-0">
-          {([
-            { key: "할부금융", label: "🏗 할부금융" },
-          ] as const).map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setActiveTab(t.key)}
-              className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-all -mb-px ${
-                activeTab === t.key
-                  ? "border-orange-500 text-orange-600"
-                  : "border-transparent text-gray-400 hover:text-gray-700 hover:border-gray-300"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+        <div className="px-4">
+          <AppTabBar activeTab="hyundaicm" />
         </div>
 
         {/* ── 상태 요약 뱃지 ── */}
