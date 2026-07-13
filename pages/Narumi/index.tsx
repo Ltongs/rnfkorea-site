@@ -44,6 +44,7 @@ type NarumiTask = {
   postal_mail_sent?: boolean | null;
   postal_tracking_no?: string | null;
   postal_sent_date?: string | null;
+  case_no?: string | null;
 };
 
 function onlyDigits(s: string) {
@@ -647,7 +648,11 @@ export default function NarumiPage() {
         return;
       }
 
+      const { data: caseNoData, error: caseNoErr } = await supabase.rpc("next_rnf_number");
+      if (caseNoErr) throw caseNoErr;
+
       const payload = {
+        case_no: caseNoData as string,
         vin: vinTrim,
         vin_last6: vinLast6(vinTrim),
         delivery_date_text: dtTrim,
@@ -1773,7 +1778,7 @@ VIN: ${nextVin}`);
                     <span className="text-base font-semibold text-navy-900">
                       {r.vin_last6 ?? r.vin?.slice(-6) ?? "-"}
                     </span>
-                    <span className="text-xs text-gray-400">#{String(r.id)}</span>
+                    <span className="text-xs text-gray-400 font-mono">{r.case_no ?? `#${String(r.id)}`}</span>
                     {r.vehicle_use_type && (
                       <span className="inline-flex items-center px-2.5 py-1 rounded-xl border border-gray-200 bg-gray-50 text-gray-600 text-xs font-medium">{r.vehicle_use_type}</span>
                     )}

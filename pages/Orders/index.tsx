@@ -275,7 +275,9 @@ export default function OrdersPage() {
   const saveNewOrder = async () => {
     if (!newCustomer || !newSpec) return;
     setSaving(true);
+    const { data: orderNoData } = await supabase.rpc("next_rnf_number");
     const { error } = await supabase.from("tb_orders").insert({
+      order_no: orderNoData as string,
       customer_name_raw: newCustomer,
       product_type:      "tire",
       product_spec:      newSpec,
@@ -299,7 +301,7 @@ export default function OrdersPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* 헤더 (AI비서 스타일) */}
-      <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-2.5 flex items-center justify-between gap-3">
+      <div className="sticky top-16 z-30 bg-white border-b border-gray-200 px-4 py-2.5 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <button onClick={() => navigate("/work/secretary")}
             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-semibold hover:border-gray-300 hover:text-gray-700 transition-all">

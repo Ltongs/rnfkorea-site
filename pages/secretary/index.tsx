@@ -195,7 +195,7 @@ function fhStageLabelNoWheel(delivered:boolean, salesLinked:boolean, invoiced:bo
 const WL:Record<string,string> = {
   insurance:"보험",tire:"타이어",finance:"금융",forklift:"지게차",battery:"배터리",
   registration_insurance:"보험",tire_sales:"타이어",forklift_sales:"지게차",battery_sales:"배터리",
-  finance_hcm:"현대CM금융",narumi:"나르미",
+  finance_hcm:"현대CM금융",narumi:"나르미",rentalos:"Rental_O/S",
 };
 const CAT_LBL:Record<string,string> = {meeting:"미팅",call:"통화",task:"업무",followup:"사후관리"};
 const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료",closed:"종결",waiting_customer:"고객대기",on_hold:"보류",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",confirmed:"확정",approved:"승인",rejected:"거절",supplement:"보완",credit_check:"신용조회",received:"접수",cancelled:"취소",registered:"등록완료",docs:"서류준비",insurance:"보험확인",contacted:"연락완료",
@@ -2680,13 +2680,13 @@ const SecretaryPage:React.FC = () => {
       e.preventDefault();
       const curIdx = TAB_ORDER.indexOf(tab);
       const delta = e.key === "ArrowRight" ? 1 : -1;
-      // 외부 페이지로 즉시 이동하는 탭(hyundaicm/rentalos)은 키보드 순환 대상에서 건너뜀
-      let nextIdx = curIdx;
-      for(let step=0; step<TAB_ORDER.length; step++){
-        nextIdx = (nextIdx + delta + TAB_ORDER.length) % TAB_ORDER.length;
-        if(!EXTERNAL_TAB_LINKS[TAB_ORDER[nextIdx]]) break;
-      }
-      setTabAndSave(TAB_ORDER[nextIdx]);
+      const nextIdx = (curIdx + delta + TAB_ORDER.length) % TAB_ORDER.length;
+      const nextTab = TAB_ORDER[nextIdx];
+      // 외부 페이지로 이동하는 탭(hyundaicm/rentalos)도 클릭과 동일하게 실제로 이동한다
+      // (기존엔 건너뛰어서 바로 옆 탭까지 한 번에 스킵되는 것처럼 느껴졌음)
+      const link = EXTERNAL_TAB_LINKS[nextTab];
+      if(link){ navigate(link); return; }
+      setTabAndSave(nextTab);
     };
     window.addEventListener("keydown", handler);
     return ()=>window.removeEventListener("keydown", handler);
@@ -4077,8 +4077,10 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
     const HCM_DONE   = ["confirmed","cancelled","확정","취소","거절","rejected"];
     const HCM_ACTIVE_NOT = HCM_DONE;
 
-    // 세 소스 병렬 조회
-    const [casesRes, hcmRes, narumiRes] = await Promise.all([
+    const RENTALOS_DONE = ["확정","반려"];
+
+    // 네 소스 병렬 조회
+    const [casesRes, hcmRes, narumiRes, rentalosRes] = await Promise.all([
       // consultation_cases (보험 제외, 최근 100건)
       // finance는 finance_stage 기준이므로 status 필터 없이 전체 조회 후 클라이언트에서 분류
       supabase
@@ -4102,6 +4104,14 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
         : ordFilter==="active"
         ? supabase.from("narumi_tasks").select("id,customer_name,status,vehicle_model,vehicle_no,created_at").not("status","in","(completed,registered)")
         : supabase.from("narumi_tasks").select("id,customer_name,status,vehicle_model,vehicle_no,created_at")
+      ).order("created_at",{ascending:false}).limit(100),
+
+      // rental_os_deals
+      (ordFilter==="done"
+        ? supabase.from("rental_os_deals").select("id,customer_name,company_name,status,equipment_type,equipment_spec,amount,deal_no,created_at").in("status",RENTALOS_DONE)
+        : ordFilter==="active"
+        ? supabase.from("rental_os_deals").select("id,customer_name,company_name,status,equipment_type,equipment_spec,amount,deal_no,created_at").not("status","in",`(${RENTALOS_DONE.join(",")})`)
+        : supabase.from("rental_os_deals").select("id,customer_name,company_name,status,equipment_type,equipment_spec,amount,deal_no,created_at")
       ).order("created_at",{ascending:false}).limit(100),
     ]);
 
@@ -4229,8 +4239,27 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       };
     });
 
+    // rental_os_deals → OrderView
+    const rentalosViews: OrderView[] = (rentalosRes.data ?? []).map((r:any)=>{
+      const product_detail = [r.equipment_type, r.equipment_spec, r.amount?Number(r.amount).toLocaleString()+"원":null].filter(Boolean).join(" / ");
+      return {
+        id: r.id,
+        customer_name: r.customer_name ?? r.company_name ?? "-",
+        work_type: "rentalos",
+        status: r.status ?? "-",
+        summary: (r.deal_no?r.deal_no+" · ":"") + (product_detail || "-"),
+        created_at: r.created_at,
+        phone: null,
+        progress_stage: r.status ?? null,
+        product_detail,
+        sub_type: null,
+        secretary_order_id: null,
+        secretary_order_status: null,
+      };
+    });
+
     // 합치고 created_at 내림차순 정렬
-    const allViews = [...filteredCaseViews, ...hcmViews, ...narumiViews]
+    const allViews = [...filteredCaseViews, ...hcmViews, ...narumiViews, ...rentalosViews]
       .sort((a,b)=> new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
     setOrderViews(allViews);
@@ -5840,7 +5869,9 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                     <button className={BTP} disabled={jNewSaving||!jNewForm.customer_name||!jNewForm.product_spec}
                       onClick={async()=>{
                         setJNewSaving(true);
+                        const{data:orderNoData}=await supabase.rpc("next_rnf_number");
                         const{data,error}=await supabase.from("tb_orders").insert({
+                          order_no:orderNoData as string,
                           customer_name_raw:jNewForm.customer_name,
                           product_type:jNewForm.product_type||"tire",
                           product_spec:jNewForm.product_spec,
@@ -5925,6 +5956,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className="text-sm font-semibold text-[#0f172a]">{o.customer_name_raw||"미확인"}</span>
+                                  {o.order_no&&<span className="text-[11px] text-gray-400 font-mono">{o.order_no}</span>}
                                   <span className={`text-[11px] px-2 py-0.5 rounded-full border font-medium ${JSCLR[jStage]}`}>{JSLBL[jStage]}</span>
                                   {jStage!=="closed"&&jStage!=="received"&&(
                                     <span className={`text-[11px] px-2 py-0.5 rounded-full border font-medium ${wheelDone?"bg-purple-100 text-purple-700 border-purple-200":"bg-white text-gray-300 border-gray-200"}`}>휠반납 {wheelDone?"✓":"-"}</span>

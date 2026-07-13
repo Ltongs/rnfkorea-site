@@ -754,7 +754,7 @@ const DashboardPage: React.FC = () => {
     <div className="min-h-screen bg-gray-50">
 
       {/* ── 히어로 헤더 ── */}
-      <section className="relative bg-[#0a192f] text-white overflow-hidden">
+      <section className="relative bg-[#0a192f] text-white overflow-hidden sticky top-16 z-30">
         <div
           className="absolute inset-0 opacity-[0.04]" aria-hidden="true"
           style={{

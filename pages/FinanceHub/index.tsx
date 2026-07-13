@@ -1157,7 +1157,7 @@ const FinanceHubPage: React.FC = () => {
     <div className="min-h-screen bg-gray-50">
 
       {/* 히어로 */}
-      <section className="relative bg-[#0a192f] text-white overflow-hidden">
+      <section className="relative bg-[#0a192f] text-white overflow-hidden sticky top-16 z-30">
         <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: "repeating-linear-gradient(45deg,white 0,white 1px,transparent 0,transparent 50%)", backgroundSize: "24px 24px" }} />
         <div className="relative max-w-7xl mx-auto px-6 md:px-8 py-8">
           <div className="flex flex-wrap items-end justify-between gap-4">

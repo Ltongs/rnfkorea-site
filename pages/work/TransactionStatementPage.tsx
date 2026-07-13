@@ -378,7 +378,7 @@ export default function TransactionStatementPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-[#0a192f] text-white px-6 py-5">
+      <div className="bg-[#0a192f] text-white px-6 py-5 sticky top-16 z-30">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold">거래명세서 작성</h1>

@@ -1293,7 +1293,9 @@ serve(async (req: Request) => {
             // tb_orders 저장
             const productType = a.work_type === "tire" ? "tire" : "battery";
             console.log("[tb_orders insert]", JSON.stringify({ customer_name_raw: a.customer_name, product_type: productType, product_spec: productSpec, quantity: qty }));
+            const { data: orderNoData } = await db.rpc("next_rnf_number");
             const { data: tbOrder, error: tbErr } = await db.from("tb_orders").insert({
+              order_no:          orderNoData as string,
               customer_name_raw: a.customer_name,
               inbound_channel:   ["phone","sms","kakao","email","other"].includes(a.channel as string) ? (a.channel as string) : "phone",
               raw_message:       a.summary,

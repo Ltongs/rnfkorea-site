@@ -175,9 +175,11 @@ serve(async (req) => {
     const parsed = await parseOrderWithClaude(rawMessage);
 
     // 2. tb_orders 저장
+    const { data: orderNoData } = await supabase.rpc("next_rnf_number");
     const { data: order, error } = await supabase
       .from("tb_orders")
       .insert({
+        order_no:           orderNoData as string,
         customer_name_raw: parsed.customer_name,
         inbound_channel:   "kakao",
         raw_message:       rawMessage,
