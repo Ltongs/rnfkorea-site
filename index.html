@@ -68,6 +68,46 @@
 
     <!-- ✅ Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- tailwind.config.js의 커스텀 테마(navy/brand 색상, 폰트)를 CDN 런타임에도 동일하게 전달.
+         이 설정이 없으면 bg-navy-900, text-brand-lime 등 커스텀 색상 클래스가 스타일 없이 무시된다.
+         CDN 스크립트가 전역 tailwind 객체를 먼저 만든 뒤에 .config를 지정해야 하므로 반드시 스크립트 태그 뒤에 위치. -->
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['"Noto Sans KR"', "sans-serif"],
+            },
+            colors: {
+              navy: {
+                900: "#0a192f",
+                800: "#112240",
+                50: "#f0f4f8",
+              },
+              brand: {
+                lime: "#a3e635",
+                yellow: "#facc15",
+              },
+            },
+            keyframes: {
+              "pulse-glow": {
+                "0%, 100%": {
+                  boxShadow:
+                    "0 0 10px rgba(163,230,53,0.55), 0 0 22px rgba(163,230,53,0.3)",
+                },
+                "50%": {
+                  boxShadow:
+                    "0 0 18px rgba(163,230,53,0.9), 0 0 38px rgba(163,230,53,0.55)",
+                },
+              },
+            },
+            animation: {
+              "pulse-glow": "pulse-glow 2.2s ease-in-out infinite",
+            },
+          },
+        },
+      };
+    </script>
   </head>
 
   <body>

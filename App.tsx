@@ -74,6 +74,7 @@ import KakaoConnectPage from "./pages/HyundaiCM/KakaoConnect";
 import DashboardPage from "./pages/Dashboard";
 import WorkManualPage from "./pages/WorkManual";
 import BatteryPage from "./pages/Battery/index";
+import GolfCartLfpPage from "./pages/Battery/GolfCartLfp";
 import HomePage from "./pages/Home";
 import FinancePage from "./pages/Finance/index";
 import TiresPage from "./pages/Tires/index";
@@ -123,11 +124,21 @@ interface RouteSeoMeta {
 }
 
 const ROUTE_SEO: Record<string, RouteSeoMeta> = {
+  // 🚧 TEMP: 골프카트 LFP 배터리 프로모션 기간 동안 "/" 메타를 골프카트 랜딩페이지 기준으로 임시 교체.
+  // 원래 홈페이지 메타는 "/home"에 그대로 유지. 프로모션 종료 후 아래 두 항목을 원상복구할 것.
   "/": {
+    title: "골프카트용 LFP 배터리 SPIDERWAY | 51.2V 150Ah | RNF KOREA",
+    description:
+      "골프카트 전용 SPIDERWAY LFP 배터리. 51.2V 150Ah, 5년 무상보증, 월 88,000원 렌탈. 타미우스CC 20대 1년 운영 검증. 상담 1551-1873.",
+    canonical: `${SITE_URL}/`,
+    keywords: "골프카트배터리,골프카트LFP배터리,SPIDERWAY,리튬인산철배터리,골프장배터리,골프카트배터리렌탈",
+    ogImage: `${SITE_URL}/battery/golfcart-lfp/hero.webp`,
+  },
+  "/home": {
     title: "RNF KOREA | 산업용 배터리·타이어·금융솔루션 전문기업",
     description:
       "(주)알앤에프코리아는 물류기기용 LFP배터리, 산업용·화물용 타이어, 렌탈 및 금융 서비스를 제공하는 산업재 전문기업입니다. 장비의 구입부터 유지·보수·매각까지 전 LifeCycle을 지원합니다.",
-    canonical: `${SITE_URL}/`,
+    canonical: `${SITE_URL}/home`,
     keywords: "LFP배터리,산업용타이어,화물타이어,지게차배터리,렌탈,금융솔루션,알앤에프코리아",
   },
   "/tires": {
@@ -143,6 +154,14 @@ const ROUTE_SEO: Record<string, RouteSeoMeta> = {
       "지게차·물류기기 전용 LFP(리튬인산철) 배터리 솔루션. 배터리 교체·렌탈·유지보수 서비스. 국내 최대 규모 운영 풀 보유. 문의 1551-1873.",
     canonical: `${SITE_URL}/battery`,
     keywords: "LFP배터리,리튬인산철배터리,지게차배터리,물류기기배터리,배터리렌탈,배터리교체",
+  },
+  "/golfcart-battery": {
+    title: "골프카트용 LFP 배터리 SPIDERWAY | 51.2V 150Ah | RNF KOREA",
+    description:
+      "골프카트 전용 SPIDERWAY LFP 배터리. 51.2V 150Ah, 5년 무상보증, 월 88,000원 렌탈. 타미우스CC 20대 1년 운영 검증. 상담 1551-1873.",
+    canonical: `${SITE_URL}/golfcart-battery`,
+    keywords: "골프카트배터리,골프카트LFP배터리,SPIDERWAY,리튬인산철배터리,골프장배터리,골프카트배터리렌탈",
+    ogImage: `${SITE_URL}/battery/golfcart-lfp/hero.webp`,
   },
   "/export": {
     title: "중고장비 수출 | 중고 지게차·굴삭기 해외수출 | RNF KOREA",
@@ -1405,10 +1424,17 @@ const AppRoutes = () => {
   // PWA 앱은 manifest.json의 start_url(/work/secretary, /work/secretary-ins 등)로
   // 곧바로 진입하므로 "/"로 들어올 일이 거의 없고, 들어오더라도 홈페이지를 보여주는 것이 맞음.
   // 즉 "/"에서 계정 기준 강제 리다이렉트는 하지 않는다 — 브라우저에서 admin이 전체 사이트를 볼 수 있어야 함.
-  const rootElement = <HomePage />;
+  // 🚧 TEMP: 골프카트 LFP 배터리 프로모션 기간 동안 "/"를 골프카트 랜딩페이지로 임시 교체.
+  // 기존 홈페이지는 /home 에서 계속 볼 수 있음. 프로모션 종료 후 아래 줄을 <HomePage />로 되돌릴 것.
+  const rootElement = <GolfCartLfpPage />;
+
+  // 🚧 TEMP: 골프카트 랜딩페이지는 전역 헤더/푸터 없이 독립된 광고성 페이지로 노출.
+  // 프로모션 종료 후 "/"를 HomePage로 되돌릴 때 아래 "/" 조건도 함께 제거할 것.
+  const isGolfCartLanding = pathname === "/" || pathname === "/golfcart-battery";
 
   const hideHeader =
-    pathname.startsWith("/work/secretary")
+    isGolfCartLanding
+    || pathname.startsWith("/work/secretary")
     || pathname.startsWith("/work/narumi")
     || pathname.startsWith("/work/manual")
     || pathname.startsWith("/work/call-management")
@@ -1418,7 +1444,8 @@ const AppRoutes = () => {
     || pathname.startsWith("/narumi");
 
   const hideFooter =
-    pathname.startsWith("/work/")
+    isGolfCartLanding
+    || pathname.startsWith("/work/")
     || pathname.startsWith("/hyundaicm")
     || pathname.startsWith("/taesan")
     || pathname.startsWith("/rental-os")
@@ -1445,8 +1472,10 @@ const AppRoutes = () => {
       <main id="main-content" role="main" className="w-full overflow-x-hidden">
         <Routes>
           <Route path="/" element={rootElement} />
+          <Route path="/home" element={<HomePage />} />
           <Route path="/tires" element={<TiresPage />} />
           <Route path="/battery" element={<BatteryPage />} />
+          <Route path="/golfcart-battery" element={<GolfCartLfpPage />} />
           <Route path="/export" element={<ExportPage />} />
           <Route path="/export-shop" element={<ExportShopPage />} />
           <Route path="/export-shop/inquiry" element={<ExportInquiryPage />} />

@@ -14,7 +14,20 @@
       "Skill(artifact-design:*)",
       "Bash(git -C /Users/tongsoolee/Desktop/WORKS/Homepage/rnfkorea_deploy_new diff --stat)",
       "Bash(git -C /Users/tongsoolee/Desktop/WORKS/Homepage/rnfkorea_deploy_new diff pages/secretary/index.tsx)",
-      "Bash(echo \"EXIT:$?\")"
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(markitdown \"/Users/tongsoolee/Desktop/WORKS/My Job/리텐에너지솔루션/Spiderway\\(LFP_RNF\\)_F.pptx\")",
+      "Bash(python3 -m markitdown --version)",
+      "Bash(python3 -c \"import pptx; print\\(pptx.__version__\\)\")",
+      "Bash(pip3 install *)",
+      "Bash(python3)",
+      "Bash(mkdir -p /private/tmp/claude-501/-Users-tongsoolee-Desktop-WORKS-Homepage-rnfkorea-deploy-new/c8985e4a-63dd-4062-9830-5d28a6fe9434/scratchpad/pptx_extract)",
+      "Bash(unzip -o -q \"/Users/tongsoolee/Desktop/WORKS/My Job/리텐에너지솔루션/Spiderway\\(LFP_RNF\\)_F.pptx\" -d unpacked)",
+      "Bash(sort -k5 -n -r)",
+      "Bash(md5 public/home/golfcart_tamius_add_1.jpg public/home/golfcart_tamius_add_2.jpg public/home/golfcart_tamius.png public/home/golfcart.jpg)",
+      "Bash(md5 image35.jpeg image36.jpeg image38.jpeg image14.png image8.png)",
+      "Bash(node /private/tmp/claude-501/-Users-tongsoolee-Desktop-WORKS-Homepage-rnfkorea-deploy-new/c8985e4a-63dd-4062-9830-5d28a6fe9434/scratchpad/optimize_golfcart_lfp.cjs)",
+      "Bash(node scripts/_tmp_optimize_golfcart_lfp.cjs)",
+      "Bash(npm run *)"
     ]
   }
 }
