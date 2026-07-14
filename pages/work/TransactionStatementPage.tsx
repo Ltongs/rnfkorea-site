@@ -385,6 +385,10 @@ export default function TransactionStatementPage() {
             <p className="text-blue-300 text-sm mt-0.5">거래처 정보와 품목을 입력해 원본 양식 그대로 발송합니다</p>
           </div>
           <div className="flex gap-2">
+            <label className={`px-4 py-2 rounded text-sm font-medium cursor-pointer ${invoiceParsing ? 'bg-white/50 text-gray-400' : 'bg-white text-[#0a192f] hover:bg-gray-100'}`}>
+              {invoiceParsing ? '인식 중...' : '📄 계산서 업로드 (자동 인식)'}
+              <input type="file" accept="image/*,.pdf,application/pdf" className="hidden" disabled={invoiceParsing} onChange={handleInvoiceUpload}/>
+            </label>
             <button onClick={download} disabled={loading} className="bg-white text-[#0a192f] hover:bg-gray-100 px-4 py-2 rounded text-sm font-medium disabled:opacity-50">📥 Excel 다운로드</button>
             <button onClick={sendEmail} disabled={emailLoading} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded text-sm font-medium disabled:opacity-50">{emailLoading?'발송 중...':'📧 이메일 발송'}</button>
           </div>
@@ -397,10 +401,7 @@ export default function TransactionStatementPage() {
         <div className="bg-white rounded-lg border p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-gray-800 text-sm">거래처 정보</h2>
-            <label className={`px-3 py-1.5 rounded text-xs font-medium cursor-pointer ${invoiceParsing ? 'bg-gray-100 text-gray-400' : 'bg-gray-800 text-white hover:bg-gray-900'}`}>
-              {invoiceParsing ? '인식 중...' : '📄 발송된 계산서 업로드 (자동 인식)'}
-              <input type="file" accept="image/*" className="hidden" disabled={invoiceParsing} onChange={handleInvoiceUpload}/>
-            </label>
+            {invoiceParsing && <span className="text-xs text-gray-400">계산서 인식 중...</span>}
           </div>
           <div className="grid grid-cols-3 gap-4">
             <div><Label>거래처 상호 *</Label><Input value={sf.customerName} onChange={e=>setSf(f=>({...f,customerName:e.target.value}))} placeholder="(주)예일이큅먼트"/></div>
