@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import { Phone, Home } from "lucide-react";
+import { Phone, Home, Download, Share2 } from "lucide-react";
 
 import { ProjectConsultForm } from "../../components/ProjectConsultForm";
 
@@ -9,6 +9,7 @@ import { ProjectConsultForm } from "../../components/ProjectConsultForm";
 // 에셋
 // ====================================================
 const IMG = "/battery/golfcart-lfp";
+const BROCHURE_PDF = `${IMG}/spiderway-lfp-brochure.pdf`;
 
 // ====================================================
 // SEO / 구조화 데이터
@@ -148,6 +149,34 @@ const anchorNav = [
 // 페이지
 // ====================================================
 const GolfCartLfpPage: React.FC = () => {
+  const [shareCopied, setShareCopied] = React.useState(false);
+
+  const handleShare = async () => {
+    const shareData = {
+      title: "골프카트용 LFP 배터리 SPIDERWAY | RNF KOREA",
+      text: "51.2V 150Ah · 5년 무상보증 · 월 88,000원 렌탈. 골프카트 전용 SPIDERWAY LFP 배터리를 확인해보세요.",
+      url: window.location.href,
+    };
+
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+      } catch {
+        // 사용자가 공유 시트를 취소한 경우 — 별도 처리 없음
+      }
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(shareData.url);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    } catch {
+      // 클립보드 쓰기 권한이 차단된 환경(구형 브라우저, 권한 정책 등) — 수동 복사용 프롬프트로 대체
+      window.prompt("아래 링크를 복사해 공유하세요", shareData.url);
+    }
+  };
+
   return (
     <div className="bg-white">
       <Helmet>
@@ -279,8 +308,8 @@ const GolfCartLfpPage: React.FC = () => {
             title="라벨에 적힌 그대로, 속이지 않는 스펙"
             description="SPIDERWAY 51.2V 150Ah 배터리는 CE, FCC, UL, RoHS 국제 안전 인증을 모두 획득했으며, 제품 라벨에 표기된 정격 전압·용량·치수가 실측값과 정확히 일치합니다."
             bullets={[
-              "정격 전압 51.2V / 정격 용량 150Ah / 공칭 에너지 7,680Wh",
-              "제품 치수 730×340×265mm — 기존 납산 배터리함 그대로 장착 가능",
+              "정격 전압 51.2V / 정격 용량 150Ah / 배터리 용량 7.6kW",
+              "제품 치수 730×340×265mm — 기존 배터리함 그대로 장착 가능",
               "CE · FCC · UL · RoHS 국제 인증 완료",
             ]}
             image={`${IMG}/spec-label.webp`}
@@ -299,7 +328,7 @@ const GolfCartLfpPage: React.FC = () => {
             description="내장 BMS(배터리 관리 시스템)가 전압, 전류, 사용 시간, 잔여 충전량을 실시간으로 표시합니다. 골프카트 좌석 하단에 그대로 장착되어 기존 차량 구조 변경 없이 설치가 완료됩니다."
             bullets={[
               "실시간 전압(Voltage) · 전류(Current) 모니터링 화면 내장",
-              "기존 납산 배터리함 구조에 맞춘 규격으로 개조 없이 장착",
+              "기존 배터리함 구조에 맞춘 규격으로 개조 없이 장착",
               "설치부터 A/S까지 RNF KOREA가 현장에서 직접 관리",
             ]}
             image={`${IMG}/installed-bms.webp`}
@@ -317,7 +346,7 @@ const GolfCartLfpPage: React.FC = () => {
               믿을 수 있는 제조사
             </h2>
             <p className="mt-5 text-base md:text-lg text-gray-300 leading-relaxed break-keep">
-              중국 안후이성 허페이 소재의 최고 수준 리튬이온 배터리 전문 제조 파트너,{" "}
+              중국 안후이성 허페이 소재의 최고 수준 리튬이온 배터리 전문 제조 파트너,<br></br>{" "}
               <span className="text-white font-semibold">Anhui Heding Electromechanical Equipment</span>
               에서 생산합니다.
             </p>
@@ -385,9 +414,9 @@ const GolfCartLfpPage: React.FC = () => {
           <div className="mt-14 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
             {[
               { label: "무상 보증 기간", value: "5년 (60개월)", sub: "또는 10,000시간 중 먼저 도래하는 시점까지" },
-              { label: "PL 보험 가입", value: "최대 2억원", sub: "KB손해보험 생산물 배상 보장" },
+              { label: "PL 보험 가입", value: "최대 2억원", sub: "KB손해보험 생산물 배상책임 보장" },
               { label: "주요 인증", value: "CE·FCC·UL·RoHS", sub: "국제 안전 인증 완료" },
-              { label: "설치·A/S", value: "RNF 직접 관리", sub: "사전점검·컨설팅·배송·설치·A/S 일체" },
+              { label: "설치·A/S", value: "RNF 직접 관리", sub: "사전점검·컨설팅·배송·설치·A/S" },
             ].map((item) => (
               <div key={item.label} className="rounded-2xl border border-gray-200 p-7 hover:shadow-md hover:-translate-y-0.5 transition-all">
                 <p className="text-xs font-semibold tracking-wide uppercase text-gray-400">{item.label}</p>
@@ -509,6 +538,25 @@ const GolfCartLfpPage: React.FC = () => {
           <p className="mt-4 text-base md:text-lg text-gray-500 break-keep">
             연락처만 남기셔도 됩니다. RNF KOREA 담당자가 빠르게 연락드립니다.
           </p>
+
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+            <a
+              href={BROCHURE_PDF}
+              download="SPIDERWAY-LFP-골프카트배터리-브로셔.pdf"
+              className="inline-flex items-center gap-2 rounded-full border border-navy-900/15 bg-white px-5 py-2.5 text-sm font-bold text-navy-900 hover:border-navy-900/30 hover:shadow-md transition-all"
+            >
+              <Download className="h-4 w-4" />
+              브로셔 다운로드 (PDF)
+            </a>
+            <button
+              type="button"
+              onClick={handleShare}
+              className="inline-flex items-center gap-2 rounded-full border border-navy-900/15 bg-white px-5 py-2.5 text-sm font-bold text-navy-900 hover:border-navy-900/30 hover:shadow-md transition-all"
+            >
+              <Share2 className="h-4 w-4" />
+              {shareCopied ? "링크가 복사되었습니다" : "친구에게 공유하기"}
+            </button>
+          </div>
         </div>
 
         <div className="mt-12 max-w-[560px] mx-auto px-4 sm:px-6 lg:px-8">
