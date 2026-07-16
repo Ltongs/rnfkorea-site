@@ -32,7 +32,9 @@
       "Bash(cd /Users/tongsoolee/Desktop/WORKS/Homepage/rnfkorea_deploy_new *)",
       "Bash(python3 -c \"import pypdf\")",
       "Bash(python3 -c \"import PyPDF2\")",
-      "Bash(python3 -c \"import fitz\")"
+      "Bash(python3 -c \"import fitz\")",
+      "Bash(supabase projects *)",
+      "Bash(supabase status *)"
     ]
   }
 }

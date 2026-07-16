@@ -24,6 +24,10 @@ interface BatteryForm extends SendInfo {
   validPeriod:string; paymentTerms:string; deliveryPlace:string;
   items:Item[]; notes:string[];
 }
+interface TireForm extends SendInfo {
+  validPeriod:string; paymentTerms:string; deliveryPlace:string;
+  items:Item[]; notes:string[];
+}
 interface ForkliftForm extends SendInfo {
   validPeriod:string; deliveryDate:string; paymentTerms:string;
   items:Item[];
@@ -75,6 +79,20 @@ const BF0: BatteryForm = {
     '※ LFP(리튬인산철) 배터리 5년 / 10,000시간 무상 보증 (고객과실 제외)',
     '※ BMS 내장, 과충전·과방전·과열 3중 보호 기능 포함',
     '※ 생산물책임보험 가입 제품 (최대 3억원)',
+    '※ 유효기간: 발행일로부터 30일',
+  ],
+};
+
+const TF0: TireForm = {
+  ...SEND0,
+  validPeriod:'견적 후 30일', paymentTerms:'현  금', deliveryPlace:'현지 운송도',
+  items:[
+    {name:'', spec:'', qty:1, price:0},
+    ...Array(9).fill(null).map(()=>({...EM})),
+  ],
+  notes:[
+    '※ 신품 타이어 기준 (재생/중고 타이어는 별도 문의)',
+    '※ 장착비는 별도이며, 현장 상황에 따라 변동될 수 있습니다',
     '※ 유효기간: 발행일로부터 30일',
   ],
 };
@@ -485,12 +503,12 @@ function printHTML(html: string) {
 }
 
 // ─── PDF HTML: 배터리/지게차 견적서 ────────────────────────
-function buildQuoteHTML(type:'battery'|'forklift', form:BatteryForm|ForkliftForm, quoteNo:string) {
+function buildQuoteHTML(type:'battery'|'forklift'|'tire', form:BatteryForm|ForkliftForm|TireForm, quoteNo:string) {
   const ff = form as ForkliftForm;
   const total = calcTotal(form.items);
   const vat   = Math.round(total*.1);
   const grand = total+vat;
-  const typeLabel = type==='battery'?'배터리':'지게차';
+  const typeLabel = type==='battery'?'배터리':type==='tire'?'타이어':'지게차';
   const itemRows = [...form.items,...Array(Math.max(0,10-form.items.length)).fill({name:'',spec:'',qty:'',price:''})].map((it,i)=>{
     const inc=it.price==='포함';
     const amt=!inc&&it.price?n0(it.price)*(n0(it.qty)||1):0;
@@ -577,7 +595,7 @@ function buildQuoteHTML(type:'battery'|'forklift', form:BatteryForm|ForkliftForm
   </div>`).join('')}
   `}
 </div>
-${type==='battery'?`<div style="background:#f1f5f9;border-radius:6px;padding:10px;margin-bottom:12px">
+${(type==='battery'||type==='tire')?`<div style="background:#f1f5f9;border-radius:6px;padding:10px;margin-bottom:12px">
   <div style="font-size:10px;font-weight:700;color:#0a192f;margin-bottom:5px">특기사항</div>
   ${form.notes.map(n=>`<div style="font-size:10px;color:#374151;padding:2px 0">${n}</div>`).join('')}
 </div>`:''}
@@ -653,7 +671,7 @@ ${form.note?`<div style="background:#f8fafc;border-radius:6px;padding:10px;margi
 }
 
 // ─── 메인 페이지 ────────────────────────────────────────────
-type TabType = 'battery'|'forklift'|'installment'|'purchase'|'history';
+type TabType = 'battery'|'forklift'|'tire'|'installment'|'purchase'|'history';
 
 export default function QuotationPage() {
   const navigate = useNavigate();
@@ -662,11 +680,12 @@ export default function QuotationPage() {
   // 탭 전환 시 발송정보(recipient/email/phone/extraMsg) 를 다음 탭으로 유지
   const sendInfoKeys = ['recipient','email1','email2','phone1','phone2','extraMsg'] as const;
   function switchTab(newTab: TabType) {
-    const src: any = tab==='battery'?bf : tab==='forklift'?ff : tab==='installment'?iff : pf;
+    const src: any = tab==='battery'?bf : tab==='forklift'?ff : tab==='tire'?tf : tab==='installment'?iff : pf;
     const si: any  = {};
     sendInfoKeys.forEach(k => { si[k] = src[k] ?? ''; });
     setBf(f  => ({...f,  ...si}));
     setFf(f  => ({...f,  ...si}));
+    setTf(f  => ({...f,  ...si}));
     setIff(f => ({...f,  ...si}));
     setPf(f  => ({...f,  ...si}));
     setTab(newTab);
@@ -674,11 +693,12 @@ export default function QuotationPage() {
   const [searchParams] = useSearchParams();
   useEffect(() => {
     const t = searchParams.get('type') as TabType;
-    if(t && ['battery','forklift','installment','purchase'].includes(t)) setTab(t);
+    if(t && ['battery','forklift','tire','installment','purchase'].includes(t)) setTab(t);
   }, [searchParams]);
 
   const [bf, setBf]   = useState<BatteryForm>(BF0);
   const [ff, setFf]   = useState<ForkliftForm>(FF0);
+  const [tf, setTf]   = useState<TireForm>(TF0);
   const [iff, setIff] = useState<InstallmentForm>(IF0);
   const [pf, setPf]   = useState<PurchaseForm>(PF0);
 
@@ -719,6 +739,13 @@ export default function QuotationPage() {
         notes: row.notes?.length ? row.notes : prev.notes,
       }));
       switchTab('forklift');
+    } else if (type === 'tire') {
+      setTf(prev => ({
+        ...prev, ...baseInfo,
+        items: row.items?.length ? row.items : prev.items,
+        notes: row.notes?.length ? row.notes : prev.notes,
+      }));
+      switchTab('tire');
     } else if (type === 'installment') {
       const notes = row.notes ?? [];
       const get = (key:string) => { const n=notes.find((s:string)=>s.startsWith(key+':')); return n?n.slice(key.length+1).replace(/원$/,'').replace(/[,\s]/g,''):''; };
@@ -757,6 +784,7 @@ export default function QuotationPage() {
     const no = '(발송 시 채번)'; // 미리보기는 실제 문서가 아니므로 번호를 소모하지 않는다
     if(tab==='battery')      html = buildQuoteHTML('battery',  bf, no);
     else if(tab==='forklift')html = buildQuoteHTML('forklift', ff, no);
+    else if(tab==='tire')    html = buildQuoteHTML('tire',     tf, no);
     else if(tab==='purchase')html = buildPurchaseHTML(pf, no);
     else if(tab==='installment') {
       // 할부는 간단한 요약 미리보기
@@ -809,6 +837,7 @@ export default function QuotationPage() {
 
   const bTotal = calcTotal(bf.items);
   const fTotal = calcTotal(ff.items);
+  const tTotal = calcTotal(tf.items);
   const pTotal = calcTotal(pf.items);
 
   // 지게차: 품목 합계 변경 시 선수금·잔금·할부원금 자동계산 (엑셀 수식 기준)
@@ -899,7 +928,7 @@ export default function QuotationPage() {
 
   // ── 현재 폼 정보 추출
   const currentSend = (): SendInfo =>
-    tab==='battery'?bf:tab==='forklift'?ff:tab==='installment'?iff:pf;
+    tab==='battery'?bf:tab==='forklift'?ff:tab==='tire'?tf:tab==='installment'?iff:pf;
 
   const currentQuoteType = () =>
     tab==='purchase'?'purchase':tab;
@@ -912,16 +941,17 @@ export default function QuotationPage() {
     let html = '';
     if(tab==='battery')  html = buildQuoteHTML('battery',  bf, no);
     if(tab==='forklift') html = buildQuoteHTML('forklift', ff, no);
+    if(tab==='tire')     html = buildQuoteHTML('tire',     tf, no);
     if(tab==='purchase') html = buildPurchaseHTML(pf, no);
     if(html) {
       // 히스토리 저장
-      const total = tab==='battery'?bTotal:tab==='forklift'?fTotal:pTotal;
+      const total = tab==='battery'?bTotal:tab==='forklift'?fTotal:tab==='tire'?tTotal:pTotal;
       const vat   = Math.round(total*.1);
       supabase.from('tb_quotations').insert({
         quote_type: currentQuoteType(), quote_no: no,
         quote_date: s.quoteDate, recipient: s.recipient,
-        recipient_email: s.email1, items: tab==='battery'?bf.items:tab==='forklift'?ff.items:pf.items,
-        notes: tab==='battery'?bf.notes:tab==='forklift'?ff.notes:null,
+        recipient_email: s.email1, items: tab==='battery'?bf.items:tab==='forklift'?ff.items:tab==='tire'?tf.items:pf.items,
+        notes: tab==='battery'?bf.notes:tab==='forklift'?ff.notes:tab==='tire'?tf.notes:null,
         total_amount: total, vat_amount: vat, grand_total: total+vat,
         created_by:'admin@rnfkorea.co.kr',
       }).then(({error})=>{ if(error) console.error('[이력저장오류]', error.message, error.details); });
@@ -938,25 +968,27 @@ export default function QuotationPage() {
     setEmailLoading(true);
     try {
       const no    = await genNo();
-      const total = tab==='battery'?bTotal:tab==='forklift'?fTotal:pTotal;
+      const total = tab==='battery'?bTotal:tab==='forklift'?fTotal:tab==='tire'?tTotal:pTotal;
       const vat   = Math.round(total*.1);
       const grand = total+vat;
-      const items = tab==='battery'?bf.items:tab==='forklift'?ff.items:pf.items;
-      const notes = tab==='battery'?bf.notes:tab==='forklift'?ff.notes:null;
+      const items = tab==='battery'?bf.items:tab==='forklift'?ff.items:tab==='tire'?tf.items:pf.items;
+      const notes = tab==='battery'?bf.notes:tab==='forklift'?ff.notes:tab==='tire'?tf.notes:null;
 
-      // DB 저장
-      await supabase.from('tb_quotations').insert({
+      // DB 저장 — 실패해도 발송 자체는 계속 진행하되, 이력 누락을 사용자에게 알린다
+      const { error: insertErr } = await supabase.from('tb_quotations').insert({
         quote_type: currentQuoteType(), quote_no: no,
         quote_date: s.quoteDate, recipient: s.recipient,
         recipient_email: s.email1, items, notes,
         total_amount: total, vat_amount: vat, grand_total: grand,
         created_by:'admin@rnfkorea.co.kr',
       });
+      if (insertErr) console.error('[이력저장오류]', insertErr.message, insertErr.details);
 
       // HTML 생성
       let html='';
       if(tab==='battery')  html=buildQuoteHTML('battery', bf, no);
       if(tab==='forklift') html=buildQuoteHTML('forklift',ff, no);
+      if(tab==='tire')     html=buildQuoteHTML('tire',    tf, no);
       if(tab==='purchase') html=buildPurchaseHTML(pf, no);
 
       // 수신 목록
@@ -981,7 +1013,9 @@ export default function QuotationPage() {
         .update({ email_sent: true, email_sent_at: new Date().toISOString() })
         .eq('quote_no', no);
 
-      flash(`✅ ${toList.join(', ')}로 발송 완료 (${no})`);
+      flash(insertErr
+        ? `✅ ${toList.join(', ')}로 발송은 완료됐지만, 이력 저장에 실패했습니다 (${no}) — ${insertErr.message}`
+        : `✅ ${toList.join(', ')}로 발송 완료 (${no})`);
     } catch(e:any) { flash(`발송 오류: ${e.message}`); }
     setEmailLoading(false);
   };
@@ -1004,6 +1038,7 @@ export default function QuotationPage() {
         const no2 = await genNo();
         const htmlStr = tab==='battery' ? buildQuoteHTML('battery', bf, no2)
           : tab==='forklift' ? buildQuoteHTML('forklift', ff, no2)
+          : tab==='tire' ? buildQuoteHTML('tire', tf, no2)
           : buildPurchaseHTML(pf, no2);
         const bodyMatch = htmlStr.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
         const bodyHTML = bodyMatch ? bodyMatch[1] : htmlStr;
@@ -1132,13 +1167,14 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
       const no=await genNo();
       const toList=[iff.email1,iff.email2].filter(Boolean);
       const ccList=[iff.cc1,iff.cc2].filter(Boolean);
-      await supabase.from('tb_quotations').insert({
+      const { error: insertErr } = await supabase.from('tb_quotations').insert({
         quote_type:'installment',quote_no:no,quote_date:iff.quoteDate,
         recipient:iff.recipient,recipient_email:iff.email1,
         items:[{name:iff.itemName,spec:iff.itemSpec,qty:1,price:n0(iff.carPrice)||p}],
         notes:[`할부원금:${fmtN(p)}원`,`연이율:${r}%`,`거치기간:${gp}개월`,`할부기간:${im}개월`,`월납입:${fmtN(payment)}원`,`금융사:${iff.financeCompany}`],
         total_amount:p,vat_amount:0,grand_total:p,created_by:'admin@rnfkorea.co.kr',
       });
+      if (insertErr) console.error('[이력저장오류]', insertErr.message, insertErr.details);
       const{error}=await supabase.functions.invoke('send-quotation',{
         body:{quoteNo:no,quoteType:'installment',recipient:iff.recipient,toList,ccList,
           totalAmount:p,vatAmount:0,grandTotal:p,htmlBody:'',extraMessage:iff.extraMsg,
@@ -1146,16 +1182,19 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
             principal:p,annualRate:r,gracePeriod:gp,installmentMonths:im,totalMonths:months,payment}},
       });
       if(error) throw error;
-      flash(`✅ ${toList.join(', ')}로 발송 완료 (${no})`);
+      flash(insertErr
+        ? `✅ ${toList.join(', ')}로 발송은 완료됐지만, 이력 저장에 실패했습니다 (${no}) — ${insertErr.message}`
+        : `✅ ${toList.join(', ')}로 발송 완료 (${no})`);
     }catch(e:any){flash(`발송 오류: ${e.message}`);}
     setEmailLoading(false);
   };
 
   const updB=(i:number,k:keyof Item,v:any)=>setBf(f=>{const items=[...f.items];items[i]={...items[i],[k]:v};return{...f,items};});
   const updF=(i:number,k:keyof Item,v:any)=>setFf(f=>{const items=[...f.items];items[i]={...items[i],[k]:v};return{...f,items};});
+  const updT=(i:number,k:keyof Item,v:any)=>setTf(f=>{const items=[...f.items];items[i]={...items[i],[k]:v};return{...f,items};});
   const updP=(i:number,k:keyof Item,v:any)=>setPf(f=>{const items=[...f.items];items[i]={...items[i],[k]:v};return{...f,items};});
 
-  const TABS:[TabType,string][] = [['battery','🔋 배터리'],['forklift','🚜 지게차'],['installment','💳 할부'],['purchase','📝 발주서'],['history','📋 이력']];
+  const TABS:[TabType,string][] = [['battery','🔋 배터리'],['forklift','🚜 지게차'],['tire','🛞 타이어'],['installment','💳 할부'],['purchase','📝 발주서'],['history','📋 이력']];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1227,6 +1266,26 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
           <div className="bg-white rounded-lg border p-5">
             <h2 className="font-semibold text-gray-800 mb-3 text-sm">특기사항</h2>
             <NoteEditor notes={bf.notes} onChange={n=>setBf(f=>({...f,notes:n}))}/>
+          </div>
+        </>}
+
+        {/* ══ 타이어 탭 ══ */}
+        {tab==='tire' && <>
+          <SendInfoForm v={tf} onSendChange={updSend(setTf)} emailSuggestions={emailSuggestions}/>
+          <div className="bg-white rounded-lg border p-5 space-y-3">
+            <div className="grid grid-cols-3 gap-3">
+              <div><Label>유효기간</Label><Input value={tf.validPeriod} onChange={e=>setTf(f=>({...f,validPeriod:e.target.value}))}/></div>
+              <div><Label>거래조건</Label><Input value={tf.paymentTerms} onChange={e=>setTf(f=>({...f,paymentTerms:e.target.value}))}/></div>
+              <div><Label>인도장소</Label><Input value={tf.deliveryPlace} onChange={e=>setTf(f=>({...f,deliveryPlace:e.target.value}))}/></div>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg border p-5">
+            <h2 className="font-semibold text-gray-800 mb-3 text-sm">품목</h2>
+            <ItemTable items={tf.items} upd={updT} total={tTotal}/>
+          </div>
+          <div className="bg-white rounded-lg border p-5">
+            <h2 className="font-semibold text-gray-800 mb-3 text-sm">특기사항</h2>
+            <NoteEditor notes={tf.notes} onChange={n=>setTf(f=>({...f,notes:n}))}/>
           </div>
         </>}
 

@@ -53,6 +53,7 @@ serve(async (req) => {
     const typeLabel: Record<string, string> = {
       battery:     "배터리",
       forklift:    "지게차",
+      tire:        "타이어",
       installment: "할부",
       purchase:    "발주서",
     };

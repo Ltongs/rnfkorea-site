@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import * as XLSX from "xlsx";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 import AppTabBar from "../../components/AppTabBar";
@@ -46,6 +47,15 @@ type NarumiTask = {
   postal_tracking_no?: string | null;
   postal_sent_date?: string | null;
   case_no?: string | null;
+  finance_type?: string | null;
+  lease_company?: string | null;
+  business_type?: string | null;
+  temp_plate_returned?: boolean | null;
+  temp_plate_return_due_date?: string | null;
+  is_plate_brokerage?: boolean | null;
+  brokerage_result?: string | null;
+  is_dispatched?: boolean | null;
+  registered_at?: string | null;
 };
 
 function onlyDigits(s: string) {
@@ -56,21 +66,41 @@ function normalizeVin(v: string) {
   return (v ?? "").trim().toUpperCase();
 }
 
-function formatYYYYMMDDToDots(raw: string) {
-  const digits = onlyDigits(raw).slice(0, 8);
-  const y = digits.slice(0, 4);
-  const m = digits.slice(4, 6);
-  const d = digits.slice(6, 8);
+// "2026.07.16" ↔ "2026-07-16" — 네이티브 <input type="date"> 달력 위젯과 기존 YYYY.MM.DD 문자열 저장 형식을 서로 변환
+function dotsToDateInputValue(text: string): string {
+  const digits = onlyDigits(text);
+  if (digits.length !== 8) return "";
+  return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+}
 
-  if (digits.length <= 4) return y;
-  if (digits.length <= 6) return `${y}.${m}`;
-  return `${y}.${m}.${d}`;
+function dateInputValueToDots(value: string): string {
+  return value.replace(/-/g, ".");
 }
 
 function vinLast6(vin: string) {
   const v = (vin ?? "").trim();
   if (!v) return "";
   return v.slice(-6);
+}
+
+function parseDeliveryDateToUTCDate(text: string | null | undefined): Date | null {
+  const digits = onlyDigits(text ?? "");
+  if (digits.length !== 8) return null;
+  const y = Number(digits.slice(0, 4));
+  const m = Number(digits.slice(4, 6));
+  const d = Number(digits.slice(6, 8));
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return Number.isNaN(dt.getTime()) ? null : dt;
+}
+
+// 출고 예정일까지 남은 일수가 1일 이하(오늘·내일)이거나 이미 지난 경우 긴급으로 간주
+function isUrgentDelivery(text: string | null | undefined): boolean {
+  const deliveryDate = parseDeliveryDateToUTCDate(text);
+  if (!deliveryDate) return false;
+  const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const todayUTC = new Date(Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth(), kstNow.getUTCDate()));
+  const diffDays = Math.round((deliveryDate.getTime() - todayUTC.getTime()) / (24 * 60 * 60 * 1000));
+  return diffDays <= 1;
 }
 
 function isAllDone(t: NarumiTask) {
@@ -83,6 +113,11 @@ function isClosingDone(t: Pick<NarumiTask, "is_registered" | "vehicle_doc_path">
 
 function isOnHold(row: Pick<NarumiTask, "on_hold">) {
   return !!row.on_hold;
+}
+
+// 번호판 중개 건이 아직 '출고' 처리 전인 경우 — VIN/보험 등 정규 필드가 비어있으므로 일반 단계 집계에서 제외
+function isBrokeragePending(row: Pick<NarumiTask, "is_plate_brokerage" | "is_dispatched">) {
+  return !!row.is_plate_brokerage && !row.is_dispatched;
 }
 
 function extFromName(name: string) {
@@ -145,17 +180,10 @@ function getDialablePhone(r: NarumiTask) {
   return onlyDigits(r.customer_phone ?? "").slice(0, 11);
 }
 
-function maskAllText(value: string) {
-  const raw = (value ?? "").trim();
-  if (!raw) return "-";
-  return raw.replace(/[^\s]/g, "*");
-}
-
+// 정책: 일정 시간 경과 후에도 고객명은 계속 공개, 전화번호만 마스킹 대상
 function getDisplayCustomerName(r: NarumiTask) {
   const raw = (r.customer_name ?? "").trim();
-  if (!raw) return "-";
-  if (!shouldMaskPhoneForUI(r)) return raw;
-  return maskAllText(raw);
+  return raw || "-";
 }
 
 function isMobileDevice() {
@@ -273,15 +301,16 @@ function isSummaryCompleted(row: NarumiTask) {
 }
 
 function isSummaryInsuranceWaiting(row: NarumiTask) {
-  return !isSummaryHold(row) && !isSummaryCompleted(row) && !row.has_insurance;
+  return !isSummaryHold(row) && !isSummaryCompleted(row) && !isBrokeragePending(row) && !row.has_insurance;
 }
 
 function isSummaryDocsWaiting(row: NarumiTask) {
-  return !isSummaryHold(row) && !isSummaryCompleted(row) && !row.docs_ready;
+  return !isSummaryHold(row) && !isSummaryCompleted(row) && !isBrokeragePending(row) && !row.docs_ready;
 }
 
 function isSummaryRegisterWaiting(row: NarumiTask) {
   return (
+    !isBrokeragePending(row) &&
     !isSummaryHold(row) &&
     !isSummaryCompleted(row) &&
     !!row.has_insurance &&
@@ -340,6 +369,13 @@ export default function NarumiPage() {
   const [vehicleUseType, setVehicleUseType] = useState<"영업용" | "자가용">("자가용");
   const [specialNote, setSpecialNote] = useState("");
 
+  const [financeType, setFinanceType] = useState<"" | "할부" | "리스" | "현금">("");
+  const [leaseCompany, setLeaseCompany] = useState("");
+  const [businessType, setBusinessType] = useState<"" | "개별" | "용달" | "지입">("");
+  const [tempPlateReturned, setTempPlateReturned] = useState<boolean | null>(null);
+  const [tempPlateReturnDueDate, setTempPlateReturnDueDate] = useState("");
+  const [isPlateBrokerage, setIsPlateBrokerage] = useState(false);
+
   const [manufactureImageFile, setManufactureImageFile] = useState<File | null>(null);
 
   const [rows, setRows] = useState<NarumiTask[]>([]);
@@ -353,6 +389,10 @@ export default function NarumiPage() {
   const [showOldUploaded, setShowOldUploaded] = useState(false);
   const [showCreatePanel, setShowCreatePanel] = useState(false);
   const [showSearchPanel, setShowSearchPanel] = useState(false);
+  const [reportMonth, setReportMonth] = useState(() => {
+    const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    return kstNow.toISOString().slice(0, 7); // YYYY-MM
+  });
 
   const [uploadingId, setUploadingId] = useState<string | number | null>(null);
 
@@ -378,6 +418,20 @@ export default function NarumiPage() {
   const [editSalesRepPhone, setEditSalesRepPhone] = useState("");
   const [editVehicleUseType, setEditVehicleUseType] = useState<"영업용" | "자가용">("자가용");
   const [editSpecialNote, setEditSpecialNote] = useState("");
+
+  // ── 번호판 중개 건 → '출고' 처리(정식 건 전환) 모달 ──
+  const [dispatchRow, setDispatchRow] = useState<NarumiTask | null>(null);
+  const [dispatchSaving, setDispatchSaving] = useState(false);
+  const [dispatchVin, setDispatchVin] = useState("");
+  const [dispatchDeliveryText, setDispatchDeliveryText] = useState("");
+  const [dispatchFinanceType, setDispatchFinanceType] = useState<"" | "할부" | "리스" | "현금">("");
+  const [dispatchLotte, setDispatchLotte] = useState<boolean>(false);
+  const [dispatchLeaseCompany, setDispatchLeaseCompany] = useState("");
+  const [dispatchBusinessType, setDispatchBusinessType] = useState<"" | "개별" | "용달" | "지입">("");
+  const [dispatchTempPlateReturned, setDispatchTempPlateReturned] = useState<boolean | null>(null);
+  const [dispatchTempPlateReturnDueDate, setDispatchTempPlateReturnDueDate] = useState("");
+  const [dispatchSalesRep, setDispatchSalesRep] = useState("");
+  const [dispatchSalesRepPhone, setDispatchSalesRepPhone] = useState("");
 
   const fetchRows = async () => {
     setLoading(true);
@@ -512,6 +566,83 @@ export default function NarumiPage() {
     setStatusFilter("all");
   };
 
+  // 특이사항/제작증을 제외한 전 필드가 채워져야 저장 가능 — 번호판 중개 건은 고객명+연락처만 필수
+  const isCreateFormValid = useMemo(() => {
+    if (!customerName.trim() || !customerPhone.trim()) return false;
+
+    if (isPlateBrokerage) return true;
+
+    if (!vin.trim()) return false;
+    if (deliveryText.trim().length !== 10) return false;
+    if (!financeType) return false;
+    if (financeType === "리스" && !leaseCompany.trim()) return false;
+    if (vehicleUseType === "영업용" && !businessType) return false;
+    if (tempPlateReturned === null) return false;
+    if (tempPlateReturned === false && tempPlateReturnDueDate.trim().length !== 10) return false;
+    if (!salesRep.trim()) return false;
+    if (!salesRepPhone.trim()) return false;
+
+    return true;
+  }, [
+    customerName,
+    customerPhone,
+    isPlateBrokerage,
+    vin,
+    deliveryText,
+    financeType,
+    leaseCompany,
+    vehicleUseType,
+    businessType,
+    tempPlateReturned,
+    tempPlateReturnDueDate,
+    salesRep,
+    salesRepPhone,
+  ]);
+
+  // registered_at(등록완료 시각, KST) 기준으로 선택한 월(YYYY-MM)에 등록완료된 건만 엑셀로 내보내기
+  const exportMonthlyReport = () => {
+    const monthRows = rows.filter((r) => {
+      if (!r.is_registered || !r.registered_at) return false;
+      const registeredAt = new Date(r.registered_at);
+      if (Number.isNaN(registeredAt.getTime())) return false;
+      const kst = new Date(registeredAt.getTime() + 9 * 60 * 60 * 1000);
+      return kst.toISOString().slice(0, 7) === reportMonth;
+    });
+
+    if (monthRows.length === 0) {
+      alert(`${reportMonth}에 등록완료된 건이 없습니다.`);
+      return;
+    }
+
+    const sheetRows = monthRows.map((r) => ({
+      접수번호: r.case_no ?? String(r.id),
+      VIN: r.vin || "-",
+      고객명: getDisplayCustomerName(r),
+      연락처: getDisplayPhone(r),
+      등록완료일시: formatCreatedAt(r.registered_at ?? undefined),
+      출고일자: r.delivery_date_text || "-",
+      금융구분: r.finance_type || "-",
+      롯데오토리스: r.finance_type === "할부" ? (r.is_lotte_autolease ? "Y" : "N") : "-",
+      리스사: r.lease_company || "-",
+      용도구분: r.vehicle_use_type || "-",
+      용도세부: r.business_type || "-",
+      임시번호판반납여부: r.temp_plate_returned === true ? "Y" : r.temp_plate_returned === false ? "N" : "-",
+      임시번호판반납예정일: r.temp_plate_return_due_date || "-",
+      영업사원: r.sales_rep || "-",
+      영업사원연락처: r.sales_rep_phone ? formatPhoneKR(r.sales_rep_phone) : "-",
+      진행상태: statusLabel(deriveStatus(r)),
+      번호판중개여부: r.is_plate_brokerage ? "Y" : "N",
+      중개결과: r.brokerage_result || "-",
+      특이사항: r.special_note || "",
+    }));
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(sheetRows);
+    ws["!cols"] = [12, 18, 10, 16, 16, 12, 8, 12, 14, 8, 8, 14, 16, 10, 16, 10, 12, 10, 30].map((w) => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, ws, "월간리포트");
+    XLSX.writeFile(wb, `나르미_월간리포트(등록완료)_${reportMonth}.xlsx`);
+  };
+
   const onReset = () => {
     setVin("");
     setCustomerName("");
@@ -522,6 +653,12 @@ export default function NarumiPage() {
     setSalesRepPhone("");
     setVehicleUseType("자가용");
     setSpecialNote("");
+    setFinanceType("");
+    setLeaseCompany("");
+    setBusinessType("");
+    setTempPlateReturned(null);
+    setTempPlateReturnDueDate("");
+    setIsPlateBrokerage(false);
     setManufactureImageFile(null);
     if (manufactureInputRef.current) manufactureInputRef.current.value = "";
   };
@@ -552,6 +689,120 @@ export default function NarumiPage() {
     setEditSalesRepPhone("");
     setEditVehicleUseType("자가용");
     setEditSpecialNote("");
+  };
+
+  const openDispatchModal = (row: NarumiTask) => {
+    if (!canChangeStatus) {
+      alert("상태 변경 권한이 없습니다.");
+      return;
+    }
+    setDispatchRow(row);
+    setDispatchVin("");
+    setDispatchDeliveryText("");
+    setDispatchFinanceType("");
+    setDispatchLotte(false);
+    setDispatchLeaseCompany("");
+    setDispatchBusinessType("");
+    setDispatchTempPlateReturned(null);
+    setDispatchTempPlateReturnDueDate("");
+    setDispatchSalesRep("");
+    setDispatchSalesRepPhone("");
+  };
+
+  const closeDispatchModal = () => {
+    if (dispatchSaving) return;
+    setDispatchRow(null);
+  };
+
+  const isDispatchFormValid = useMemo(() => {
+    if (!dispatchVin.trim()) return false;
+    if (dispatchDeliveryText.trim().length !== 10) return false;
+    if (!dispatchFinanceType) return false;
+    if (dispatchFinanceType === "리스" && !dispatchLeaseCompany.trim()) return false;
+    if (!dispatchBusinessType) return false;
+    if (dispatchTempPlateReturned === null) return false;
+    if (dispatchTempPlateReturned === false && dispatchTempPlateReturnDueDate.trim().length !== 10) return false;
+    if (!dispatchSalesRep.trim()) return false;
+    if (!dispatchSalesRepPhone.trim()) return false;
+    return true;
+  }, [
+    dispatchVin,
+    dispatchDeliveryText,
+    dispatchFinanceType,
+    dispatchLeaseCompany,
+    dispatchBusinessType,
+    dispatchTempPlateReturned,
+    dispatchTempPlateReturnDueDate,
+    dispatchSalesRep,
+    dispatchSalesRepPhone,
+  ]);
+
+  const saveDispatch = async () => {
+    if (!dispatchRow) return;
+    if (!isDispatchFormValid) {
+      alert("모든 필수 항목을 입력해주세요.");
+      return;
+    }
+
+    const vinTrim = normalizeVin(dispatchVin);
+    const dtTrim = dispatchDeliveryText.trim();
+    const salesRepTrim = dispatchSalesRep.trim();
+    const salesRepPhoneTrim = dispatchSalesRepPhone.trim();
+    const leaseCompanyTrim = dispatchLeaseCompany.trim();
+
+    setDispatchSaving(true);
+    try {
+      const { data: existing, error: dupErr } = await supabase
+        .from("narumi_tasks")
+        .select("id, vin")
+        .eq("vin", vinTrim)
+        .neq("id", dispatchRow.id as any)
+        .limit(1);
+
+      if (dupErr) throw dupErr;
+      if (existing && existing.length > 0) {
+        alert(`이미 등록된 VIN입니다.\nVIN: ${vinTrim}\n기존 ID: ${existing[0].id}`);
+        return;
+      }
+
+      const patch: Partial<NarumiTask> = {
+        vin: vinTrim,
+        vin_last6: vinLast6(vinTrim),
+        delivery_date_text: dtTrim,
+        finance_type: dispatchFinanceType,
+        is_lotte_autolease: dispatchFinanceType === "할부" ? dispatchLotte : false,
+        lease_company: dispatchFinanceType === "리스" ? leaseCompanyTrim : null,
+        business_type: dispatchBusinessType,
+        temp_plate_returned: dispatchTempPlateReturned,
+        temp_plate_return_due_date: dispatchTempPlateReturned === false ? dispatchTempPlateReturnDueDate.trim() : null,
+        sales_rep: salesRepTrim,
+        sales_rep_phone: salesRepPhoneTrim,
+        is_dispatched: true,
+      };
+
+      const { error } = await supabase
+        .from("narumi_tasks")
+        .update(patch)
+        .eq("id", dispatchRow.id as any);
+
+      if (error) throw error;
+
+      sendNarumiKakao({
+        type:         "narumi_new",
+        vin:          vinTrim,
+        customerName: dispatchRow.customer_name ?? "",
+        salesRep:     salesRepTrim,
+        deliveryDate: dtTrim,
+        specialNote:  "번호판 중개 건 → 출고 전환",
+      });
+
+      setDispatchRow(null);
+      await fetchRows();
+    } catch (e: any) {
+      alert(e?.message || "저장 실패");
+    } finally {
+      setDispatchSaving(false);
+    }
   };
 
   const uploadManufactureDocForRow = async (rowId: string | number, file: File) => {
@@ -600,17 +851,9 @@ export default function NarumiPage() {
       return;
     }
 
-    const vinTrim = normalizeVin(vin);
-    const dtTrim = deliveryText.trim();
     const nameTrim = customerName.trim();
     const phoneTrim = customerPhone.trim();
-    const salesRepTrim = salesRep.trim();
-    const salesRepPhoneTrim = salesRepPhone.trim();
 
-    if (!vinTrim) {
-      alert("차대번호를 입력해주세요.");
-      return;
-    }
     if (!nameTrim) {
       alert("고객명을 입력해주세요.");
       return;
@@ -619,8 +862,103 @@ export default function NarumiPage() {
       alert("고객 전화번호를 입력해주세요.");
       return;
     }
+
+    // ── 번호판 중개 건: 고객명 + 연락처만으로 최소 접수 ──
+    if (isPlateBrokerage) {
+      setSaving(true);
+      setErr("");
+      try {
+        const { data: caseNoData, error: caseNoErr } = await supabase.rpc("next_rnf_number");
+        if (caseNoErr) throw caseNoErr;
+
+        const payload = {
+          case_no: caseNoData as string,
+          vin: null,
+          vin_last6: null,
+          delivery_date_text: null,
+          is_lotte_autolease: false,
+          special_note: specialNote.trim() || null,
+          customer_name: nameTrim,
+          customer_phone: phoneTrim,
+          sales_rep: null,
+          sales_rep_phone: null,
+          vehicle_use_type: "영업용",
+          finance_type: null,
+          lease_company: null,
+          business_type: null,
+          temp_plate_returned: null,
+          temp_plate_return_due_date: null,
+          is_plate_brokerage: true,
+          brokerage_result: null,
+          is_dispatched: false,
+          customer_phone_set_at: new Date().toISOString(),
+          customer_phone_scrubbed_at: null,
+          on_hold: false,
+          has_insurance: false,
+          docs_ready: false,
+          is_registering: false,
+          is_registered: false,
+          status: "todo" as TaskStatus,
+          vehicle_doc_path: null,
+          manufacture_doc_path: null,
+        };
+
+        const { error } = await supabase.from("narumi_tasks").insert(payload);
+        if (error) throw error;
+
+        sendNarumiKakao({
+          type:         "narumi_new",
+          vin:          "(번호판 중개 건)",
+          customerName: nameTrim,
+          salesRep:     "-",
+          deliveryDate: "-",
+          specialNote:  specialNote.trim() || undefined,
+        });
+
+        onReset();
+        await fetchRows();
+      } catch (e: any) {
+        setErr(e?.message || "Insert failed");
+        alert(e?.message || "Insert failed");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    // ── 일반 건 ──
+    const vinTrim = normalizeVin(vin);
+    const dtTrim = deliveryText.trim();
+    const salesRepTrim = salesRep.trim();
+    const salesRepPhoneTrim = salesRepPhone.trim();
+    const leaseCompanyTrim = leaseCompany.trim();
+
+    if (!vinTrim) {
+      alert("차대번호를 입력해주세요.");
+      return;
+    }
     if (dtTrim.length !== 10) {
       alert("출고일자는 YYYY.MM.DD 형식으로 입력해주세요. (예: 2026.02.25)");
+      return;
+    }
+    if (!financeType) {
+      alert("금융구분을 선택해주세요.");
+      return;
+    }
+    if (financeType === "리스" && !leaseCompanyTrim) {
+      alert("리스사명을 입력해주세요.");
+      return;
+    }
+    if (vehicleUseType === "영업용" && !businessType) {
+      alert("영업용 세부구분(개별/용달/지입)을 선택해주세요.");
+      return;
+    }
+    if (tempPlateReturned === null) {
+      alert("임시번호판 반납여부를 선택해주세요.");
+      return;
+    }
+    if (tempPlateReturned === false && tempPlateReturnDueDate.trim().length !== 10) {
+      alert("임시번호판 예정 반납일자를 YYYY.MM.DD 형식으로 입력해주세요.");
       return;
     }
     if (!salesRepTrim) {
@@ -657,13 +995,21 @@ export default function NarumiPage() {
         vin: vinTrim,
         vin_last6: vinLast6(vinTrim),
         delivery_date_text: dtTrim,
-        is_lotte_autolease: lotte,
+        is_lotte_autolease: financeType === "할부" ? lotte : false,
         special_note: specialNote.trim() || null,
         customer_name: nameTrim,
         customer_phone: phoneTrim,
         sales_rep: salesRepTrim,
         sales_rep_phone: salesRepPhoneTrim,
         vehicle_use_type: vehicleUseType,
+        finance_type: financeType,
+        lease_company: financeType === "리스" ? leaseCompanyTrim : null,
+        business_type: vehicleUseType === "영업용" ? businessType : null,
+        temp_plate_returned: tempPlateReturned,
+        temp_plate_return_due_date: tempPlateReturned === false ? tempPlateReturnDueDate.trim() : null,
+        is_plate_brokerage: false,
+        brokerage_result: null,
+        is_dispatched: false,
         customer_phone_set_at: new Date().toISOString(),
         customer_phone_scrubbed_at: null,
         on_hold: false,
@@ -758,11 +1104,13 @@ export default function NarumiPage() {
     const nextVal = !target[key];
     const nextRow = { ...target, [key]: nextVal };
     const nextStatus = deriveStatus(nextRow);
+    // 월간 리포트가 "등록완료 월"을 집계할 수 있도록 완료 시점을 기록(해제 시 초기화)
+    const nextRegisteredAt = key === "is_registered" ? (nextVal ? new Date().toISOString() : null) : undefined;
 
     setRows((prev) =>
       prev.map((rr) =>
         String(rr.id) === String(id)
-          ? { ...rr, [key]: nextVal, status: nextStatus }
+          ? { ...rr, [key]: nextVal, status: nextStatus, ...(nextRegisteredAt !== undefined ? { registered_at: nextRegisteredAt } : {}) }
           : rr
       )
     );
@@ -770,6 +1118,7 @@ export default function NarumiPage() {
     const patch: Partial<NarumiTask> = {
       [key]: nextVal,
       status: nextStatus,
+      ...(nextRegisteredAt !== undefined ? { registered_at: nextRegisteredAt } : {}),
     };
 
     const { error } = await supabase
@@ -781,7 +1130,7 @@ export default function NarumiPage() {
       setRows((prev) =>
         prev.map((rr) =>
           String(rr.id) === String(id)
-            ? { ...rr, [key]: !nextVal, status: target.status ?? deriveStatus(target) }
+            ? { ...rr, [key]: !nextVal, status: target.status ?? deriveStatus(target), registered_at: target.registered_at ?? null }
             : rr
         )
       );
@@ -803,6 +1152,33 @@ export default function NarumiPage() {
           nextStatus: stageChange.next,
         });
       }
+    }
+  };
+
+  // 번호판 중개 건의 결과(중개완료/보류/취소)를 카드 목록에서 즉시 저장
+  const saveBrokerageResult = async (id: NarumiTask["id"], value: string | null) => {
+    if (!canChangeStatus) {
+      alert("상태 변경 권한이 없습니다.");
+      return;
+    }
+
+    const target = rows.find((rr) => String(rr.id) === String(id));
+    if (!target) return;
+
+    setRows((prev) =>
+      prev.map((rr) => (String(rr.id) === String(id) ? { ...rr, brokerage_result: value } : rr))
+    );
+
+    const { error } = await supabase
+      .from("narumi_tasks")
+      .update({ brokerage_result: value })
+      .eq("id", id as any);
+
+    if (error) {
+      setRows((prev) =>
+        prev.map((rr) => (String(rr.id) === String(id) ? { ...rr, brokerage_result: target.brokerage_result ?? null } : rr))
+      );
+      alert(error.message);
     }
   };
 
@@ -1565,8 +1941,7 @@ VIN: ${nextVin}`);
 
         {/* ── 안내문 ── */}
         <div className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-4 text-xs text-orange-700/90 leading-relaxed space-y-0.5">
-          <p>* 고객명/전화번호는 입력 후 {UI_MASK_AFTER_HOURS}시간 경과 시 화면에서 마스킹됩니다.</p>
-          <p>* 고객명은 전체 마스킹, 고객 전화번호는 뒷 4자리가 마스킹됩니다.</p>
+          <p>* 고객 전화번호는 입력 후 {UI_MASK_AFTER_HOURS}시간 경과 시 화면에서 뒷 4자리가 마스킹됩니다. 고객명은 계속 공개됩니다.</p>
           <p>* 고객 전화번호는 입력 후 {DB_SCRUB_AFTER_HOURS}시간(5일) 경과 시 DB에서 뒷 4자리가 영구 마스킹(삭제)됩니다.</p>
           <p>* 차량등록증 업로드 완료 건은 일반 사용자는 최근 {HIDE_UPLOADED_AFTER_DAYS_FOR_NON_ADMIN}일 이내만 표시되며, 업로드 후 {HIDE_UPLOADED_AFTER_DAYS_FOR_NON_ADMIN}일이 지나면 파일이 실제로 삭제됩니다.</p>
         </div>
@@ -1627,6 +2002,27 @@ VIN: ${nextVin}`);
               )}
             </div>
           )}
+
+          {showSearchPanel && (isPrivilegedManager || isNarumi) && (
+            <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap items-end gap-3">
+              <div>
+                <label className={labelClass}>월간 리포트 (등록완료월 기준)</label>
+                <input
+                  type="month"
+                  value={reportMonth}
+                  onChange={(e) => setReportMonth(e.target.value)}
+                  className={compactInputClass}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={exportMonthlyReport}
+                className="h-[48px] inline-flex items-center justify-center px-4 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 text-sm font-semibold hover:shadow-sm transition-all"
+              >
+                월간 리포트 다운로드 (Excel)
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ── 신규 입력 패널 ── */}
@@ -1649,66 +2045,155 @@ VIN: ${nextVin}`);
 
             {showCreatePanel && (
               <div className="space-y-4">
-                {/* 1행 */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {/* 1행: 이름 / 전화번호 / 제작증첨부 / 번호판 중개건 체크 */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-start">
                   <div>
-                    <label className={labelClass}>차대번호(VIN) *</label>
-                    <input value={vin} onChange={(e) => setVin(normalizeVin(e.target.value))} placeholder="예: KMH..." className={compactInputClass} disabled={!canCreate} />
-                  </div>
-                  <div>
-                    <label className={labelClass}>고객명 *</label>
+                    <label className={labelClass}>이름 *</label>
                     <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="예: 홍길동" className={compactInputClass} disabled={!canCreate} />
                   </div>
                   <div>
                     <label className={labelClass}>전화번호 *</label>
                     <input value={customerPhone} onChange={(e) => setCustomerPhone(formatPhoneKR(e.target.value))} placeholder="010-1234-5678" inputMode="tel" className={compactInputClass} disabled={!canCreate} />
                   </div>
-                </div>
-
-                {/* 2행 */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 items-start">
                   <div>
-                    <label className={labelClass}>제작증</label>
-                    <button type="button" onClick={() => manufactureInputRef.current?.click()} disabled={!canCreate} className={compactButtonClass}>
+                    <label className={labelClass}>제작증첨부</label>
+                    <button type="button" onClick={() => manufactureInputRef.current?.click()} disabled={!canCreate || isPlateBrokerage} className={compactButtonClass}>
                       {manufactureImageFile ? "첨부됨 ✓" : "제작증 첨부"}
                     </button>
                     {manufactureImageFile && (
-                      <button type="button" onClick={() => { setManufactureImageFile(null); if (manufactureInputRef.current) manufactureInputRef.current.value = ""; }} disabled={!canCreate} className="mt-1 text-[11px] font-medium text-red-500 hover:underline">
+                      <button type="button" onClick={() => { setManufactureImageFile(null); if (manufactureInputRef.current) manufactureInputRef.current.value = ""; }} disabled={!canCreate || isPlateBrokerage} className="mt-1 text-[11px] font-medium text-red-500 hover:underline">
                         첨부 제거
                       </button>
                     )}
                   </div>
-                  <div>
-                    <label className={labelClass}>출고일자 *</label>
-                    <input value={deliveryText} onChange={(e) => setDeliveryText(formatYYYYMMDDToDots(e.target.value))} placeholder="YYYY.MM.DD" inputMode="numeric" className={compactInputClass} disabled={!canCreate} />
-                  </div>
-                  <div>
-                    <label className={labelClass}>롯데오토리스</label>
-                    <div className="h-[48px] w-full rounded-xl border border-gray-200 bg-white flex items-center gap-4 px-4">
-                      <label className="inline-flex items-center gap-1.5 text-sm font-medium text-navy-900 cursor-pointer">
-                        <input type="radio" name="lotte" checked={lotte === true} onChange={() => setLotte(true)} className="h-4 w-4 accent-orange-500" disabled={!canCreate} /> Y
-                      </label>
-                      <label className="inline-flex items-center gap-1.5 text-sm font-medium text-navy-900 cursor-pointer">
-                        <input type="radio" name="lotte" checked={lotte === false} onChange={() => setLotte(false)} className="h-4 w-4 accent-orange-500" disabled={!canCreate} /> N
-                      </label>
-                    </div>
-                  </div>
-                  <div>
-                    <label className={labelClass}>영업사원 *</label>
-                    <input value={salesRep} onChange={(e) => setSalesRep(e.target.value)} placeholder="홍길동" className={compactInputClass} disabled={!canCreate} />
-                  </div>
-                  <div>
-                    <label className={labelClass}>영업사원 연락처 *</label>
-                    <input value={salesRepPhone} onChange={(e) => setSalesRepPhone(formatPhoneKR(e.target.value))} placeholder="010-0000-0000" inputMode="tel" className={compactInputClass} disabled={!canCreate} />
-                  </div>
-                  <div>
-                    <label className={labelClass}>용도 구분 *</label>
-                    <select value={vehicleUseType} onChange={(e) => setVehicleUseType(e.target.value as any)} className={compactInputClass} disabled={!canCreate}>
-                      <option value="자가용">자가용</option>
-                      <option value="영업용">영업용</option>
-                    </select>
+                  <div className="flex items-end pb-2.5">
+                    <label className="inline-flex items-center gap-2 text-sm font-medium text-navy-900 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isPlateBrokerage}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setIsPlateBrokerage(checked);
+                          if (checked) setVehicleUseType("영업용");
+                        }}
+                        className="h-4 w-4 accent-orange-500"
+                        disabled={!canCreate}
+                      />
+                      번호판 중개건으로 접수
+                    </label>
                   </div>
                 </div>
+
+                {isPlateBrokerage && (
+                  <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-xs text-orange-700/90 leading-relaxed">
+                    번호판 중개 건은 이름과 전화번호만 입력하면 접수됩니다. 이후 카드 목록의 "출고" 버튼으로 나머지 정보를 입력해 정식 건으로 전환하세요.
+                  </div>
+                )}
+
+                {/* 번호판 중개건 접수 시에는 차대번호~임시번호판 반납여부까지 전부 숨김 */}
+                {!isPlateBrokerage && (
+                  <>
+                    {/* 2행: 차대번호(VIN) / 출고일자 / 영업사원 / 영업사원 전화번호 */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-start">
+                      <div>
+                        <label className={labelClass}>차대번호(VIN) *</label>
+                        <input value={vin} onChange={(e) => setVin(normalizeVin(e.target.value))} placeholder="예: KMH..." className={compactInputClass} disabled={!canCreate} />
+                      </div>
+                      <div>
+                        <label className={labelClass}>출고일자 *</label>
+                        <input type="date" value={dotsToDateInputValue(deliveryText)} onChange={(e) => setDeliveryText(dateInputValueToDots(e.target.value))} className={compactInputClass} disabled={!canCreate} />
+                      </div>
+                      <div>
+                        <label className={labelClass}>영업사원 *</label>
+                        <input value={salesRep} onChange={(e) => setSalesRep(e.target.value)} placeholder="홍길동" className={compactInputClass} disabled={!canCreate} />
+                      </div>
+                      <div>
+                        <label className={labelClass}>영업사원 전화번호 *</label>
+                        <input value={salesRepPhone} onChange={(e) => setSalesRepPhone(formatPhoneKR(e.target.value))} placeholder="010-0000-0000" inputMode="tel" className={compactInputClass} disabled={!canCreate} />
+                      </div>
+                    </div>
+
+                    {/* 3행: 금융구분 / 용도구분 / 세부구분 / 임시번호판 반납여부 */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-start">
+                      <div>
+                        <label className={labelClass}>금융구분 *</label>
+                        <select value={financeType} onChange={(e) => setFinanceType(e.target.value as any)} className={compactInputClass} disabled={!canCreate}>
+                          <option value="">선택</option>
+                          <option value="할부">할부</option>
+                          <option value="리스">리스</option>
+                          <option value="현금">현금</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className={labelClass}>용도구분 *</label>
+                        <select
+                          value={vehicleUseType}
+                          onChange={(e) => {
+                            const next = e.target.value as "영업용" | "자가용";
+                            setVehicleUseType(next);
+                            if (next !== "영업용") setBusinessType("");
+                          }}
+                          className={compactInputClass}
+                          disabled={!canCreate}
+                        >
+                          <option value="자가용">자가용</option>
+                          <option value="영업용">영업용</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className={labelClass}>세부구분 {vehicleUseType === "영업용" && "*"}</label>
+                        <select value={businessType} onChange={(e) => setBusinessType(e.target.value as any)} className={compactInputClass} disabled={!canCreate || vehicleUseType !== "영업용"}>
+                          <option value="">선택</option>
+                          <option value="개별">개별</option>
+                          <option value="용달">용달</option>
+                          <option value="지입">지입</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className={labelClass}>임시번호판 반납여부 *</label>
+                        <div className="h-[48px] w-full rounded-xl border border-gray-200 bg-white flex items-center gap-4 px-4">
+                          <label className="inline-flex items-center gap-1.5 text-sm font-medium text-navy-900 cursor-pointer">
+                            <input type="radio" name="tempPlateReturned" checked={tempPlateReturned === true} onChange={() => setTempPlateReturned(true)} className="h-4 w-4 accent-orange-500" disabled={!canCreate} /> Y
+                          </label>
+                          <label className="inline-flex items-center gap-1.5 text-sm font-medium text-navy-900 cursor-pointer">
+                            <input type="radio" name="tempPlateReturned" checked={tempPlateReturned === false} onChange={() => setTempPlateReturned(false)} className="h-4 w-4 accent-orange-500" disabled={!canCreate} /> N
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 3행 하위 조건부 입력: 롯데오토리스 / 리스사명 / 예정 반납일자 */}
+                    {(financeType === "할부" || financeType === "리스" || tempPlateReturned === false) && (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-start">
+                        {financeType === "할부" && (
+                          <div>
+                            <label className={labelClass}>롯데오토리스 여부</label>
+                            <div className="h-[48px] w-full rounded-xl border border-gray-200 bg-white flex items-center gap-4 px-4">
+                              <label className="inline-flex items-center gap-1.5 text-sm font-medium text-navy-900 cursor-pointer">
+                                <input type="radio" name="lotte" checked={lotte === true} onChange={() => setLotte(true)} className="h-4 w-4 accent-orange-500" disabled={!canCreate} /> Y
+                              </label>
+                              <label className="inline-flex items-center gap-1.5 text-sm font-medium text-navy-900 cursor-pointer">
+                                <input type="radio" name="lotte" checked={lotte === false} onChange={() => setLotte(false)} className="h-4 w-4 accent-orange-500" disabled={!canCreate} /> N
+                              </label>
+                            </div>
+                          </div>
+                        )}
+                        {financeType === "리스" && (
+                          <div>
+                            <label className={labelClass}>리스사명 *</label>
+                            <input value={leaseCompany} onChange={(e) => setLeaseCompany(e.target.value)} placeholder="예: 현대캐피탈" className={compactInputClass} disabled={!canCreate} />
+                          </div>
+                        )}
+                        {tempPlateReturned === false && (
+                          <div>
+                            <label className={labelClass}>예정 반납일자 *</label>
+                            <input type="date" value={dotsToDateInputValue(tempPlateReturnDueDate)} onChange={(e) => setTempPlateReturnDueDate(dateInputValueToDots(e.target.value))} className={compactInputClass} disabled={!canCreate} />
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
 
                 {/* 특이사항 */}
                 <div>
@@ -1720,7 +2205,7 @@ VIN: ${nextVin}`);
                   <button type="button" onClick={onReset} disabled={saving || !canCreate} className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl border border-gray-300 bg-white text-navy-900 font-semibold text-sm hover:shadow-md transition-all disabled:opacity-50">
                     초기화
                   </button>
-                  <button type="button" onClick={onAdd} disabled={saving || !canCreate} className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl bg-orange-500 text-white font-semibold text-sm hover:bg-orange-600 transition-all disabled:opacity-50">
+                  <button type="button" onClick={onAdd} disabled={saving || !canCreate || !isCreateFormValid} title={!isCreateFormValid ? "모든 필수 항목을 입력해주세요" : undefined} className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl bg-orange-500 text-white font-semibold text-sm hover:bg-orange-600 transition-all disabled:opacity-50">
                     {saving ? "저장중..." : "접수 등록"}
                   </button>
                 </div>
@@ -1761,6 +2246,8 @@ VIN: ${nextVin}`);
             const displayPhone = getDisplayPhone(r);
             const displayName  = getDisplayCustomerName(r);
             const dialable     = getDialablePhone(r);
+            const brokeragePending = isBrokeragePending(r);
+            const urgent = !brokeragePending && !isLocked && !isHold && isUrgentDelivery(r.delivery_date_text);
 
             return (
               <div key={r.id} className={`rounded-xl border bg-white shadow-sm hover:shadow-md transition-all overflow-hidden ${isHold ? "border-gray-300 opacity-75" : isLocked ? "border-emerald-200" : "border-gray-200"}`}>
@@ -1770,6 +2257,7 @@ VIN: ${nextVin}`);
                   <div className="flex flex-wrap items-center gap-2">
                     {/* 상태 뱃지 */}
                     <span className={`${pillBase} ${
+                      brokeragePending ? "bg-purple-50 text-purple-700 border border-purple-200" :
                       isLocked ? pillDone :
                       isHold ? pillGray :
                       deriveStatus(r) === "registered" ? pillDone :
@@ -1777,8 +2265,11 @@ VIN: ${nextVin}`);
                       deriveStatus(r) === "insurance" ? pillProg :
                       pillGray
                     }`}>
-                      {isLocked ? "차량등록증 완료" : isHold ? "보류" : statusLabel(deriveStatus(r))}
+                      {brokeragePending ? "번호판중개대기" : isLocked ? "차량등록증 완료" : isHold ? "보류" : statusLabel(deriveStatus(r))}
                     </span>
+                    {urgent && (
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-xl border border-red-300 bg-red-50 text-red-700 text-xs font-bold animate-pulse">긴급</span>
+                    )}
                     {r.is_lotte_autolease && (
                       <span className="inline-flex items-center px-2.5 py-1 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-xs font-semibold">롯데</span>
                     )}
@@ -1829,91 +2320,139 @@ VIN: ${nextVin}`);
                       </div>
                       <div>
                         <p className={infoLabel}>영업사원</p>
-                        <p className={infoValue}>{r.sales_rep || "-"}{r.sales_rep_phone ? ` / ${formatPhoneKR(r.sales_rep_phone)}` : ""}</p>
+                        <p className={infoValue}>
+                          {r.sales_rep || "-"}
+                          {r.sales_rep_phone && (
+                            <>
+                              {" / "}
+                              <a href={`tel:${onlyDigits(r.sales_rep_phone)}`} className="font-semibold text-orange-600 hover:underline">
+                                {formatPhoneKR(r.sales_rep_phone)}
+                              </a>
+                            </>
+                          )}
+                        </p>
                       </div>
                       <div>
                         <p className={infoLabel}>접수일시</p>
                         <p className={infoValue}>{formatCreatedAt(r.created_at)}</p>
                       </div>
                       <div>
-                        <p className={infoLabel}>롯데오토리스</p>
-                        <p className="mt-1">
-                          {r.is_lotte_autolease ? (
-                            <span className={`${pillBase} ${pillProg}`}>Y</span>
-                          ) : (
-                            <span className={`${pillBase} ${pillGray}`}>N</span>
-                          )}
+                        <p className={infoLabel}>금융구분</p>
+                        <p className={infoValue}>
+                          {r.finance_type || "-"}
+                          {r.finance_type === "할부" && (r.is_lotte_autolease ? " (롯데오토리스 Y)" : " (롯데오토리스 N)")}
+                          {r.finance_type === "리스" && r.lease_company ? ` (${r.lease_company})` : ""}
                         </p>
                       </div>
                       <div>
                         <p className={infoLabel}>용도</p>
-                        <p className={infoValue}>{r.vehicle_use_type || "-"}</p>
+                        <p className={infoValue}>{r.vehicle_use_type || "-"}{r.business_type ? ` / ${r.business_type}` : ""}</p>
+                      </div>
+                      <div>
+                        <p className={infoLabel}>임시번호판 반납</p>
+                        <p className="mt-1">
+                          {r.temp_plate_returned === true ? (
+                            <span className={`${pillBase} ${pillDone}`}>Y</span>
+                          ) : r.temp_plate_returned === false ? (
+                            <span className={`${pillBase} ${pillProg}`}>N{r.temp_plate_return_due_date ? ` · ${r.temp_plate_return_due_date}` : ""}</span>
+                          ) : (
+                            <span className={`${pillBase} ${pillGray}`}>-</span>
+                          )}
+                        </p>
                       </div>
                     </div>
 
                     {/* 단계 버튼 */}
-                    <div>
-                      <p className={`${infoLabel} mb-2`}>진행 단계</p>
-                      <div className="flex flex-wrap gap-2">
-                        {/* 보험 */}
-                        <button
-                          type="button"
-                          disabled={isLocked || isHold || !canChangeStatus || r.has_insurance}
-                          onClick={() => handleInsuranceButtonClick(r)}
-                          className={`${btnBase} ${isLocked || isHold || r.has_insurance ? btnDisabled : btnOff}`}
-                        >
-                          보험
-                        </button>
-                        {/* 등록서류 */}
-                        <button
-                          type="button"
-                          disabled={isLocked || isHold || !canChangeStatus}
-                          onClick={() => !isLocked && !isHold && toggleStage(r.id, "docs_ready")}
-                          className={`${btnBase} ${isLocked || isHold ? btnDisabled : r.docs_ready ? btnOn : btnOff}`}
-                        >
-                          등록서류
-                        </button>
-                        {/* 등록완료 */}
-                        <button
-                          type="button"
-                          disabled={isLocked || isHold || !canChangeStatus}
-                          onClick={() => !isLocked && !isHold && toggleStage(r.id, "is_registered")}
-                          className={`${btnBase} ${isLocked || isHold ? btnDisabled : r.is_registered ? btnOn : btnOff}`}
-                        >
-                          등록완료
-                        </button>
-                        {/* 차량등록증 */}
-                        <button
-                          type="button"
-                          disabled={!canDocUp}
-                          onClick={() => onClickVehicleDocUpload(r)}
-                          className={`${btnBase} ${!canDocUp ? btnDisabled : isLocked ? btnOn : btnOff}`}
-                        >
-                          {uploadingId === r.id ? "업로드중" : "차량등록증"}
-                        </button>
-                        {/* 우편발송 — 등록완료 상태이고 canChangeStatus 권한이 있으면 isLocked 여부 관계없이 표시 */}
-                        {r.is_registered && canChangeStatus && (
-                          <button
-                            type="button"
-                            onClick={() => postalOpenRowId === r.id ? closePostalForm() : openPostalForm(r)}
-                            className={`${btnBase} ${r.postal_mail_sent ? btnOn : btnOff}`}
-                            title={r.postal_mail_sent ? "우편발송 정보 조회/수정" : "우편발송 정보 입력"}
+                    {brokeragePending ? (
+                      <div>
+                        <p className={`${infoLabel} mb-2`}>번호판 중개 결과</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <select
+                            value={r.brokerage_result ?? ""}
+                            onChange={(e) => saveBrokerageResult(r.id, e.target.value || null)}
+                            disabled={!canChangeStatus}
+                            className={compactInputClass + " !h-[40px] !w-auto"}
                           >
-                            {r.postal_mail_sent ? "우편조회" : "우편발송"}
-                          </button>
-                        )}
-                        {/* 보류 — 등록완료 전이고 잠금 전일 때만 표시 */}
-                        {!r.is_registered && canChangeStatus && !isLocked && (
-                          <button
-                            type="button"
-                            onClick={() => toggleHold(r)}
-                            className={`${btnBase} ${isHold ? "bg-gray-500 text-white border-gray-500" : btnOff}`}
-                          >
-                            {isHold ? "보류해제" : "보류"}
-                          </button>
-                        )}
+                            <option value="">결과 미정</option>
+                            <option value="중개완료">중개완료</option>
+                            <option value="보류">보류</option>
+                            <option value="취소">취소</option>
+                          </select>
+                          {canChangeStatus && (
+                            <button
+                              type="button"
+                              onClick={() => openDispatchModal(r)}
+                              className="inline-flex items-center justify-center px-3 py-2 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-all"
+                            >
+                              출고
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div>
+                        <p className={`${infoLabel} mb-2`}>진행 단계</p>
+                        <div className="flex flex-wrap gap-2">
+                          {/* 보험 */}
+                          <button
+                            type="button"
+                            disabled={isLocked || isHold || !canChangeStatus || r.has_insurance}
+                            onClick={() => handleInsuranceButtonClick(r)}
+                            className={`${btnBase} ${isLocked || isHold || r.has_insurance ? btnDisabled : btnOff}`}
+                          >
+                            보험
+                          </button>
+                          {/* 등록서류 */}
+                          <button
+                            type="button"
+                            disabled={isLocked || isHold || !canChangeStatus}
+                            onClick={() => !isLocked && !isHold && toggleStage(r.id, "docs_ready")}
+                            className={`${btnBase} ${isLocked || isHold ? btnDisabled : r.docs_ready ? btnOn : btnOff}`}
+                          >
+                            등록서류
+                          </button>
+                          {/* 등록완료 */}
+                          <button
+                            type="button"
+                            disabled={isLocked || isHold || !canChangeStatus}
+                            onClick={() => !isLocked && !isHold && toggleStage(r.id, "is_registered")}
+                            className={`${btnBase} ${isLocked || isHold ? btnDisabled : r.is_registered ? btnOn : btnOff}`}
+                          >
+                            등록완료
+                          </button>
+                          {/* 차량등록증 */}
+                          <button
+                            type="button"
+                            disabled={!canDocUp}
+                            onClick={() => onClickVehicleDocUpload(r)}
+                            className={`${btnBase} ${!canDocUp ? btnDisabled : isLocked ? btnOn : btnOff}`}
+                          >
+                            {uploadingId === r.id ? "업로드중" : "차량등록증"}
+                          </button>
+                          {/* 우편발송 — 등록완료 상태이고 canChangeStatus 권한이 있으면 isLocked 여부 관계없이 표시 */}
+                          {r.is_registered && canChangeStatus && (
+                            <button
+                              type="button"
+                              onClick={() => postalOpenRowId === r.id ? closePostalForm() : openPostalForm(r)}
+                              className={`${btnBase} ${r.postal_mail_sent ? btnOn : btnOff}`}
+                              title={r.postal_mail_sent ? "우편발송 정보 조회/수정" : "우편발송 정보 입력"}
+                            >
+                              {r.postal_mail_sent ? "우편조회" : "우편발송"}
+                            </button>
+                          )}
+                          {/* 보류 — 등록완료 전이고 잠금 전일 때만 표시 */}
+                          {!r.is_registered && canChangeStatus && !isLocked && (
+                            <button
+                              type="button"
+                              onClick={() => toggleHold(r)}
+                              className={`${btnBase} ${isHold ? "bg-gray-500 text-white border-gray-500" : btnOff}`}
+                            >
+                              {isHold ? "보류해제" : "보류"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                     {/* 제작증 / 차량등록증 다운로드 */}
                     <div className="flex flex-wrap gap-2">
@@ -2088,6 +2627,102 @@ VIN: ${nextVin}`);
             <div className="mt-3 flex justify-end gap-3">
               <button type="button" onClick={closeEditModal} disabled={editSaving} className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:shadow-md transition-all disabled:opacity-50">취소</button>
               <button type="button" onClick={saveEditRow} disabled={editSaving} className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-all disabled:opacity-50">{editSaving ? "저장중..." : "저장"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 출고 처리 모달 (번호판 중개 건 → 정식 건 전환) ── */}
+      {dispatchRow && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-2xl rounded-xl border border-gray-200 bg-white p-3.5 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div>
+                <p className="text-xs font-medium tracking-[0.12em] uppercase text-orange-500">Dispatch</p>
+                <h2 className="mt-1 text-sm font-semibold text-navy-900">출고 처리 — 정식 건 전환</h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  {getDisplayCustomerName(dispatchRow)} / {getDisplayPhone(dispatchRow)} — 아래 항목을 모두 입력하면 일반 건과 동일하게 진행됩니다.
+                </p>
+              </div>
+              <button type="button" onClick={closeDispatchModal} disabled={dispatchSaving} className="h-9 w-9 rounded-xl border border-gray-200 text-sm font-bold text-gray-500 hover:border-gray-300 disabled:opacity-50 transition-all">×</button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className={labelClass}>차대번호(VIN) *</label>
+                <input value={dispatchVin} onChange={(e) => setDispatchVin(normalizeVin(e.target.value))} className={compactInputClass} disabled={dispatchSaving} placeholder="예: KMH..." />
+              </div>
+              <div>
+                <label className={labelClass}>출고일자 *</label>
+                <input type="date" value={dotsToDateInputValue(dispatchDeliveryText)} onChange={(e) => setDispatchDeliveryText(dateInputValueToDots(e.target.value))} className={compactInputClass} disabled={dispatchSaving} />
+              </div>
+              <div>
+                <label className={labelClass}>금융구분 *</label>
+                <select value={dispatchFinanceType} onChange={(e) => setDispatchFinanceType(e.target.value as any)} className={compactInputClass} disabled={dispatchSaving}>
+                  <option value="">선택</option>
+                  <option value="할부">할부</option>
+                  <option value="리스">리스</option>
+                  <option value="현금">현금</option>
+                </select>
+              </div>
+              {dispatchFinanceType === "할부" && (
+                <div>
+                  <label className={labelClass}>롯데오토리스 여부</label>
+                  <div className="h-[48px] w-full rounded-xl border border-gray-200 bg-white flex items-center gap-4 px-4">
+                    <label className="inline-flex items-center gap-1.5 text-sm font-medium text-navy-900 cursor-pointer">
+                      <input type="radio" name="dispatchLotte" checked={dispatchLotte === true} onChange={() => setDispatchLotte(true)} className="h-4 w-4 accent-orange-500" disabled={dispatchSaving} /> Y
+                    </label>
+                    <label className="inline-flex items-center gap-1.5 text-sm font-medium text-navy-900 cursor-pointer">
+                      <input type="radio" name="dispatchLotte" checked={dispatchLotte === false} onChange={() => setDispatchLotte(false)} className="h-4 w-4 accent-orange-500" disabled={dispatchSaving} /> N
+                    </label>
+                  </div>
+                </div>
+              )}
+              {dispatchFinanceType === "리스" && (
+                <div>
+                  <label className={labelClass}>리스사명 *</label>
+                  <input value={dispatchLeaseCompany} onChange={(e) => setDispatchLeaseCompany(e.target.value)} placeholder="예: 현대캐피탈" className={compactInputClass} disabled={dispatchSaving} />
+                </div>
+              )}
+              <div>
+                <label className={labelClass}>세부구분 *</label>
+                <select value={dispatchBusinessType} onChange={(e) => setDispatchBusinessType(e.target.value as any)} className={compactInputClass} disabled={dispatchSaving}>
+                  <option value="">선택</option>
+                  <option value="개별">개별</option>
+                  <option value="용달">용달</option>
+                  <option value="지입">지입</option>
+                </select>
+              </div>
+              <div>
+                <label className={labelClass}>임시번호판 반납여부 *</label>
+                <div className="h-[48px] w-full rounded-xl border border-gray-200 bg-white flex items-center gap-4 px-4">
+                  <label className="inline-flex items-center gap-1.5 text-sm font-medium text-navy-900 cursor-pointer">
+                    <input type="radio" name="dispatchTempPlateReturned" checked={dispatchTempPlateReturned === true} onChange={() => setDispatchTempPlateReturned(true)} className="h-4 w-4 accent-orange-500" disabled={dispatchSaving} /> Y
+                  </label>
+                  <label className="inline-flex items-center gap-1.5 text-sm font-medium text-navy-900 cursor-pointer">
+                    <input type="radio" name="dispatchTempPlateReturned" checked={dispatchTempPlateReturned === false} onChange={() => setDispatchTempPlateReturned(false)} className="h-4 w-4 accent-orange-500" disabled={dispatchSaving} /> N
+                  </label>
+                </div>
+              </div>
+              {dispatchTempPlateReturned === false && (
+                <div>
+                  <label className={labelClass}>예정 반납일자 *</label>
+                  <input type="date" value={dotsToDateInputValue(dispatchTempPlateReturnDueDate)} onChange={(e) => setDispatchTempPlateReturnDueDate(dateInputValueToDots(e.target.value))} className={compactInputClass} disabled={dispatchSaving} />
+                </div>
+              )}
+              <div>
+                <label className={labelClass}>영업사원 *</label>
+                <input value={dispatchSalesRep} onChange={(e) => setDispatchSalesRep(e.target.value)} className={compactInputClass} disabled={dispatchSaving} placeholder="예: 홍길동" />
+              </div>
+              <div>
+                <label className={labelClass}>영업사원 연락처 *</label>
+                <input value={dispatchSalesRepPhone} onChange={(e) => setDispatchSalesRepPhone(formatPhoneKR(e.target.value))} className={compactInputClass} disabled={dispatchSaving} inputMode="tel" placeholder="010-1234-5678" />
+              </div>
+            </div>
+
+            <div className="mt-3 flex justify-end gap-3">
+              <button type="button" onClick={closeDispatchModal} disabled={dispatchSaving} className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:shadow-md transition-all disabled:opacity-50">취소</button>
+              <button type="button" onClick={saveDispatch} disabled={dispatchSaving || !isDispatchFormValid} className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-all disabled:opacity-50">{dispatchSaving ? "저장중..." : "출고 확정"}</button>
             </div>
           </div>
         </div>

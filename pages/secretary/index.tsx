@@ -2834,7 +2834,7 @@ const SecretaryPage:React.FC = () => {
   const [quotRows,setQuotRows]         = useState<any[]>([]);
   const [quotLoading,setQuotLoading]   = useState(false);
   const [quotLoaded,setQuotLoaded]     = useState(false);
-  const [quotFilter,setQuotFilter]     = useState<"all"|"battery"|"forklift"|"installment"|"statement">("all");
+  const [quotFilter,setQuotFilter]     = useState<"all"|"battery"|"forklift"|"tire"|"installment"|"statement">("all");
   const [quotSearch,setQuotSearch]     = useState("");
 
   async function fetchQuotRows(){
@@ -6715,7 +6715,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                 <div className="flex flex-col items-center gap-4 py-10 w-full">
                   <div className="text-4xl">📋</div>
                   <h2 className="text-lg font-bold text-[#0f172a]">견적서 작성</h2>
-                  <p className="text-sm text-gray-500 text-center">지게차 · 배터리 · 할부금융 견적서를 작성하고<br/>이메일 · SMS로 발송할 수 있습니다.</p>
+                  <p className="text-sm text-gray-500 text-center">지게차 · 배터리 · 타이어 · 할부금융 견적서를 작성하고<br/>이메일 · SMS로 발송할 수 있습니다.</p>
                   <div className="flex flex-wrap justify-center gap-3">
                     <button onClick={()=>navigate("/work/quotation?type=battery")}
                       className="px-5 py-2.5 bg-[#0f172a] text-white rounded-xl text-sm font-semibold hover:opacity-90 transition-all">
@@ -6724,6 +6724,10 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                     <button onClick={()=>navigate("/work/quotation?type=forklift")}
                       className="px-5 py-2.5 bg-orange-500 text-white rounded-xl text-sm font-semibold hover:bg-orange-600 transition-all">
                       🚜 지게차 견적
+                    </button>
+                    <button onClick={()=>navigate("/work/quotation?type=tire")}
+                      className="px-5 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-semibold hover:bg-teal-700 transition-all">
+                      🛞 타이어 견적
                     </button>
                     <button onClick={()=>navigate("/work/quotation?type=installment")}
                       className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all">
@@ -6759,6 +6763,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                       {v:"all",       l:"전체"},
                       {v:"battery",   l:"🔋 배터리"},
                       {v:"forklift",  l:"🚜 지게차"},
+                      {v:"tire",      l:"🛞 타이어"},
                       {v:"installment",l:"💳 할부금융"},
                       {v:"statement", l:"📑 거래명세서"},
                     ] as {v:typeof quotFilter; l:string}[]).map(({v,l})=>(
@@ -6787,8 +6792,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                   ):(
                     <div className={`${CARD} divide-y divide-gray-100`}>
                       {filteredQuotRows.map((r:any)=>{
-                        const TYPE_LABEL:Record<string,string> = {battery:"🔋 배터리",forklift:"🚜 지게차",installment:"💳 할부금융",statement:"📑 거래명세서",purchase:"🛒 발주서"};
-                        const TYPE_COLOR:Record<string,string> = {battery:"bg-emerald-100 text-emerald-700",forklift:"bg-orange-100 text-orange-700",installment:"bg-blue-100 text-blue-700",statement:"bg-gray-100 text-gray-700",purchase:"bg-purple-100 text-purple-700"};
+                        const TYPE_LABEL:Record<string,string> = {battery:"🔋 배터리",forklift:"🚜 지게차",tire:"🛞 타이어",installment:"💳 할부금융",statement:"📑 거래명세서",purchase:"🛒 발주서"};
+                        const TYPE_COLOR:Record<string,string> = {battery:"bg-emerald-100 text-emerald-700",forklift:"bg-orange-100 text-orange-700",tire:"bg-teal-100 text-teal-700",installment:"bg-blue-100 text-blue-700",statement:"bg-gray-100 text-gray-700",purchase:"bg-purple-100 text-purple-700"};
                         const navigate_url = r.quote_type==="statement" ? "/work/statement" : `/work/quotation?type=${r.quote_type}`;
                         return (
                           <div key={r.id} className="p-3 hover:bg-gray-50 transition-all">

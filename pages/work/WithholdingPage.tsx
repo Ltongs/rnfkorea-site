@@ -53,12 +53,28 @@ interface AnnualRow {
   annual_net: number;
 }
 
+interface GiftCardEntry {
+  id: string;
+  entry_date: string;
+  entry_type: 'purchase' | 'distribution';
+  denomination: number;
+  quantity: number;
+  unit_price: number | null;
+  total_amount: number;
+  vendor: string | null;
+  recipient_name: string | null;
+  contractor_id: string | null;
+  contractor_name?: string;
+  reason: string | null;
+  note: string | null;
+}
+
 // ─── 유틸 ──────────────────────────────────────────────────
 const fmt = (n: number) => n?.toLocaleString('ko-KR') ?? '0';
 const RATE = 0.033;
 const calcWithholding = (amount: number) => Math.floor(amount * RATE);
 
-const TABS = ['지급내역', '수탁인 관리', '월별 현황', '연간 집계'] as const;
+const TABS = ['지급내역', '수탁인 관리', '상품권 관리', '월별 현황', '연간 집계'] as const;
 type Tab = typeof TABS[number];
 
 const PAY_REASONS = [
@@ -75,6 +91,7 @@ export default function WithholdingPage() {
   const [tab, setTab] = useState<Tab>('지급내역');
   const [contractors, setContractors] = useState<Contractor[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [giftCards, setGiftCards] = useState<GiftCardEntry[]>([]);
   const [monthly, setMonthly] = useState<MonthlyRow[]>([]);
   const [annual, setAnnual] = useState<AnnualRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -104,6 +121,19 @@ export default function WithholdingPage() {
     setPayments(rows);
   }, []);
 
+  const loadGiftCards = useCallback(async () => {
+    const { data } = await supabase
+      .from('tb_gift_card_stock')
+      .select(`*, tb_contractors(name)`)
+      .order('entry_date', { ascending: false })
+      .order('created_at', { ascending: false });
+    const rows = (data ?? []).map((r: any) => ({
+      ...r,
+      contractor_name: r.tb_contractors?.name ?? '',
+    }));
+    setGiftCards(rows);
+  }, []);
+
   const loadMonthly = useCallback(async () => {
     const { data } = await supabase
       .from('v_withholding_monthly')
@@ -128,7 +158,8 @@ export default function WithholdingPage() {
   useEffect(() => {
     if (tab === '월별 현황') loadMonthly();
     if (tab === '연간 집계') loadAnnual();
-  }, [tab, filterYear, loadMonthly, loadAnnual]);
+    if (tab === '상품권 관리' && giftCards.length === 0) loadGiftCards();
+  }, [tab, filterYear, loadMonthly, loadAnnual, loadGiftCards, giftCards.length]);
 
   const flash = (m: string) => {
     setMsg(m);
@@ -136,8 +167,18 @@ export default function WithholdingPage() {
   };
 
   // ── Excel 내보내기 ──
-  const exportExcel = () => {
+  const exportExcel = async () => {
     const wb = XLSX.utils.book_new();
+
+    // 상품권 관리 탭을 방문하지 않았으면 giftCards state가 비어있을 수 있으므로 직접 조회
+    const { data: giftCardRows } = await supabase
+      .from('tb_gift_card_stock')
+      .select(`*, tb_contractors(name)`)
+      .order('entry_date', { ascending: false });
+    const giftCardData: GiftCardEntry[] = (giftCardRows ?? []).map((r: any) => ({
+      ...r,
+      contractor_name: r.tb_contractors?.name ?? '',
+    }));
 
     // 시트1: 지급내역 전체
     const payRows = payments
@@ -185,6 +226,24 @@ export default function WithholdingPage() {
     const ws3 = XLSX.utils.json_to_sheet(aRows);
     ws3['!cols'] = [8,10,14,8,12,12,12,14].map(w => ({ wch: w }));
     XLSX.utils.book_append_sheet(wb, ws3, '지급명세서(세무사용)');
+
+    // 시트4: 상품권 관리 (구매·지급 전체 내역)
+    const gRows = giftCardData
+      .filter(g => g.entry_date?.startsWith(filterYear))
+      .map(g => ({
+        일자: g.entry_date,
+        구분: g.entry_type === 'purchase' ? '구매' : '지급',
+        액면가: g.denomination,
+        수량: g.quantity,
+        금액: g.total_amount,
+        '구매처/대상자': g.entry_type === 'purchase' ? (g.vendor ?? '') : (g.recipient_name ?? ''),
+        연결수탁인: g.contractor_name ?? '',
+        사유: g.reason ?? '',
+        비고: g.note ?? '',
+      }));
+    const ws4 = XLSX.utils.json_to_sheet(gRows);
+    ws4['!cols'] = [10,8,10,8,12,16,10,16,16].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, ws4, '상품권관리');
 
     XLSX.writeFile(wb, `원천징수관리_${filterYear}.xlsx`);
   };
@@ -263,6 +322,16 @@ export default function WithholdingPage() {
             loading={loading}
             setLoading={setLoading}
             onSaved={() => { loadContractors(); flash('저장되었습니다.'); }}
+            flash={flash}
+          />
+        )}
+        {tab === '상품권 관리' && (
+          <GiftCardTab
+            entries={giftCards}
+            contractors={contractors}
+            loading={loading}
+            setLoading={setLoading}
+            onSaved={() => { loadGiftCards(); flash('저장되었습니다.'); }}
             flash={flash}
           />
         )}
@@ -728,6 +797,330 @@ function ContractorTab({
                     <button onClick={() => toggleActive(c)} className="text-gray-400 hover:underline text-xs">
                       {c.is_active ? '비활성화' : '활성화'}
                     </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── 상품권 관리 탭 ──────────────────────────────────────────
+function GiftCardTab({
+  entries, contractors, loading, setLoading, onSaved, flash,
+}: {
+  entries: GiftCardEntry[];
+  contractors: Contractor[];
+  loading: boolean;
+  setLoading: (v: boolean) => void;
+  onSaved: () => void;
+  flash: (m: string) => void;
+}) {
+  const empty = {
+    entry_type: 'purchase' as 'purchase' | 'distribution',
+    entry_date: new Date().toISOString().slice(0, 10),
+    denomination: '',
+    quantity: '',
+    unit_price: '',
+    vendor: '',
+    recipient_name: '',
+    contractor_id: '',
+    reason: '',
+    note: '',
+  };
+  const [form, setForm] = useState<any>(empty);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+
+  // 액면가별 현재 재고 = 구매 수량 합 - 지급 수량 합
+  const stockByDenom = entries.reduce((acc: Record<number, number>, e) => {
+    const d = e.denomination;
+    acc[d] = (acc[d] ?? 0) + (e.entry_type === 'purchase' ? e.quantity : -e.quantity);
+    return acc;
+  }, {});
+  const denomList = Object.keys(stockByDenom).map(Number).sort((a, b) => a - b);
+  const totalStockQty = Object.values(stockByDenom).reduce((s, q) => s + q, 0);
+  const totalStockValue = denomList.reduce((s, d) => s + d * (stockByDenom[d] ?? 0), 0);
+
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const thisMonthDistCount = entries
+    .filter(e => e.entry_type === 'distribution' && e.entry_date?.startsWith(thisMonth))
+    .reduce((s, e) => s + e.quantity, 0);
+
+  const currentStockForDenom = form.denomination ? (stockByDenom[Number(form.denomination)] ?? 0) : 0;
+  const distExceedsStock =
+    form.entry_type === 'distribution' && form.denomination && form.quantity
+      ? Number(form.quantity) > currentStockForDenom
+      : false;
+
+  const handleSave = async () => {
+    if (!form.denomination || !form.quantity) {
+      flash('액면가와 수량은 필수입니다.');
+      return;
+    }
+    if (form.entry_type === 'distribution' && !form.recipient_name) {
+      flash('지급 대상자명은 필수입니다.');
+      return;
+    }
+    setLoading(true);
+    const qty = Number(form.quantity);
+    const denom = Number(form.denomination);
+    const unitPrice = form.unit_price ? Number(form.unit_price) : null;
+    const totalAmount = form.entry_type === 'purchase' ? (unitPrice ?? denom) * qty : denom * qty;
+    const payload = {
+      entry_type: form.entry_type,
+      entry_date: form.entry_date,
+      denomination: denom,
+      quantity: qty,
+      unit_price: form.entry_type === 'purchase' ? unitPrice : null,
+      total_amount: totalAmount,
+      vendor: form.entry_type === 'purchase' ? (form.vendor || null) : null,
+      recipient_name: form.entry_type === 'distribution' ? (form.recipient_name || null) : null,
+      contractor_id: form.entry_type === 'distribution' ? (form.contractor_id || null) : null,
+      reason: form.reason || null,
+      note: form.note || null,
+      created_by: 'admin@rnfkorea.co.kr',
+    };
+    if (editId) {
+      await supabase.from('tb_gift_card_stock').update(payload).eq('id', editId);
+    } else {
+      await supabase.from('tb_gift_card_stock').insert(payload);
+    }
+    setLoading(false);
+    setForm(empty);
+    setEditId(null);
+    setShowForm(false);
+    onSaved();
+  };
+
+  const handleEdit = (e: GiftCardEntry) => {
+    setForm({
+      entry_type: e.entry_type,
+      entry_date: e.entry_date,
+      denomination: String(e.denomination),
+      quantity: String(e.quantity),
+      unit_price: e.unit_price ? String(e.unit_price) : '',
+      vendor: e.vendor ?? '',
+      recipient_name: e.recipient_name ?? '',
+      contractor_id: e.contractor_id ?? '',
+      reason: e.reason ?? '',
+      note: e.note ?? '',
+    });
+    setEditId(e.id);
+    setShowForm(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('삭제하시겠습니까?')) return;
+    await supabase.from('tb_gift_card_stock').delete().eq('id', id);
+    onSaved();
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* 요약 카드 */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-white rounded-lg border p-4">
+          <p className="text-xs text-gray-500">현재 보유 수량 (전체 액면가)</p>
+          <p className="text-xl font-bold text-gray-800 mt-1">{totalStockQty.toLocaleString('ko-KR')}장</p>
+        </div>
+        <div className="bg-white rounded-lg border p-4">
+          <p className="text-xs text-gray-500">현재 보유 금액 (액면가 기준)</p>
+          <p className="text-xl font-bold text-blue-700 mt-1">{fmt(totalStockValue)}원</p>
+        </div>
+        <div className="bg-white rounded-lg border p-4">
+          <p className="text-xs text-gray-500">이번 달 지급 수량</p>
+          <p className="text-xl font-bold text-orange-600 mt-1">{thisMonthDistCount.toLocaleString('ko-KR')}장</p>
+        </div>
+      </div>
+
+      {/* 액면가별 재고 */}
+      {denomList.length > 0 && (
+        <div className="bg-white rounded-lg border overflow-hidden">
+          <div className="px-4 py-2.5 bg-gray-50 border-b text-sm font-medium text-gray-600">액면가별 재고 현황</div>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-gray-500">
+              <tr>
+                <th className="px-4 py-2 text-left font-medium border-b">액면가</th>
+                <th className="px-4 py-2 text-right font-medium border-b">보유 수량</th>
+                <th className="px-4 py-2 text-right font-medium border-b">보유 금액</th>
+              </tr>
+            </thead>
+            <tbody>
+              {denomList.map(d => (
+                <tr key={d} className="border-b last:border-0">
+                  <td className="px-4 py-2">{fmt(d)}원권</td>
+                  <td className={`px-4 py-2 text-right font-medium ${(stockByDenom[d] ?? 0) < 0 ? 'text-red-600' : 'text-gray-800'}`}>
+                    {(stockByDenom[d] ?? 0).toLocaleString('ko-KR')}장
+                  </td>
+                  <td className="px-4 py-2 text-right text-gray-600">{fmt(d * (stockByDenom[d] ?? 0))}원</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* 등록 버튼 */}
+      {!showForm && (
+        <div className="flex gap-2">
+          <button
+            onClick={() => { setForm({ ...empty, entry_type: 'purchase' }); setEditId(null); setShowForm(true); }}
+            className="bg-[#0a192f] text-white px-4 py-2 rounded text-sm"
+          >
+            + 구매 등록
+          </button>
+          <button
+            onClick={() => { setForm({ ...empty, entry_type: 'distribution' }); setEditId(null); setShowForm(true); }}
+            className="bg-orange-500 text-white px-4 py-2 rounded text-sm"
+          >
+            + 지급 등록
+          </button>
+        </div>
+      )}
+
+      {/* 입력 폼 */}
+      {showForm && (
+        <div className="bg-white border rounded-lg p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-gray-800">
+              {editId ? '내역 수정' : form.entry_type === 'purchase' ? '상품권 구매 등록' : '상품권 지급 등록'}
+            </h3>
+            {!editId && (
+              <div className="flex gap-1 bg-gray-100 rounded p-0.5">
+                {(['purchase', 'distribution'] as const).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setForm({ ...form, entry_type: t })}
+                    className={`px-3 py-1 rounded text-xs font-medium ${form.entry_type === t ? 'bg-white shadow text-gray-800' : 'text-gray-500'}`}
+                  >
+                    {t === 'purchase' ? '구매' : '지급'}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label-style">일자 *</label>
+              <input type="date" value={form.entry_date}
+                onChange={e => setForm({ ...form, entry_date: e.target.value })}
+                className="input-style" />
+            </div>
+            <div>
+              <label className="label-style">액면가 (원) *</label>
+              <input type="number" placeholder="50000" value={form.denomination}
+                onChange={e => setForm({ ...form, denomination: e.target.value })}
+                className="input-style" />
+            </div>
+            <div>
+              <label className="label-style">수량 *</label>
+              <input type="number" placeholder="0" value={form.quantity}
+                onChange={e => setForm({ ...form, quantity: e.target.value })}
+                className="input-style" />
+              {distExceedsStock && (
+                <p className="text-xs text-red-500 mt-1">⚠️ 현재 재고({currentStockForDenom.toLocaleString('ko-KR')}장)보다 많습니다.</p>
+              )}
+            </div>
+            {form.entry_type === 'purchase' ? (
+              <>
+                <div>
+                  <label className="label-style">매입 단가 (원, 미입력 시 액면가)</label>
+                  <input type="number" placeholder={form.denomination || '액면가와 동일'} value={form.unit_price}
+                    onChange={e => setForm({ ...form, unit_price: e.target.value })}
+                    className="input-style" />
+                </div>
+                <div>
+                  <label className="label-style">구매처</label>
+                  <input value={form.vendor}
+                    onChange={e => setForm({ ...form, vendor: e.target.value })}
+                    className="input-style" placeholder="예: OO상품권 / 백화점" />
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="label-style">지급 대상자명 *</label>
+                  <input value={form.recipient_name}
+                    onChange={e => setForm({ ...form, recipient_name: e.target.value })}
+                    className="input-style" placeholder="홍길동" />
+                </div>
+                <div>
+                  <label className="label-style">수탁인 연결 (선택)</label>
+                  <select value={form.contractor_id}
+                    onChange={e => setForm({ ...form, contractor_id: e.target.value })}
+                    className="input-style">
+                    <option value="">선택 안 함</option>
+                    {contractors.filter(c => c.is_active).map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            )}
+            <div>
+              <label className="label-style">사유</label>
+              <input value={form.reason}
+                onChange={e => setForm({ ...form, reason: e.target.value })}
+                className="input-style" placeholder={form.entry_type === 'purchase' ? '명절 판촉용 등' : '실적 격려, 명절 선물 등'} />
+            </div>
+            <div>
+              <label className="label-style">비고</label>
+              <input value={form.note}
+                onChange={e => setForm({ ...form, note: e.target.value })}
+                className="input-style" />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={handleSave} disabled={loading}
+              className="bg-blue-600 text-white px-5 py-2 rounded text-sm disabled:opacity-50">
+              {loading ? '저장 중...' : '저장'}
+            </button>
+            <button onClick={() => { setShowForm(false); setEditId(null); setForm(empty); }}
+              className="border text-gray-600 px-5 py-2 rounded text-sm">
+              취소
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 거래 내역 */}
+      <div className="bg-white rounded-lg border overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-gray-600">
+            <tr>
+              {['일자', '구분', '액면가', '수량', '금액', '구매처/대상자', '사유', ''].map(h => (
+                <th key={h} className="px-3 py-2.5 text-left font-medium border-b">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {entries.length === 0 && (
+              <tr><td colSpan={8} className="px-3 py-8 text-center text-gray-400">등록된 내역이 없습니다.</td></tr>
+            )}
+            {entries.map(e => (
+              <tr key={e.id} className="border-b hover:bg-gray-50">
+                <td className="px-3 py-2.5 text-gray-700">{e.entry_date}</td>
+                <td className="px-3 py-2.5">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${e.entry_type === 'purchase' ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>
+                    {e.entry_type === 'purchase' ? '구매' : '지급'}
+                  </span>
+                </td>
+                <td className="px-3 py-2.5">{fmt(e.denomination)}원권</td>
+                <td className="px-3 py-2.5 text-right">{e.quantity.toLocaleString('ko-KR')}장</td>
+                <td className="px-3 py-2.5 text-right font-medium">{fmt(e.total_amount)}</td>
+                <td className="px-3 py-2.5 text-gray-600">
+                  {e.entry_type === 'purchase' ? (e.vendor || '—') : (e.recipient_name || '—')}
+                  {e.contractor_name && <span className="ml-1 text-xs text-gray-400">({e.contractor_name})</span>}
+                </td>
+                <td className="px-3 py-2.5 text-gray-500 text-xs">{e.reason}</td>
+                <td className="px-3 py-2.5">
+                  <div className="flex gap-2">
+                    <button onClick={() => handleEdit(e)} className="text-blue-500 hover:underline text-xs">수정</button>
+                    <button onClick={() => handleDelete(e.id)} className="text-red-400 hover:underline text-xs">삭제</button>
                   </div>
                 </td>
               </tr>

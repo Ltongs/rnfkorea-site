@@ -28,6 +28,7 @@ serve(async (req) => {
     const typeLabel: Record<string, string> = {
       battery: "배터리 견적서",
       forklift: "지게차 견적서",
+      tire: "타이어 견적서",
       installment: "할부 견적서",
       purchase: "발주서",
     };
