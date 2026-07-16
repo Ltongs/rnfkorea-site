@@ -224,6 +224,12 @@ export default function RentalOSPage() {
     }).eq("id", deal.id);
     if (error) { alert("상태 변경 실패: " + error.message); return; }
     await addHistory(deal.id, "status_change", { from_status: deal.status, to_status: next, note: next === "반려" ? reject_reason : null });
+    sendKakaoNotify({
+      type: "file_uploaded",
+      dealNo: deal.deal_no ?? "", customerName: deal.customer_name, companyName: deal.company_name ?? "",
+      fileName: `상태변경: ${deal.status} → ${next}${next === "반려" && reject_reason ? ` (사유: ${reject_reason})` : ""}`,
+      uploadedBy: user?.email ?? "",
+    });
     await loadDeals();
   };
 
@@ -256,6 +262,14 @@ export default function RentalOSPage() {
     }).eq("id", dealId);
     if (error) { alert("수정 실패: " + error.message); return; }
     await addHistory(dealId, "edit", { note: "딜 정보 수정" });
+    const editedDeal = deals.find(d => d.id === dealId);
+    if (editedDeal) {
+      sendKakaoNotify({
+        type: "file_uploaded",
+        dealNo: editedDeal.deal_no ?? "", customerName: editForm.customer_name, companyName: editForm.company_name ?? "",
+        fileName: "딜 정보 수정", uploadedBy: user?.email ?? "",
+      });
+    }
     setEditingId(null);
     await loadDeals();
   };
@@ -332,6 +346,14 @@ export default function RentalOSPage() {
     await supabase.storage.from("rental_os_docs").remove([f.storage_path]);
     await supabase.from("rental_os_deal_files").delete().eq("id", f.id);
     await addHistory(f.deal_id, "file_delete", { note: f.file_name });
+    const owningDeal = deals.find(d => d.id === f.deal_id);
+    if (owningDeal) {
+      sendKakaoNotify({
+        type: "file_uploaded",
+        dealNo: owningDeal.deal_no ?? "", customerName: owningDeal.customer_name, companyName: owningDeal.company_name ?? "",
+        fileName: `파일 삭제: ${f.file_name}`, uploadedBy: user?.email ?? "",
+      });
+    }
     await loadFiles(f.deal_id);
   };
 
@@ -340,6 +362,14 @@ export default function RentalOSPage() {
     const note = (noteDrafts[dealId] ?? "").trim();
     if (!note) return;
     await addHistory(dealId, "note", { note });
+    const notedDeal = deals.find(d => d.id === dealId);
+    if (notedDeal) {
+      sendKakaoNotify({
+        type: "file_uploaded",
+        dealNo: notedDeal.deal_no ?? "", customerName: notedDeal.customer_name, companyName: notedDeal.company_name ?? "",
+        fileName: `메모: ${note}`, uploadedBy: user?.email ?? "",
+      });
+    }
     setNoteDrafts(prev => ({ ...prev, [dealId]: "" }));
   };
 
