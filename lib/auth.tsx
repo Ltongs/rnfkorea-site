@@ -55,7 +55,8 @@ function getRoleFlags(emailRaw?: string | null) {
   const email = normalizeEmail(emailRaw);
 
   const isAdmin            = email === "admin@rnfkorea.co.kr";
-  const isSubAdmin         = email === "ltongs7@gmail.com";        // 부관리자 (admin과 동일 권한)
+  const isSubAdmin         = email === "ltongs7@gmail.com"          // 부관리자 (admin과 동일 권한)
+                          || email === "everyasset.fc@gmail.com";  // AI 비서(보험) 계정, admin과 동일 권한으로 전체 개방(2026-07-18)
   const isNarumi           = email.endsWith("@narmimotors.com");
   const isLotte            = email.endsWith("@lotte.net");
   const isInsuranceManager = email === "inhyang1004@hanmail.net";
