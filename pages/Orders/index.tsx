@@ -177,7 +177,7 @@ export default function OrdersPage() {
     const { data: existing } = await supabase.from("sales_records").select("id").eq("jinheung_order_id", order.id).maybeSingle();
     let salesRecordId: number | null = existing?.id ?? null;
     if (!existing) {
-      const { data: inserted } = await supabase.from("sales_records").insert({
+      const { data: inserted, error: insertErr } = await supabase.from("sales_records").insert({
         sale_date: new Date().toISOString().split("T")[0],
         customer_name: order.customer_name_raw ?? "미확인",
         business_no: null,
@@ -198,6 +198,10 @@ export default function OrdersPage() {
         note: `진흥주문 #${order.id} (${order.customer_name_raw ?? "미확인"}) 자동 연동 — 계산서발행 시 자동 등록`,
         jinheung_order_id: order.id,
       }).select("id").single();
+      if (insertErr) {
+        console.error("매출관리 자동 등록 실패:", insertErr);
+        alert("계산서발행은 처리됐지만 매출관리 자동 등록에 실패했습니다: " + insertErr.message + "\n매출관리에서 수동으로 등록해주세요.");
+      }
       salesRecordId = inserted?.id ?? null;
     }
 
