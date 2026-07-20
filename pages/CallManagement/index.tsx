@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
-import { Settings } from "lucide-react";
+import { Settings, Upload, Download, Trash2, FileText } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 import AppTabBar from "../../components/AppTabBar";
@@ -166,6 +166,15 @@ type BatteryDetailRow = {
   note: string | null;
 };
 
+type AttachmentRow = {
+  id: number;
+  consultation_id: number;
+  file_name: string;
+  storage_path: string;
+  file_size: number | null;
+  created_at: string;
+};
+
 type InsuranceExpiryRow = {
   consultation_id: number;
   insurance_end_date: string | null;
@@ -314,6 +323,13 @@ const completeBtnClass =
   "px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 whitespace-nowrap transition-all";
 const sectionTitleClass =
   "text-sm font-semibold text-orange-500 mr-3";
+
+const fmtFileSize = (n: number | null | undefined) => {
+  if (!n) return "";
+  if (n < 1024) return `${n}B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
+  return `${(n / 1024 / 1024).toFixed(1)}MB`;
+};
 
 // 인라인 항목: 라벨+값이 한 쌍으로 flex item
 const detailLabelClass = "text-[10px] text-gray-400 mr-0.5";
@@ -689,6 +705,9 @@ const CallManagementPage: React.FC = () => {
     useState<ForkliftDetailRow | null>(null);
   const [expandedBatteryDetail, setExpandedBatteryDetail] =
     useState<BatteryDetailRow | null>(null);
+  const [expandedAttachments, setExpandedAttachments] = useState<AttachmentRow[]>([]);
+  const [attachmentUploading, setAttachmentUploading] = useState(false);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const [editingCaseId, setEditingCaseId] = useState<number | null>(null);
   const [pendingOpenId, setPendingOpenId] = useState<string|null>(null);
   const [showTodoBox, setShowTodoBox] = useState(false);
@@ -1970,11 +1989,13 @@ const CallManagementPage: React.FC = () => {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 30);
     const cutoffStr = cutoff.toISOString().slice(0, 10);
+    const nowIso = new Date().toISOString();
     const { data } = await supabase
       .from("consultation_cases")
       .select("id, customer_name, work_type, call_datetime, created_at")
       .in("status", ["new", "in_progress", "waiting_customer", "on_hold"])
       .lt("created_at", cutoffStr + "T00:00:00")
+      .or(`overdue_snoozed_until.is.null,overdue_snoozed_until.lt.${nowIso}`)
       .order("created_at", { ascending: true })
       .limit(50);
     return data ?? [];
@@ -2180,6 +2201,13 @@ const CallManagementPage: React.FC = () => {
       await supabase.from("consultation_forklift_details").delete().in("consultation_id", selectedIds);
       await supabase.from("consultation_battery_details").delete().in("consultation_id", selectedIds);
 
+      const { data: attachmentRowsBeforeDelete } = await supabase
+        .from("consultation_attachments")
+        .select("storage_path")
+        .in("consultation_id", selectedIds);
+      const attachmentPaths = (attachmentRowsBeforeDelete || []).map((r: any) => r.storage_path);
+      if (attachmentPaths.length) await supabase.storage.from("consultation_attachments").remove(attachmentPaths);
+
       const { error } = await supabase.from("consultation_cases").delete().in("id", selectedIds);
       if (error) throw error;
 
@@ -2194,6 +2222,7 @@ const CallManagementPage: React.FC = () => {
         setExpandedFinanceDetail(null);
         setExpandedForkliftDetail(null);
         setExpandedBatteryDetail(null);
+        setExpandedAttachments([]);
       }
 
       setSelectedIds([]);
@@ -2211,6 +2240,7 @@ const CallManagementPage: React.FC = () => {
       setExpandedFinanceDetail(null);
       setExpandedForkliftDetail(null);
       setExpandedBatteryDetail(null);
+      setExpandedAttachments([]);
       setDetailError("");
       return;
     }
@@ -2221,6 +2251,7 @@ const CallManagementPage: React.FC = () => {
     setExpandedFinanceDetail(null);
     setExpandedForkliftDetail(null);
     setExpandedBatteryDetail(null);
+    setExpandedAttachments([]);
     setDetailError("");
     setLoadingDetail(true);
 
@@ -2299,7 +2330,90 @@ const CallManagementPage: React.FC = () => {
       setExpandedBatteryDetail((data || null) as BatteryDetailRow | null);
     }
 
+    const { data: attachmentData } = await supabase
+      .from("consultation_attachments")
+      .select("*")
+      .eq("consultation_id", row.id)
+      .order("created_at", { ascending: true });
+    setExpandedAttachments((attachmentData || []) as AttachmentRow[]);
+
     setLoadingDetail(false);
+  };
+
+  // ── 상담 첨부파일 ─────────────────────────────────────────
+  const uploadAttachments = async (consultationId: number, fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    setAttachmentUploading(true);
+    try {
+      for (const file of Array.from(fileList)) {
+        const ext = file.name.includes(".") ? file.name.split(".").pop() : "bin";
+        const path = `${consultationId}/${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from("consultation_attachments")
+          .upload(path, file, { upsert: false, contentType: file.type || undefined });
+        if (upErr) throw upErr;
+
+        const { error: dbErr } = await supabase.from("consultation_attachments").insert({
+          consultation_id: consultationId,
+          file_name: file.name,
+          storage_path: path,
+          file_size: file.size,
+          uploaded_by: user?.email ?? null,
+        });
+        if (dbErr) throw dbErr;
+      }
+
+      const { data } = await supabase
+        .from("consultation_attachments")
+        .select("*")
+        .eq("consultation_id", consultationId)
+        .order("created_at", { ascending: true });
+      setExpandedAttachments((data || []) as AttachmentRow[]);
+    } catch (e: any) {
+      alert("업로드 실패: " + (e?.message || "알 수 없는 오류"));
+    } finally {
+      setAttachmentUploading(false);
+      if (attachmentInputRef.current) attachmentInputRef.current.value = "";
+    }
+  };
+
+  const downloadAttachment = async (f: AttachmentRow) => {
+    try {
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      if (isMobile) {
+        const { data, error } = await supabase.storage.from("consultation_attachments").createSignedUrl(f.storage_path, 60);
+        if (error || !data?.signedUrl) throw error ?? new Error("URL 생성 실패");
+        window.open(data.signedUrl, "_blank");
+      } else {
+        const { data, error } = await supabase.storage.from("consultation_attachments").download(f.storage_path);
+        if (error || !data) { alert("다운로드 실패: " + error?.message); return; }
+        const url = URL.createObjectURL(data);
+        const a = document.createElement("a");
+        a.href = url; a.download = f.file_name;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a); URL.revokeObjectURL(url);
+      }
+    } catch (e: any) {
+      alert("다운로드 실패: " + (e?.message || "알 수 없는 오류"));
+    }
+  };
+
+  const deleteAttachment = async (f: AttachmentRow) => {
+    if (!window.confirm(`'${f.file_name}' 파일을 삭제하시겠습니까?`)) return;
+    await supabase.storage.from("consultation_attachments").remove([f.storage_path]);
+    await supabase.from("consultation_attachments").delete().eq("id", f.id);
+    setExpandedAttachments((prev) => prev.filter((x) => x.id !== f.id));
+  };
+
+  // 딜 확정(closing) 시 첨부파일 일괄 삭제
+  const cleanupAttachmentsForConsultation = async (consultationId: number) => {
+    const { data } = await supabase
+      .from("consultation_attachments")
+      .select("storage_path")
+      .eq("consultation_id", consultationId);
+    const paths = (data || []).map((r: any) => r.storage_path);
+    if (paths.length) await supabase.storage.from("consultation_attachments").remove(paths);
+    await supabase.from("consultation_attachments").delete().eq("consultation_id", consultationId);
   };
 
   useEffect(() => {
@@ -3041,6 +3155,7 @@ const CallManagementPage: React.FC = () => {
     // 종결 처리된 건은 구글 할일도 완료 처리 (목록에서 사라짐)
     if (isClosing && savedCaseId) {
       void completeConsultGcalTask(savedCaseId);
+      await cleanupAttachmentsForConsultation(savedCaseId);
     }
 
     alert(editingCaseId ? "수정 완료" : "저장 완료");
@@ -3403,7 +3518,12 @@ const CallManagementPage: React.FC = () => {
                       >취소처리</button>
                       <button
                         className="px-3 py-1 rounded-xl border border-gray-200 text-xs text-gray-600 hover:border-gray-300 hover:bg-gray-50 transition-all"
-                        onClick={()=>setOverdueRows(prev=>prev.filter(x=>x.id!==r.id))}
+                        onClick={async()=>{
+                          const snoozeUntil = new Date();
+                          snoozeUntil.setDate(snoozeUntil.getDate() + 30);
+                          await supabase.from("consultation_cases").update({overdue_snoozed_until: snoozeUntil.toISOString()}).eq("id",r.id);
+                          setOverdueRows(prev=>prev.filter(x=>x.id!==r.id));
+                        }}
                       >유지</button>
                     </div>
                   </div>
@@ -3423,7 +3543,13 @@ const CallManagementPage: React.FC = () => {
               >전체 취소처리</button>
               <button
                 className="flex-1 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:border-gray-300 transition-all"
-                onClick={()=>setShowOverdueModal(false)}
+                onClick={async()=>{
+                  const snoozeUntil = new Date();
+                  snoozeUntil.setDate(snoozeUntil.getDate() + 30);
+                  await Promise.all(overdueRows.map(r=>supabase.from("consultation_cases").update({overdue_snoozed_until: snoozeUntil.toISOString()}).eq("id",r.id)));
+                  setOverdueRows([]);
+                  setShowOverdueModal(false);
+                }}
               >전체 유지</button>
             </div>
           </div>
@@ -5175,7 +5301,7 @@ const CallManagementPage: React.FC = () => {
                                           )
                                         )}
                                         <button type="button" className={actionBtnClass} onClick={(e)=>{e.stopPropagation();handleStartEdit(row);}}>수정</button>
-                                        <button type="button" className={actionBtnClass} onClick={(e)=>{e.stopPropagation();setExpandedRowId(null);setExpandedTireDetail(null);setExpandedInsuranceDetail(null);setExpandedFinanceDetail(null);setExpandedForkliftDetail(null);setExpandedBatteryDetail(null);setDetailError("");}}>닫기</button>
+                                        <button type="button" className={actionBtnClass} onClick={(e)=>{e.stopPropagation();setExpandedRowId(null);setExpandedTireDetail(null);setExpandedInsuranceDetail(null);setExpandedFinanceDetail(null);setExpandedForkliftDetail(null);setExpandedBatteryDetail(null);setExpandedAttachments([]);setDetailError("");}}>닫기</button>
                                       </div>
                                     </div>
 
@@ -5266,6 +5392,48 @@ const CallManagementPage: React.FC = () => {
                                         {row.detail_memo.split("\n").slice(-2).join(" · ")}
                                       </div>
                                     )}
+
+                                    {/* 첨부파일 */}
+                                    <div className="border-t border-gray-100 mt-1 pt-1">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <span className="text-orange-400 font-semibold text-sm flex items-center gap-1">
+                                          <FileText className="w-3.5 h-3.5" /> 첨부파일 ({expandedAttachments.length})
+                                        </span>
+                                        <input
+                                          ref={attachmentInputRef}
+                                          type="file"
+                                          multiple
+                                          className="hidden"
+                                          onChange={(e) => void uploadAttachments(row.id, e.target.files)}
+                                        />
+                                        <button
+                                          type="button"
+                                          className="text-xs text-orange-500 hover:text-orange-600 font-medium flex items-center gap-0.5"
+                                          disabled={attachmentUploading}
+                                          onClick={(e) => { e.stopPropagation(); attachmentInputRef.current?.click(); }}
+                                        >
+                                          <Upload className="w-3.5 h-3.5" /> {attachmentUploading ? "업로드 중..." : "파일 추가"}
+                                        </button>
+                                      </div>
+                                      {expandedAttachments.length === 0 ? (
+                                        <p className="text-xs text-gray-400">첨부된 파일이 없습니다.</p>
+                                      ) : (
+                                        <div className="space-y-1">
+                                          {expandedAttachments.map((f) => (
+                                            <div key={f.id} className="flex items-center justify-between gap-2 text-xs bg-gray-50 rounded-lg px-2.5 py-1.5">
+                                              <span className="truncate flex-1 text-gray-700">{f.file_name}</span>
+                                              <span className="text-gray-400 flex-shrink-0">{fmtFileSize(f.file_size)}</span>
+                                              <button type="button" onClick={(e) => { e.stopPropagation(); void downloadAttachment(f); }} className="text-orange-500 hover:text-orange-600 flex-shrink-0">
+                                                <Download className="w-3.5 h-3.5" />
+                                              </button>
+                                              <button type="button" onClick={(e) => { e.stopPropagation(); void deleteAttachment(f); }} className="text-gray-400 hover:text-red-500 flex-shrink-0">
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                              </button>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                 )}
                               </div>

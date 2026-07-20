@@ -29,6 +29,7 @@ interface TireForm extends SendInfo {
   items:Item[]; notes:string[];
 }
 interface ForkliftForm extends SendInfo {
+  docTitle:string; // 견적서 우측 상단 타이틀("지게차 견적서")의 "지게차" 부분 — 직접 수정 가능
   validPeriod:string; deliveryDate:string; paymentTerms:string;
   items:Item[];
   downPayment:string; balance:string; stampFee:string;
@@ -99,6 +100,7 @@ const TF0: TireForm = {
 
 const FF0: ForkliftForm = {
   ...SEND0,
+  docTitle:'지게차',
   validPeriod:'견적 후 30일', deliveryDate:'계약 후 30일 이내',
   paymentTerms:'현금 또는 할부금융',
   items:[
@@ -508,7 +510,7 @@ function buildQuoteHTML(type:'battery'|'forklift'|'tire', form:BatteryForm|Forkl
   const total = calcTotal(form.items);
   const vat   = Math.round(total*.1);
   const grand = total+vat;
-  const typeLabel = type==='battery'?'배터리':type==='tire'?'타이어':'지게차';
+  const typeLabel = type==='battery'?'배터리':type==='tire'?'타이어':((form as ForkliftForm).docTitle?.trim() || '지게차');
   const itemRows = [...form.items,...Array(Math.max(0,10-form.items.length)).fill({name:'',spec:'',qty:'',price:''})].map((it,i)=>{
     const inc=it.price==='포함';
     const amt=!inc&&it.price?n0(it.price)*(n0(it.qty)||1):0;
@@ -731,21 +733,21 @@ export default function QuotationPage() {
         items: row.items?.length ? row.items : prev.items,
         notes: row.notes?.length ? row.notes : prev.notes,
       }));
-      switchTab('battery');
+      setTab('battery');
     } else if (type === 'forklift') {
       setFf(prev => ({
         ...prev, ...baseInfo,
         items: row.items?.length ? row.items : prev.items,
         notes: row.notes?.length ? row.notes : prev.notes,
       }));
-      switchTab('forklift');
+      setTab('forklift');
     } else if (type === 'tire') {
       setTf(prev => ({
         ...prev, ...baseInfo,
         items: row.items?.length ? row.items : prev.items,
         notes: row.notes?.length ? row.notes : prev.notes,
       }));
-      switchTab('tire');
+      setTab('tire');
     } else if (type === 'installment') {
       const notes = row.notes ?? [];
       const get = (key:string) => { const n=notes.find((s:string)=>s.startsWith(key+':')); return n?n.slice(key.length+1).replace(/원$/,'').replace(/[,\s]/g,''):''; };
@@ -764,13 +766,13 @@ export default function QuotationPage() {
         itemSpec:        items[0]?.spec || prev.itemSpec,
         carPrice:        items[0]?.price?String(items[0].price):'',
       }));
-      switchTab('installment');
+      setTab('installment');
     } else if (type === 'purchase') {
       setPf(prev => ({
         ...prev, ...baseInfo,
         items: row.items?.length ? row.items : prev.items,
       }));
-      switchTab('purchase');
+      setTab('purchase');
     } else {
       flash('지원하지 않는 유형입니다.');
       return;
@@ -1293,7 +1295,12 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
         {tab==='forklift' && <>
           <SendInfoForm v={ff} onSendChange={updSend(setFf)} emailSuggestions={emailSuggestions}/>
           <div className="bg-white rounded-lg border p-5">
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-3">
+              <div>
+                <Label>견적서 제목</Label>
+                <Input value={ff.docTitle} onChange={e=>setFf(f=>({...f,docTitle:e.target.value}))} placeholder="지게차"/>
+                <p className="text-[11px] text-gray-400 mt-1">우측 상단에 "{ff.docTitle || '지게차'} 견적서"로 표시됩니다.</p>
+              </div>
               <div><Label>유효기간</Label><Input value={ff.validPeriod} onChange={e=>setFf(f=>({...f,validPeriod:e.target.value}))}/></div>
               <div><Label>납품일자</Label><Input value={ff.deliveryDate} onChange={e=>setFf(f=>({...f,deliveryDate:e.target.value}))}/></div>
               <div><Label>거래조건</Label><Input value={ff.paymentTerms} onChange={e=>setFf(f=>({...f,paymentTerms:e.target.value}))}/></div>

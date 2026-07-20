@@ -441,19 +441,23 @@ export default function NarumiPage() {
       const cutoffISO = new Date(
         Date.now() - HIDE_UPLOADED_AFTER_DAYS_FOR_NON_ADMIN * 24 * 60 * 60 * 1000
       ).toISOString();
+      // 정책 문구("업로드 후 30일")와 일치시키기 위해 접수일(created_at)이 아닌 실제
+      // 업로드 시각(vehicle_doc_uploaded_at) 기준으로 판정한다. 업로드 시각이 기록되지
+      // 않은 과거 건(레거시)은 삭제 배치도 건드리지 않으므로 화면에서도 숨기지 않는다.
+      const recentUploadOrPending = `vehicle_doc_path.is.null,vehicle_doc_uploaded_at.is.null,vehicle_doc_uploaded_at.gte.${cutoffISO}`;
 
       let q = supabase.from("narumi_tasks").select("*");
 
       if (isPrivilegedManager) {
         if (!showOldUploaded) {
-          q = q.or(`vehicle_doc_path.is.null,created_at.gte.${cutoffISO}`);
+          q = q.or(recentUploadOrPending);
         }
       } else if (isNarumi || isInsAI) {
-        q = q.or(`vehicle_doc_path.is.null,created_at.gte.${cutoffISO}`);
+        q = q.or(recentUploadOrPending);
       } else if (isLotte) {
         q = q
           .eq("is_lotte_autolease", true)
-          .or(`vehicle_doc_path.is.null,created_at.gte.${cutoffISO}`);
+          .or(recentUploadOrPending);
       } else {
         setRows([]);
         setLoading(false);
