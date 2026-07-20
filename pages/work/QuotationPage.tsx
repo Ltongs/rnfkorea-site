@@ -961,6 +961,73 @@ export default function QuotationPage() {
     }
   };
 
+  // ── 견적 발송 시 상담관리(CallManagement) 자동 등록
+  // 고객명이 비어있거나 'VIP'인 경우는 상담등록 대상에서 제외한다.
+  const shouldSkipConsultRegistration = (customerName: string) => {
+    const trimmed = customerName.trim();
+    return !trimmed || trimmed.toUpperCase() === 'VIP';
+  };
+
+  const registerConsultationFromQuote = async (params: {
+    workType: 'battery_sales'|'forklift_sales'|'tire_sales'|'finance';
+    customerName: string;
+    phone: string;
+    quoteNo: string;
+    items?: Item[];
+  }) => {
+    const { workType, customerName, phone, quoteNo, items } = params;
+    if (shouldSkipConsultRegistration(customerName)) return;
+
+    try {
+      const workTypeLabel = workType==='battery_sales'?'배터리':workType==='forklift_sales'?'지게차':workType==='tire_sales'?'타이어':'금융';
+      const itemsSummary = (items||[])
+        .filter(i => i.name?.trim())
+        .map(i => `${i.name}${i.spec?` ${i.spec}`:''}${i.qty?` x${i.qty}`:''}`)
+        .join(', ');
+
+      const { data: caseRow, error: caseErr } = await supabase
+        .from('consultation_cases')
+        .insert({
+          call_datetime: new Date().toISOString(),
+          customer_name: customerName,
+          phone: phone || '미입력',
+          work_type: workType,
+          status: 'new',
+          summary: [workTypeLabel, customerName, `견적발송(${quoteNo})`].join(' / '),
+          detail_memo: `견적서 발송 자동등록 (견적번호: ${quoteNo})${itemsSummary?`\n품목: ${itemsSummary}`:''}`,
+          followup_needed: false,
+        })
+        .select('id')
+        .single();
+      if (caseErr || !caseRow) throw caseErr || new Error('상담건 생성 실패');
+
+      const consultationId = caseRow.id;
+      if (workType === 'battery_sales') {
+        await supabase.from('consultation_battery_details').upsert(
+          { consultation_id: consultationId, process_stage: 'contract' },
+          { onConflict: 'consultation_id' }
+        );
+      } else if (workType === 'forklift_sales') {
+        await supabase.from('consultation_forklift_details').upsert(
+          { consultation_id: consultationId, forklift_status: 'contract', process_stage: 'contract' },
+          { onConflict: 'consultation_id' }
+        );
+      } else if (workType === 'tire_sales') {
+        await supabase.from('consultation_tire_details').upsert(
+          { consultation_id: consultationId, process_status: 'contract' },
+          { onConflict: 'consultation_id' }
+        );
+      } else if (workType === 'finance') {
+        await supabase.from('consultation_finance_details').upsert(
+          { consultation_id: consultationId, finance_stage: 'received' },
+          { onConflict: 'consultation_id' }
+        );
+      }
+    } catch (e: any) {
+      console.error('[견적발송 자동 상담등록 실패]', e?.message || e);
+    }
+  };
+
   // ── 이메일 발송
   const handleEmail = async () => {
     const s = currentSend();
@@ -1015,6 +1082,16 @@ export default function QuotationPage() {
         .update({ email_sent: true, email_sent_at: new Date().toISOString() })
         .eq('quote_no', no);
 
+      if (tab !== 'purchase') {
+        void registerConsultationFromQuote({
+          workType: tab==='battery'?'battery_sales':tab==='forklift'?'forklift_sales':'tire_sales',
+          customerName: s.recipient,
+          phone: s.phone1 || s.phone2,
+          quoteNo: no,
+          items,
+        });
+      }
+
       flash(insertErr
         ? `✅ ${toList.join(', ')}로 발송은 완료됐지만, 이력 저장에 실패했습니다 (${no}) — ${insertErr.message}`
         : `✅ ${toList.join(', ')}로 발송 완료 (${no})`);
@@ -1034,10 +1111,13 @@ export default function QuotationPage() {
     try {
       let target: HTMLElement | null = null;
       let cleanup: (() => void) | null = null;
+      let smsQuoteNo = '';
       if(tab==='installment') {
         target = installmentPreviewRef.current;
+        smsQuoteNo = await genNo();
       } else {
         const no2 = await genNo();
+        smsQuoteNo = no2;
         const htmlStr = tab==='battery' ? buildQuoteHTML('battery', bf, no2)
           : tab==='forklift' ? buildQuoteHTML('forklift', ff, no2)
           : tab==='tire' ? buildQuoteHTML('tire', tf, no2)
@@ -1089,6 +1169,35 @@ export default function QuotationPage() {
         const d=await res.json();
         results.push(d.success||!d.error?`${phone} ✅`:`${phone} ❌`);
       }
+
+      // DB 저장 — 이메일 발송과 동일하게 SMS/MMS 발송도 이력에 남긴다.
+      if (smsQuoteNo) {
+        const smsTotal = tab==='battery'?bTotal:tab==='forklift'?fTotal:tab==='tire'?tTotal:tab==='installment'?n0(iff.principal):pTotal;
+        const smsVat   = tab==='installment'?0:Math.round(smsTotal*.1);
+        const smsItems = tab==='battery'?bf.items:tab==='forklift'?ff.items:tab==='tire'?tf.items
+          :tab==='installment'?[{name:iff.itemName,spec:iff.itemSpec,qty:1,price:n0(iff.carPrice)||n0(iff.principal)}]:pf.items;
+        const smsNotes = tab==='battery'?bf.notes:tab==='forklift'?ff.notes:tab==='tire'?tf.notes:null;
+        const { error: smsInsertErr } = await supabase.from('tb_quotations').insert({
+          quote_type: currentQuoteType(), quote_no: smsQuoteNo,
+          quote_date: tab==='installment'?iff.quoteDate:s.quoteDate,
+          recipient: s.recipient, recipient_email: tab==='installment'?iff.email1:s.email1,
+          items: smsItems, notes: smsNotes,
+          total_amount: smsTotal, vat_amount: smsVat, grand_total: smsTotal+smsVat,
+          created_by: 'admin@rnfkorea.co.kr',
+        });
+        if (smsInsertErr) console.error('[이력저장오류]', smsInsertErr.message, smsInsertErr.details);
+      }
+
+      if (tab !== 'purchase') {
+        void registerConsultationFromQuote({
+          workType: tab==='battery'?'battery_sales':tab==='forklift'?'forklift_sales':tab==='tire'?'tire_sales':'finance',
+          customerName: s.recipient,
+          phone: phones[0],
+          quoteNo: smsQuoteNo || `MMS-${Date.now()}`,
+          items: tab==='battery'?bf.items:tab==='forklift'?ff.items:tab==='tire'?tf.items:tab==='installment'?[{name:iff.itemName,spec:iff.itemSpec,qty:1,price:iff.carPrice}]:undefined,
+        });
+      }
+
       flash(`MMS 발송: ${results.join(', ')}`);
     } catch(e:any){flash(`SMS 오류: ${e.message}`);}
     setSmsSending(false);
@@ -1184,6 +1293,15 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
             principal:p,annualRate:r,gracePeriod:gp,installmentMonths:im,totalMonths:months,payment}},
       });
       if(error) throw error;
+
+      void registerConsultationFromQuote({
+        workType: 'finance',
+        customerName: iff.recipient,
+        phone: iff.phone1 || iff.phone2,
+        quoteNo: no,
+        items: [{name:iff.itemName,spec:iff.itemSpec,qty:1,price:n0(iff.carPrice)||p}],
+      });
+
       flash(insertErr
         ? `✅ ${toList.join(', ')}로 발송은 완료됐지만, 이력 저장에 실패했습니다 (${no}) — ${insertErr.message}`
         : `✅ ${toList.join(', ')}로 발송 완료 (${no})`);
@@ -1488,9 +1606,10 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
                           row.quote_type==='battery'?'bg-green-100 text-green-700':
                           row.quote_type==='forklift'?'bg-blue-100 text-blue-700':
                           row.quote_type==='installment'?'bg-purple-100 text-purple-700':
-                          'bg-orange-100 text-orange-700'
+                          row.quote_type==='tire'?'bg-orange-100 text-orange-700':
+                          'bg-gray-100 text-gray-700'
                         }`}>
-                          {row.quote_type==='battery'?'배터리':row.quote_type==='forklift'?'지게차':row.quote_type==='installment'?'할부':'발주서'}
+                          {row.quote_type==='battery'?'배터리':row.quote_type==='forklift'?'지게차':row.quote_type==='installment'?'할부':row.quote_type==='tire'?'타이어':'발주서'}
                         </span>
                       </td>
                       <td className="px-3 py-2 font-mono text-xs text-gray-600">{row.quote_no}</td>
@@ -1510,10 +1629,9 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
                         <button
                           onClick={()=>{
                             const type=row.quote_type as any;
-                            if(type==='battery'||type==='forklift'){
-                              const form = type==='battery'
-                                ?{...BF0,recipient:row.recipient,email1:row.recipient_email,quoteDate:row.quote_date,items:row.items??BF0.items,notes:row.notes??BF0.notes}
-                                :{...FF0,recipient:row.recipient,email1:row.recipient_email,quoteDate:row.quote_date,items:row.items??FF0.items,notes:row.notes??FF0.notes};
+                            if(type==='battery'||type==='forklift'||type==='tire'){
+                              const base = type==='battery'?BF0:type==='forklift'?FF0:TF0;
+                              const form = {...base,recipient:row.recipient,email1:row.recipient_email,quoteDate:row.quote_date,items:row.items??base.items,notes:row.notes??base.notes};
                               const html=buildQuoteHTML(type,form as any,row.quote_no);
                               printHTML(html);
                             } else if(type==='purchase'){
