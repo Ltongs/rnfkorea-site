@@ -1277,7 +1277,7 @@ export default function NarumiPage() {
     try {
       await updateInsuranceStage(insuranceModalRow, true);
     } catch (e: any) {
-      console.warn("[narumi] 보험 단계 업데이트 실패:", e?.message);
+      alert("나르미 보험 단계 업데이트에 실패했습니다: " + (e?.message || "알 수 없는 오류") + "\n상담관리 화면으로는 이동하지만, 나르미 목록의 보험 버튼은 비활성화되지 않았을 수 있습니다.");
     }
 
     // 보험확인 단계는 SMS 미발송
