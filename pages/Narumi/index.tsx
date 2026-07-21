@@ -1821,7 +1821,8 @@ VIN: ${nextVin}`);
     const file = e.target.files?.[0] || null;
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
+    if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
+      alert("이미지 또는 PDF 파일만 첨부할 수 있습니다.");
       e.target.value = "";
       return;
     }
@@ -1855,7 +1856,7 @@ VIN: ${nextVin}`);
 
       {/* ── 숨겨진 파일 인풋 ── */}
       <input ref={fileInputRef} type="file" accept="image/*,.pdf" className="hidden" onChange={onFilePicked} />
-      <input ref={manufactureInputRef} type="file" accept="image/*" className="hidden" onChange={onManufacturePicked} />
+      <input ref={manufactureInputRef} type="file" accept="image/*,.pdf" className="hidden" onChange={onManufacturePicked} />
 
       {/* ── 헤더 + 요약 뱃지 (전부 한 덩어리로 고정) ── */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-30 space-y-3 pb-3">
