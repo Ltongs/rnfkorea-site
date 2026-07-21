@@ -1198,12 +1198,16 @@ export default function NarumiPage() {
       )
     );
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("narumi_tasks")
       .update({ has_insurance: nextVal, status: nextStatus })
-      .eq("id", row.id as any);
+      .eq("id", row.id as any)
+      .select("id");
 
-    if (error) {
+    // RLS로 대상 행이 보이지 않으면 update가 0건에 성공(error 없음)으로 끝나버려
+    // 화면은 바뀐 것처럼 보이다가 새로고침하면 원래대로 돌아가는 문제가 있었다.
+    // data가 비어있으면 실제로는 반영되지 않은 것이므로 명시적으로 에러 처리한다.
+    if (error || !data || data.length === 0) {
       setRows((prev) =>
         prev.map((rr) =>
           String(rr.id) === String(row.id)
@@ -1211,7 +1215,7 @@ export default function NarumiPage() {
             : rr
         )
       );
-      throw error;
+      throw error ?? new Error("업데이트 대상을 찾지 못했습니다(권한 또는 동기화 문제일 수 있습니다).");
     }
 
     // 보험확인 단계는 SMS 미발송

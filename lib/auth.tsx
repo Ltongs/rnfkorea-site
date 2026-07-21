@@ -131,7 +131,7 @@ function getPermissions(emailRaw?: string | null) {
     canCreate:           isAdminLevel || isNarumi || isInsuranceManager || isHyundaiCM || isNhCapital || isInsAI,
     canEditExisting:     isAdminLevel || isInsuranceManager || isNhCapital,
     canDelete:           isAdminLevel || isInsuranceManager || isNhCapital,
-    canChangeStatus:     isAdminLevel || isInsuranceManager || isNhCapital || isNhCapitalStaff,
+    canChangeStatus:     isAdminLevel || isInsuranceManager || isNhCapital || isNhCapitalStaff || isInsAI,
     canEditMemo:         isAdminLevel || isInsuranceManager || isNhCapital,
     canUploadVehicleDoc: isAdminLevel || isInsuranceManager || isNhCapital,
     canUploadVehicleRegDoc: isHyundaiCM || isAdminLevel || isNhCapital,  // NH캐피탈 직원(isNhCapitalStaff)은 다운로드만 가능, 업로드 불가
