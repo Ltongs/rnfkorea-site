@@ -81,7 +81,11 @@
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "Bash(node -e \"console.log\\(require.resolve\\('pptxgenjs'\\)\\)\")",
-      "Bash(node build_pptx.js)"
+      "Bash(node build_pptx.js)",
+      "Bash(echo \"tsc exit: $?\")",
+      "Bash(git rev-list *)",
+      "Bash(git fetch *)",
+      "Bash(git log *)"
     ]
   }
 }
