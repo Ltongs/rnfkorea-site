@@ -79,7 +79,9 @@
       "Bash(cp /private/tmp/claude-501/-Users-tongsoolee-Desktop-WORKS-Homepage-rnfkorea-deploy-new/b2ed8587-ef51-4406-8335-d4fd0de8ac22/scratchpad/golfcart-ppt/assets/installed-bms.jpg assets/case_photo.jpg)",
       "Bash(rm -f assets/installed-under-seat.jpg assets/installed-under-seat-fresh.png assets/installed-under-seat-fresh.jpg assets/product-studio.jpg)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(node -e \"console.log\\(require.resolve\\('pptxgenjs'\\)\\)\")",
+      "Bash(node build_pptx.js)"
     ]
   }
 }
