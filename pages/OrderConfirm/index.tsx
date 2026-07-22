@@ -1,12 +1,7 @@
 // pages/OrderConfirm/index.tsx
 import React, { useEffect, useState } from "react";
 import { useSearchParams, useParams } from "react-router-dom";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from "../../lib/supabase";
 
 type Status = "loading" | "success" | "already_done" | "error";
 
