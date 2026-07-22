@@ -108,7 +108,10 @@
       "Bash(awk '{print $NF, $6, $7, $8}')",
       "Bash(xargs -I{} sh -c 'echo \"{}: $\\(grep -c \"MMS 발송용\" {} 2>/dev/null\\)\"')",
       "Bash(curl -s https://rnfkorea.co.kr/ -o /tmp/rnf_index3.html)",
-      "Bash(curl -s https://rnfkorea.co.kr/ -o /tmp/rnf_index4.html)"
+      "Bash(curl -s https://rnfkorea.co.kr/ -o /tmp/rnf_index4.html)",
+      "Bash(curl -s https://rnfkorea.co.kr/ -o /tmp/rnf_index5.html)",
+      "Bash(curl -sI \"https://rnfkorea.co.kr/?_cb=$\\(date +%s\\)\")",
+      "Bash(curl -s -H \"Cache-Control: no-cache\" -H \"Pragma: no-cache\" \"https://rnfkorea.co.kr/index.html?_cb=$\\(date +%s\\)\")"
     ]
   }
 }
