@@ -101,7 +101,9 @@
       "Bash(jobs)",
       "Bash(pkill -f \"vite build\")",
       "Bash(git push *)",
-      "Bash(gh api *)"
+      "Bash(gh api *)",
+      "Bash(git stash *)",
+      "Bash(git checkout *)"
     ]
   }
 }

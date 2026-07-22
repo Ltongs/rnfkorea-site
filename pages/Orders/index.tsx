@@ -280,6 +280,14 @@ export default function OrdersPage() {
     if (!newCustomer || !newSpec) return;
     setSaving(true);
     const { data: orderNoData } = await supabase.rpc("next_rnf_number");
+    // 통합상담(consultation_cases)에 미러 등록해서 이 발주가 통합상담 목록에서도 보이도록 연결
+    const { data: mirrorCase } = await supabase.from("consultation_cases").insert({
+      customer_name: newCustomer,
+      work_type:     "tire_sales",
+      status:        "new",
+      summary:       `${newSpec}${newQty ? ` × ${newQty}개` : ""}`,
+      call_datetime: new Date().toISOString(),
+    }).select("id").single();
     const { error } = await supabase.from("tb_orders").insert({
       order_no: orderNoData as string,
       customer_name_raw: newCustomer,
@@ -289,6 +297,7 @@ export default function OrdersPage() {
       inbound_channel:   "other",
       status:            "received",
       memo:              newMemo || null,
+      consultation_id:   mirrorCase?.id ?? null,
     });
     setSaving(false);
     if (error) {

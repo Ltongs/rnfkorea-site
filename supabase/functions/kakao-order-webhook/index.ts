@@ -195,6 +195,22 @@ serve(async (req) => {
 
     if (error) throw error;
 
+    // 2.5 통합상담(consultation_cases)에 미러 등록 — 카카오로 접수된 발주도 상담 목록에서 함께 조회되도록 연결
+    try {
+      const { data: mirrorCase } = await supabase.from("consultation_cases").insert({
+        customer_name: parsed.customer_name || "미확인",
+        work_type:     parsed.product_type === "battery" ? "battery_sales" : "tire_sales",
+        status:        "new",
+        summary:       `${parsed.product_spec || ""}${parsed.quantity ? ` × ${parsed.quantity}개` : ""}`.trim() || "카카오 주문",
+        call_datetime: new Date().toISOString(),
+      }).select("id").single();
+      if (mirrorCase?.id) {
+        await supabase.from("tb_orders").update({ consultation_id: mirrorCase.id }).eq("id", order.id);
+      }
+    } catch (mirrorErr) {
+      console.error("통합상담 미러 등록 실패(무시):", mirrorErr);
+    }
+
     // 3. 알림톡 발송
     const jinheungPhone = Deno.env.get("JINHEUNG_PHONE")!;
     const templateCode  = parsed.confidence === "high" ? "order_received" : "order_confirm_needed";

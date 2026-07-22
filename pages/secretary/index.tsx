@@ -2126,27 +2126,42 @@ function SavedCard({actions,saved,onNav}:{actions:Record<string,unknown>[];saved
 
 // ─── 업무현황 탭 컴포넌트 ──────────────────────────────────────────────────────
 function StatusTabContent({
-  hyundaiTasks, narumiTasks, recentC, statusLoading,
+  hyundaiTasks, narumiTasks, recentC, statusLoading, statusTotals,
+  filterMode, setFilterMode, fYear, setFYear, fMonth, setFMonth, rangeType, setRangeType,
   onRefresh, onNavigate,
-  BTS, BTG, BTP, TA2, CARD, md2html, fmtDate,
 }:any) {
+  // BTS/BTG/CARD/fmtDate 등은 모듈 스코프 상수를 그대로 사용 (예전엔 props로 선언만 되어 있고 호출부에서 전달되지 않아 항상 undefined였음)
   // onNavigate(path_or_tab, dealId?) — dealId가 있으면 탭 이동 + 딜 선택
-  const thisMonth = new Date().getMonth();
-  const thisYear  = new Date().getFullYear();
-  const isMo = (d:string) => { const dt=new Date(d); return dt.getFullYear()===thisYear&&dt.getMonth()===thisMonth; };
+  // 기간 필터(전체/당월/특정월/기간) 상태는 상위 컴포넌트가 소유 — 필터 변경 시 서버 재조회를 트리거하기 위함
+  const today     = new Date();
+  const thisMonth = today.getMonth()+1;
+  const thisYear  = today.getFullYear();
 
-  const hMo    = hyundaiTasks.filter((t:any)=>isMo(t.created_at)).length;
-  const hTotal = hyundaiTasks.length;
-  const nMo    = narumiTasks.filter((t:any)=>isMo(t.created_at)).length;
-  const nTotal = narumiTasks.length;
+  const modeShort = filterMode==="전체"?"전체"
+    :filterMode==="당월"?"당월"
+    :filterMode==="특정월"?`${fMonth}월`
+    :rangeType==="분기"?`${Math.ceil(fMonth/3)}분기`
+    :rangeType==="반기"?(fMonth<=6?"상반기":"하반기")
+    :"연간";
+  const periodLabel = filterMode==="전체"?"전체 기간"
+    :filterMode==="당월"?`${thisYear}년 ${thisMonth}월 (당월)`
+    :filterMode==="특정월"?`${fYear}년 ${fMonth}월`
+    :rangeType==="분기"?`${fYear}년 ${Math.ceil(fMonth/3)}분기`
+    :rangeType==="반기"?`${fYear}년 ${fMonth<=6?"상반기":"하반기"}`
+    :`${fYear}년`;
+
+  const hCount = hyundaiTasks.length;
+  const hTotal = statusTotals?.hyundai ?? hCount;
+  const nCount = narumiTasks.length;
+  const nTotal = statusTotals?.narumi ?? nCount;
   const isFinance = (wt:string) => wt==="finance";
   const isTire    = (wt:string) => wt==="tire"||wt==="tire_sales";
   const cFinance  = recentC.filter((c:any)=>isFinance(c.work_type));
   const cTire     = recentC.filter((c:any)=>isTire(c.work_type));
   const cOther    = recentC.filter((c:any)=>!isFinance(c.work_type)&&!isTire(c.work_type));
-  const cFinanceMo= cFinance.filter((c:any)=>isMo(c.created_at)).length;
-  const cTireMo   = cTire.filter((c:any)=>isMo(c.created_at)).length;
-  const cOtherMo  = cOther.filter((c:any)=>isMo(c.created_at)).length;
+  const cFinanceTotal = statusTotals?.finance ?? cFinance.length;
+  const cTireTotal    = statusTotals?.tire ?? cTire.length;
+  const cOtherTotal   = statusTotals?.other ?? cOther.length;
 
   const STS_LBL_HCM:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료"};
   const FINANCE_STAGE_LBL:Record<string,string> = {consulting:"상담",quote_submitted:"견적제출",approved:"승인",rejected:"거절",documents_requested:"서류등록",confirmed:"확정",received:"접수",credit_check:"신용조회",supplement:"보완",cancelled:"취소"};
@@ -2177,12 +2192,12 @@ function StatusTabContent({
   };
   const WL_LOCAL:Record<string,string> = {insurance:"보험",tire:"타이어",finance:"금융",forklift:"지게차",battery:"배터리",registration_insurance:"보험",tire_sales:"타이어",forklift_sales:"지게차",battery_sales:"배터리"};
 
-  const ConsultPanel = ({title,emoji,items,moCount,bg,txt,hoverBg}:{title:string;emoji:string;items:any[];moCount:number;bg:string;txt:string;hoverBg:string}) => (
+  const ConsultPanel = ({title,emoji,items,count,bg,txt,hoverBg}:{title:string;emoji:string;items:any[];count:number;bg:string;txt:string;hoverBg:string}) => (
     <div className={`${CARD} p-4`}>
       <div className="flex items-center justify-between mb-3">
         <p className="text-sm font-semibold text-[#0f172a]">{emoji} {title}</p>
         <div className="flex items-center gap-2">
-          <span className={`text-xs px-2 py-0.5 rounded-full ${bg} ${txt} font-medium`}>당월 {moCount}건</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full ${bg} ${txt} font-medium`}>{modeShort} {count}건</span>
           <button className={BTG} onClick={()=>onNavigate("/work/call-management")}>전체 →</button>
         </div>
       </div>
@@ -2215,22 +2230,63 @@ function StatusTabContent({
     거절:"bg-red-50 text-red-600", 확정:"bg-[#0f172a] text-white", 보류:"bg-orange-50 text-orange-700",
   };
 
+  const filterBtnCls = (active:boolean) => `px-2.5 py-1.5 text-xs font-semibold transition-all ${active?"bg-[#0f172a] text-white":"bg-white text-gray-500 hover:bg-gray-50"}`;
+  const filterSelCls = "h-8 rounded-xl border border-gray-200 bg-white px-2 text-xs text-[#0f172a] focus:outline-none focus:border-orange-400";
+
   return (
     <div className="space-y-4 pb-4">
-      <div className="flex items-center gap-2">
-        <button className={BTS} onClick={onRefresh}>🔄 새로고침</button>
+      <div className={`${CARD} p-3 flex flex-wrap items-center gap-2`}>
+        <div className="flex rounded-xl overflow-hidden border border-gray-200">
+          {(["전체","당월","특정월","기간"] as const).map(m=>(
+            <button key={m} className={filterBtnCls(filterMode===m)} onClick={()=>setFilterMode(m)}>{m}</button>
+          ))}
+        </div>
+        {filterMode==="특정월"&&(
+          <>
+            <select value={fYear} onChange={(e:any)=>setFYear(Number(e.target.value))} className={filterSelCls}>
+              {[thisYear-1,thisYear,thisYear+1].map(y=><option key={y} value={y}>{y}년</option>)}
+            </select>
+            <select value={fMonth} onChange={(e:any)=>setFMonth(Number(e.target.value))} className={filterSelCls}>
+              {Array.from({length:12}).map((_,i)=><option key={i+1} value={i+1}>{i+1}월</option>)}
+            </select>
+          </>
+        )}
+        {filterMode==="기간"&&(
+          <>
+            <div className="flex rounded-xl overflow-hidden border border-gray-200">
+              {(["분기","반기","연간"] as const).map(rt=>(
+                <button key={rt} className={filterBtnCls(rangeType===rt)} onClick={()=>setRangeType(rt)}>{rt}</button>
+              ))}
+            </div>
+            <select value={fYear} onChange={(e:any)=>setFYear(Number(e.target.value))} className={filterSelCls}>
+              {[thisYear-1,thisYear,thisYear+1].map(y=><option key={y} value={y}>{y}년</option>)}
+            </select>
+            {rangeType==="분기"&&(
+              <select value={Math.ceil(fMonth/3)} onChange={(e:any)=>setFMonth((Number(e.target.value)-1)*3+1)} className={filterSelCls}>
+                {[1,2,3,4].map(q=><option key={q} value={q}>{q}분기</option>)}
+              </select>
+            )}
+            {rangeType==="반기"&&(
+              <select value={fMonth<=6?1:7} onChange={(e:any)=>setFMonth(Number(e.target.value))} className={filterSelCls}>
+                <option value={1}>상반기</option><option value={7}>하반기</option>
+              </select>
+            )}
+          </>
+        )}
+        <span className="text-xs text-gray-400">{periodLabel} 기준</span>
+        <button className={`${BTS} ml-auto`} onClick={onRefresh}>🔄 새로고침</button>
       </div>
       <div className="grid grid-cols-5 gap-2.5">
         {[
-          {label:"현대건설기계",emoji:"🏗",mo:hMo,total:hTotal,bg:"bg-blue-50",txt:"text-blue-700"},
-          {label:"나르미",       emoji:"🚛",mo:nMo,total:nTotal,bg:"bg-emerald-50",txt:"text-emerald-700"},
-          {label:"금융상담",     emoji:"💰",mo:cFinanceMo,total:cFinance.length,bg:"bg-violet-50",txt:"text-violet-700"},
-          {label:"타이어상담",   emoji:"🔘",mo:cTireMo,total:cTire.length,bg:"bg-amber-50",txt:"text-amber-700"},
-          {label:"기타상담",     emoji:"💬",mo:cOtherMo,total:cOther.length,bg:"bg-orange-50",txt:"text-orange-700"},
-        ].map(({label,emoji,mo,total,bg,txt})=>(
+          {label:"현대건설기계",emoji:"🏗",cnt:hCount,total:hTotal,bg:"bg-blue-50",txt:"text-blue-700"},
+          {label:"나르미",       emoji:"🚛",cnt:nCount,total:nTotal,bg:"bg-emerald-50",txt:"text-emerald-700"},
+          {label:"금융상담",     emoji:"💰",cnt:cFinance.length,total:cFinanceTotal,bg:"bg-violet-50",txt:"text-violet-700"},
+          {label:"타이어상담",   emoji:"🔘",cnt:cTire.length,total:cTireTotal,bg:"bg-amber-50",txt:"text-amber-700"},
+          {label:"기타상담",     emoji:"💬",cnt:cOther.length,total:cOtherTotal,bg:"bg-orange-50",txt:"text-orange-700"},
+        ].map(({label,emoji,cnt,total,bg,txt})=>(
           <div key={label} className={`${CARD} p-3.5 ${bg} border-0`}>
             <p className={`text-[11px] font-semibold ${txt} mb-1.5`}>{emoji} {label}</p>
-            <p className={`text-3xl font-bold ${txt} leading-none`}>{mo}</p>
+            <p className={`text-3xl font-bold ${txt} leading-none`}>{cnt}</p>
             <p className={`text-[11px] ${txt} opacity-60 mt-1.5`}>누적 {total}건</p>
           </div>
         ))}
@@ -2303,9 +2359,9 @@ function StatusTabContent({
         </div>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <ConsultPanel title="금융상담" emoji="💰" items={cFinance} moCount={cFinanceMo} bg="bg-violet-50" txt="text-violet-700" hoverBg="hover:bg-violet-50"/>
-        <ConsultPanel title="타이어상담" emoji="🔘" items={cTire} moCount={cTireMo} bg="bg-amber-50" txt="text-amber-700" hoverBg="hover:bg-amber-50"/>
-        <ConsultPanel title="기타상담" emoji="💬" items={cOther} moCount={cOtherMo} bg="bg-orange-50" txt="text-orange-700" hoverBg="hover:bg-orange-50"/>
+        <ConsultPanel title="금융상담" emoji="💰" items={cFinance} count={cFinance.length} bg="bg-violet-50" txt="text-violet-700" hoverBg="hover:bg-violet-50"/>
+        <ConsultPanel title="타이어상담" emoji="🔘" items={cTire} count={cTire.length} bg="bg-amber-50" txt="text-amber-700" hoverBg="hover:bg-amber-50"/>
+        <ConsultPanel title="기타상담" emoji="💬" items={cOther} count={cOther.length} bg="bg-orange-50" txt="text-orange-700" hoverBg="hover:bg-orange-50"/>
       </div>
 
     </div>
@@ -2736,6 +2792,19 @@ const SecretaryPage:React.FC = () => {
   const [hyundaiTasks,setHyundaiTasks] = useState<HyundaiTask[]>([]);
   const [narumiTasks,setNarumiTasks]   = useState<NarumiTask[]>([]);
   const [statusLoading,setStatusLoading] = useState(false);
+  const [statusTotals,setStatusTotals] = useState({hyundai:0,narumi:0,finance:0,tire:0,other:0});
+  // 업무현황 기간 필터 (전체 / 당월 / 특정월 / 기간(분기·반기·연간))
+  const [statusFilterMode,setStatusFilterMode] = useState<"전체"|"당월"|"특정월"|"기간">("당월");
+  const [statusFYear,setStatusFYear]   = useState(new Date().getFullYear());
+  const [statusFMonth,setStatusFMonth] = useState(new Date().getMonth()+1);
+  const [statusRangeType,setStatusRangeType] = useState<"분기"|"반기"|"연간">("분기");
+  const statusRange = React.useMemo(()=>{
+    const now = new Date();
+    if(statusFilterMode==="당월")   return fhGetDateRange(now.getFullYear(),now.getMonth()+1,"월간");
+    if(statusFilterMode==="특정월") return fhGetDateRange(statusFYear,statusFMonth,"월간");
+    if(statusFilterMode==="기간")   return fhGetDateRange(statusFYear,statusFMonth,statusRangeType);
+    return null as {from:string;to:string}|null;
+  },[statusFilterMode,statusFYear,statusFMonth,statusRangeType]);
 
   // 금융상담 탭
   const [financeConsults,setFinanceConsults] = useState<OrderView[]>([]);
@@ -4326,12 +4395,33 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
 
   const loadStatusData = useCallback(async()=>{
     setStatusLoading(true);
-    const [hr,nr,cr,fdr] = await Promise.all([
-      supabase.from("hyundaicm_tasks").select("id,customer_name,company_name,status,purchase_amount,finance_company,created_at,equipment_ton").order("created_at",{ascending:false}).limit(20),
-      supabase.from("narumi_tasks").select("id,customer_name,memo,status,is_urgent,docs_ready,delivery_date,created_at,vin").order("created_at",{ascending:false}).limit(20),
-      supabase.from("consultation_cases").select("id,customer_name,phone,telecom_provider,work_type,status,summary,followup_needed,next_followup_date,created_at").order("created_at",{ascending:false}).limit(50),
+    let hq:any = supabase.from("hyundaicm_tasks").select("id,customer_name,company_name,status,purchase_amount,finance_company,created_at,equipment_ton").order("created_at",{ascending:false});
+    let nq:any = supabase.from("narumi_tasks").select("id,customer_name,memo,status,is_urgent,docs_ready,delivery_date,created_at,vin").order("created_at",{ascending:false});
+    let cq:any = supabase.from("consultation_cases").select("id,customer_name,phone,telecom_provider,work_type,status,summary,followup_needed,next_followup_date,created_at").order("created_at",{ascending:false});
+    if(statusRange){
+      const gte = statusRange.from, lte = `${statusRange.to}T23:59:59`;
+      hq = hq.gte("created_at",gte).lte("created_at",lte).limit(500);
+      nq = nq.gte("created_at",gte).lte("created_at",lte).limit(500);
+      cq = cq.gte("created_at",gte).lte("created_at",lte).limit(500);
+    }else{
+      hq = hq.limit(50); nq = nq.limit(50); cq = cq.limit(100);
+    }
+    const [hr,nr,cr,fdr,hCountR,nCountR,cAllCountR,cFinCountR,cTireCountR] = await Promise.all([
+      hq, nq, cq,
       supabase.from("consultation_finance_details").select("consultation_id,finance_stage"),
+      supabase.from("hyundaicm_tasks").select("id",{count:"exact",head:true}),
+      supabase.from("narumi_tasks").select("id",{count:"exact",head:true}),
+      supabase.from("consultation_cases").select("id",{count:"exact",head:true}),
+      supabase.from("consultation_cases").select("id",{count:"exact",head:true}).eq("work_type","finance"),
+      supabase.from("consultation_cases").select("id",{count:"exact",head:true}).in("work_type",["tire","tire_sales"]),
     ]);
+    setStatusTotals({
+      hyundai: hCountR.count??0,
+      narumi: nCountR.count??0,
+      finance: cFinCountR.count??0,
+      tire: cTireCountR.count??0,
+      other: Math.max(0,(cAllCountR.count??0)-(cFinCountR.count??0)-(cTireCountR.count??0)),
+    });
     if(hr.data)setHyundaiTasks(hr.data as HyundaiTask[]);
     if(nr.data)setNarumiTasks(nr.data as NarumiTask[]);
     if(cr.data){
@@ -4362,7 +4452,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       }) as Consult[]);
     }
     setStatusLoading(false);
-  },[]);
+  },[statusRange]);
 
   const loadConsults = useCallback(async()=>{
     setCLoading(true);
@@ -5541,6 +5631,12 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               narumiTasks={narumiTasks}
               recentC={recentC}
               statusLoading={statusLoading}
+              statusTotals={statusTotals}
+
+              filterMode={statusFilterMode} setFilterMode={setStatusFilterMode}
+              fYear={statusFYear} setFYear={setStatusFYear}
+              fMonth={statusFMonth} setFMonth={setStatusFMonth}
+              rangeType={statusRangeType} setRangeType={setStatusRangeType}
 
               onRefresh={()=>void loadStatusData()}
               onNavigate={(path:string)=>navigate(path)}
@@ -5966,6 +6062,19 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                       onClick={async()=>{
                         setJNewSaving(true);
                         const{data:orderNoData}=await supabase.rpc("next_rnf_number");
+                        // 상담 ID를 직접 입력하지 않은 건은 통합상담(consultation_cases)에 미러 등록해서
+                        // 자동으로 연결한다 — 나르미 접수와 동일한 패턴(consultation_cases는 표시용, 실데이터는 tb_orders).
+                        let linkedConsultationId = jNewForm.consultation_id?parseInt(jNewForm.consultation_id):null;
+                        if(!linkedConsultationId){
+                          const{data:mirrorCase}=await supabase.from("consultation_cases").insert({
+                            customer_name: jNewForm.customer_name,
+                            work_type:     jNewForm.product_type==="battery"?"battery_sales":"tire_sales",
+                            status:        "new",
+                            summary:       `${jNewForm.product_spec}${jNewForm.quantity?` × ${jNewForm.quantity}개`:""}`,
+                            call_datetime: jNewForm.order_date?new Date(jNewForm.order_date+"T09:00:00").toISOString():new Date().toISOString(),
+                          }).select("id").single();
+                          linkedConsultationId = mirrorCase?.id ?? null;
+                        }
                         const{data,error}=await supabase.from("tb_orders").insert({
                           order_no:orderNoData as string,
                           customer_name_raw:jNewForm.customer_name,
@@ -5976,7 +6085,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                           status:"received",
                           memo:jNewForm.memo||null,
                           created_at:jNewForm.order_date?new Date(jNewForm.order_date+"T09:00:00").toISOString():undefined,
-                          consultation_id:jNewForm.consultation_id?parseInt(jNewForm.consultation_id):null,
+                          consultation_id:linkedConsultationId,
                         }).select().single();
                         setJNewSaving(false);
                         if(error){
