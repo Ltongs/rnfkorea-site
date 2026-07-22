@@ -85,7 +85,21 @@
       "Bash(echo \"tsc exit: $?\")",
       "Bash(git rev-list *)",
       "Bash(git fetch *)",
-      "Bash(git log *)"
+      "Bash(git log *)",
+      "Bash(xargs -I{} echo {})",
+      "Bash(git check-ignore *)",
+      "Bash(npm view *)",
+      "Bash(git show *)",
+      "Read(//tmp/**)",
+      "Bash(xargs cat)",
+      "Bash(node -e \"const p=require\\('./node_modules/react-router-dom/package.json'\\); console.log\\(p.version\\)\")",
+      "Bash(node -e \"const p=require\\('./node_modules/react-router/package.json'\\); console.log\\(p.version\\)\")",
+      "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('./node_modules/react-router-dom/package.json'\\).exports, null, 2\\)\\)\")",
+      "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('./node_modules/react-router/package.json'\\).exports, null, 2\\)\\)\")",
+      "Bash(echo \"EXIT_CODE:$?\")",
+      "Bash(npx vite *)",
+      "Bash(jobs)",
+      "Bash(pkill -f \"vite build\")"
     ]
   }
 }

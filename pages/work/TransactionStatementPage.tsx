@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
+import html2canvas from 'html2canvas';
 import { supabase } from '../../lib/supabase';
 
 interface Item { name: string; spec: string; qty: number|string; unitPrice: number|string; }
@@ -121,6 +122,78 @@ function buildStatement(form: StatementForm): ArrayBuffer {
   return XLSX.write(wb,{type:'array',bookType:'xlsx'});
 }
 
+// ── MMS 발송용 HTML: html2canvas로 캡처할 거래명세서 요약 뷰 (QuotationPage의 buildQuoteHTML과 동일한 패턴) ──
+function buildStatementHTML(form: StatementForm, docNo: string) {
+  const supply = calcSupply(form.items);
+  const tax = Math.round(supply*0.1);
+  const grand = supply+tax;
+  const rows = form.items.filter(it=>it.name).map((it,i)=>{
+    const amt = n0(it.qty)*n0(it.unitPrice);
+    return `<tr style="background:${i%2===0?'#f8fafc':'#fff'}">
+      <td style="padding:5px;text-align:center;border:1px solid #e2e8f0">${i+1}</td>
+      <td style="padding:5px;border:1px solid #e2e8f0">${it.name||''}</td>
+      <td style="padding:5px;text-align:center;border:1px solid #e2e8f0">${it.spec||''}</td>
+      <td style="padding:5px;text-align:center;border:1px solid #e2e8f0">${it.qty||''}</td>
+      <td style="padding:5px;text-align:right;border:1px solid #e2e8f0">${it.unitPrice!==''?fmt(n0(it.unitPrice)):''}</td>
+      <td style="padding:5px;text-align:right;font-weight:600;border:1px solid #e2e8f0">${amt?fmt(amt):''}</td>
+    </tr>`;
+  }).join('');
+
+  return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
+<title>거래명세서 ${docNo}</title>
+<style>
+  *{box-sizing:border-box;}
+  body{font-family:'맑은 고딕','Malgun Gothic',sans-serif;font-size:12px;color:#1e293b;margin:0;}
+  table{border-collapse:collapse;width:100%;}
+</style></head><body>
+<div style="background:#0a192f;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;border-radius:6px;margin-bottom:14px">
+  <div><div style="font-size:20px;font-weight:700;color:#fff">RNF KOREA</div>
+  <div style="font-size:9px;color:#94a3b8;margin-top:3px">INDUSTRIAL ENERGY &amp; MOBILITY SOLUTION</div></div>
+  <div style="text-align:right"><div style="font-size:22px;font-weight:700;color:#f97316">거래명세서</div>
+  <div style="font-size:9px;color:#94a3b8">No. ${docNo}</div></div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+  <div style="background:#f8fafc;border-radius:6px;padding:10px">
+    <div style="font-size:9px;color:#64748b;margin-bottom:3px">거래처</div>
+    <div style="font-size:13px;font-weight:700;color:#0a192f">${form.customerName} 귀중</div>
+    <div style="font-size:10px;color:#374151;margin-top:5px">작성일자: ${form.issueDate} | 결제조건: ${form.paymentCondition||'현금'}</div>
+    ${form.customerCeo?`<div style="font-size:10px;color:#374151">대표: ${form.customerCeo}</div>`:''}
+    ${form.customerAddress?`<div style="font-size:10px;color:#374151">${form.customerAddress}</div>`:''}
+  </div>
+  <div style="background:#f8fafc;border-radius:6px;padding:10px">
+    <div style="font-size:9px;color:#64748b;margin-bottom:3px">공급자</div>
+    <div style="font-size:12px;font-weight:700;color:#0a192f">주식회사 알앤에프코리아</div>
+    <div style="font-size:10px;color:#374151;margin-top:3px">대표: 서선경 | 사업자: 316-88-02901 | 1551-1873</div>
+    <div style="font-size:10px;color:#374151">경기도 안산시 단원구 산단로 325</div>
+  </div>
+</div>
+<table style="margin-bottom:12px;font-size:11px">
+  <thead><tr style="background:#0a192f">
+    ${['No.','품  목','규  격','수량','단  가','공급가액'].map(h=>`<th style="color:#fff;padding:7px 6px;text-align:center">${h}</th>`).join('')}
+  </tr></thead>
+  <tbody>${rows}</tbody>
+  <tfoot><tr style="background:#0a192f">
+    <td colspan="5" style="padding:7px;text-align:center;color:#fff;font-weight:700">합  계</td>
+    <td style="padding:7px;text-align:right;color:#fff;font-weight:700">${fmt(supply)}</td>
+  </tr></tfoot>
+</table>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px">
+  ${[['공급가액 (VAT별도)',fmt(supply)+'원',false],['세액 (10%)',fmt(tax)+'원',false],['청구 합계 (VAT포함)',fmt(grand)+'원',true]].map(([l,v,dk])=>`
+  <div style="background:${dk?'#0a192f':'#f1f5f9'};border-radius:6px;padding:10px;text-align:center">
+    <div style="font-size:9px;color:${dk?'#94a3b8':'#64748b'};margin-bottom:3px">${l}</div>
+    <div style="font-size:13px;font-weight:700;color:${dk?'#f97316':'#0a192f'}">${v}</div>
+  </div>`).join('')}
+</div>
+${form.extraMessage?.trim()?`<div style="background:#f1f5f9;border-radius:6px;padding:10px;margin-bottom:12px">
+  <div style="font-size:10px;color:#374151;white-space:pre-wrap">${form.extraMessage.trim()}</div>
+</div>`:''}
+<div style="background:#0a192f;padding:12px;text-align:center;border-radius:6px;margin-top:8px">
+  <div style="color:#fff;font-size:11px;font-weight:700;margin-bottom:4px">상기와 같이 거래명세서를 제출합니다.</div>
+  <div style="color:#94a3b8;font-size:9px">TEL: 1551-1873 | 주식회사 알앤에프코리아 | rnfkorea.co.kr</div>
+</div>
+</body></html>`;
+}
+
 // ── UI 헬퍼 (QuotationPage와 동일) ──────────────────────────────────────────
 const Label = ({children}:{children:React.ReactNode}) =>
   <label className="block text-xs font-medium text-gray-600 mb-1">{children}</label>;
@@ -131,6 +204,7 @@ export default function TransactionStatementPage() {
   const [sf, setSf] = useState<StatementForm>(SF0);
   const [loading, setLoading] = useState(false);
   const [emailLoading, setEmailLoading] = useState(false);
+  const [smsLoading, setSmsLoading] = useState(false);
   const [msg, setMsg] = useState('');
 
   const flash = (m:string) => { setMsg(m); setTimeout(()=>setMsg(''),5000); };
@@ -376,6 +450,88 @@ export default function TransactionStatementPage() {
     setEmailLoading(false);
   };
 
+  // 거래명세서를 이미지로 캡처해 MMS로 발송 (QuotationPage.tsx의 handleSMS와 동일한 패턴)
+  const sendMMS = async () => {
+    if(!sf.customerName)  { flash('거래처 상호를 입력해주세요.'); return; }
+    if(!sf.customerPhone) { flash('발송 연락처(거래처 연락처)를 입력해주세요.'); return; }
+    if(supply<=0)          { flash('품목을 1개 이상 입력해주세요.'); return; }
+    setSmsLoading(true);
+    let styleEl: HTMLStyleElement | null = null;
+    let wrapper: HTMLDivElement | null = null;
+    try {
+      const docNo = ((await supabase.rpc('next_rnf_number')).data as string);
+      const htmlStr = buildStatementHTML(sf, docNo);
+      const bodyMatch = htmlStr.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+      const bodyHTML = bodyMatch ? bodyMatch[1] : htmlStr;
+      const styleMatch = htmlStr.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+      styleEl = document.createElement('style');
+      styleEl.textContent = styleMatch ? styleMatch[1] : '';
+      wrapper = document.createElement('div');
+      wrapper.style.cssText = 'position:absolute;left:-9999px;top:0;width:720px;background:#fff;';
+      wrapper.innerHTML = bodyHTML;
+      document.head.appendChild(styleEl);
+      document.body.appendChild(wrapper);
+      await new Promise(r => setTimeout(r, 300));
+
+      const wW = wrapper.offsetWidth || 720;
+      const wH = wrapper.scrollHeight || wrapper.offsetHeight;
+      let canvas = await html2canvas(wrapper, {
+        scale: 1.5, backgroundColor: '#ffffff',
+        useCORS: true, allowTaint: true, logging: false,
+        width: wW, height: wH,
+        windowWidth: wW, windowHeight: wH + 100,
+      });
+      document.head.removeChild(styleEl); styleEl = null;
+      document.body.removeChild(wrapper); wrapper = null;
+
+      const MAX_W=1500, MAX_H=1440;
+      if(canvas.width>MAX_W||canvas.height>MAX_H){
+        const ratio=Math.min(MAX_W/canvas.width,MAX_H/canvas.height);
+        const r=document.createElement('canvas');
+        r.width=Math.floor(canvas.width*ratio); r.height=Math.floor(canvas.height*ratio);
+        r.getContext('2d')?.drawImage(canvas,0,0,r.width,r.height); canvas=r;
+      }
+      const MAX_BYTES=200*1024;
+      const b64size=(d:string)=>Math.ceil((d.length-d.indexOf(',')-1)*3/4);
+      let q=0.9, img=canvas.toDataURL('image/jpeg',q);
+      while(b64size(img)>MAX_BYTES&&q>0.2){q-=0.1;img=canvas.toDataURL('image/jpeg',q);}
+      if(b64size(img)>MAX_BYTES){flash('이미지 압축 실패'); setSmsLoading(false); return;}
+
+      await supabase.from('tb_transaction_statements').insert({
+        doc_no: docNo, issue_date: sf.issueDate,
+        customer_name: sf.customerName, customer_biz_no: sf.customerBizNo,
+        customer_ceo: sf.customerCeo, customer_address: sf.customerAddress,
+        customer_phone: sf.customerPhone, customer_email: sf.customerEmail,
+        payment_condition: sf.paymentCondition, manager_name: sf.managerName,
+        items: sf.items.filter(it=>it.name), supply_amount: supply, tax_amount: tax, grand_total: grand,
+        created_by: 'admin@rnfkorea.co.kr',
+      });
+
+      const { data, error } = await supabase.functions.invoke('send-transaction-statement-sms', {
+        body: { docNo, recipientPhone: sf.customerPhone, recipientName: sf.customerName, imageBase64: img, grandTotal: grand },
+      });
+      if(error) {
+        let detail = error.message;
+        try {
+          const ctx = (error as any).context;
+          if (ctx && typeof ctx.json === 'function') {
+            const body = await ctx.clone().json();
+            if (body?.error) detail = body.error;
+          }
+        } catch { /* 본문 파싱 실패 시 기본 메시지 사용 */ }
+        throw new Error(detail);
+      }
+      if (data?.error) throw new Error(data.error);
+
+      flash(`✅ ${sf.customerPhone}로 MMS 발송 완료 (${docNo})`);
+    } catch(e:any) {
+      styleEl && document.head.contains(styleEl) && document.head.removeChild(styleEl);
+      wrapper && document.body.contains(wrapper) && document.body.removeChild(wrapper);
+      flash(`MMS 발송 오류: ${e.message}`);
+    }
+    setSmsLoading(false);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-[#0a192f] text-white px-6 py-5 sticky top-16 z-30">
@@ -391,6 +547,7 @@ export default function TransactionStatementPage() {
             </label>
             <button onClick={download} disabled={loading} className="bg-white text-[#0a192f] hover:bg-gray-100 px-4 py-2 rounded text-sm font-medium disabled:opacity-50">📥 Excel 다운로드</button>
             <button onClick={sendEmail} disabled={emailLoading} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded text-sm font-medium disabled:opacity-50">{emailLoading?'발송 중...':'📧 이메일 발송'}</button>
+            <button onClick={sendMMS} disabled={smsLoading} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm font-medium disabled:opacity-50">{smsLoading?'전송 중...':'📱 MMS 발송'}</button>
           </div>
         </div>
       </div>
@@ -434,7 +591,7 @@ export default function TransactionStatementPage() {
               )}
             </div>
             <div><Label>대표자</Label><Input value={sf.customerCeo} onChange={e=>setSf(f=>({...f,customerCeo:e.target.value}))}/></div>
-            <div><Label>연락처</Label><Input value={sf.customerPhone} onChange={e=>setSf(f=>({...f,customerPhone:e.target.value}))} placeholder="1544-3051"/></div>
+            <div><Label>연락처 (MMS 발송용)</Label><Input value={sf.customerPhone} onChange={e=>setSf(f=>({...f,customerPhone:e.target.value}))} placeholder="010-1234-5678"/></div>
             <div className="col-span-2"><Label>주소</Label><Input value={sf.customerAddress} onChange={e=>setSf(f=>({...f,customerAddress:e.target.value}))}/></div>
             <div><Label>결제조건</Label><Input value={sf.paymentCondition} onChange={e=>setSf(f=>({...f,paymentCondition:e.target.value}))}/></div>
             <div><Label>담당자</Label><Input value={sf.managerName} onChange={e=>setSf(f=>({...f,managerName:e.target.value}))}/></div>
