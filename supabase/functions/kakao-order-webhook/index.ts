@@ -199,6 +199,7 @@ serve(async (req) => {
     try {
       const { data: mirrorCase } = await supabase.from("consultation_cases").insert({
         customer_name: parsed.customer_name || "미확인",
+        phone:         "",
         work_type:     parsed.product_type === "battery" ? "battery_sales" : "tire_sales",
         status:        "new",
         summary:       `${parsed.product_spec || ""}${parsed.quantity ? ` × ${parsed.quantity}개` : ""}`.trim() || "카카오 주문",

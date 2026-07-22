@@ -6068,6 +6068,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                         if(!linkedConsultationId){
                           const{data:mirrorCase}=await supabase.from("consultation_cases").insert({
                             customer_name: jNewForm.customer_name,
+                            phone:         "",
                             work_type:     jNewForm.product_type==="battery"?"battery_sales":"tire_sales",
                             status:        "new",
                             summary:       `${jNewForm.product_spec}${jNewForm.quantity?` × ${jNewForm.quantity}개`:""}`,

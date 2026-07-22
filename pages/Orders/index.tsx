@@ -283,6 +283,7 @@ export default function OrdersPage() {
     // 통합상담(consultation_cases)에 미러 등록해서 이 발주가 통합상담 목록에서도 보이도록 연결
     const { data: mirrorCase } = await supabase.from("consultation_cases").insert({
       customer_name: newCustomer,
+      phone:         "",
       work_type:     "tire_sales",
       status:        "new",
       summary:       `${newSpec}${newQty ? ` × ${newQty}개` : ""}`,
