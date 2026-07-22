@@ -1817,7 +1817,12 @@ const CallManagementPage: React.FC = () => {
       return;
     }
 
-    const caseRows = (data || []) as ConsultationRow[];
+    // 현대CM/태산통운은 hyundaicm_tasks/taesan_tasks 실데이터(externalFinanceRows)로 별도 조회해
+    // combinedListDisplayRows에서 병합하므로, consultation_cases 쪽 미러는 여기서 제외한다.
+    // 안 그러면 같은 건이 상담관리 목록에 두 번(미러 + 실데이터) 표시된다.
+    const caseRows = ((data || []) as ConsultationRow[]).filter(
+      (r) => !(r.work_type === "finance" && (r.sub_type === "현대CM" || r.sub_type === "태산통운"))
+    );
     setRows(caseRows);
     (window as any).__consultRows = caseRows;
     setLoadingList(false);

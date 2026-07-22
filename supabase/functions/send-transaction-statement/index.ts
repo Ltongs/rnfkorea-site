@@ -2,7 +2,7 @@
 //
 // 거래명세서 이메일 발송 Edge Function
 // QuotationPage.tsx가 'send-quotation'을 호출하는 것과 동일한 방식으로,
-// 클라이언트(TransactionStatementPage.tsx)에서 SheetJS로 조립한 xlsx를
+// 클라이언트(TransactionStatementPage.tsx)에서 html2canvas+jsPDF로 조립한 PDF를
 // base64로 받아 Resend로 첨부 발송만 담당합니다. (템플릿/스토리지 불필요)
 //
 // 필요한 Supabase Secrets (이미 다른 함수들이 쓰는 것과 동일한 이름 — 그대로 재사용됨):
@@ -29,7 +29,7 @@ type Payload = {
   supplyAmount: number;
   taxAmount: number;
   grandTotal: number;
-  xlsxBase64: string;
+  pdfBase64: string;
   fileName: string;
   extraMessage?: string;
 };
@@ -52,11 +52,11 @@ Deno.serve(async (req) => {
     return jsonError("요청 본문이 올바른 JSON이 아닙니다.");
   }
 
-  const { docNo, recipient, email, supplyAmount, taxAmount, grandTotal, xlsxBase64, fileName, extraMessage } = body;
+  const { docNo, recipient, email, supplyAmount, taxAmount, grandTotal, pdfBase64, fileName, extraMessage } = body;
 
   if (!recipient?.trim())    return jsonError("거래처 상호(recipient)가 필요합니다.");
   if (!email?.trim())        return jsonError("발송 이메일(email)이 필요합니다.");
-  if (!xlsxBase64?.trim())   return jsonError("첨부할 엑셀 데이터(xlsxBase64)가 없습니다.");
+  if (!pdfBase64?.trim())    return jsonError("첨부할 PDF 데이터(pdfBase64)가 없습니다.");
   if (!RESEND_API_KEY)       return jsonError("RESEND_API_KEY가 설정되어 있지 않습니다.", 500);
 
   const today = new Date().toISOString().slice(0, 10);
@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
         `청구 합계: ${grandTotal.toLocaleString()}원</p>` +
         `<p>문서번호: ${docNo}</p>` +
         `<p>감사합니다.<br/>주식회사 알앤에프코리아</p>`,
-      attachments: [{ filename: fileName || `거래명세서_${recipient}.xlsx`, content: xlsxBase64 }],
+      attachments: [{ filename: fileName || `거래명세서_${recipient}.pdf`, content: pdfBase64 }],
     }),
   });
 

@@ -2779,7 +2779,7 @@ const SecretaryPage:React.FC = () => {
   const [dormantData,setDormantData] = useState<DormantBuckets|null>(null);
   const [dormantLoading,setDormantLoading] = useState(false);
   const [dormantCheckedAt,setDormantCheckedAt] = useState<string|null>(null);
-  const [showDormant,setShowDormant] = useState(true);
+  const [showDormant,setShowDormant] = useState(false);
 
   // 할일
   const [todos,setTodos]             = useState<Todo[]>([]);
@@ -4242,7 +4242,11 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       ).order("created_at",{ascending:false}).limit(100),
     ]);
 
-    const cases = casesRes.data ?? [];
+    // 나르미/현대CM은 narumi_tasks·hyundaicm_tasks 실데이터(narumiViews/hcmViews)로 아래서 별도 조회하므로
+    // consultation_cases 쪽 미러는 여기서 제외 — 안 그러면 같은 건이 두 번 표시된다.
+    const cases = (casesRes.data ?? []).filter((c:any)=>
+      c.work_type!=="narumi" && !(c.work_type==="finance" && c.sub_type==="현대CM")
+    );
     const ids = cases.map((c:any)=>c.id);
 
     // detail 테이블 병렬 조회 (consultation_cases ids가 있을 때만)
@@ -4397,7 +4401,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
     setStatusLoading(true);
     let hq:any = supabase.from("hyundaicm_tasks").select("id,customer_name,company_name,status,purchase_amount,finance_company,created_at,equipment_ton").order("created_at",{ascending:false});
     let nq:any = supabase.from("narumi_tasks").select("id,customer_name,memo,status,is_urgent,docs_ready,delivery_date,created_at,vin").order("created_at",{ascending:false});
-    let cq:any = supabase.from("consultation_cases").select("id,customer_name,phone,telecom_provider,work_type,status,summary,followup_needed,next_followup_date,created_at").order("created_at",{ascending:false});
+    let cq:any = supabase.from("consultation_cases").select("id,customer_name,phone,telecom_provider,work_type,sub_type,status,summary,followup_needed,next_followup_date,created_at").order("created_at",{ascending:false});
     if(statusRange){
       const gte = statusRange.from, lte = `${statusRange.to}T23:59:59`;
       hq = hq.gte("created_at",gte).lte("created_at",lte).limit(500);
@@ -4431,17 +4435,28 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
 
       // 타이어/배터리/지게차 process_stage 조회 (업무현황 탭 단계 표시 일치를 위함)
       const cids = cr.data.map((c:any)=>c.id as number);
-      const [tireR, battR, forkR] = await Promise.all([
+      const [tireR, battR, forkR, orderLinkR] = await Promise.all([
         supabase.from("consultation_tire_details").select("consultation_id,process_status,process_stage").in("consultation_id",cids),
         supabase.from("consultation_battery_details").select("consultation_id,process_stage").in("consultation_id",cids),
         supabase.from("consultation_forklift_details").select("consultation_id,process_stage,forklift_status").in("consultation_id",cids),
+        // 진흥주문(tb_orders)으로 이미 전달된 상담은 "타이어상담/기타상담" 위젯에서 제외 —
+        // 안 그러면 진흥주문 관리 탭의 실제 주문과 이 상담 미러가 이중으로 집계된다.
+        supabase.from("tb_orders").select("consultation_id").in("consultation_id",cids),
       ]);
       const psMap:Record<number,string> = {};
       (tireR.data??[]).forEach((d:any)=>{ psMap[d.consultation_id]=d.process_stage??d.process_status; });
       (battR.data??[]).forEach((d:any)=>{ if(d.process_stage) psMap[d.consultation_id]=d.process_stage; });
       (forkR.data??[]).forEach((d:any)=>{ if(d.process_stage||d.forklift_status) psMap[d.consultation_id]=d.process_stage??d.forklift_status; });
+      const linkedOrderIds = new Set((orderLinkR.data??[]).map((o:any)=>o.consultation_id));
 
-      setRecentC(cr.data.map((c:any)=>{
+      setRecentC(cr.data
+        // 진흥주문으로 전달된 상담(타이어/배터리) 제외 — 진흥주문 관리 탭에서 별도 집계됨
+        .filter((c:any)=>!linkedOrderIds.has(c.id))
+        // 나르미 상담 제외 — "나르미" 위젯(narumi_tasks 실데이터)에서 이미 집계됨
+        .filter((c:any)=>c.work_type!=="narumi")
+        // 현대CM 상담 제외 — "현대건설기계" 위젯(hyundaicm_tasks 실데이터)에서 이미 집계됨
+        .filter((c:any)=>!(c.work_type==="finance" && c.sub_type==="현대CM"))
+        .map((c:any)=>{
         const fs = fdMap[c.id];
         return {
           ...c,

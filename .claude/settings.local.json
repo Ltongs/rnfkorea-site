@@ -111,7 +111,23 @@
       "Bash(curl -s https://rnfkorea.co.kr/ -o /tmp/rnf_index4.html)",
       "Bash(curl -s https://rnfkorea.co.kr/ -o /tmp/rnf_index5.html)",
       "Bash(curl -sI \"https://rnfkorea.co.kr/?_cb=$\\(date +%s\\)\")",
-      "Bash(curl -s -H \"Cache-Control: no-cache\" -H \"Pragma: no-cache\" \"https://rnfkorea.co.kr/index.html?_cb=$\\(date +%s\\)\")"
+      "Bash(curl -s -H \"Cache-Control: no-cache\" -H \"Pragma: no-cache\" \"https://rnfkorea.co.kr/index.html?_cb=$\\(date +%s\\)\")",
+      "Bash(grep -o 'VC=[^,;]\\\\{1,60\\\\}' node_modules/vite-prerender-plugin/headless-prerender/assets/App-BvYr61M0.js)",
+      "Bash(timeout 20 node \"/private/tmp/claude-501/-Users-tongsoolee-Desktop-WORKS-Homepage-rnfkorea-deploy-new/94b7f1b8-48b7-4ca6-837e-367e86b54c44/scratchpad/diag_prerender.mjs\")",
+      "Bash(node \"/private/tmp/claude-501/-Users-tongsoolee-Desktop-WORKS-Homepage-rnfkorea-deploy-new/94b7f1b8-48b7-4ca6-837e-367e86b54c44/scratchpad/diag_prerender.mjs\")",
+      "Bash(node \"/private/tmp/claude-501/-Users-tongsoolee-Desktop-WORKS-Homepage-rnfkorea-deploy-new/94b7f1b8-48b7-4ca6-837e-367e86b54c44/scratchpad/diag_prerender2.mjs\")",
+      "Bash(node \"/private/tmp/claude-501/-Users-tongsoolee-Desktop-WORKS-Homepage-rnfkorea-deploy-new/94b7f1b8-48b7-4ca6-837e-367e86b54c44/scratchpad/diag_prerender3.mjs\")",
+      "Bash(echo \"EXIT_CODE=$?\")",
+      "Bash(tee /tmp/build_verify.log)",
+      "Bash(tee /tmp/build_verify2.log)",
+      "Bash(curl -s https://rnfkorea.co.kr/ -o /tmp/rnf_index6.html)",
+      "Bash(curl -s https://rnfkorea.co.kr/ -o /tmp/rnf_index7.html)",
+      "Bash(tee /tmp/build_verify3.log)",
+      "Bash(curl -s https://rnfkorea.co.kr/ -o /tmp/rnf_index8.html)",
+      "Bash(curl -s \"http://localhost:3000/pages/work/TransactionStatementPage.tsx\" -o /tmp/tsp_transform.txt -w \"HTTP %{http_code}\\\\n\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" \"http://localhost:3000/node_modules/.vite/deps/jspdf.js?v=22fe5c51\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" \"http://localhost:3000/node_modules/.vite/deps/html2canvas.js\")",
+      "Bash(git status *)"
     ]
   }
 }

@@ -1,11 +1,11 @@
 // src/pages/work/TransactionStatementPage.tsx
-// 거래명세서 작성 → Excel 다운로드 / 이메일 발송
-// 기존 QuotationPage.tsx와 동일한 패턴(클라이언트 SheetJS 조립 + Edge Function 발송)을 따릅니다.
-// 의존성: npm install xlsx (이미 QuotationPage에서 설치되어 있음)
+// 거래명세서 작성 → PDF 다운로드 / 이메일 발송
+// 기존 QuotationPage.tsx와 동일한 패턴(클라이언트에서 파일 조립 + Edge Function 발송)을 따릅니다.
+// 원본 거래명세서 양식(셀 배치)을 그대로 HTML 표로 재현한 뒤 html2canvas + jsPDF로 PDF를 생성합니다.
 
 import { useEffect, useRef, useState } from 'react';
-import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 import { supabase } from '../../lib/supabase';
 
 interface Item { name: string; spec: string; qty: number|string; unitPrice: number|string; }
@@ -32,7 +32,6 @@ const n0 = (v:any) => typeof v==='number'?v:Number(v)||0;
 const fmt = (n:number) => n.toLocaleString('ko-KR');
 
 // 대용량 결과를 안전하게 base64로 변환
-// (설치된 xlsx 버전은 type:'array' 시 Uint8Array가 아니라 ArrayBuffer를 반환하므로 항상 Uint8Array로 감싸서 처리)
 function bytesToBase64(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
   let binary = '';
@@ -44,82 +43,147 @@ function bytesToBase64(buf: ArrayBuffer): string {
 }
 const calcSupply = (items:Item[]) => items.reduce((s,it)=> s + n0(it.qty)*n0(it.unitPrice), 0);
 
-// ── Excel 생성: 원본 "거래명세서" 양식과 동일한 셀 배치 ──────────────────────────
-function buildStatement(form: StatementForm): ArrayBuffer {
-  const wb = XLSX.utils.book_new();
-  const ws: XLSX.WorkSheet = {'!ref':'A1:I43'};
-  const set = (a:string, v:any) => { ws[a]={v, t:typeof v==='number'?'n':'s'}; };
+// 9개 열(A~I)의 원본 거래명세서 열 너비 비율 (구 xlsx !cols 값을 그대로 사용)
+const COL_W = [6,14,10,10,9,13,13,13,10];
+const COL_PCT = COL_W.map(w => (w / COL_W.reduce((s,x)=>s+x,0) * 100).toFixed(2) + '%');
 
+// ── 원본 "거래명세서" 양식과 동일한 셀 배치를 HTML 표로 재현 (PDF 캡처용) ──────────
+function buildStatementOriginalHTML(form: StatementForm, docNo: string) {
   const supply = calcSupply(form.items);
   const tax = Math.round(supply*0.1);
   const grand = supply+tax;
 
-  set('A1','거래명세서');
-  set('A4','INDUSTRIAL ENERGY & MOBILITY SOLUTION  |  주식회사 알앤에프코리아');
+  const itemRows = form.items.slice(0,MAX_ROWS).map((it,i)=>{
+    const price = it.unitPrice!==''? n0(it.unitPrice) : null;
+    const qty = it.qty!==''? n0(it.qty) : null;
+    const amt = price!==null && qty!==null ? price*qty : null;
+    const taxAmt = amt!==null ? Math.round(amt*0.1) : null;
+    return `<tr>
+      <td class="c">${i+1}</td>
+      <td class="l" colspan="2">${it.name||''}</td>
+      <td class="c">${it.spec||''}</td>
+      <td class="c">${qty!==null?qty:''}</td>
+      <td class="r">${price!==null?fmt(price):''}</td>
+      <td class="r">${amt!==null?fmt(amt):''}</td>
+      <td class="r">${taxAmt!==null?fmt(taxAmt):''}</td>
+      <td></td>
+    </tr>`;
+  }).join('');
 
-  set('A6','거래처');        set('C6',form.customerName);
-  set('F6','공급자');        set('G6','주식회사 알앤에프코리아');
-  set('A7','사업자번호');     set('C7',form.customerBizNo);
-  set('F7','사업자번호');     set('G7','316-88-02901');
-  set('A8','대   표');       set('C8',form.customerCeo);
-  set('F8','대   표');       set('G8','서선경');
-  set('A9','주   소');       set('C9',form.customerAddress);
-  set('F9','주   소');       set('G9','경기도 안산시 단원구 산단로 325');
-  set('A10','연   락');      set('C10',form.customerPhone);
-  set('F10','연   락');      set('G10','1551-1873');
+  return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>거래명세서 ${docNo}</title>
+<style>
+  *{box-sizing:border-box;}
+  body{font-family:'맑은 고딕','Malgun Gothic',sans-serif;font-size:12px;color:#111;margin:0;padding:24px;background:#fff;}
+  table{border-collapse:collapse;width:100%;table-layout:fixed;}
+  td{border:1px solid #333;padding:5px 6px;height:22px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+  .noborder{border:none;}
+  .title{font-size:24px;font-weight:700;text-align:center;letter-spacing:10px;border:none;padding:8px 0 2px;}
+  .sub{text-align:center;font-size:10px;color:#555;border:none;padding-bottom:10px;}
+  .docno{text-align:right;font-size:10px;border:none;padding:0 0 4px;}
+  .label{background:#f2f2f2;text-align:center;font-weight:600;}
+  .c{text-align:center;} .l{text-align:left;white-space:normal;} .r{text-align:right;}
+  .bighead{background:#0a192f;color:#fff;text-align:center;font-weight:700;font-size:14px;border:none;padding:6px 0;}
+  .totrow td{font-weight:700;}
+  .grand td{background:#f2f2f2;}
+</style></head><body>
+<table><colgroup>${COL_PCT.map(w=>`<col style="width:${w}">`).join('')}</colgroup>
+<tr><td class="docno" colspan="9">No. ${docNo}</td></tr>
+<tr><td class="title noborder" colspan="9">거 래 명 세 서</td></tr>
+<tr><td class="sub" colspan="9">INDUSTRIAL ENERGY &amp; MOBILITY SOLUTION&nbsp;&nbsp;|&nbsp;&nbsp;주식회사 알앤에프코리아</td></tr>
 
-  set('A12','작성일자'); set('F12','결제조건'); set('H12','담당자');
-  set('A13',form.issueDate); set('F13',form.paymentCondition||'현금'); set('H13',form.managerName);
+<tr>
+  <td class="label" colspan="2">거래처</td><td colspan="3">${form.customerName}</td>
+  <td class="label">공급자</td><td colspan="3">주식회사 알앤에프코리아</td>
+</tr>
+<tr>
+  <td class="label" colspan="2">사업자번호</td><td colspan="3">${form.customerBizNo}</td>
+  <td class="label">사업자번호</td><td colspan="3">316-88-02901</td>
+</tr>
+<tr>
+  <td class="label" colspan="2">대&nbsp;&nbsp;&nbsp;표</td><td colspan="3">${form.customerCeo}</td>
+  <td class="label">대&nbsp;&nbsp;&nbsp;표</td><td colspan="3">서선경</td>
+</tr>
+<tr>
+  <td class="label" colspan="2">주&nbsp;&nbsp;&nbsp;소</td><td colspan="3">${form.customerAddress}</td>
+  <td class="label">주&nbsp;&nbsp;&nbsp;소</td><td colspan="3">경기도 안산시 단원구 산단로 325</td>
+</tr>
+<tr>
+  <td class="label" colspan="2">연&nbsp;&nbsp;&nbsp;락</td><td colspan="3">${form.customerPhone}</td>
+  <td class="label">연&nbsp;&nbsp;&nbsp;락</td><td colspan="3">1551-1873</td>
+</tr>
 
-  set('A15','No.'); set('B15','품  목'); set('D15','규  격'); set('E15','수량');
-  set('F15','단  가 (원)'); set('G15','공급가액 (원)'); set('H15','세액 (원)'); set('I15','비고');
+<tr>
+  <td class="label" colspan="3">작성일자</td><td colspan="2"></td>
+  <td class="label" colspan="2">결제조건</td><td class="label" colspan="2">담당자</td>
+</tr>
+<tr>
+  <td colspan="3">${form.issueDate}</td><td colspan="2"></td>
+  <td colspan="2">${form.paymentCondition||'현금'}</td><td colspan="2">${form.managerName}</td>
+</tr>
 
-  form.items.slice(0,MAX_ROWS).forEach((it,i)=>{
-    const r = 16+i;
-    set(`A${r}`, i+1);
-    if(it.name) set(`B${r}`, it.name);
-    if(it.spec) set(`D${r}`, it.spec);
-    if(it.qty!=='') set(`E${r}`, n0(it.qty));
-    if(it.unitPrice!==''){
-      const price = n0(it.unitPrice);
-      set(`F${r}`, price);
-      if(it.qty!==''){
-        const amt = price*n0(it.qty);
-        set(`G${r}`, amt);
-        set(`H${r}`, Math.round(amt*0.1));
-      }
-    }
-  });
+<tr class="label">
+  <td>No.</td><td colspan="2">품&nbsp;&nbsp;목</td><td>규&nbsp;&nbsp;격</td><td>수량</td>
+  <td>단&nbsp;&nbsp;가 (원)</td><td>공급가액 (원)</td><td>세액 (원)</td><td>비고</td>
+</tr>
+${itemRows}
 
-  set('A31','합  계'); set('G31',supply); set('H31',tax);
-  set('A33','공급가액 합계');       set('F33',supply);
-  set('A34','세액 합계 (10%)');    set('F34',tax);
-  set('A35','청구 합계 (VAT포함)'); set('F35',grand);
+<tr class="totrow">
+  <td colspan="5" class="c">합&nbsp;&nbsp;계</td><td></td>
+  <td class="r">${fmt(supply)}</td><td class="r">${fmt(tax)}</td><td></td>
+</tr>
+<tr class="totrow">
+  <td colspan="5" class="label">공급가액 합계</td><td colspan="4" class="r">${fmt(supply)}원</td>
+</tr>
+<tr class="totrow">
+  <td colspan="5" class="label">세액 합계 (10%)</td><td colspan="4" class="r">${fmt(tax)}원</td>
+</tr>
+<tr class="totrow grand">
+  <td colspan="5" class="label">청구 합계 (VAT포함)</td><td colspan="4" class="r">${fmt(grand)}원</td>
+</tr>
 
-  set('A37','수령 확인');
-  set('A38','확인일자'); set('A39','확인자(서명)'); set('A40','비고');
-  set('D40',' 기업은행 523-081357-04-016 (주)알앤에프코리아 / admin@rnfkorea.co.kr');
-  set('A42','상기와 같이 거래명세서를 제출합니다.');
-  set('A43','TEL : 1551-1873  |  FAX : 0504-339-1873  |  주식회사 알앤에프코리아  |  www.rnfkorea.co.kr');
+<tr><td class="bighead" colspan="9">수령 확인</td></tr>
+<tr><td class="label" colspan="3">확인일자</td><td colspan="6"></td></tr>
+<tr><td class="label" colspan="3">확인자(서명)</td><td colspan="6"></td></tr>
+<tr><td class="label" colspan="3">비고</td><td colspan="6">기업은행 523-081357-04-016 (주)알앤에프코리아 / admin@rnfkorea.co.kr</td></tr>
 
-  // 원본과 동일한 셀 병합 배치
-  const mergeRanges = [
-    'A1:I3','A4:I4',
-    'A6:B6','C6:E6','G6:I6', 'A7:B7','C7:E7','G7:I7', 'A8:B8','C8:E8','G8:I8',
-    'A9:B9','C9:E9','G9:I9', 'A10:B10','C10:E10','G10:I10',
-    'A12:C12','D12:E12','F12:G12','H12:I12',
-    'A13:C13','D13:E13','F13:G13','H13:I13',
-    'B15:C15',
-    ...Array.from({length:MAX_ROWS},(_,i)=>`B${16+i}:C${16+i}`),
-    'A31:E31','A33:E33','F33:I33','A34:E34','F34:I34','A35:E35','F35:I35',
-    'A37:I37','A38:C38','D38:I38','A39:C39','D39:I39','A40:C40','D40:I40',
-    'A42:I42','A43:I43',
-  ];
-  ws['!merges'] = mergeRanges.map(r => XLSX.utils.decode_range(r));
-  ws['!cols'] = [6,14,10,10,9,13,13,13,10].map(w=>({wch:w}));
+<tr><td class="noborder c" colspan="9" style="padding-top:14px;font-weight:700">상기와 같이 거래명세서를 제출합니다.</td></tr>
+<tr><td class="noborder c" colspan="9" style="font-size:9px;color:#666">TEL : 1551-1873&nbsp;&nbsp;|&nbsp;&nbsp;FAX : 0504-339-1873&nbsp;&nbsp;|&nbsp;&nbsp;주식회사 알앤에프코리아&nbsp;&nbsp;|&nbsp;&nbsp;www.rnfkorea.co.kr</td></tr>
+</table>
+${form.extraMessage?.trim()?`<p style="margin-top:14px;font-size:11px;color:#333;white-space:pre-wrap">${form.extraMessage.trim()}</p>`:''}
+</body></html>`;
+}
 
-  XLSX.utils.book_append_sheet(wb,ws,'거래명세서');
-  return XLSX.write(wb,{type:'array',bookType:'xlsx'});
+// ── 위 HTML을 캡처해 A4 1페이지 PDF(ArrayBuffer)로 변환 ──────────────────────
+async function generateStatementPDF(form: StatementForm, docNo: string): Promise<ArrayBuffer> {
+  const html = buildStatementOriginalHTML(form, docNo);
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  const bodyHTML = bodyMatch ? bodyMatch[1] : html;
+  const styleMatch = html.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+  const styleEl = document.createElement('style');
+  styleEl.textContent = styleMatch ? styleMatch[1] : '';
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'position:absolute;left:-9999px;top:0;width:794px;background:#fff;';
+  wrapper.innerHTML = bodyHTML;
+  document.head.appendChild(styleEl);
+  document.body.appendChild(wrapper);
+  try {
+    await new Promise(r => setTimeout(r, 200));
+    const canvas = await html2canvas(wrapper, {
+      scale: 2, backgroundColor: '#ffffff',
+      useCORS: true, allowTaint: true, logging: false,
+      width: wrapper.offsetWidth, windowWidth: wrapper.offsetWidth,
+    });
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const imgHeight = Math.min(pageHeight, (canvas.height*pageWidth)/canvas.width);
+    pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, imgHeight);
+    return pdf.output('arraybuffer');
+  } finally {
+    document.body.removeChild(wrapper);
+    document.head.removeChild(styleEl);
+  }
 }
 
 // ── MMS 발송용 HTML: html2canvas로 캡처할 거래명세서 요약 뷰 (QuotationPage의 buildQuoteHTML과 동일한 패턴) ──
@@ -377,34 +441,34 @@ export default function TransactionStatementPage() {
     flash(`${row.doc_no} 내용을 폼에 불러왔습니다. 수정 후 재발송하세요.`);
   };
 
-  const downloadFromHistory = (row:HistoryRow) => {
+  const downloadFromHistory = async (row:HistoryRow) => {
     try {
       const items = row.items?.length ? row.items : [];
-      const bytes = buildStatement({
+      const bytes = await generateStatementPDF({
         customerName: row.customer_name, customerBizNo: row.customer_biz_no ?? '',
         customerCeo: row.customer_ceo ?? '', customerAddress: row.customer_address ?? '',
         customerPhone: row.customer_phone ?? '', customerEmail: row.customer_email ?? '',
         issueDate: row.issue_date, paymentCondition: row.payment_condition ?? '현금',
         managerName: row.manager_name ?? '', extraMessage: '', items,
-      });
-      const blob = new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      }, row.doc_no);
+      const blob = new Blob([bytes],{type:'application/pdf'});
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `RNF_거래명세서_${row.customer_name}_${row.doc_no}.xlsx`;
+      a.download = `RNF_거래명세서_${row.customer_name}_${row.doc_no}.pdf`;
       a.click();
-    } catch { flash('Excel 재생성 오류'); }
+    } catch { flash('PDF 재생성 오류'); }
   };
 
-  const download = () => {
+  const download = async () => {
     setLoading(true);
     try {
-      const bytes = buildStatement(sf);
-      const blob = new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      const bytes = await generateStatementPDF(sf, '(미리보기)');
+      const blob = new Blob([bytes],{type:'application/pdf'});
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `RNF_거래명세서_${sf.customerName||'거래처'}.xlsx`;
+      a.download = `RNF_거래명세서_${sf.customerName||'거래처'}.pdf`;
       a.click();
-    } catch { flash('Excel 생성 오류'); }
+    } catch { flash('PDF 생성 오류'); }
     setLoading(false);
   };
 
@@ -414,9 +478,9 @@ export default function TransactionStatementPage() {
     if(supply<=0)          { flash('품목을 1개 이상 입력해주세요.'); return; }
     setEmailLoading(true);
     try {
-      const bytes = buildStatement(sf);
-      const b64 = bytesToBase64(bytes);
       const docNo = ((await supabase.rpc('next_rnf_number')).data as string);
+      const bytes = await generateStatementPDF(sf, docNo);
+      const b64 = bytesToBase64(bytes);
       await supabase.from('tb_transaction_statements').insert({
         doc_no: docNo, issue_date: sf.issueDate,
         customer_name: sf.customerName, customer_biz_no: sf.customerBizNo,
@@ -430,7 +494,7 @@ export default function TransactionStatementPage() {
         body: {
           docNo, recipient: sf.customerName, email: sf.customerEmail,
           supplyAmount: supply, taxAmount: tax, grandTotal: grand,
-          xlsxBase64: b64, fileName: `RNF_거래명세서_${sf.customerName}.xlsx`,
+          pdfBase64: b64, fileName: `RNF_거래명세서_${sf.customerName}.pdf`,
           extraMessage: sf.extraMessage.trim(),
         },
       });
@@ -545,7 +609,7 @@ export default function TransactionStatementPage() {
               {invoiceParsing ? '인식 중...' : '📄 계산서 업로드 (자동 인식)'}
               <input type="file" accept="image/*,.pdf,application/pdf" className="hidden" disabled={invoiceParsing} onChange={handleInvoiceUpload}/>
             </label>
-            <button onClick={download} disabled={loading} className="bg-white text-[#0a192f] hover:bg-gray-100 px-4 py-2 rounded text-sm font-medium disabled:opacity-50">📥 Excel 다운로드</button>
+            <button onClick={download} disabled={loading} className="bg-white text-[#0a192f] hover:bg-gray-100 px-4 py-2 rounded text-sm font-medium disabled:opacity-50">{loading?'생성 중...':'📥 PDF 다운로드'}</button>
             <button onClick={sendEmail} disabled={emailLoading} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded text-sm font-medium disabled:opacity-50">{emailLoading?'발송 중...':'📧 이메일 발송'}</button>
             <button onClick={sendMMS} disabled={smsLoading} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm font-medium disabled:opacity-50">{smsLoading?'전송 중...':'📱 MMS 발송'}</button>
           </div>
