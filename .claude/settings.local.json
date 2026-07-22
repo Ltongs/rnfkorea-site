@@ -99,7 +99,9 @@
       "Bash(echo \"EXIT_CODE:$?\")",
       "Bash(npx vite *)",
       "Bash(jobs)",
-      "Bash(pkill -f \"vite build\")"
+      "Bash(pkill -f \"vite build\")",
+      "Bash(git push *)",
+      "Bash(gh api *)"
     ]
   }
 }
