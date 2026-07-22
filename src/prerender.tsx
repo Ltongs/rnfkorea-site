@@ -1,3 +1,6 @@
+// react-dom/server보다 먼저 로드해서 전역 MessageChannel을 안전한 버전으로 미리 바꿔치기한다.
+// (자세한 이유는 prerender-messagechannel-polyfill.ts 주석 참고)
+import "./prerender-messagechannel-polyfill";
 import { renderToString } from "react-dom/server";
 import { StaticRouter } from "react-router";
 import { HelmetProvider } from "react-helmet-async";
