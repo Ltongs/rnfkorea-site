@@ -103,7 +103,12 @@
       "Bash(git push *)",
       "Bash(gh api *)",
       "Bash(git stash *)",
-      "Bash(git checkout *)"
+      "Bash(git checkout *)",
+      "Bash(sample 79490 2 -f /tmp/sample_vite.txt)",
+      "Bash(awk '{print $NF, $6, $7, $8}')",
+      "Bash(xargs -I{} sh -c 'echo \"{}: $\\(grep -c \"MMS 발송용\" {} 2>/dev/null\\)\"')",
+      "Bash(curl -s https://rnfkorea.co.kr/ -o /tmp/rnf_index3.html)",
+      "Bash(curl -s https://rnfkorea.co.kr/ -o /tmp/rnf_index4.html)"
     ]
   }
 }
