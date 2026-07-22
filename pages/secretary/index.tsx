@@ -6136,6 +6136,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                         return jFilter==="active"?!closed:jFilter==="done"?closed:true;
                       }).map((o:any)=>({kind:"order" as const, sortAt:o.created_at||"", data:o}));
                       const consultItems = jConsults.filter((c:any)=>{
+                        // 이미 진흥주문(tb_orders)으로 전달된 상담은 그 주문 카드로만 표시 — 중복 카드 방지
+                        if(jList.some((x:any)=>x.consultation_id===c.id)) return false;
                         const wheelDone=!!c.wheel_returned_at;
                         const delivered=c.progress_stage==="delivery"||c.progress_stage==="invoiced";
                         const closed=(delivered&&wheelDone&&!!c.sales_record_id)||c.progress_stage==="cancelled";
@@ -6244,7 +6246,6 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                       );
                     })() : (()=>{
                     const c=item.data;
-                    const hasOrder = jList.some((x:any)=>x.consultation_id===c.id);
                       const wheelDone=!!c.wheel_returned_at;
                       const invoiced=c.progress_stage==="invoiced";
                       const cancelled=c.progress_stage==="cancelled";
@@ -6277,9 +6278,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                                   {c.sales_record_id&&(
                                     <span className="text-[11px] px-2 py-0.5 rounded-full border font-medium bg-blue-50 text-blue-600 border-blue-200">🧾 세금계산서 발행</span>
                                   )}
-                                  {!hasOrder&&(
-                                    <span className="text-[11px] px-2 py-0.5 rounded-full border font-medium bg-gray-50 text-gray-400 border-gray-200" title="아직 진흥에 발주가 전달되지 않은 상담건입니다">진흥주문 미등록</span>
-                                  )}
+                                  <span className="text-[11px] px-2 py-0.5 rounded-full border font-medium bg-gray-50 text-gray-400 border-gray-200" title="아직 진흥에 발주가 전달되지 않은 상담건입니다">진흥주문 미등록</span>
                                 </div>
                                 {c.product_detail&&<p className="text-xs text-gray-600 mt-0.5 font-medium">{c.product_detail}</p>}
                                 <div className="flex items-center gap-2 mt-1 flex-wrap text-xs">
