@@ -142,7 +142,10 @@ function getPermissions(emailRaw?: string | null) {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  // SSR(프리렌더링)에서는 useEffect가 실행되지 않아 bootstrap()이 절대 끝나지 않으므로
+  // loading이 true로 고정되어 페이지 전체가 로딩 스피너로만 렌더링된다.
+  // Node(prerender) 환경에서는 처음부터 "로그인 안 한 상태"로 간주해 실제 콘텐츠를 렌더링한다.
+  const [loading, setLoading] = useState(() => typeof window === "undefined" ? false : true);
 
   useEffect(() => {
     let mounted = true;
