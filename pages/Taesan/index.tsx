@@ -16,7 +16,7 @@ const PHONE_MASK_AFTER_HOURS = 24;    // 확정 후 24시간 경과 시 전화�
 type CustomerType = "개인" | "법인";
 type TaesanStatus    = "접수" | "신용조회" | "승인" | "보완" | "거절" | "확정";
 
-type FinanceCompany = "NH캐피탈" | "오릭스캐피탈" | "우리금융캐피탈" | "현대커머셜";
+type FinanceCompany = "NH캐피탈" | "오릭스캐피탈" | "우리금융캐피탈" | "현대커머셜" | "KB캐피탈" | "기타";
 type BodyType = "윙바디" | "카고";
 
 type TaesanTask = {
@@ -1880,6 +1880,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                   <option value="오릭스캐피탈">오릭스캐피탈</option>
                   <option value="우리금융캐피탈">우리금융캐피탈</option>
                   <option value="현대커머셜">현대커머셜</option>
+                  <option value="KB캐피탈">KB캐피탈</option>
+                  <option value="기타">기타</option>
                 </select>
               </div>
 
@@ -2539,7 +2541,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               </div>
               <div><label className={labelClass}>차량가격 (원)</label><input value={editPurchaseAmount} onChange={(e) => setEditPurchaseAmount(onlyDigits(e.target.value))} className={inputClass} disabled={editSaving} inputMode="numeric" /></div>
               <div><label className={labelClass}>할부원금 (원)</label><input value={editInstallmentPrincipal} onChange={(e) => setEditInstallmentPrincipal(onlyDigits(e.target.value))} className={inputClass} disabled={editSaving} inputMode="numeric" /></div>
-              <div><label className={labelClass}>할부금융사</label><select value={editFinanceCompany} onChange={(e) => setEditFinanceCompany(e.target.value)} className={inputClass} disabled={editSaving}><option value="NH캐피탈">NH캐피탈</option><option value="오릭스캐피탈">오릭스캐피탈</option><option value="우리금융캐피탈">우리금융캐피탈</option><option value="현대커머셜">현대커머셜</option></select></div>
+              <div><label className={labelClass}>할부금융사</label><select value={editFinanceCompany} onChange={(e) => setEditFinanceCompany(e.target.value)} className={inputClass} disabled={editSaving}><option value="NH캐피탈">NH캐피탈</option><option value="오릭스캐피탈">오릭스캐피탈</option><option value="우리금융캐피탈">우리금융캐피탈</option><option value="현대커머셜">현대커머셜</option><option value="KB캐피탈">KB캐피탈</option><option value="기타">기타</option></select></div>
               <div>
                 <label className={labelClass}>대출기간 (개월)</label>
                 <input
