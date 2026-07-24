@@ -587,7 +587,7 @@ export default function PageHeader() {
                     </button>
                   )}
 
-                  {(isAdminLevel || isTaesan || !user) && (
+                  {(isAdminLevel || isTaesan || isNhCapital || !user) && (
                     <button
                       type="button"
                       className={dropItem}

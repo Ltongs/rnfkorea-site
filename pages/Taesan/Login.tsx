@@ -4,7 +4,7 @@ import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useAuth } from "../../lib/auth";
 
 export default function TaesanLoginPage() {
-  const { user, loading, isAdmin, isSubAdmin, isTaesan, login } = useAuth() as any;
+  const { user, loading, isAdmin, isSubAdmin, isTaesan, isNhCapital, login } = useAuth() as any;
   const nav = useNavigate();
   const location = useLocation() as any;
 
@@ -14,7 +14,7 @@ export default function TaesanLoginPage() {
   const [err, setErr] = useState("");
 
   // 이미 로그인 + 접근 권한이 있으면 바로 /taesan으로
-  if (!loading && user && (isAdmin || isSubAdmin || isTaesan)) {
+  if (!loading && user && (isAdmin || isSubAdmin || isTaesan || isNhCapital)) {
     const dest = location.state?.from || "/taesan";
     return <Navigate to={dest} replace />;
   }

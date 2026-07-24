@@ -222,7 +222,7 @@ const btnGhost =
 
 // ─── 메인 컴포넌트 ────────────────────────────────────────
 export default function TaesanPage() {
-  const { user, logout, isAdmin, isSubAdmin, isTaesan } = useAuth() as any;
+  const { user, logout, isAdmin, isSubAdmin, isTaesan, isNhCapital } = useAuth() as any;
   const nav = useNavigate();
   const [searchParams] = useSearchParams();
   const focusId = searchParams.get("id"); // 업무현황에서 딜 클릭 시 전달되는 id
@@ -231,14 +231,17 @@ export default function TaesanPage() {
   const isAdminLevel           = isAdmin || isSubAdmin;
   // 태산통운(yj565012@naver.com): 신규등록, 자료(문서) 첨부/다운로드만 가능.
   // 상태변경(단계 이동)·기존정보 수정·삭제는 사내 직원(admin/subAdmin)만 가능.
-  const canCreate               = isAdminLevel || isTaesan;
-  const canEditExisting         = isAdminLevel;
-  const canChangeStatus         = isAdminLevel;
-  const canUploadDoc            = isAdminLevel || isTaesan;
-  const canUploadVehicleRegDoc  = isAdminLevel;
-  const canUploadTaxInvoice     = isAdminLevel;
-  const canDelete                = isAdminLevel;
-  const canDownloadDoc           = isAdminLevel || isTaesan; // 파일다운로드는 태산통운도 허용
+  // NH캐피탈(allbar7555@naver.com, 강신규 소장): 현대CM 페이지의 isNhCapital과 동일한
+  // 폭넓은 권한(조회/신규등록/수정/상태변경/서류업로드/삭제)을 그대로 부여.
+  const canCreate               = isAdminLevel || isTaesan || isNhCapital;
+  const canEditExisting         = isAdminLevel || isNhCapital;
+  const canChangeStatus         = isAdminLevel || isNhCapital;
+  const canUploadDoc            = isAdminLevel || isTaesan || isNhCapital;
+  const canUploadVehicleRegDoc  = isAdminLevel || isNhCapital;
+  const canUploadTaxInvoice     = isAdminLevel || isNhCapital;
+  const canDelete                = isAdminLevel || isNhCapital;
+  const canDownloadDoc           = isAdminLevel || isTaesan || isNhCapital; // 파일다운로드는 태산통운/NH캐피탈도 허용
+  const canManageStatus          = isAdminLevel || isNhCapital; // 상태 역행 등 canGoToStatus의 관리자급 특례
 
   // ── 신규 접수 폼 ──
   const [customerType,          setCustomerType]          = useState<CustomerType>("개인");
@@ -975,7 +978,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     }
   };
 
-  useEffect(() => { fetchRows(); }, [showClosed, isAdmin, isTaesan]); // eslint-disable-line
+  useEffect(() => { fetchRows(); }, [showClosed, isAdmin, isTaesan, isNhCapital]); // eslint-disable-line
 
 
   // ─── 모바일 파일 선택 후 세션 자동 복구 ─────────────────────
@@ -1182,7 +1185,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     if (row.status === next) return;
 
     // 단계 순서 제어
-    if (!canGoToStatus(row.status, next, isAdminLevel)) {
+    if (!canGoToStatus(row.status, next, canManageStatus)) {
       const nextIdx    = getStatusIndex(next);
       const currentIdx = getStatusIndex(row.status);
       if (nextIdx < currentIdx) {
@@ -1524,7 +1527,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
   // ─── 삭제 ────────────────────────────────────────────────
   const deleteRow = async (rowId: string | number) => {
-    if (!canDelete) { alert("삭제 권한은 관리자만 가능합니다."); return; }
+    if (!canDelete) { alert("삭제 권한이 없습니다."); return; }
     setDeleting(true);
     try {
       const target = rows.find((r) => String(r.id) === String(rowId));
@@ -2097,7 +2100,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                       <div className="flex flex-wrap gap-1.5 pb-1">
                         {/* 접수 버튼 */}
                         {["접수"].map((s) => {
-                          const canGo = canGoToStatus(r.status, s as TaesanStatus, isAdminLevel);
+                          const canGo = canGoToStatus(r.status, s as TaesanStatus, canManageStatus);
                           return (
                           <button
                             key={s}
@@ -2117,7 +2120,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                         {/* 신용결과 버튼 (승인/보완/거절) */}
                         {CREDIT_STATUSES.map((s) => {
                           const isCurrent = r.status === s || creditResults[String(r.id)] === s;
-                          const canGo = canGoToStatus(r.status, s, isAdminLevel) || CREDIT_STATUSES.includes(r.status as any);
+                          const canGo = canGoToStatus(r.status, s, canManageStatus) || CREDIT_STATUSES.includes(r.status as any);
                           const openCreditModal = () => {
                             setCreditNiceScore(r.nice_score != null ? String(r.nice_score) : "");
                             setCreditRate(r.credit_rate != null ? String(r.credit_rate) : "");
@@ -2150,7 +2153,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
                         {/* 확정 버튼 */}
                         {["확정"].map((s) => {
-                          const canGo = canGoToStatus(r.status, s as TaesanStatus, isAdminLevel);
+                          const canGo = canGoToStatus(r.status, s as TaesanStatus, canManageStatus);
                           return (
                           <button
                             key={s}
@@ -2421,7 +2424,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                                       </span>
                                     </p>
                                   </div>
-                                  {(isAdmin || isSubAdmin || isTaesan) && (
+                                  {(isAdmin || isSubAdmin || isTaesan || isNhCapital) && (
                                   <button
                                     onClick={() => downloadVehicleRegDoc(f.path, f.name)}
                                     className="shrink-0 px-3 py-1 rounded-xl border border-emerald-200 text-emerald-700 text-xs font-medium hover:border-emerald-400 transition-all"
