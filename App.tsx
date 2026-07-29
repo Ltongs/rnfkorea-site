@@ -70,6 +70,9 @@ import TireShopDetailPage from "./pages/TireShop/detail";
 import CallManagementPage from "./pages/CallManagement/index";
 import CallManagementLoginPage from "./pages/CallManagement/Login";
 import FaxCampaignPage from "./pages/FaxCampaign/index";
+import OrixIncentivePage from "./pages/OrixIncentive/index";
+import OrixIncentiveLoginPage from "./pages/OrixIncentive/Login";
+import OrixIncentiveRouteGuard from "./pages/OrixIncentive/Routeguard";
 import KakaoCallbackPage from "./pages/KakaoCallback";
 import KakaoConnectPage from "./pages/HyundaiCM/KakaoConnect";
 import DashboardPage from "./pages/Dashboard";
@@ -543,6 +546,7 @@ function ScrollToTopButton() {
   const hideEntirely = pathname.startsWith("/work/secretary")
     || pathname.startsWith("/work/call-management")
     || pathname.startsWith("/work/fax-campaign")
+    || pathname.startsWith("/orix")
     || pathname.startsWith("/hyundaicm")
     || pathname.startsWith("/taesan")
     || pathname.startsWith("/rental-os")
@@ -1441,6 +1445,7 @@ const AppRoutes = () => {
     || pathname.startsWith("/work/manual")
     || pathname.startsWith("/work/call-management")
     || pathname.startsWith("/work/fax-campaign")
+    || pathname.startsWith("/orix")
     || pathname.startsWith("/hyundaicm")
     || pathname.startsWith("/taesan")
     || pathname.startsWith("/rental-os")
@@ -1449,6 +1454,7 @@ const AppRoutes = () => {
   const hideFooter =
     isGolfCartLanding
     || pathname.startsWith("/work/")
+    || pathname.startsWith("/orix")
     || pathname.startsWith("/hyundaicm")
     || pathname.startsWith("/taesan")
     || pathname.startsWith("/rental-os")
@@ -1523,6 +1529,17 @@ const AppRoutes = () => {
               <ProtectedRoute>
                 <NarumiPage />
               </ProtectedRoute>
+            }
+          />
+
+          {/* ORIX 인센티브 관리 (admin + yongbaek_jo@orix.co.kr 전용) */}
+          <Route path="/orix/login" element={<OrixIncentiveLoginPage />} />
+          <Route
+            path="/orix"
+            element={
+              <OrixIncentiveRouteGuard>
+                <OrixIncentivePage />
+              </OrixIncentiveRouteGuard>
             }
           />
 
