@@ -100,6 +100,24 @@ serve(async (req) => {
       let solapiMessageId: string | null = null;
       let errorMessage: string | null = null;
 
+      // fax 필드에 번호가 2개 이상 들어있으면(예: "031-1 031-2") 숫자만 이어붙여 실제로
+      // 존재하지 않는 번호가 되므로, 자릿수가 비정상이면 발송을 시도하지 않고 바로 실패 기록한다.
+      if (faxNumber.length < 9 || faxNumber.length > 11) {
+        await supabase.from("fax_send_log").upsert(
+          {
+            campaign_id: campaignId,
+            contact_id: contact.id,
+            fax_number: contact.fax,
+            status: "failed",
+            error_message: `팩스번호 형식이 올바르지 않습니다 (원본: ${contact.fax})`,
+            sent_at: new Date().toISOString(),
+          },
+          { onConflict: "campaign_id,contact_id" },
+        );
+        results.push({ name: contact.name, status: "failed" });
+        continue;
+      }
+
       try {
         const res = await fetch("https://api.solapi.com/messages/v4/send", {
           method: "POST",
