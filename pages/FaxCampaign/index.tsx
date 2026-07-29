@@ -59,6 +59,14 @@ function formatDateTime(v: string | null) {
   return new Date(v).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
 }
 
+// send-fax-campaign Edge Function과 동일한 패턴 — 팩스 필드 하나에 번호가 여러 개
+// 있으면(예: "031-672-6011, 033-573-0876") 전부 별도 발송 대상으로 파싱한다.
+const FAX_NUMBER_PATTERN = /(?:0\d{1,2}|1\d{3})[-.\s)]?\d{3,4}[-.\s]?\d{4}/g;
+function parseFaxNumbers(raw: string): string[] {
+  const matches = raw.match(FAX_NUMBER_PATTERN) ?? [];
+  return matches.map((m) => m.replace(/[^0-9]/g, ""));
+}
+
 export default function FaxCampaignPage() {
   const navigate = useNavigate();
 
@@ -200,16 +208,28 @@ export default function FaxCampaignPage() {
   };
 
   const sendCampaignNow = async (campaign: FaxCampaign) => {
-    const targetCount = contacts.filter(
-      (c) =>
-        c.is_active &&
-        !!c.fax &&
-        (!campaign.target_region || c.region === campaign.target_region) &&
-        !sentContactIds.has(c.id),
-    ).length;
+    // 이 캠페인에서 이미 성공적으로 발송된 (골프장, 팩스번호) 조합 — 재발송 시 스킵 대상
+    const sentPairsForCampaign = new Set(
+      logs
+        .filter((l) => l.campaign_id === campaign.id && l.status === "success")
+        .map((l) => `${l.contact_id}|${l.fax_number}`),
+    );
+
+    let targetCourseCount = 0;
+    let targetFaxCount = 0;
+    for (const c of contacts) {
+      if (!c.is_active || !c.fax) continue;
+      if (campaign.target_region && c.region !== campaign.target_region) continue;
+      const parsed = parseFaxNumbers(c.fax);
+      const numbers = parsed.length > 0 ? parsed : [c.fax.replace(/[^0-9]/g, "") || c.fax];
+      const pending = numbers.filter((n) => !sentPairsForCampaign.has(`${c.id}|${n}`));
+      if (pending.length > 0) targetCourseCount += 1;
+      targetFaxCount += pending.length;
+    }
+
     const confirmed = window.confirm(
       `"${campaign.campaign_name}" 캠페인을 지금 발송합니다.\n` +
-      `대상: ${campaign.target_region ?? "전체 지역"} (미발송 ${targetCount}곳)\n` +
+      `대상: ${campaign.target_region ?? "전체 지역"} (미발송 ${targetCourseCount}곳 / 총 ${targetFaxCount}건 발송 — 번호가 2개 이상인 골프장은 모든 번호로 발송됩니다)\n` +
       `실제 골프장 팩스로 발송되며 되돌릴 수 없습니다. 계속할까요?`,
     );
     if (!confirmed) return;
