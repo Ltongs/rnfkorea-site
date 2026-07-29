@@ -11,12 +11,12 @@ import { supabase } from "../lib/supabase";
 export type AppTabKey =
   | "chat" | "schedule" | "status" | "orders" | "jinheung" | "narumi" | "email" | "memo"
   | "financehub" | "exportshop" | "quotation" | "cns" | "performance" | "rentalos"
-  | "hyundaicm" | "numbersearch" | "taesan" | "callmanagement";
+  | "hyundaicm" | "numbersearch" | "taesan" | "callmanagement" | "faxcampaign";
 
 export const APP_TAB_ORDER: AppTabKey[] = [
   "chat", "schedule", "status", "cns", "orders", "hyundaicm", "jinheung", "narumi",
   "taesan", "quotation", "performance", "rentalos", "exportshop", "financehub",
-  "callmanagement", "numbersearch", "email", "memo",
+  "callmanagement", "faxcampaign", "numbersearch", "email", "memo",
 ];
 
 // 클릭 시 이 페이지 안에서 렌더링하지 않고 곧바로 다른 라우트로 이동하는 탭
@@ -25,6 +25,7 @@ export const APP_EXTERNAL_TAB_LINKS: Partial<Record<AppTabKey, string>> = {
   rentalos: "/rental-os",
   taesan: "/taesan",
   callmanagement: "/work/call-management",
+  faxcampaign: "/work/fax-campaign",
 };
 
 const APP_TAB_LABELS: Record<AppTabKey, string> = {
@@ -32,7 +33,7 @@ const APP_TAB_LABELS: Record<AppTabKey, string> = {
   jinheung: "🔧 진흥주문", narumi: "🚛 나르미", memo: "📝 메모", financehub: "💵 매출/매입",
   exportshop: "🌏 수출장비", quotation: "📋 견적서", cns: "🗂 통합상담", performance: "📈 실적관리",
   rentalos: "🚐 Rental_O/S", hyundaicm: "🏗 현대CM", numbersearch: "🔍 번호검색",
-  taesan: "🚚 태산통운", callmanagement: "📞 상담관리", email: "📧 이메일",
+  taesan: "🚚 태산통운", callmanagement: "📞 상담관리", faxcampaign: "📠 팩스발송", email: "📧 이메일",
 };
 
 // pages/secretary/index.tsx의 탭 버튼 스타일(TB/TA/TI)과 완전히 동일하게 맞춘다.

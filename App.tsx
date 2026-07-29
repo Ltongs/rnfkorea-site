@@ -69,6 +69,7 @@ import TireShopPage from "./pages/TireShop/index";
 import TireShopDetailPage from "./pages/TireShop/detail";
 import CallManagementPage from "./pages/CallManagement/index";
 import CallManagementLoginPage from "./pages/CallManagement/Login";
+import FaxCampaignPage from "./pages/FaxCampaign/index";
 import KakaoCallbackPage from "./pages/KakaoCallback";
 import KakaoConnectPage from "./pages/HyundaiCM/KakaoConnect";
 import DashboardPage from "./pages/Dashboard";
@@ -541,6 +542,7 @@ function ScrollToTopButton() {
   const [visible, setVisible] = useState(false);
   const hideEntirely = pathname.startsWith("/work/secretary")
     || pathname.startsWith("/work/call-management")
+    || pathname.startsWith("/work/fax-campaign")
     || pathname.startsWith("/hyundaicm")
     || pathname.startsWith("/taesan")
     || pathname.startsWith("/rental-os")
@@ -1438,6 +1440,7 @@ const AppRoutes = () => {
     || pathname.startsWith("/work/narumi")
     || pathname.startsWith("/work/manual")
     || pathname.startsWith("/work/call-management")
+    || pathname.startsWith("/work/fax-campaign")
     || pathname.startsWith("/hyundaicm")
     || pathname.startsWith("/taesan")
     || pathname.startsWith("/rental-os")
@@ -1577,6 +1580,10 @@ const AppRoutes = () => {
           <Route
             path="/work/dashboard"
             element={isAdminLevel ? <DashboardPage /> : <Navigate to="/" replace />}
+          />
+          <Route
+            path="/work/fax-campaign"
+            element={isAdminLevel ? <FaxCampaignPage /> : <Navigate to="/" replace />}
           />
           <Route
             path="/work/manual"
