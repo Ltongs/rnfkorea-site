@@ -4,6 +4,7 @@
 // orix_incentives_partner_view를 통해서만 조회/입력한다 — 서버(DB) 단에서 컬럼 자체를 숨긴다.
 // 인센티브총액/CM지급인센티브는 DB의 GENERATED 컬럼(대출원금×인센티브율 기반)이라 직접 입력하지 않는다.
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Loader2, Plus, Upload, Download, Trash2, X } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
@@ -73,6 +74,7 @@ function emptyAdminForm(): AdminOnlyFields {
 }
 
 export default function OrixIncentivePage() {
+  const navigate = useNavigate();
   const { user, logout, isOrixAdmin, isOrixPartner } = useAuth() as any;
   const table = isOrixAdmin ? "orix_incentives" : "orix_incentives_partner_view";
 
@@ -227,6 +229,14 @@ export default function OrixIncentivePage() {
       <div className="bg-white border-b border-gray-200 sticky top-0 z-30">
         <div className="px-4 py-2.5 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
+            {isOrixAdmin && (
+              <button
+                onClick={() => navigate("/work/secretary")}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-semibold hover:border-gray-300 hover:text-gray-700 transition-all"
+              >
+                ← AI비서
+              </button>
+            )}
             <span className="text-sm font-semibold text-[#0f172a]">💰 ORIX 인센티브 관리</span>
             <span className="text-xs text-gray-400">
               {isOrixAdmin ? "관리자 화면 — 전체 항목 조회/입력" : "ORIX 파트너 화면 — 확정 내역 조회/입력"}
