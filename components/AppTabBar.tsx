@@ -7,16 +7,17 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { useAuth } from "../lib/auth";
 
 export type AppTabKey =
   | "chat" | "schedule" | "status" | "orders" | "jinheung" | "narumi" | "email" | "memo"
   | "financehub" | "exportshop" | "quotation" | "cns" | "performance" | "rentalos"
-  | "hyundaicm" | "numbersearch" | "taesan" | "callmanagement" | "faxcampaign";
+  | "hyundaicm" | "numbersearch" | "taesan" | "callmanagement" | "faxcampaign" | "orix";
 
 export const APP_TAB_ORDER: AppTabKey[] = [
   "chat", "schedule", "status", "cns", "orders", "hyundaicm", "jinheung", "narumi",
   "taesan", "quotation", "performance", "rentalos", "exportshop", "financehub",
-  "callmanagement", "faxcampaign", "numbersearch", "email", "memo",
+  "callmanagement", "faxcampaign", "orix", "numbersearch", "email", "memo",
 ];
 
 // 클릭 시 이 페이지 안에서 렌더링하지 않고 곧바로 다른 라우트로 이동하는 탭
@@ -26,6 +27,7 @@ export const APP_EXTERNAL_TAB_LINKS: Partial<Record<AppTabKey, string>> = {
   taesan: "/taesan",
   callmanagement: "/work/call-management",
   faxcampaign: "/work/fax-campaign",
+  orix: "/orix",
 };
 
 const APP_TAB_LABELS: Record<AppTabKey, string> = {
@@ -33,7 +35,7 @@ const APP_TAB_LABELS: Record<AppTabKey, string> = {
   jinheung: "🔧 진흥주문", narumi: "🚛 나르미", memo: "📝 메모", financehub: "💵 매출/매입",
   exportshop: "🌏 수출장비", quotation: "📋 견적서", cns: "🗂 통합상담", performance: "📈 실적관리",
   rentalos: "🚐 Rental_O/S", hyundaicm: "🏗 현대CM", numbersearch: "🔍 번호검색",
-  taesan: "🚚 태산통운", callmanagement: "📞 상담관리", faxcampaign: "📠 팩스발송", email: "📧 이메일",
+  taesan: "🚚 태산통운", callmanagement: "📞 상담관리", faxcampaign: "📠 팩스발송", orix: "💰 ORIX인센티브", email: "📧 이메일",
 };
 
 // pages/secretary/index.tsx의 탭 버튼 스타일(TB/TA/TI)과 완전히 동일하게 맞춘다.
@@ -44,6 +46,9 @@ const TI = "bg-gray-100 text-gray-500 border-gray-200 hover:border-gray-400 hove
 export default function AppTabBar({ activeTab }: { activeTab: AppTabKey }) {
   const navigate = useNavigate();
   const [unreadEmail, setUnreadEmail] = useState(0);
+  const { isOrixAdmin } = useAuth() as any;
+  // "orix" 탭은 admin@rnfkorea.co.kr/ltongs7@gmail.com(isOrixAdmin)에게만 노출한다.
+  const visibleTabOrder = APP_TAB_ORDER.filter((t) => t !== "orix" || isOrixAdmin);
 
   useEffect(() => {
     supabase
@@ -71,14 +76,14 @@ export default function AppTabBar({ activeTab }: { activeTab: AppTabKey }) {
       const tag = target?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
       e.preventDefault();
-      const curIdx = APP_TAB_ORDER.indexOf(activeTab);
+      const curIdx = visibleTabOrder.indexOf(activeTab);
       const delta = e.key === "ArrowRight" ? 1 : -1;
-      const nextIdx = (curIdx + delta + APP_TAB_ORDER.length) % APP_TAB_ORDER.length;
-      goTab(APP_TAB_ORDER[nextIdx]);
+      const nextIdx = (curIdx + delta + visibleTabOrder.length) % visibleTabOrder.length;
+      goTab(visibleTabOrder[nextIdx]);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [activeTab]);
+  }, [activeTab, visibleTabOrder]);
 
   return (
     <div
@@ -86,7 +91,7 @@ export default function AppTabBar({ activeTab }: { activeTab: AppTabKey }) {
       style={{ scrollbarWidth: "none" }}
     >
       <style>{`.app-tab-scroll::-webkit-scrollbar{display:none;}`}</style>
-      {APP_TAB_ORDER.map((t) => (
+      {visibleTabOrder.map((t) => (
         <button
           key={t}
           type="button"

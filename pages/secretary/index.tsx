@@ -7,14 +7,16 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
-type TabKey = "chat"|"schedule"|"status"|"orders"|"jinheung"|"narumi"|"email"|"memo"|"financehub"|"exportshop"|"quotation"|"cns"|"performance"|"rentalos"|"hyundaicm"|"numbersearch"|"taesan"|"callmanagement"|"faxcampaign";
+type TabKey = "chat"|"schedule"|"status"|"orders"|"jinheung"|"narumi"|"email"|"memo"|"financehub"|"exportshop"|"quotation"|"cns"|"performance"|"rentalos"|"hyundaicm"|"numbersearch"|"taesan"|"callmanagement"|"faxcampaign"|"orix";
 // 메뉴 탭 순서 — 상단 탭바 렌더링과 Ctrl+Option+←/→ 단축키 이동이 이 배열 하나를 공유합니다.
 // (다른 업무 페이지들의 공용 탭바인 components/AppTabBar.tsx의 APP_TAB_ORDER와 항상 같은 구성으로 맞춘다.)
-const TAB_ORDER: TabKey[] = ["chat","schedule","status","cns","orders","hyundaicm","jinheung","narumi","taesan","quotation","performance","rentalos","exportshop","financehub","callmanagement","faxcampaign","numbersearch","email","memo"];
+// "orix" 탭은 admin@rnfkorea.co.kr/ltongs7@gmail.com(isOrixAdmin)에게만 렌더링되므로
+// everyasset.fc@gmail.com 등 다른 AI비서 접근 계정에는 보이지 않는다 (렌더링 시 필터링).
+const TAB_ORDER: TabKey[] = ["chat","schedule","status","cns","orders","hyundaicm","jinheung","narumi","taesan","quotation","performance","rentalos","exportshop","financehub","callmanagement","faxcampaign","orix","numbersearch","email","memo"];
 // 별도 로그인/RouteGuard를 쓰는 독립 페이지로 즉시 이동만 하는 탭(내용을 이 안에서 렌더링하지 않음).
 // tab 상태를 sessionStorage에 남기면, 이동 후 "AI비서" 페이지가 새로 마운트될 때 저장된 tab 값을
 // 다시 읽어 useEffect가 곧바로 재이동시켜 "뒤로가기가 안 먹히는" 문제가 생기므로 setTabAndSave를 타지 않는다.
-const EXTERNAL_TAB_LINKS: Partial<Record<TabKey,string>> = { hyundaicm:"/hyundaicm", rentalos:"/rental-os", taesan:"/taesan", callmanagement:"/work/call-management", faxcampaign:"/work/fax-campaign" };
+const EXTERNAL_TAB_LINKS: Partial<Record<TabKey,string>> = { hyundaicm:"/hyundaicm", rentalos:"/rental-os", taesan:"/taesan", callmanagement:"/work/call-management", faxcampaign:"/work/fax-campaign", orix:"/orix" };
 // 통합상담 탭 서브필터
 type CnsActiveTab = "통합상담" | "할부금융" | "보험" | "지게차" | "배터리" | "타이어" | "나르미" | "Rental_O/S";
 const CNS_WORK_TYPES: Record<CnsActiveTab, string[]> = {
@@ -2720,7 +2722,7 @@ function MiniCalendar({
 
 // ─── 메인 컴포넌트 ────────────────────────────────────────────────────────────
 const SecretaryPage:React.FC = () => {
-  const {user,isAdmin,isSubAdmin,logout} = useAuth() as any;
+  const {user,isAdmin,isSubAdmin,isOrixAdmin,logout} = useAuth() as any;
   const navigate = useNavigate();
   // ─── PWA standalone 모드 감지 ─────────────────────────────────────────────
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches
@@ -5346,7 +5348,12 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               }
             }}
           >
-            {([...TAB_ORDER,...TAB_ORDER,...TAB_ORDER]).map((t,i)=>(
+            {(()=>{
+              // "orix" 탭은 isOrixAdmin(admin@rnfkorea.co.kr/ltongs7@gmail.com)에게만 노출한다.
+              // everyasset.fc@gmail.com 등 다른 AI비서 접근 계정에는 렌더링 자체를 하지 않는다.
+              const visibleTabs = TAB_ORDER.filter(t=>t!=="orix"||isOrixAdmin);
+              return [...visibleTabs,...visibleTabs,...visibleTabs];
+            })().map((t,i)=>(
               <button key={`${t}-${i}`} data-tab-key={t} className={`${TB} ${tab===t?TA:TI}`} style={{flexShrink:0,whiteSpace:"nowrap"}} onClick={()=>{
                 const link = EXTERNAL_TAB_LINKS[t];
                 if(link){ navigate(link); return; }
@@ -5354,7 +5361,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               }}>
                 {t==="email"
                   ? <span className="flex items-center gap-1">📧 이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
-                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",jinheung:"🔧 진흥주문",narumi:"🚛 나르미",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비",quotation:"📋 견적서",cns:"🗂 통합상담",performance:"📈 실적관리",rentalos:"🚐 Rental_O/S",hyundaicm:"🏗 현대CM",numbersearch:"🔍 번호검색",taesan:"🚚 태산통운",callmanagement:"📞 상담관리",faxcampaign:"📠 팩스발송"}[t as string]
+                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",jinheung:"🔧 진흥주문",narumi:"🚛 나르미",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비",quotation:"📋 견적서",cns:"🗂 통합상담",performance:"📈 실적관리",rentalos:"🚐 Rental_O/S",hyundaicm:"🏗 현대CM",numbersearch:"🔍 번호검색",taesan:"🚚 태산통운",callmanagement:"📞 상담관리",faxcampaign:"📠 팩스발송",orix:"💰 ORIX인센티브"}[t as string]
                 }
               </button>
             ))}

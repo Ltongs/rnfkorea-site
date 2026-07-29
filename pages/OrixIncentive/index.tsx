@@ -6,6 +6,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Loader2, Plus, Upload, Download, Trash2, X } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
+import AppTabBar from "../../components/AppTabBar";
 
 type SalesFields = {
   confirmed_date: string | null;
@@ -206,34 +207,28 @@ export default function OrixIncentivePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <section className="relative bg-[#0a192f] text-white overflow-hidden">
-        <div
-          className="absolute inset-0 opacity-[0.04]" aria-hidden="true"
-          style={{
-            backgroundImage: "repeating-linear-gradient(45deg, white 0, white 1px, transparent 0, transparent 50%)",
-            backgroundSize: "24px 24px",
-          }}
-        />
-        <div className="relative max-w-6xl mx-auto px-6 md:px-8 lg:px-10 py-10 md:py-14">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium tracking-[0.12em] uppercase text-orange-400">ORIX</p>
-              <h1 className="mt-3 text-3xl md:text-4xl font-semibold leading-[1.15] text-white break-keep">
-                인센티브 관리
-              </h1>
-              <p className="mt-3 text-base leading-7 text-white/75 break-keep">
-                {isOrixAdmin ? "관리자 화면 — 전체 항목 조회/입력" : "ORIX 파트너 화면 — 확정 내역 조회/입력"}
-              </p>
-            </div>
-            <button
-              onClick={logout}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-white/20 text-white/70 text-xs font-semibold hover:border-white/40 hover:text-white transition-all"
-            >
-              로그아웃 ({user?.email})
-            </button>
+      {/* ── 헤더 + 탭 헤더 ── */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-30">
+        <div className="px-4 py-2.5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="text-sm font-semibold text-[#0f172a]">💰 ORIX 인센티브 관리</span>
+            <span className="text-xs text-gray-400">
+              {isOrixAdmin ? "관리자 화면 — 전체 항목 조회/입력" : "ORIX 파트너 화면 — 확정 내역 조회/입력"}
+            </span>
           </div>
+          <button
+            onClick={logout}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-semibold hover:border-gray-300 hover:text-gray-700 transition-all"
+          >
+            로그아웃 ({user?.email})
+          </button>
         </div>
-      </section>
+        {isOrixAdmin && (
+          <div className="px-4 pb-2.5">
+            <AppTabBar activeTab="orix" />
+          </div>
+        )}
+      </div>
 
       <div className="max-w-6xl mx-auto px-4 md:px-6 lg:px-8 py-8 space-y-6">
         {loading ? (
