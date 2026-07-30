@@ -3075,6 +3075,7 @@ const SecretaryPage:React.FC = () => {
   const [cnsFinanceVehicleModel,setCnsFinanceVehicleModel] = useState("");
   const [cnsFinanceProduct,setCnsFinanceProduct]           = useState("");
   const [cnsFinanceCompany,setCnsFinanceCompany]           = useState("");
+  const [cnsFinanceCompanyCustom,setCnsFinanceCompanyCustom] = useState(false); // 금융사 "직접입력" 모드
   const [cnsFinanceAmount,setCnsFinanceAmount]             = useState("");   // 숫자 문자열 (쉼표 없이)
   const [cnsFinancePeriod,setCnsFinancePeriod]             = useState("");
   const [cnsFinanceInterestRate,setCnsFinanceInterestRate] = useState("");
@@ -3209,7 +3210,7 @@ const SecretaryPage:React.FC = () => {
     setCnsTelecomProvider(""); setCnsFollowupNeeded(false); setCnsNextFollowupDate("");
     // 금융
     setCnsFinanceCategory(""); setCnsFinanceVehicleModel(""); setCnsFinanceProduct("");
-    setCnsFinanceCompany(""); setCnsFinanceAmount(""); setCnsFinancePeriod("");
+    setCnsFinanceCompany(""); setCnsFinanceCompanyCustom(false); setCnsFinanceAmount(""); setCnsFinancePeriod("");
     setCnsFinanceInterestRate(""); setCnsFinanceIncentive("");
     setCnsFinanceStage("received"); setCnsFinanceNote("");
     // 보험
@@ -7322,10 +7323,11 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                                 <option value="건설">건설</option>
                                 <option value="고소작업대">고소작업대</option>
                                 <option value="배터리">배터리</option>
+                                <option value="기타">기타</option>
                               </select>
                             </div>
                             <div>
-                              <label className={LBL}>차종</label>
+                              <label className={LBL}>물건명</label>
                               <input className={CTRL} placeholder="예: 포터2 / 3.5톤 카고" value={cnsFinanceVehicleModel} onChange={e=>setCnsFinanceVehicleModel(e.target.value)}/>
                             </div>
                             <div>
@@ -7339,10 +7341,21 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                             </div>
                             <div>
                               <label className={LBL}>금융사</label>
-                              <select className={CTRL} value={cnsFinanceCompany} onChange={e=>setCnsFinanceCompany(e.target.value)}>
-                                <option value="">선택</option>
-                                {["KB캐피탈","NH캐피탈","오릭스","HCI","BNK캐피탈","메리츠캐피탈","롯데오토리스","농협","우리금융","BSON"].map(c=><option key={c} value={c}>{c}</option>)}
-                              </select>
+                              {cnsFinanceCompanyCustom ? (
+                                <input className={CTRL} placeholder="금융사명을 입력하세요" autoFocus
+                                  value={cnsFinanceCompany}
+                                  onChange={e=>setCnsFinanceCompany(e.target.value)}
+                                  onBlur={()=>{ if(!cnsFinanceCompany.trim()) setCnsFinanceCompanyCustom(false); }}/>
+                              ) : (
+                                <select className={CTRL} value={cnsFinanceCompany} onChange={e=>{
+                                  if(e.target.value==="__custom__"){ setCnsFinanceCompanyCustom(true); setCnsFinanceCompany(""); }
+                                  else setCnsFinanceCompany(e.target.value);
+                                }}>
+                                  <option value="">선택</option>
+                                  {["KB캐피탈","NH캐피탈","오릭스","HCI","BNK캐피탈","메리츠캐피탈","롯데오토리스","농협","우리금융","BSON"].map(c=><option key={c} value={c}>{c}</option>)}
+                                  <option value="__custom__">직접입력</option>
+                                </select>
+                              )}
                             </div>
                             <div>
                               <label className={LBL}>취급액</label>

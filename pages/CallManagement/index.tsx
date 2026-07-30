@@ -194,6 +194,8 @@ type InsuranceExpiryRow = {
 const SALES_CATEGORIES = ["타이어", "지게차렌탈", "건설기계수출", "배터리(LFP)", "배터리(납산)", "렌탈사업", "기타"];
 const SALES_TRADE_TYPES = ["내수", "수출"] as const;
 
+const FINANCE_COMPANY_PRESETS = ["KB캐피탈", "NH캐피탈", "오릭스", "HCI", "BNK캐피탈", "메리츠캐피탈", "롯데오토리스", "농협", "우리금융", "BSON"];
+
 type InvoiceRegForm = {
   invoice_no: string;
   issue_date: string;
@@ -575,6 +577,7 @@ const CallManagementPage: React.FC = () => {
   const [financeVehicleModel, setFinanceVehicleModel] = useState("");
   const [financeProduct, setFinanceProduct] = useState("");
   const [financeCompany, setFinanceCompany] = useState("");
+  const [financeCompanyCustom, setFinanceCompanyCustom] = useState(false); // 금융사 "직접입력" 모드
   const [financeAmount, setFinanceAmount] = useState("");
   const [financePeriod, setFinancePeriod] = useState("");
   const [financeInterestRate, setFinanceInterestRate] = useState("");
@@ -1243,6 +1246,9 @@ const CallManagementPage: React.FC = () => {
       setFinanceVehicleModel(financeDetail?.finance_vehicle_model || "");
       setFinanceProduct(financeDetail?.finance_product || "");
       setFinanceCompany(financeDetail?.finance_company || "");
+      setFinanceCompanyCustom(
+        !!financeDetail?.finance_company && !FINANCE_COMPANY_PRESETS.includes(financeDetail.finance_company)
+      );
       setFinanceAmount(formatNumberWithCommas(financeDetail?.finance_amount));
       setFinancePeriod(
         financeDetail?.finance_period !== null && financeDetail?.finance_period !== undefined
@@ -1724,6 +1730,7 @@ const CallManagementPage: React.FC = () => {
     setFinanceVehicleModel("");
     setFinanceProduct("");
     setFinanceCompany("");
+    setFinanceCompanyCustom(false);
     setFinanceAmount("");
     setFinancePeriod("");
     setFinanceInterestRate("");
@@ -3998,11 +4005,12 @@ const CallManagementPage: React.FC = () => {
                       <option value="건설">건설</option>
                       <option value="고소작업대">고소작업대</option>
                       <option value="배터리">배터리</option>
+                      <option value="기타">기타</option>
                     </select>
                   </div>
 
                   <div>
-                    <label className={labelClass}>차종</label>
+                    <label className={labelClass}>물건명</label>
                     <input
                       type="text"
                       className={controlClass}
@@ -4028,23 +4036,32 @@ const CallManagementPage: React.FC = () => {
 
                   <div>
                     <label className={labelClass}>금융사</label>
-                    <select
-                      className={controlClass}
-                      value={financeCompany}
-                      onChange={(e) => setFinanceCompany(e.target.value)}
-                    >
-                      <option value="">선택</option>
-                      <option value="KB캐피탈">KB캐피탈</option>
-                      <option value="NH캐피탈">NH캐피탈</option>
-                      <option value="오릭스">오릭스</option>
-                      <option value="HCI">HCI</option>
-                      <option value="BNK캐피탈">BNK캐피탈</option>
-                      <option value="메리츠캐피탈">메리츠캐피탈</option>
-                      <option value="롯데오토리스">롯데오토리스</option>
-                      <option value="농협">농협</option>
-                      <option value="우리금융">우리금융</option>
-                      <option value="BSON">BSON</option>
-                    </select>
+                    {financeCompanyCustom ? (
+                      <input
+                        type="text"
+                        className={controlClass}
+                        placeholder="금융사명을 입력하세요"
+                        autoFocus
+                        value={financeCompany}
+                        onChange={(e) => setFinanceCompany(e.target.value)}
+                        onBlur={() => { if (!financeCompany.trim()) setFinanceCompanyCustom(false); }}
+                      />
+                    ) : (
+                      <select
+                        className={controlClass}
+                        value={financeCompany}
+                        onChange={(e) => {
+                          if (e.target.value === "__custom__") { setFinanceCompanyCustom(true); setFinanceCompany(""); }
+                          else setFinanceCompany(e.target.value);
+                        }}
+                      >
+                        <option value="">선택</option>
+                        {FINANCE_COMPANY_PRESETS.map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                        <option value="__custom__">직접입력</option>
+                      </select>
+                    )}
                   </div>
 
                   <div>
@@ -5325,7 +5342,7 @@ const CallManagementPage: React.FC = () => {
                                       <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-sm leading-6 border-t border-gray-100 mt-1 pt-1">
                                         <span className="text-orange-400 font-semibold">금융</span>
                                         <span><span className="text-gray-400">종목 </span><span className="font-medium text-gray-800">{expandedFinanceDetail.finance_category||"-"}</span></span>
-                                        <span><span className="text-gray-400">차종 </span><span className="font-medium text-gray-800">{expandedFinanceDetail.finance_vehicle_model||"-"}</span></span>
+                                        <span><span className="text-gray-400">물건명 </span><span className="font-medium text-gray-800">{expandedFinanceDetail.finance_vehicle_model||"-"}</span></span>
                                         <span><span className="text-gray-400">상품 </span><span className="font-medium text-gray-800">{expandedFinanceDetail.finance_product||"-"}</span></span>
                                         <span><span className="text-gray-400">금융사 </span><span className="font-medium text-gray-800">{expandedFinanceDetail.finance_company||"-"}</span></span>
                                         <span><span className="text-gray-400">취급액 </span><span className="font-medium text-gray-800">{formatAmountDisplay(expandedFinanceDetail.finance_amount)}</span></span>
