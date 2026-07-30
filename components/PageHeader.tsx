@@ -93,7 +93,7 @@ function calcMobileMenuStyle(btnEl: HTMLButtonElement | null): MobileMenuStyle {
 export default function PageHeader() {
   const { pathname } = useLocation();
   const nav = useNavigate();
-  const { user, canViewAll, isAdmin, isSubAdmin, isNarumi, isLotte, isInsuranceManager, isHyundaiCM, isNhCapital, isNhCapitalStaff, isInsAI, isTaesan, isRentalOS, logout } = useAuth() as any;
+  const { user, canViewAll, isAdmin, isSubAdmin, isNarumi, isLotte, isInsuranceManager, isHyundaiCM, isNhCapital, isNhCapitalStaff, isOrixPartner, isInsAI, isTaesan, isRentalOS, logout } = useAuth() as any;
   const isAdminLevel = isAdmin || isSubAdmin;
 
   // 참고: PWA 앱은 manifest.json의 start_url(/work/secretary 등)로 곧장 진입하며,
@@ -577,7 +577,7 @@ export default function PageHeader() {
                     </button>
                   )}
 
-                  {(isAdminLevel || isHyundaiCM || isNhCapital || isNhCapitalStaff || !user) && (
+                  {(isAdminLevel || isHyundaiCM || isNhCapital || isNhCapitalStaff || isOrixPartner || !user) && (
                     <button
                       type="button"
                       className={dropItem}

@@ -285,21 +285,24 @@ const btnGhost =
 
 // ─── 메인 컴포넌트 ────────────────────────────────────────
 export default function HyundaiCMPage() {
-  const { user, logout, isAdmin, isSubAdmin, isHyundaiCM, isNhCapital, isNhCapitalStaff } = useAuth() as any;
+  const { user, logout, isAdmin, isSubAdmin, isHyundaiCM, isNhCapital, isNhCapitalStaff, isOrixPartner } = useAuth() as any;
   const nav = useNavigate();
   const [searchParams] = useSearchParams();
   const focusId = searchParams.get("id"); // 업무현황에서 딜 클릭 시 전달되는 id
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches
     || (window.navigator as any).standalone === true;
   const isAdminLevel           = isAdmin || isSubAdmin;
-  const canCreate              = isAdminLevel || isHyundaiCM || isNhCapital;
-  const canEditExisting        = isAdminLevel || isNhCapital;
-  const canChangeStatus        = isAdminLevel || isNhCapital || isNhCapitalStaff;
-  const canUploadDoc           = isAdminLevel || isNhCapital;
-  const canUploadVehicleRegDoc = isAdminLevel || isHyundaiCM || isNhCapital || isNhCapitalStaff; // 목록 열람+다운로드 가능 여부 (NH캐피탈 직원 포함)
-  const canActuallyUploadVehicleRegDoc = isAdminLevel || isHyundaiCM || isNhCapital; // 실제 업로드 버튼 노출 여부 — NH캐피탈 직원(조회 전용)은 제외
+  // ORIX 조용백은 현대CM 페이지에서 농협캐피탈(isNhCapital)과 동일한 권한을 갖되,
+  // 태산통운 접근은 없다(isNhCapital과 분리됨) — 이 페이지 안에서만 둘을 합쳐서 취급.
+  const isNhCapitalOrOrix      = isNhCapital || isOrixPartner;
+  const canCreate              = isAdminLevel || isHyundaiCM || isNhCapitalOrOrix;
+  const canEditExisting        = isAdminLevel || isNhCapitalOrOrix;
+  const canChangeStatus        = isAdminLevel || isNhCapitalOrOrix || isNhCapitalStaff;
+  const canUploadDoc           = isAdminLevel || isNhCapitalOrOrix;
+  const canUploadVehicleRegDoc = isAdminLevel || isHyundaiCM || isNhCapitalOrOrix || isNhCapitalStaff; // 목록 열람+다운로드 가능 여부 (NH캐피탈 직원 포함)
+  const canActuallyUploadVehicleRegDoc = isAdminLevel || isHyundaiCM || isNhCapitalOrOrix; // 실제 업로드 버튼 노출 여부 — NH캐피탈 직원(조회 전용)은 제외
   const canUploadTaxInvoice    = isHyundaiCM || isAdminLevel;  // 세금계산서 업로드: p2001103 + admin + ltongs7
-  const canDelete              = isAdminLevel || isNhCapital;
+  const canDelete              = isAdminLevel || isNhCapitalOrOrix;
 
   // ── 신규 접수 폼 ──
   const [customerType,          setCustomerType]          = useState<CustomerType>("개인");
@@ -2785,7 +2788,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                                 </span>
                               </p>
                             </div>
-                            {(isAdmin || isSubAdmin || isNhCapital || isNhCapitalStaff) && (
+                            {(isAdmin || isSubAdmin || isNhCapitalOrOrix || isNhCapitalStaff) && (
                             <button
                               onClick={() => downloadVehicleRegDoc(f.path, f.name)}
                               className="shrink-0 px-3 py-1 rounded-xl border border-emerald-200 text-emerald-700 text-xs font-medium hover:border-emerald-400 transition-all"

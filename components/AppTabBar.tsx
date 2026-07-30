@@ -46,9 +46,30 @@ const TI = "bg-gray-100 text-gray-500 border-gray-200 hover:border-gray-400 hove
 export default function AppTabBar({ activeTab }: { activeTab: AppTabKey }) {
   const navigate = useNavigate();
   const [unreadEmail, setUnreadEmail] = useState(0);
-  const { isOrixAdmin } = useAuth() as any;
-  // "orix" 탭은 admin@rnfkorea.co.kr/ltongs7@gmail.com(isOrixAdmin)에게만 노출한다.
-  const visibleTabOrder = APP_TAB_ORDER.filter((t) => t !== "orix" || isOrixAdmin);
+  const {
+    isOrixAdmin, isOrixPartner, isAdmin, isSubAdmin, canViewAll, isInsuranceManager,
+    isHyundaiCM, isNhCapital, isNhCapitalStaff, isTaesan, isRentalOS,
+  } = useAuth() as any;
+  const isAdminLevel = isAdmin || isSubAdmin;
+
+  // 이 탭바는 현대CM/태산통운/RentalOS/나르미/상담관리 등 서로 다른 권한의 페이지에서
+  // 공유되므로, 각 탭은 해당 페이지의 RouteGuard와 동일한 조건으로만 노출해야 한다.
+  // (그렇지 않으면 예: 현대CM 전용 파트너 계정이 이 탭바를 통해 나르미/상담관리 등
+  //  자신에게 권한 없는 업무 화면 존재 자체를 알 수 있게 된다.)
+  // 매핑에 없는 나머지 탭(chat/schedule/status/cns/orders/jinheung/quotation/performance/
+  // exportshop/financehub/faxcampaign/numbersearch/email/memo)은 모두 /work/secretary
+  // 내부 탭이며 그 라우트 자체가 isAdminLevel 전용이므로 기본값 isAdminLevel을 따른다.
+  // ORIX 조용백(isOrixPartner)은 현대CM 페이지만 접근 가능하고 태산통운은 접근 불가하므로
+  // taesan 조건에는 isOrixPartner를 넣지 않는다.
+  const tabVisible: Partial<Record<AppTabKey, boolean>> = {
+    orix: isOrixAdmin,
+    narumi: canViewAll,
+    hyundaicm: isAdminLevel || isHyundaiCM || isNhCapital || isNhCapitalStaff || isOrixPartner,
+    taesan: isAdminLevel || isTaesan || isNhCapital,
+    rentalos: isAdminLevel || isRentalOS,
+    callmanagement: isAdminLevel || isInsuranceManager, // CallManagement/index.tsx의 canAccessConsulting과 동일 조건
+  };
+  const visibleTabOrder = APP_TAB_ORDER.filter((t) => tabVisible[t] ?? isAdminLevel);
 
   useEffect(() => {
     supabase

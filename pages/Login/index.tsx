@@ -13,13 +13,13 @@ import { useAuth } from "../../lib/auth";
 // 적용하고, 그 외 역할은 실제로 갈 수 있는 화면으로 보낸다.
 function defaultLandingFor(auth: {
   isAdmin?: boolean; isSubAdmin?: boolean; isInsAI?: boolean; isRentalOS?: boolean;
-  isHyundaiCM?: boolean; isNhCapital?: boolean; isNhCapitalStaff?: boolean;
+  isHyundaiCM?: boolean; isNhCapital?: boolean; isNhCapitalStaff?: boolean; isOrixPartner?: boolean;
   isTaesan?: boolean; isNarumi?: boolean; isLotte?: boolean; isInsuranceManager?: boolean;
 }): string {
   if (auth.isAdmin || auth.isSubAdmin) return "/work/secretary";
   if (auth.isInsAI) return "/work/secretary-ins";
   if (auth.isRentalOS) return "/rental-os";
-  if (auth.isHyundaiCM || auth.isNhCapital || auth.isNhCapitalStaff) return "/hyundaicm";
+  if (auth.isHyundaiCM || auth.isNhCapital || auth.isNhCapitalStaff || auth.isOrixPartner) return "/hyundaicm";
   if (auth.isTaesan) return "/taesan";
   if (auth.isNarumi || auth.isLotte || auth.isInsuranceManager) return "/narumi";
   return "/";
