@@ -9,6 +9,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 // 정책
 const UI_MASK_AFTER_HOURS = 120;
 const DB_SCRUB_AFTER_HOURS = 120;
+const COMPLETION_MASK_AFTER_HOURS = 48; // 등록완료(차량등록증 업로드) 후 마스킹까지의 유예시간
 const HIDE_UPLOADED_AFTER_DAYS_FOR_NON_ADMIN = 30;
 
 type TaskStatus =
@@ -154,9 +155,19 @@ function formatPhonePrettyFromDigits(digitsOnly: string) {
 
 function shouldMaskPhoneForUI(r: NarumiTask) {
   if (r.customer_phone_scrubbed_at) return true;
-  if (r.vehicle_doc_path) return true;
-  if (!r.customer_phone_set_at) return false;
 
+  // 등록완료(차량등록증 업로드) 후에는 즉시가 아니라 48시간 유예 후 마스킹한다.
+  // 업로드 시각 기록이 없는 과거 데이터(vehicle_doc_uploaded_at 컬럼 도입 이전)는
+  // 안전하게 기존과 동일하게 즉시 마스킹 상태를 유지한다.
+  if (r.vehicle_doc_path) {
+    if (!r.vehicle_doc_uploaded_at) return true;
+    const uploadedAt = new Date(r.vehicle_doc_uploaded_at).getTime();
+    if (Number.isNaN(uploadedAt)) return true;
+    const hoursSinceUpload = (Date.now() - uploadedAt) / (1000 * 60 * 60);
+    return hoursSinceUpload >= COMPLETION_MASK_AFTER_HOURS;
+  }
+
+  if (!r.customer_phone_set_at) return false;
   const setAt = new Date(r.customer_phone_set_at).getTime();
   if (Number.isNaN(setAt)) return false;
   const hours = (Date.now() - setAt) / (1000 * 60 * 60);
@@ -835,7 +846,7 @@ export default function NarumiPage() {
 
   const sendNarumiKakao = async (payload: Record<string, unknown>) => {
     try {
-      await fetch(NARUMI_KAKAO_URL, {
+      const res = await fetch(NARUMI_KAKAO_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -843,6 +854,16 @@ export default function NarumiPage() {
         },
         body: JSON.stringify(payload),
       });
+      // fetch()는 네트워크 레벨 실패에서만 reject되고 4xx/5xx는 정상 응답으로 처리되므로,
+      // 응답 본문을 반드시 확인해야 서버 쪽 발송 실패를 감지할 수 있다(기존엔 여기서 그냥
+      // 끝나버려서 큐잉/실패 여부를 전혀 알 수 없었음).
+      const data = await res.json().catch(() => null);
+      if (!res.ok || data?.error) {
+        console.error("[narumi kakao] 발송 실패:", res.status, data);
+        alert(`카카오 알림톡 발송에 실패했습니다 (사유: ${data?.error ?? res.status}). 담당자에게 별도로 연락해주세요.`);
+      } else if (data?.queued) {
+        console.log("[narumi kakao] 업무시간 외라 큐에 저장됨:", data.reason, "→", data.send_at);
+      }
     } catch (e) {
       console.warn("[narumi kakao] 전송 실패:", e);
     }
@@ -1950,7 +1971,8 @@ VIN: ${nextVin}`);
 
         {/* ── 안내문 ── */}
         <div className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-4 text-xs text-orange-700/90 leading-relaxed space-y-0.5">
-          <p>* 고객 전화번호는 입력 후 {UI_MASK_AFTER_HOURS}시간 경과 시 화면에서 뒷 4자리가 마스킹됩니다. 고객명은 계속 공개됩니다.</p>
+          <p>* 고객 전화번호는 입력 후 {UI_MASK_AFTER_HOURS}시간 경과 시 화면에서 뒷 4자리가 마스킹됩니다(등록완료 전). 고객명은 계속 공개됩니다.</p>
+          <p>* 등록완료(차량등록증 업로드) 후에는 {COMPLETION_MASK_AFTER_HOURS}시간 경과 시 화면에서 뒷 4자리가 마스킹됩니다.</p>
           <p>* 고객 전화번호는 입력 후 {DB_SCRUB_AFTER_HOURS}시간(5일) 경과 시 DB에서 뒷 4자리가 영구 마스킹(삭제)됩니다.</p>
           <p>* 차량등록증 업로드 완료 건은 일반 사용자는 최근 {HIDE_UPLOADED_AFTER_DAYS_FOR_NON_ADMIN}일 이내만 표시되며, 업로드 후 {HIDE_UPLOADED_AFTER_DAYS_FOR_NON_ADMIN}일이 지나면 파일이 실제로 삭제됩니다.</p>
         </div>
