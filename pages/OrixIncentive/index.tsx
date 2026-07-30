@@ -36,6 +36,7 @@ type Row = SalesInputFields &
     id: string;
     incentive_total: number | null; // DB GENERATED: round(loan_principal * incentive_rate / 100)
     cm_paid_incentive: number | null; // DB GENERATED: round(loan_principal * cm_incentive_rate / 100) 의 96.7%(3.3% 원천징수 공제)
+    paid_to_contractor_name?: string | null; // 조용백용 읽기전용 뷰에서만 내려오는 지급처(수탁인) 이름
     created_at: string;
   };
 
@@ -87,7 +88,10 @@ function emptyAdminForm(): AdminOnlyFields {
 export default function OrixIncentivePage() {
   const navigate = useNavigate();
   const { user, logout, isOrixAdmin, isOrixPartner } = useAuth() as any;
-  const table = isOrixAdmin ? "orix_incentives" : "orix_incentives_partner_view";
+  // admin은 전체 컬럼을 그대로 읽고 쓴다. 조용백은 관리자 전용 항목을 "읽기전용"으로 보되
+  // 직접 수정은 못 하도록, 조회용(전체 컬럼)과 입력용(영업 항목만) 뷰를 분리해서 쓴다.
+  const readTable = isOrixAdmin ? "orix_incentives" : "orix_incentives_partner_view";
+  const writeTable = isOrixAdmin ? "orix_incentives" : "orix_incentives_partner_edit_view";
 
   const [rows, setRows] = useState<Row[]>([]);
   const [contractors, setContractors] = useState<Contractor[]>([]);
@@ -109,7 +113,7 @@ export default function OrixIncentivePage() {
     setLoading(true);
     setError("");
     const { data, error: err } = await supabase
-      .from(table)
+      .from(readTable)
       .select("*")
       .order("confirmed_date", { ascending: false, nullsFirst: false });
     if (err) setError(err.message);
@@ -127,7 +131,7 @@ export default function OrixIncentivePage() {
     loadRows();
     loadContractors();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [table]);
+  }, [readTable]);
 
   const notifyNewEntry = async (fields: SalesInputFields) => {
     try {
@@ -149,7 +153,7 @@ export default function OrixIncentivePage() {
     setCreating(true);
     setCreateMsg("");
     try {
-      const { error: err } = await supabase.from(table).insert({
+      const { error: err } = await supabase.from(writeTable).insert({
         confirmed_date: newSales.confirmed_date || null,
         customer_name: newSales.customer_name.trim(),
         loan_principal: newSales.loan_principal,
@@ -221,7 +225,7 @@ export default function OrixIncentivePage() {
         payload.payment_diff_note = editAdmin.payment_diff_note || null;
         payload.wire_receipt_path = editAdmin.wire_receipt_path;
       }
-      const { error: err } = await supabase.from(table).update(payload).eq("id", expandedId);
+      const { error: err } = await supabase.from(writeTable).update(payload).eq("id", expandedId);
       if (err) throw err;
       setRowMsg("저장되었습니다.");
       await loadRows();
@@ -235,7 +239,7 @@ export default function OrixIncentivePage() {
   const deleteRow = async (id: string) => {
     if (!isOrixAdmin) return;
     if (!window.confirm("이 인센티브 항목을 삭제할까요? 되돌릴 수 없습니다.")) return;
-    const { error: err } = await supabase.from(table).delete().eq("id", id);
+    const { error: err } = await supabase.from(writeTable).delete().eq("id", id);
     if (err) { setRowMsg(err.message); return; }
     if (expandedId === id) setExpandedId(null);
     await loadRows();
@@ -413,12 +417,12 @@ export default function OrixIncentivePage() {
                       <th className="py-2 pr-4">인센티브 총액</th>
                       <th className="py-2 pr-4">CM지급 인센티브</th>
                       <th className="py-2 pr-4">지급대상</th>
-                      {isOrixAdmin && <th className="py-2 pr-4">지급상태</th>}
+                      <th className="py-2 pr-4">지급상태</th>
                     </tr>
                   </thead>
                   <tbody>
                     {rows.length === 0 && (
-                      <tr><td colSpan={isOrixAdmin ? 10 : 9} className="py-8 text-center text-gray-400">등록된 항목이 없습니다.</td></tr>
+                      <tr><td colSpan={10} className="py-8 text-center text-gray-400">등록된 항목이 없습니다.</td></tr>
                     )}
                     {rows.map((row) => (
                       <React.Fragment key={row.id}>
@@ -435,19 +439,17 @@ export default function OrixIncentivePage() {
                           <td className="py-2.5 pr-4 whitespace-nowrap font-medium">{formatMoney(row.incentive_total)}</td>
                           <td className="py-2.5 pr-4 whitespace-nowrap">{formatMoney(row.cm_paid_incentive)}</td>
                           <td className="py-2.5 pr-4 whitespace-nowrap">{row.incentive_recipient ?? "-"}</td>
-                          {isOrixAdmin && (
-                            <td className="py-2.5 pr-4">
-                              {row.paid_at ? (
-                                <span className="inline-flex items-center rounded-full border border-green-200 bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700">지급완료</span>
-                              ) : (
-                                <span className="inline-flex items-center rounded-full border border-gray-200 bg-white px-2.5 py-0.5 text-xs font-medium text-gray-500">미지급</span>
-                              )}
-                            </td>
-                          )}
+                          <td className="py-2.5 pr-4">
+                            {row.paid_at ? (
+                              <span className="inline-flex items-center rounded-full border border-green-200 bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700">지급완료</span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full border border-gray-200 bg-white px-2.5 py-0.5 text-xs font-medium text-gray-500">미지급</span>
+                            )}
+                          </td>
                         </tr>
                         {expandedId === row.id && (
                           <tr className="bg-gray-50">
-                            <td colSpan={isOrixAdmin ? 10 : 9} className="p-4">
+                            <td colSpan={10} className="p-4">
                               <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
                                 <div className="flex items-center justify-between">
                                   <h3 className="text-sm font-semibold text-navy-900">항목 수정</h3>
@@ -541,8 +543,8 @@ export default function OrixIncentivePage() {
                                             <input type="file" className="hidden" onChange={onUploadReceipt} disabled={uploading} />
                                           </label>
                                           {editAdmin.wire_receipt_path && (
-                                            <button onClick={() => downloadReceipt(editAdmin.wire_receipt_path!)} className="p-2 rounded-xl border border-gray-200 hover:border-orange-400 hover:text-orange-500 transition-all">
-                                              <Download className="w-4 h-4" />
+                                            <button onClick={() => downloadReceipt(editAdmin.wire_receipt_path!)} className="inline-flex items-center gap-1 px-2.5 rounded-xl border border-gray-200 hover:border-orange-400 hover:text-orange-500 transition-all text-xs font-medium text-gray-600">
+                                              <Download className="w-3.5 h-3.5" /> 미리보기
                                             </button>
                                           )}
                                         </div>
@@ -563,6 +565,40 @@ export default function OrixIncentivePage() {
                                         onChange={(e) => setEditAdmin((p) => ({ ...p, payment_diff_note: e.target.value }))}
                                         placeholder="예: 수탁인 요청으로 일부 금액 익월 이월"
                                       />
+                                    </div>
+                                  </div>
+                                )}
+
+                                {isOrixPartner && (
+                                  <div className="pt-2 border-t border-gray-100">
+                                    <p className="text-xs font-medium tracking-[0.12em] uppercase text-orange-500 mb-3">관리자 처리 현황 (읽기전용)</p>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                      <div>
+                                        <label className={labelClass}>지급일자</label>
+                                        <div className={readonlyClass}>{row.paid_at ?? "-"}</div>
+                                      </div>
+                                      <div>
+                                        <label className={labelClass}>지급처 (수탁인)</label>
+                                        <div className={readonlyClass}>{row.paid_to_contractor_name ?? "-"}</div>
+                                      </div>
+                                      <div>
+                                        <label className={labelClass}>실지급금액</label>
+                                        <div className={readonlyClass}>{formatMoney(row.actual_paid_amount)}</div>
+                                      </div>
+                                      <div className="md:col-span-2">
+                                        <label className={labelClass}>비고</label>
+                                        <div className={readonlyClass}>{row.payment_diff_note ?? "-"}</div>
+                                      </div>
+                                      <div>
+                                        <label className={labelClass}>송금증</label>
+                                        {row.wire_receipt_path ? (
+                                          <button onClick={() => downloadReceipt(row.wire_receipt_path!)} className="inline-flex items-center gap-1 h-[42px] px-3 rounded-xl border border-gray-200 hover:border-orange-400 hover:text-orange-500 transition-all text-xs font-medium text-gray-600">
+                                            <Download className="w-3.5 h-3.5" /> 미리보기
+                                          </button>
+                                        ) : (
+                                          <div className={readonlyClass}>-</div>
+                                        )}
+                                      </div>
                                     </div>
                                   </div>
                                 )}
