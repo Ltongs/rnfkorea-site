@@ -5322,6 +5322,28 @@ const CallManagementPage: React.FC = () => {
                                             </button>
                                           )
                                         )}
+                                        {["tire_sales","forklift_sales","battery_sales","finance"].includes(row.work_type) && (
+                                          <button
+                                            type="button"
+                                            className={actionBtnClass}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              const quoteType = row.work_type === "tire_sales" ? "tire"
+                                                : row.work_type === "forklift_sales" ? "forklift"
+                                                : row.work_type === "battery_sales" ? "battery"
+                                                : "installment";
+                                              const qs = new URLSearchParams({
+                                                type: quoteType,
+                                                consultationId: String(row.id),
+                                                customerName: row.customer_name || "",
+                                                phone: row.phone || "",
+                                              });
+                                              navigate(`/work/quotation?${qs.toString()}`);
+                                            }}
+                                          >
+                                            견적서 작성
+                                          </button>
+                                        )}
                                         <button type="button" className={actionBtnClass} onClick={(e)=>{e.stopPropagation();handleStartEdit(row);}}>수정</button>
                                         <button type="button" className={actionBtnClass} onClick={(e)=>{e.stopPropagation();setExpandedRowId(null);setExpandedTireDetail(null);setExpandedInsuranceDetail(null);setExpandedFinanceDetail(null);setExpandedForkliftDetail(null);setExpandedBatteryDetail(null);setExpandedAttachments([]);setDetailError("");}}>닫기</button>
                                       </div>

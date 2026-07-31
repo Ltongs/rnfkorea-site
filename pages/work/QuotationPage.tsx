@@ -693,9 +693,27 @@ export default function QuotationPage() {
     setTab(newTab);
   }
   const [searchParams] = useSearchParams();
+  // 통합상담(CallManagement)에서 "견적서 작성"으로 진입한 경우, 상담번호를 물고 와서
+  // 견적 발송 시 새 상담건을 만들지 않고 기존 상담건에 이력만 남기도록 한다.
+  const [consultationId, setConsultationId] = useState<number|null>(null);
   useEffect(() => {
     const t = searchParams.get('type') as TabType;
     if(t && ['battery','forklift','tire','installment','purchase'].includes(t)) setTab(t);
+
+    const cid = searchParams.get('consultationId');
+    if (cid && !isNaN(Number(cid))) setConsultationId(Number(cid));
+
+    const customerName = searchParams.get('customerName');
+    const phone = searchParams.get('phone');
+    if (customerName || phone) {
+      const si: any = {};
+      if (customerName) si.recipient = customerName;
+      if (phone) si.phone1 = phone;
+      setBf(f => ({...f, ...si}));
+      setFf(f => ({...f, ...si}));
+      setTf(f => ({...f, ...si}));
+      setIff(f => ({...f, ...si}));
+    }
   }, [searchParams]);
 
   const [bf, setBf]   = useState<BatteryForm>(BF0);
@@ -974,9 +992,11 @@ export default function QuotationPage() {
     phone: string;
     quoteNo: string;
     items?: Item[];
+    consultationId?: number | null;
   }) => {
-    const { workType, customerName, phone, quoteNo, items } = params;
-    if (shouldSkipConsultRegistration(customerName)) return;
+    const { workType, customerName, phone, quoteNo, items, consultationId: existingId } = params;
+    // 기존 상담건에서 넘어온 경우가 아니라면, 고객명이 비어있거나 'VIP'일 때 신규 등록을 건너뛴다.
+    if (!existingId && shouldSkipConsultRegistration(customerName)) return;
 
     try {
       const workTypeLabel = workType==='battery_sales'?'배터리':workType==='forklift_sales'?'지게차':workType==='tire_sales'?'타이어':'금융';
@@ -985,23 +1005,46 @@ export default function QuotationPage() {
         .map(i => `${i.name}${i.spec?` ${i.spec}`:''}${i.qty?` x${i.qty}`:''}`)
         .join(', ');
 
-      const { data: caseRow, error: caseErr } = await supabase
-        .from('consultation_cases')
-        .insert({
-          call_datetime: new Date().toISOString(),
-          customer_name: customerName,
-          phone: phone || '미입력',
-          work_type: workType,
-          status: 'new',
-          summary: [workTypeLabel, customerName, `견적발송(${quoteNo})`].join(' / '),
-          detail_memo: `견적서 발송 자동등록 (견적번호: ${quoteNo})${itemsSummary?`\n품목: ${itemsSummary}`:''}`,
-          followup_needed: false,
-        })
-        .select('id')
-        .single();
-      if (caseErr || !caseRow) throw caseErr || new Error('상담건 생성 실패');
+      let consultationId: number;
+      if (existingId) {
+        // 통합상담에서 진입한 경우 — 새 상담건을 만들지 않고 기존 상담건에 이력만 남긴다.
+        const { data: existingRow } = await supabase
+          .from('consultation_cases')
+          .select('detail_memo')
+          .eq('id', existingId)
+          .single();
+        const appendedMemo = [
+          existingRow?.detail_memo,
+          `견적서 발송 (견적번호: ${quoteNo})${itemsSummary?`\n품목: ${itemsSummary}`:''}`,
+        ].filter(Boolean).join('\n');
+        const { error: updateErr } = await supabase
+          .from('consultation_cases')
+          .update({
+            summary: [workTypeLabel, customerName, `견적발송(${quoteNo})`].join(' / '),
+            detail_memo: appendedMemo,
+          })
+          .eq('id', existingId);
+        if (updateErr) throw updateErr;
+        consultationId = existingId;
+      } else {
+        const { data: caseRow, error: caseErr } = await supabase
+          .from('consultation_cases')
+          .insert({
+            call_datetime: new Date().toISOString(),
+            customer_name: customerName,
+            phone: phone || '미입력',
+            work_type: workType,
+            status: 'new',
+            summary: [workTypeLabel, customerName, `견적발송(${quoteNo})`].join(' / '),
+            detail_memo: `견적서 발송 자동등록 (견적번호: ${quoteNo})${itemsSummary?`\n품목: ${itemsSummary}`:''}`,
+            followup_needed: false,
+          })
+          .select('id')
+          .single();
+        if (caseErr || !caseRow) throw caseErr || new Error('상담건 생성 실패');
+        consultationId = caseRow.id;
+      }
 
-      const consultationId = caseRow.id;
       if (workType === 'battery_sales') {
         await supabase.from('consultation_battery_details').upsert(
           { consultation_id: consultationId, process_stage: 'contract' },
@@ -1089,6 +1132,7 @@ export default function QuotationPage() {
           phone: s.phone1 || s.phone2,
           quoteNo: no,
           items,
+          consultationId,
         });
       }
 
@@ -1195,6 +1239,7 @@ export default function QuotationPage() {
           phone: phones[0],
           quoteNo: smsQuoteNo || `MMS-${Date.now()}`,
           items: tab==='battery'?bf.items:tab==='forklift'?ff.items:tab==='tire'?tf.items:tab==='installment'?[{name:iff.itemName,spec:iff.itemSpec,qty:1,price:iff.carPrice}]:undefined,
+          consultationId,
         });
       }
 
@@ -1300,6 +1345,7 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
         phone: iff.phone1 || iff.phone2,
         quoteNo: no,
         items: [{name:iff.itemName,spec:iff.itemSpec,qty:1,price:n0(iff.carPrice)||p}],
+        consultationId,
       });
 
       flash(insertErr

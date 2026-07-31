@@ -866,7 +866,6 @@ function buildTaesanMessage(body: Record<string, string>): string {
         : null,
       `대출기간: ${body.loanPeriod ?? "-"}개월${g && inst ? ` (거치 ${g} + 할부 ${inst})` : ""}`,
       `적용금리: ${body.creditRate ?? "-"}%`,
-      body.creditIncentive ? `인센티브: ${body.creditIncentive}%` : null,
       body.creditNote ? `특이사항: ${body.creditNote}` : null, "",
       `시간: ${now}`,
     ].filter(Boolean).join("\n");
@@ -1292,7 +1291,6 @@ function buildTaesanVariables(body: Record<string, string>): { templateKey: stri
       body.loanLimit ? `대출한도 ${Number(body.loanLimit).toLocaleString("ko-KR")}원` : null,
       `대출기간 ${periodText}`,
       `금리 ${body.creditRate ?? "-"}%`,
-      body.creditIncentive ? `인센티브 ${body.creditIncentive}%` : null,
       body.creditNote ? `특이사항: ${body.creditNote}` : null,
     ].filter(Boolean).join(" / ");
     return {

@@ -59,10 +59,10 @@ export default function AppTabBar({ activeTab }: { activeTab: AppTabKey }) {
   // 매핑에 없는 나머지 탭(chat/schedule/status/cns/orders/jinheung/quotation/performance/
   // exportshop/financehub/faxcampaign/numbersearch/email/memo)은 모두 /work/secretary
   // 내부 탭이며 그 라우트 자체가 isAdminLevel 전용이므로 기본값 isAdminLevel을 따른다.
-  // ORIX 조용백(isOrixPartner)은 현대CM 페이지만 접근 가능하고 태산통운은 접근 불가하므로
-  // taesan 조건에는 isOrixPartner를 넣지 않는다.
+  // ORIX 조용백(isOrixPartner)은 ORIX 인센티브 페이지 + 현대CM 페이지만 접근 가능하고
+  // 태산통운은 접근 불가하므로 taesan 조건에는 isOrixPartner를 넣지 않는다.
   const tabVisible: Partial<Record<AppTabKey, boolean>> = {
-    orix: isOrixAdmin,
+    orix: isOrixAdmin || isOrixPartner,
     narumi: canViewAll,
     hyundaicm: isAdminLevel || isHyundaiCM || isNhCapital || isNhCapitalStaff || isOrixPartner,
     taesan: isAdminLevel || isTaesan || isNhCapital,
