@@ -20,8 +20,12 @@ type SalesInputFields = {
   vehicle_type: string | null;
   incentive_rate: number | null;
   cm_incentive_rate: number | null;
-  incentive_recipient: string | null;
+  incentive_recipient_contractor_id: string | null; // 지급대상(수령자) — 등록된 수탁인(tb_contractors)만 선택 가능
+  incentive_recipient_pending: boolean; // 업무위수탁 계약 전이라 수탁인 미등록 상태("미정")
 };
+
+// 지급대상 select에서 "미정"을 고를 때만 쓰는 화면 전용 sentinel (DB에는 저장되지 않음)
+const RECIPIENT_PENDING_VALUE = "__pending__";
 
 type AdminOnlyFields = {
   paid_at: string | null;
@@ -58,6 +62,16 @@ function formatMoney(v: number | null | undefined) {
   return `${v.toLocaleString("ko-KR")}원`;
 }
 
+function contractorName(contractors: Contractor[], id: string | null | undefined) {
+  if (!id) return "-";
+  return contractors.find((c) => c.id === id)?.name ?? "-";
+}
+
+function recipientLabel(contractors: Contractor[], row: { incentive_recipient_contractor_id?: string | null; incentive_recipient_pending?: boolean }) {
+  if (row.incentive_recipient_pending) return "미정";
+  return contractorName(contractors, row.incentive_recipient_contractor_id);
+}
+
 // DB의 GENERATED 컬럼과 동일한 계산식 — 저장 전 화면에 미리보기로 보여주기 위한 용도.
 function calcIncentiveTotal(loanPrincipal: number | null, rate: number | null) {
   if (loanPrincipal === null || rate === null) return null;
@@ -77,7 +91,8 @@ function emptySalesForm(): SalesInputFields {
     vehicle_type: "",
     incentive_rate: null,
     cm_incentive_rate: null,
-    incentive_recipient: "",
+    incentive_recipient_contractor_id: null,
+    incentive_recipient_pending: false,
   };
 }
 
@@ -122,7 +137,7 @@ export default function OrixIncentivePage() {
   };
 
   const loadContractors = async () => {
-    if (!isOrixAdmin) return;
+    // 지급대상(수령자) 선택은 admin/파트너 모두 사용하므로 둘 다 로드한다.
     const { data } = await supabase.from("orix_contractors_picker_view").select("id, name").order("name");
     setContractors((data ?? []) as Contractor[]);
   };
@@ -161,7 +176,8 @@ export default function OrixIncentivePage() {
         vehicle_type: newSales.vehicle_type || null,
         incentive_rate: newSales.incentive_rate,
         cm_incentive_rate: newSales.cm_incentive_rate,
-        incentive_recipient: newSales.incentive_recipient || null,
+        incentive_recipient_contractor_id: newSales.incentive_recipient_contractor_id || null,
+        incentive_recipient_pending: newSales.incentive_recipient_pending,
       });
       if (err) throw err;
       await notifyNewEntry(newSales);
@@ -186,7 +202,8 @@ export default function OrixIncentivePage() {
       vehicle_type: row.vehicle_type,
       incentive_rate: row.incentive_rate,
       cm_incentive_rate: row.cm_incentive_rate,
-      incentive_recipient: row.incentive_recipient,
+      incentive_recipient_contractor_id: row.incentive_recipient_contractor_id,
+      incentive_recipient_pending: row.incentive_recipient_pending,
     });
     if (isOrixAdmin) {
       setEditAdmin({
@@ -216,7 +233,8 @@ export default function OrixIncentivePage() {
         vehicle_type: editSales.vehicle_type || null,
         incentive_rate: editSales.incentive_rate,
         cm_incentive_rate: editSales.cm_incentive_rate,
-        incentive_recipient: editSales.incentive_recipient || null,
+        incentive_recipient_contractor_id: editSales.incentive_recipient_contractor_id || null,
+        incentive_recipient_pending: editSales.incentive_recipient_pending,
       };
       if (isOrixAdmin) {
         payload.paid_at = editAdmin.paid_at || null;
@@ -359,9 +377,21 @@ export default function OrixIncentivePage() {
                     onChange={(e) => setNewSales((p) => ({ ...p, vehicle_type: e.target.value }))} placeholder="차종" />
                 </div>
                 <div>
-                  <label className={labelClass}>지급대상</label>
-                  <input className={inputClass} value={newSales.incentive_recipient ?? ""}
-                    onChange={(e) => setNewSales((p) => ({ ...p, incentive_recipient: e.target.value }))} placeholder="수령자/대상명" />
+                  <label className={labelClass}>지급대상 (수탁인)</label>
+                  <select className={inputClass}
+                    value={newSales.incentive_recipient_pending ? RECIPIENT_PENDING_VALUE : (newSales.incentive_recipient_contractor_id ?? "")}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setNewSales((p) => ({
+                        ...p,
+                        incentive_recipient_pending: v === RECIPIENT_PENDING_VALUE,
+                        incentive_recipient_contractor_id: v === RECIPIENT_PENDING_VALUE ? null : (v || null),
+                      }));
+                    }}>
+                    <option value="">선택 (원천징수관리-수탁인관리에 등록 필요)</option>
+                    <option value={RECIPIENT_PENDING_VALUE}>미정 (업무위수탁 계약 전)</option>
+                    {contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className={labelClass}>인센티브율 (%)</label>
@@ -438,7 +468,7 @@ export default function OrixIncentivePage() {
                           <td className="py-2.5 pr-4 whitespace-nowrap">{row.incentive_rate ?? "-"}{row.incentive_rate !== null ? "%" : ""}</td>
                           <td className="py-2.5 pr-4 whitespace-nowrap font-medium">{formatMoney(row.incentive_total)}</td>
                           <td className="py-2.5 pr-4 whitespace-nowrap">{formatMoney(row.cm_paid_incentive)}</td>
-                          <td className="py-2.5 pr-4 whitespace-nowrap">{row.incentive_recipient ?? "-"}</td>
+                          <td className="py-2.5 pr-4 whitespace-nowrap">{recipientLabel(contractors, row)}</td>
                           <td className="py-2.5 pr-4">
                             {row.paid_at ? (
                               <span className="inline-flex items-center rounded-full border border-green-200 bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700">지급완료</span>
@@ -487,9 +517,21 @@ export default function OrixIncentivePage() {
                                       onChange={(e) => setEditSales((p) => ({ ...p, vehicle_type: e.target.value }))} />
                                   </div>
                                   <div>
-                                    <label className={labelClass}>지급대상</label>
-                                    <input className={inputClass} value={editSales.incentive_recipient ?? ""}
-                                      onChange={(e) => setEditSales((p) => ({ ...p, incentive_recipient: e.target.value }))} />
+                                    <label className={labelClass}>지급대상 (수탁인)</label>
+                                    <select className={inputClass}
+                                      value={editSales.incentive_recipient_pending ? RECIPIENT_PENDING_VALUE : (editSales.incentive_recipient_contractor_id ?? "")}
+                                      onChange={(e) => {
+                                        const v = e.target.value;
+                                        setEditSales((p) => ({
+                                          ...p,
+                                          incentive_recipient_pending: v === RECIPIENT_PENDING_VALUE,
+                                          incentive_recipient_contractor_id: v === RECIPIENT_PENDING_VALUE ? null : (v || null),
+                                        }));
+                                      }}>
+                                      <option value="">선택 (원천징수관리-수탁인관리에 등록 필요)</option>
+                                      <option value={RECIPIENT_PENDING_VALUE}>미정 (업무위수탁 계약 전)</option>
+                                      {contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                    </select>
                                   </div>
                                   <div>
                                     <label className={labelClass}>인센티브율 (%)</label>
