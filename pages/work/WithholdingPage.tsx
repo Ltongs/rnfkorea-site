@@ -2,11 +2,14 @@
 // 원천징수 관리 페이지 — /work/withholding
 // isAdmin 전용
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
 import * as XLSX from 'xlsx';
 
 // ─── 타입 ──────────────────────────────────────────────────
+const AGENTS = ['RNF Korea', '수Company'] as const;
+type WithholdingAgent = typeof AGENTS[number];
+
 interface Contractor {
   id: string;
   name: string;
@@ -17,12 +20,14 @@ interface Contractor {
   contract_date: string;
   is_active: boolean;
   note: string;
+  withholding_agent: WithholdingAgent;
 }
 
 interface Payment {
   id: string;
   contractor_id: string;
   contractor_name?: string;
+  contractor_agent?: WithholdingAgent;
   pay_date: string;
   pay_amount: number;
   withholding_amount: number;
@@ -41,6 +46,7 @@ interface MonthlyRow {
   total_withholding: number;
   total_net: number;
   due_date: string;
+  withholding_agent: WithholdingAgent;
 }
 
 interface AnnualRow {
@@ -51,6 +57,7 @@ interface AnnualRow {
   annual_pay: number;
   annual_withholding: number;
   annual_net: number;
+  withholding_agent: WithholdingAgent;
 }
 
 interface GiftCardEntry {
@@ -99,6 +106,8 @@ export default function WithholdingPage() {
 
   // 필터
   const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString());
+  // 원천징수자(甲) — 수탁인·지급관리를 별도로 운영
+  const [agent, setAgent] = useState<WithholdingAgent>('RNF Korea');
 
   // ── 데이터 로딩 ──
   const loadContractors = useCallback(async () => {
@@ -112,11 +121,12 @@ export default function WithholdingPage() {
   const loadPayments = useCallback(async () => {
     const { data } = await supabase
       .from('tb_withholding_payments')
-      .select(`*, tb_contractors(name)`)
+      .select(`*, tb_contractors(name, withholding_agent)`)
       .order('pay_date', { ascending: false });
     const rows = (data ?? []).map((r: any) => ({
       ...r,
       contractor_name: r.tb_contractors?.name ?? '',
+      contractor_agent: r.tb_contractors?.withholding_agent ?? 'RNF Korea',
     }));
     setPayments(rows);
   }, []);
@@ -138,17 +148,19 @@ export default function WithholdingPage() {
     const { data } = await supabase
       .from('v_withholding_monthly')
       .select('*')
-      .ilike('month_label', `${filterYear}%`);
+      .ilike('month_label', `${filterYear}%`)
+      .eq('withholding_agent', agent);
     setMonthly(data ?? []);
-  }, [filterYear]);
+  }, [filterYear, agent]);
 
   const loadAnnual = useCallback(async () => {
     const { data } = await supabase
       .from('v_withholding_annual')
       .select('*')
-      .eq('pay_year', Number(filterYear));
+      .eq('pay_year', Number(filterYear))
+      .eq('withholding_agent', agent);
     setAnnual(data ?? []);
-  }, [filterYear]);
+  }, [filterYear, agent]);
 
   useEffect(() => {
     loadContractors();
@@ -166,7 +178,7 @@ export default function WithholdingPage() {
     setTimeout(() => setMsg(''), 3000);
   };
 
-  // ── Excel 내보내기 ──
+  // ── Excel 내보내기 (현재 선택된 원천징수자 기준) ──
   const exportExcel = async () => {
     const wb = XLSX.utils.book_new();
 
@@ -180,9 +192,15 @@ export default function WithholdingPage() {
       contractor_name: r.tb_contractors?.name ?? '',
     }));
 
+    // 월별/연간 집계도 현재 탭 방문 여부와 무관하게 선택된 원천징수자 기준으로 직접 조회
+    const [{ data: monthlyRows }, { data: annualRows }]: [{ data: MonthlyRow[] | null }, { data: AnnualRow[] | null }] = await Promise.all([
+      supabase.from('v_withholding_monthly').select('*').ilike('month_label', `${filterYear}%`).eq('withholding_agent', agent),
+      supabase.from('v_withholding_annual').select('*').eq('pay_year', Number(filterYear)).eq('withholding_agent', agent),
+    ]);
+
     // 시트1: 지급내역 전체
     const payRows = payments
-      .filter(p => p.pay_date?.startsWith(filterYear))
+      .filter(p => p.pay_date?.startsWith(filterYear) && p.contractor_agent === agent)
       .map(p => ({
         지급일자: p.pay_date,
         수탁인: p.contractor_name,
@@ -200,7 +218,7 @@ export default function WithholdingPage() {
     XLSX.utils.book_append_sheet(wb, ws1, '지급내역');
 
     // 시트2: 월별 집계
-    const mRows = monthly.map(m => ({
+    const mRows = (monthlyRows ?? []).map(m => ({
       월: m.month_label,
       지급건수: m.count,
       세전지급합계: m.total_pay,
@@ -213,7 +231,7 @@ export default function WithholdingPage() {
     XLSX.utils.book_append_sheet(wb, ws2, '월별집계(신고용)');
 
     // 시트3: 지급명세서 (세무사 제출용)
-    const aRows = annual.map(a => ({
+    const aRows = (annualRows ?? []).map(a => ({
       귀속연도: a.pay_year,
       성명: a.name,
       주민등록번호: a.rrn_masked,
@@ -245,8 +263,18 @@ export default function WithholdingPage() {
     ws4['!cols'] = [10,8,10,8,12,16,10,16,16].map(w => ({ wch: w }));
     XLSX.utils.book_append_sheet(wb, ws4, '상품권관리');
 
-    XLSX.writeFile(wb, `원천징수관리_${filterYear}.xlsx`);
+    XLSX.writeFile(wb, `원천징수관리_${agent}_${filterYear}.xlsx`);
   };
+
+  // 현재 선택된 원천징수자(甲) 기준으로 수탁인·지급내역을 분리
+  const visibleContractors = useMemo(
+    () => contractors.filter(c => c.withholding_agent === agent),
+    [contractors, agent]
+  );
+  const visiblePayments = useMemo(
+    () => payments.filter(p => p.contractor_agent === agent),
+    [payments, agent]
+  );
 
   // ─── UI ───────────────────────────────────────────────────
   return (
@@ -274,6 +302,22 @@ export default function WithholdingPage() {
             >
               <span>📥</span> Excel 내보내기
             </button>
+          </div>
+        </div>
+        <div className="max-w-6xl mx-auto mt-4 flex items-center gap-2">
+          <span className="text-xs text-blue-300">원천징수자(甲)</span>
+          <div className="inline-flex bg-white/10 border border-white/20 rounded-full p-1">
+            {AGENTS.map(a => (
+              <button
+                key={a}
+                onClick={() => setAgent(a)}
+                className={`px-4 py-1 rounded-full text-sm font-medium transition-colors ${
+                  agent === a ? 'bg-white text-[#0a192f]' : 'text-blue-200 hover:text-white'
+                }`}
+              >
+                {a}
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -308,8 +352,8 @@ export default function WithholdingPage() {
       <div className="max-w-6xl mx-auto px-4 py-6">
         {tab === '지급내역' && (
           <PaymentTab
-            payments={payments.filter(p => p.pay_date?.startsWith(filterYear))}
-            contractors={contractors}
+            payments={visiblePayments.filter(p => p.pay_date?.startsWith(filterYear))}
+            contractors={visibleContractors}
             loading={loading}
             setLoading={setLoading}
             onSaved={() => { loadPayments(); flash('저장되었습니다.'); }}
@@ -318,7 +362,8 @@ export default function WithholdingPage() {
         )}
         {tab === '수탁인 관리' && (
           <ContractorTab
-            contractors={contractors}
+            contractors={visibleContractors}
+            agent={agent}
             loading={loading}
             setLoading={setLoading}
             onSaved={() => { loadContractors(); flash('저장되었습니다.'); }}
@@ -614,9 +659,10 @@ function PaymentTab({
 
 // ─── 수탁인 관리 탭 ─────────────────────────────────────────
 function ContractorTab({
-  contractors, loading, setLoading, onSaved, flash,
+  contractors, agent, loading, setLoading, onSaved, flash,
 }: {
   contractors: Contractor[];
+  agent: WithholdingAgent;
   loading: boolean;
   setLoading: (v: boolean) => void;
   onSaved: () => void;
@@ -626,6 +672,7 @@ function ContractorTab({
     name: '', rrn_masked: '', phone: '',
     bank_name: '', account_no: '',
     contract_date: '', is_active: true, note: '',
+    withholding_agent: agent,
   };
   const [form, setForm] = useState<any>(empty);
   const [editId, setEditId] = useState<string | null>(null);
@@ -653,6 +700,7 @@ function ContractorTab({
       contract_date: form.contract_date || null,
       is_active: form.is_active,
       note: form.note,
+      withholding_agent: form.withholding_agent,
     };
     if (editId) {
       await supabase.from('tb_contractors').update(payload).eq('id', editId);
@@ -704,6 +752,16 @@ function ContractorTab({
               <input value={form.name}
                 onChange={e => setForm({ ...form, name: e.target.value })}
                 className="input-style" placeholder="홍길동" />
+            </div>
+            <div>
+              <label className="label-style">원천징수자(甲) *</label>
+              <select
+                value={form.withholding_agent}
+                onChange={e => setForm({ ...form, withholding_agent: e.target.value as WithholdingAgent })}
+                className="input-style"
+              >
+                {AGENTS.map(a => <option key={a} value={a}>{a}</option>)}
+              </select>
             </div>
             <div>
               <label className="label-style">주민등록번호 (입력 후 자동 마스킹)</label>

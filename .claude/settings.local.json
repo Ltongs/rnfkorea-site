@@ -157,7 +157,14 @@
       "Bash(ls -la \"/Users/tongsoolee/Desktop/WORKS/My Job/리텐에너지솔루션/골프카트/\" 2>&1 | head -50)",
       "Bash(python3 -c \"import openpyxl; print\\('openpyxl available'\\)\")",
       "Bash(python3 -c \"import pandas; print\\('pandas available'\\)\")",
-      "Bash(grep -v \"^--$\")"
+      "Bash(grep -v \"^--$\")",
+      "Bash(grep -rl \"tb_contractors\" supabase/migrations/*.sql *)",
+      "Bash(supabase migration *)",
+      "Bash(awk -F'[\\(,]' '{print $2}')",
+      "Bash(awk '$1>=4518 && $1<=4536')",
+      "Bash(grep -n \"async function toggleSched\\\\|void toggleSched\\\\|is_done:!done\\\\|update\\({is_done:true}\\).eq\\(\\\\\"id\\\\\",schedModal\" /Users/tongsoolee/Desktop/WORKS/Homepage/rnfkorea_deploy_new/pages/secretary/index.tsx)",
+      "Bash(grep -n \"update\\({is_done:true}\\).eq\\(\\\\\"id\\\\\",schedModal\" /Users/tongsoolee/Desktop/WORKS/Homepage/rnfkorea_deploy_new/pages/secretary/index.tsx)",
+      "Bash(awk '$1>=4700 && $1<=5290')"
     ]
   }
 }

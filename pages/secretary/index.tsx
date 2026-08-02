@@ -4516,6 +4516,22 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
     });
     return ()=>subscription.unsubscribe();
   },[loadStats, loadChatHist, loadCalData]);
+
+  // 다른 기기(모바일/PC)에서 일정을 추가/수정/완료 처리하면 이 화면에도 실시간으로 반영
+  useEffect(()=>{
+    const channel = supabase
+      .channel("secretary_schedules_sync")
+      .on("postgres_changes",{event:"*",schema:"public",table:"secretary_schedules"},()=>{
+        if(tab==="schedule"){
+          if(schedViewMode==="day") void loadSchedules();
+          else void loadAllSchedules(schedViewMode as "week"|"all", schedDate, schedShowDone);
+        }
+        void loadCalData(calViewYear, calViewMonth);
+        void loadStats();
+      })
+      .subscribe();
+    return ()=>{ void supabase.removeChannel(channel); };
+  },[tab, schedViewMode, schedDate, schedShowDone, calViewYear, calViewMonth, loadSchedules, loadAllSchedules, loadCalData, loadStats]);
   const prevMsgLen = useRef(0);
   // 탭바 초기 위치: 중간 벌(2번째 세트) 시작 지점으로 설정
   useEffect(()=>{
@@ -4687,8 +4703,10 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
     }
   }
   async function toggleSched(id:number,done:boolean){
-    await supabase.from("secretary_schedules").update({is_done:!done}).eq("id",id);
+    const {error} = await supabase.from("secretary_schedules").update({is_done:!done}).eq("id",id);
+    if(error){ showToast("일정 상태 변경 실패: "+error.message, "err"); return; }
     setSchedules(p=>p.map(s=>s.id===id?{...s,is_done:!done}:s));
+    setAllSchedules(p=>p.map(s=>s.id===id?{...s,is_done:!done}:s));
   }
   async function saveSchedProgress(s:Schedule){
     const today = new Date().toISOString().slice(0,10);
@@ -5260,9 +5278,10 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               </button>
               <button className="flex-1 py-2 rounded-xl bg-emerald-500 text-white text-sm font-semibold hover:bg-emerald-600 transition-all"
                 onClick={async()=>{
-                  await supabase.from("secretary_schedules").update({is_done:true}).eq("id",schedModal.s.id);
+                  const {error} = await supabase.from("secretary_schedules").update({is_done:true}).eq("id",schedModal.s.id);
+                  if(error){ showToast("완료 처리 실패: "+error.message, "err"); return; }
                   if(schedProgress.memo) await saveSchedProgress(schedModal.s);
-                  else { setSchedModal(null); void loadSchedules(); void loadCalData(calViewYear,calViewMonth); showToast("완료 처리됨"); }
+                  else { setSchedModal(null); void loadSchedules(); void loadAllSchedules(schedViewMode as "week"|"all", schedDate, schedShowDone); void loadCalData(calViewYear,calViewMonth); showToast("완료 처리됨"); }
                 }}>완료</button>
               <button className={BTS} onClick={()=>setSchedModal(null)}>닫기</button>
             </div>
@@ -5558,7 +5577,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                         <div key={s.id} className={`${CARD} p-3.5 flex items-start gap-3 cursor-pointer hover:bg-blue-50 transition-all mb-1.5 ${s.is_done?"opacity-50":""}`}
                           onClick={()=>{setSchedModal({s});setSchedProgress({memo:"",next_date:todayStr(),next_time:nowTimeStr()});}}>
                           <button className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-all ${s.is_done?"bg-emerald-500 border-emerald-500":"border-gray-300 hover:border-emerald-400"}`}
-                            onClick={e=>{e.stopPropagation();void toggleSched(s.id,s.is_done);setAllSchedules(p=>p.map(x=>x.id===s.id?{...x,is_done:!x.is_done}:x));}}>
+                            onClick={e=>{e.stopPropagation();void toggleSched(s.id,s.is_done);}}>
                             {s.is_done&&<span className="text-white text-[10px]">✓</span>}
                           </button>
                           <div className="flex-1 min-w-0">
