@@ -76,13 +76,31 @@ interface GiftCardEntry {
   note: string | null;
 }
 
+interface LotteIncentive {
+  id: string;
+  contract_date: string;
+  contract_no: string | null;
+  customer_name: string;
+  contract_amount: number;
+  collateral_set: boolean;
+  incentive_amount: number;
+  note: string | null;
+}
+
 // ─── 유틸 ──────────────────────────────────────────────────
 const fmt = (n: number) => n?.toLocaleString('ko-KR') ?? '0';
 const RATE = 0.033;
 const calcWithholding = (amount: number) => Math.floor(amount * RATE);
+const LOTTE_RATE = 0.005;
+const calcLotteIncentive = (amount: number) => Math.floor(amount * LOTTE_RATE);
 
 const TABS = ['지급내역', '수탁인 관리', '상품권 관리', '월별 현황', '연간 집계'] as const;
 type Tab = typeof TABS[number];
+
+// 상단 원천징수자/제휴사 선택 — RNF Korea·수Company는 기존 5개 탭을 공유하고,
+// 롯데오토리스는 별도의 단일 화면(계약별 인센티브 목록)을 사용한다.
+const TOP_TABS = [...AGENTS, '롯데오토리스 인센티브 관리'] as const;
+type TopTab = typeof TOP_TABS[number];
 
 const PAY_REASONS = [
   '업무위탁 인센티브',
@@ -101,13 +119,16 @@ export default function WithholdingPage() {
   const [giftCards, setGiftCards] = useState<GiftCardEntry[]>([]);
   const [monthly, setMonthly] = useState<MonthlyRow[]>([]);
   const [annual, setAnnual] = useState<AnnualRow[]>([]);
+  const [lotteIncentives, setLotteIncentives] = useState<LotteIncentive[]>([]);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
 
   // 필터
   const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString());
-  // 원천징수자(甲) — 수탁인·지급관리를 별도로 운영
-  const [agent, setAgent] = useState<WithholdingAgent>('RNF Korea');
+  // 상단 선택: RNF Korea / 수Company (기존 5개 탭 공유) / 롯데오토리스 인센티브 관리(독립 화면)
+  const [topTab, setTopTab] = useState<TopTab>('RNF Korea');
+  const agent: WithholdingAgent = topTab === '롯데오토리스 인센티브 관리' ? 'RNF Korea' : topTab;
+  const showLotte = topTab === '롯데오토리스 인센티브 관리';
 
   // ── 데이터 로딩 ──
   const loadContractors = useCallback(async () => {
@@ -144,6 +165,14 @@ export default function WithholdingPage() {
     setGiftCards(rows);
   }, []);
 
+  const loadLotteIncentives = useCallback(async () => {
+    const { data } = await supabase
+      .from('tb_lotte_lease_incentives')
+      .select('*')
+      .order('contract_date', { ascending: false });
+    setLotteIncentives(data ?? []);
+  }, []);
+
   const loadMonthly = useCallback(async () => {
     const { data } = await supabase
       .from('v_withholding_monthly')
@@ -165,22 +194,47 @@ export default function WithholdingPage() {
   useEffect(() => {
     loadContractors();
     loadPayments();
-  }, [loadContractors, loadPayments]);
+    loadLotteIncentives();
+  }, [loadContractors, loadPayments, loadLotteIncentives]);
 
   useEffect(() => {
+    if (showLotte) return;
     if (tab === '월별 현황') loadMonthly();
     if (tab === '연간 집계') loadAnnual();
     if (tab === '상품권 관리' && giftCards.length === 0) loadGiftCards();
-  }, [tab, filterYear, loadMonthly, loadAnnual, loadGiftCards, giftCards.length]);
+  }, [tab, filterYear, showLotte, loadMonthly, loadAnnual, loadGiftCards, giftCards.length]);
 
   const flash = (m: string) => {
     setMsg(m);
     setTimeout(() => setMsg(''), 3000);
   };
 
-  // ── Excel 내보내기 (현재 선택된 원천징수자 기준) ──
+  // ── Excel 내보내기 (현재 선택된 원천징수자/제휴사 기준) ──
   const exportExcel = async () => {
     const wb = XLSX.utils.book_new();
+
+    if (showLotte) {
+      const { data: lotteRows } = await supabase
+        .from('tb_lotte_lease_incentives')
+        .select('*')
+        .gte('contract_date', `${filterYear}-01-01`)
+        .lte('contract_date', `${filterYear}-12-31`)
+        .order('contract_date', { ascending: false });
+      const rows = (lotteRows ?? []).map((r: LotteIncentive) => ({
+        계약일자: r.contract_date,
+        계약번호: r.contract_no ?? '',
+        고객명: r.customer_name,
+        계약금액: r.contract_amount,
+        담보설정: r.collateral_set ? 'Y' : 'N',
+        '인센티브(0.5%)': r.incentive_amount,
+        비고: r.note ?? '',
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws['!cols'] = [10, 14, 14, 12, 8, 12, 20].map(w => ({ wch: w }));
+      XLSX.utils.book_append_sheet(wb, ws, '롯데오토리스인센티브');
+      XLSX.writeFile(wb, `롯데오토리스_인센티브관리_${filterYear}.xlsx`);
+      return;
+    }
 
     // 상품권 관리 탭을 방문하지 않았으면 giftCards state가 비어있을 수 있으므로 직접 조회
     const { data: giftCardRows } = await supabase
@@ -305,41 +359,43 @@ export default function WithholdingPage() {
           </div>
         </div>
         <div className="max-w-6xl mx-auto mt-4 flex items-center gap-2">
-          <span className="text-xs text-blue-300">원천징수자(甲)</span>
+          <span className="text-xs text-blue-300">원천징수자(甲) / 제휴사</span>
           <div className="inline-flex bg-white/10 border border-white/20 rounded-full p-1">
-            {AGENTS.map(a => (
+            {TOP_TABS.map(t => (
               <button
-                key={a}
-                onClick={() => setAgent(a)}
+                key={t}
+                onClick={() => setTopTab(t)}
                 className={`px-4 py-1 rounded-full text-sm font-medium transition-colors ${
-                  agent === a ? 'bg-white text-[#0a192f]' : 'text-blue-200 hover:text-white'
+                  topTab === t ? 'bg-white text-[#0a192f]' : 'text-blue-200 hover:text-white'
                 }`}
               >
-                {a}
+                {t}
               </button>
             ))}
           </div>
         </div>
       </div>
 
-      {/* 탭 */}
-      <div className="bg-white border-b">
-        <div className="max-w-6xl mx-auto flex">
-          {TABS.map(t => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
-                tab === t
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {t}
-            </button>
-          ))}
+      {/* 탭 — 롯데오토리스는 별도 화면이라 5개 탭 미표시 */}
+      {!showLotte && (
+        <div className="bg-white border-b">
+          <div className="max-w-6xl mx-auto flex">
+            {TABS.map(t => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  tab === t
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {msg && (
         <div className="max-w-6xl mx-auto mt-3 px-4">
@@ -350,41 +406,53 @@ export default function WithholdingPage() {
       )}
 
       <div className="max-w-6xl mx-auto px-4 py-6">
-        {tab === '지급내역' && (
-          <PaymentTab
-            payments={visiblePayments.filter(p => p.pay_date?.startsWith(filterYear))}
-            contractors={visibleContractors}
+        {showLotte ? (
+          <LotteLeaseTab
+            entries={lotteIncentives.filter(r => r.contract_date?.startsWith(filterYear))}
             loading={loading}
             setLoading={setLoading}
-            onSaved={() => { loadPayments(); flash('저장되었습니다.'); }}
+            onSaved={() => { loadLotteIncentives(); flash('저장되었습니다.'); }}
             flash={flash}
           />
-        )}
-        {tab === '수탁인 관리' && (
-          <ContractorTab
-            contractors={visibleContractors}
-            agent={agent}
-            loading={loading}
-            setLoading={setLoading}
-            onSaved={() => { loadContractors(); flash('저장되었습니다.'); }}
-            flash={flash}
-          />
-        )}
-        {tab === '상품권 관리' && (
-          <GiftCardTab
-            entries={giftCards}
-            contractors={contractors}
-            loading={loading}
-            setLoading={setLoading}
-            onSaved={() => { loadGiftCards(); flash('저장되었습니다.'); }}
-            flash={flash}
-          />
-        )}
-        {tab === '월별 현황' && (
-          <MonthlyTab monthly={monthly} year={filterYear} />
-        )}
-        {tab === '연간 집계' && (
-          <AnnualTab annual={annual} year={filterYear} />
+        ) : (
+          <>
+            {tab === '지급내역' && (
+              <PaymentTab
+                payments={visiblePayments.filter(p => p.pay_date?.startsWith(filterYear))}
+                contractors={visibleContractors}
+                loading={loading}
+                setLoading={setLoading}
+                onSaved={() => { loadPayments(); flash('저장되었습니다.'); }}
+                flash={flash}
+              />
+            )}
+            {tab === '수탁인 관리' && (
+              <ContractorTab
+                contractors={visibleContractors}
+                agent={agent}
+                loading={loading}
+                setLoading={setLoading}
+                onSaved={() => { loadContractors(); flash('저장되었습니다.'); }}
+                flash={flash}
+              />
+            )}
+            {tab === '상품권 관리' && (
+              <GiftCardTab
+                entries={giftCards}
+                contractors={contractors}
+                loading={loading}
+                setLoading={setLoading}
+                onSaved={() => { loadGiftCards(); flash('저장되었습니다.'); }}
+                flash={flash}
+              />
+            )}
+            {tab === '월별 현황' && (
+              <MonthlyTab monthly={monthly} year={filterYear} />
+            )}
+            {tab === '연간 집계' && (
+              <AnnualTab annual={annual} year={filterYear} />
+            )}
+          </>
         )}
       </div>
     </div>
@@ -1294,6 +1362,216 @@ function AnnualTab({ annual, year }: { annual: AnnualRow[]; year: string }) {
                 <td className="px-4 py-3 text-right text-blue-700">{fmt(total.net)}</td>
               </tr>
             )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── 롯데오토리스 인센티브 관리 탭 ────────────────────────────
+function LotteLeaseTab({
+  entries, loading, setLoading, onSaved, flash,
+}: {
+  entries: LotteIncentive[];
+  loading: boolean;
+  setLoading: (v: boolean) => void;
+  onSaved: () => void;
+  flash: (m: string) => void;
+}) {
+  const empty = {
+    contract_date: new Date().toISOString().slice(0, 10),
+    contract_no: '',
+    customer_name: '',
+    contract_amount: '',
+    collateral_set: false,
+    note: '',
+  };
+  const [form, setForm] = useState<any>(empty);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+
+  const incentive = form.contract_amount ? calcLotteIncentive(Number(form.contract_amount)) : 0;
+
+  const handleSave = async () => {
+    if (!form.customer_name || !form.contract_date || !form.contract_amount) {
+      flash('계약일자·고객명·계약금액은 필수입니다.');
+      return;
+    }
+    setLoading(true);
+    const payload = {
+      contract_date: form.contract_date,
+      contract_no: form.contract_no || null,
+      customer_name: form.customer_name,
+      contract_amount: Number(form.contract_amount),
+      collateral_set: form.collateral_set,
+      incentive_amount: incentive,
+      note: form.note || null,
+    };
+    if (editId) {
+      await supabase.from('tb_lotte_lease_incentives').update(payload).eq('id', editId);
+    } else {
+      await supabase.from('tb_lotte_lease_incentives').insert(payload);
+    }
+    setLoading(false);
+    setForm(empty);
+    setEditId(null);
+    setShowForm(false);
+    onSaved();
+  };
+
+  const handleEdit = (r: LotteIncentive) => {
+    setForm({
+      contract_date: r.contract_date,
+      contract_no: r.contract_no ?? '',
+      customer_name: r.customer_name,
+      contract_amount: r.contract_amount.toString(),
+      collateral_set: r.collateral_set,
+      note: r.note ?? '',
+    });
+    setEditId(r.id);
+    setShowForm(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('삭제하시겠습니까?')) return;
+    await supabase.from('tb_lotte_lease_incentives').delete().eq('id', id);
+    onSaved();
+  };
+
+  const totalAmount = entries.reduce((s, r) => s + r.contract_amount, 0);
+  const totalIncentive = entries.reduce((s, r) => s + r.incentive_amount, 0);
+
+  return (
+    <div className="space-y-4">
+      {/* 요약 카드 */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-white rounded-lg border p-4">
+          <p className="text-xs text-gray-500">계약 건수</p>
+          <p className="text-xl font-bold text-gray-800 mt-1">{entries.length.toLocaleString('ko-KR')}건</p>
+        </div>
+        <div className="bg-white rounded-lg border p-4">
+          <p className="text-xs text-gray-500">계약금액 합계</p>
+          <p className="text-xl font-bold text-gray-800 mt-1">{fmt(totalAmount)}원</p>
+        </div>
+        <div className="bg-white rounded-lg border p-4">
+          <p className="text-xs text-gray-500">인센티브 합계 (0.5%)</p>
+          <p className="text-xl font-bold text-blue-700 mt-1">{fmt(totalIncentive)}원</p>
+        </div>
+      </div>
+
+      {/* 등록 버튼 */}
+      {!showForm && (
+        <button
+          onClick={() => { setForm(empty); setEditId(null); setShowForm(true); }}
+          className="bg-[#0a192f] text-white px-4 py-2 rounded text-sm"
+        >
+          + 계약 등록
+        </button>
+      )}
+
+      {/* 입력 폼 */}
+      {showForm && (
+        <div className="bg-white border rounded-lg p-5 space-y-4">
+          <h3 className="font-semibold text-gray-800">
+            {editId ? '계약 수정' : '계약 등록'}
+          </h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label-style">계약일자 *</label>
+              <input type="date" value={form.contract_date}
+                onChange={e => setForm({ ...form, contract_date: e.target.value })}
+                className="input-style" />
+            </div>
+            <div>
+              <label className="label-style">계약번호</label>
+              <input value={form.contract_no}
+                onChange={e => setForm({ ...form, contract_no: e.target.value })}
+                className="input-style" placeholder="2618001217" />
+            </div>
+            <div>
+              <label className="label-style">고객명 *</label>
+              <input value={form.customer_name}
+                onChange={e => setForm({ ...form, customer_name: e.target.value })}
+                className="input-style" placeholder="홍길동" />
+            </div>
+            <div>
+              <label className="label-style">계약금액 (원) *</label>
+              <input type="number" placeholder="0" value={form.contract_amount}
+                onChange={e => setForm({ ...form, contract_amount: e.target.value })}
+                className="input-style" />
+            </div>
+            <div>
+              <label className="label-style">자동계산 (0.5%)</label>
+              <div className="bg-gray-50 border rounded px-3 py-2 text-sm flex justify-between">
+                <span className="text-gray-500">인센티브</span>
+                <span className="text-blue-700 font-medium">{fmt(incentive)}원</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 pt-5">
+              <input
+                type="checkbox"
+                id="collateral_set"
+                checked={form.collateral_set}
+                onChange={e => setForm({ ...form, collateral_set: e.target.checked })}
+              />
+              <label htmlFor="collateral_set" className="text-sm text-gray-700">담보설정 완료</label>
+            </div>
+            <div className="col-span-2">
+              <label className="label-style">비고</label>
+              <input value={form.note}
+                onChange={e => setForm({ ...form, note: e.target.value })}
+                className="input-style" placeholder="메모" />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={handleSave} disabled={loading}
+              className="bg-blue-600 text-white px-5 py-2 rounded text-sm disabled:opacity-50">
+              {loading ? '저장 중...' : '저장'}
+            </button>
+            <button onClick={() => { setShowForm(false); setEditId(null); setForm(empty); }}
+              className="border text-gray-600 px-5 py-2 rounded text-sm">
+              취소
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 목록 */}
+      <div className="bg-white rounded-lg border overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-gray-600">
+            <tr>
+              {['계약일자', '계약번호', '고객명', '계약금액', '담보설정', '인센티브(0.5%)', '비고', ''].map(h => (
+                <th key={h} className="px-3 py-2.5 text-left font-medium border-b">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {entries.length === 0 && (
+              <tr><td colSpan={8} className="px-3 py-8 text-center text-gray-400">등록된 계약이 없습니다.</td></tr>
+            )}
+            {entries.map(r => (
+              <tr key={r.id} className="border-b hover:bg-gray-50">
+                <td className="px-3 py-2.5 text-gray-700">{r.contract_date}</td>
+                <td className="px-3 py-2.5 text-gray-500 text-xs">{r.contract_no || '—'}</td>
+                <td className="px-3 py-2.5 font-medium">{r.customer_name}</td>
+                <td className="px-3 py-2.5 text-right">{fmt(r.contract_amount)}</td>
+                <td className="px-3 py-2.5">
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${r.collateral_set ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                    {r.collateral_set ? '설정' : '미설정'}
+                  </span>
+                </td>
+                <td className="px-3 py-2.5 text-right text-blue-700 font-medium">{fmt(r.incentive_amount)}</td>
+                <td className="px-3 py-2.5 text-gray-500 text-xs">{r.note}</td>
+                <td className="px-3 py-2.5">
+                  <div className="flex gap-2">
+                    <button onClick={() => handleEdit(r)} className="text-blue-500 hover:underline text-xs">수정</button>
+                    <button onClick={() => handleDelete(r.id)} className="text-red-400 hover:underline text-xs">삭제</button>
+                  </div>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>

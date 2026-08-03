@@ -15,6 +15,7 @@ serve(async (req) => {
       toList, ccList,
       totalAmount, vatAmount, grandTotal,
       htmlBody, extraMessage, installmentInfo,
+      pdfBase64, fileName,
     } = await req.json();
 
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
@@ -106,6 +107,9 @@ serve(async (req) => {
       html:    emailHtml,
     };
     if (ccEmails.length > 0) payload.cc = ccEmails;
+    if (pdfBase64) {
+      payload.attachments = [{ filename: fileName || `${label}_${quoteNo}.pdf`, content: pdfBase64 }];
+    }
 
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",

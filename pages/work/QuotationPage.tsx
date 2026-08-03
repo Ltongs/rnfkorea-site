@@ -5,6 +5,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 import { supabase } from '../../lib/supabase';
 
 // ─── 타입 ───────────────────────────────────────────────────
@@ -18,6 +19,7 @@ interface SendInfo {
   phone1:     string; phone2:     string;
   quoteDate:  string;
   extraMsg:   string;
+  ceoName:    string; // 문서에 표기할 대표자 (이동수 / 서선경)
 }
 
 interface BatteryForm extends SendInfo {
@@ -66,6 +68,7 @@ const SEND0: SendInfo = {
   recipient:'', email1:'', email2:'',
   cc1:'admin@rnfkorea.co.kr', cc2:'ltongs7@gmail.com',
   phone1:'', phone2:'', quoteDate:TODAY, extraMsg:'',
+  ceoName:'이동수',
 };
 
 const BF0: BatteryForm = {
@@ -363,6 +366,17 @@ function SendInfoForm({
           <Input type="date" value={v.quoteDate} onChange={e=>onSendChange({quoteDate:e.target.value})}/>
         </div>
       </div>
+      <div>
+        <Label>대표자</Label>
+        <select
+          value={v.ceoName || '이동수'}
+          onChange={e=>onSendChange({ceoName:e.target.value})}
+          className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+        >
+          <option value="이동수">이동수</option>
+          <option value="서선경">서선경</option>
+        </select>
+      </div>
       <EmailChipInput
         label="수신 이메일 (최대 2개)"
         emails={toEmails.filter(Boolean)}
@@ -495,13 +509,61 @@ function NoteEditor({notes,onChange}:{notes:string[];onChange:(n:string[])=>void
   );
 }
 
-// ─── PDF 프린트 헬퍼 ───────────────────────────────────────
-function printHTML(html: string) {
-  const win = window.open('', '_blank');
-  if (!win) return;
-  win.document.write(html);
-  win.document.close();
-  win.addEventListener('load', () => { setTimeout(()=>{ win.print(); }, 400); });
+// ─── PDF 생성/다운로드 헬퍼 ─────────────────────────────────
+// 대용량 결과를 안전하게 base64로 변환 (TransactionStatementPage.tsx와 동일한 패턴)
+function bytesToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunkSize)) as number[]);
+  }
+  return btoa(binary);
+}
+
+// 완전한 HTML 문서 문자열을 A4 1페이지 PDF(ArrayBuffer)로 변환한다.
+// 화면 폭에 따라 레이아웃이 늘어나 보이던 문제를 없애기 위해, 항상 A4 폭(794px)으로
+// 오프스크린 렌더링한 뒤 캡처하므로 미리보기·다운로드·이메일 첨부가 모두 동일하게 보인다.
+async function htmlDocToPdfBytes(html: string): Promise<ArrayBuffer> {
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  const bodyHTML = bodyMatch ? bodyMatch[1] : html;
+  const styleMatch = html.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+  const styleEl = document.createElement('style');
+  styleEl.textContent = styleMatch ? styleMatch[1] : '';
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'position:absolute;left:-9999px;top:0;width:794px;background:#fff;';
+  wrapper.innerHTML = bodyHTML;
+  document.head.appendChild(styleEl);
+  document.body.appendChild(wrapper);
+  try {
+    await new Promise(r => setTimeout(r, 200));
+    const canvas = await html2canvas(wrapper, {
+      scale: 2, backgroundColor: '#ffffff',
+      useCORS: true, allowTaint: true, logging: false,
+      width: wrapper.offsetWidth, windowWidth: wrapper.offsetWidth,
+    });
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const imgHeight = Math.min(pageHeight, (canvas.height*pageWidth)/canvas.width);
+    pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, imgHeight);
+    return pdf.output('arraybuffer');
+  } finally {
+    document.body.removeChild(wrapper);
+    document.head.removeChild(styleEl);
+  }
+}
+
+// 생성된 PDF를 파일로 다운로드한다.
+function downloadPdfBytes(bytes: ArrayBuffer, fileName: string) {
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ─── PDF HTML: 배터리/지게차 견적서 ────────────────────────
@@ -541,9 +603,11 @@ function buildQuoteHTML(type:'battery'|'forklift'|'tire', form:BatteryForm|Forkl
 <style>
   @page{size:A4;margin:15mm 14mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}
   *{box-sizing:border-box;}
-  body{font-family:'맑은 고딕','Malgun Gothic',sans-serif;font-size:12px;color:#1e293b;margin:0;}
+  body{font-family:'맑은 고딕','Malgun Gothic',sans-serif;font-size:12px;color:#1e293b;margin:0;background:#e5e7eb;}
   table{border-collapse:collapse;width:100%;}
+  .doc{max-width:794px;margin:0 auto;background:#fff;padding:16px;}
 </style></head><body>
+<div class="doc">
 <div style="background:#0a192f;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;border-radius:6px;margin-bottom:14px">
   <div><div style="font-size:20px;font-weight:700;color:#fff">RNF KOREA</div>
   <div style="font-size:9px;color:#94a3b8;margin-top:3px">INDUSTRIAL ENERGY &amp; MOBILITY SOLUTION</div></div>
@@ -559,7 +623,7 @@ function buildQuoteHTML(type:'battery'|'forklift'|'tire', form:BatteryForm|Forkl
   <div style="background:#f8fafc;border-radius:6px;padding:10px">
     <div style="font-size:9px;color:#64748b;margin-bottom:3px">발 신</div>
     <div style="font-size:12px;font-weight:700;color:#0a192f">주식회사 알앤에프코리아</div>
-    <div style="font-size:10px;color:#374151;margin-top:3px">대표: 이동수 | 사업자: 316-88-02901 | 1551-1873</div>
+    <div style="font-size:10px;color:#374151;margin-top:3px">대표: ${form.ceoName || '이동수'} | 사업자: 316-88-02901 | 1551-1873</div>
     <div style="font-size:10px;color:#374151">경기도 안산시 단원구 산단로 325</div>
   </div>
 </div>
@@ -605,6 +669,7 @@ ${(type==='battery'||type==='tire')?`<div style="background:#f1f5f9;border-radiu
   <div style="color:#fff;font-size:11px;font-weight:700;margin-bottom:4px">상기와 같이 견적을 제출합니다.</div>
   <div style="color:#94a3b8;font-size:9px">TEL: 1551-1873 | 주식회사 알앤에프코리아 | rnfkorea.co.kr</div>
 </div>
+</div>
 </body></html>`;
 }
 
@@ -626,8 +691,9 @@ function buildPurchaseHTML(form:PurchaseForm, poNo:string) {
     </tr>`;
   }).join('');
   return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>발주서 ${poNo}</title>
-<style>@page{size:A4;margin:15mm 14mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}*{box-sizing:border-box;}body{font-family:'맑은 고딕','Malgun Gothic',sans-serif;font-size:12px;color:#1e293b;margin:0;}table{border-collapse:collapse;width:100%;}</style>
+<style>@page{size:A4;margin:15mm 14mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}*{box-sizing:border-box;}body{font-family:'맑은 고딕','Malgun Gothic',sans-serif;font-size:12px;color:#1e293b;margin:0;background:#e5e7eb;}table{border-collapse:collapse;width:100%;}.doc{max-width:794px;margin:0 auto;background:#fff;padding:16px;}</style>
 </head><body>
+<div class="doc">
 <div style="background:#0a192f;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;border-radius:6px;margin-bottom:14px">
   <div><div style="font-size:20px;font-weight:700;color:#fff">RNF KOREA</div>
   <div style="font-size:9px;color:#94a3b8;margin-top:3px">INDUSTRIAL ENERGY &amp; MOBILITY SOLUTION</div></div>
@@ -643,7 +709,7 @@ function buildPurchaseHTML(form:PurchaseForm, poNo:string) {
   <div style="background:#f8fafc;border-radius:6px;padding:10px">
     <div style="font-size:9px;color:#64748b;margin-bottom:3px">발 주 자</div>
     <div style="font-size:12px;font-weight:700;color:#0a192f">주식회사 알앤에프코리아</div>
-    <div style="font-size:10px;color:#374151;margin-top:3px">대표: 이동수 | 사업자: 316-88-02901</div>
+    <div style="font-size:10px;color:#374151;margin-top:3px">대표: ${form.ceoName || '이동수'} | 사업자: 316-88-02901</div>
     <div style="font-size:10px;color:#374151">경기도 안산시 단원구 산단로 325 | 1551-1873</div>
   </div>
 </div>
@@ -668,6 +734,7 @@ ${form.note?`<div style="background:#f8fafc;border-radius:6px;padding:10px;margi
 <div style="background:#0a192f;padding:12px;text-align:center;border-radius:6px">
   <div style="color:#fff;font-size:11px;font-weight:700;margin-bottom:4px">아래와 같이 발주합니다.</div>
   <div style="color:#94a3b8;font-size:9px">TEL: 1551-1873 | 주식회사 알앤에프코리아 | rnfkorea.co.kr</div>
+</div>
 </div>
 </body></html>`;
 }
@@ -953,30 +1020,37 @@ export default function QuotationPage() {
   const currentQuoteType = () =>
     tab==='purchase'?'purchase':tab;
 
-  // ── PDF 출력 (인쇄)
+  // ── PDF 다운로드
+  const typeLabelOf = (t:TabType) => t==='battery'?'배터리':t==='forklift'?'지게차':t==='tire'?'타이어':t==='purchase'?'발주서':'견적서';
+
   const handlePrint = async () => {
     const s = currentSend();
     if(tab==='installment') { await downloadInstallmentPDF(); return; }
-    const no = await genNo();
-    let html = '';
-    if(tab==='battery')  html = buildQuoteHTML('battery',  bf, no);
-    if(tab==='forklift') html = buildQuoteHTML('forklift', ff, no);
-    if(tab==='tire')     html = buildQuoteHTML('tire',     tf, no);
-    if(tab==='purchase') html = buildPurchaseHTML(pf, no);
-    if(html) {
-      // 히스토리 저장
-      const total = tab==='battery'?bTotal:tab==='forklift'?fTotal:tab==='tire'?tTotal:pTotal;
-      const vat   = Math.round(total*.1);
-      supabase.from('tb_quotations').insert({
-        quote_type: currentQuoteType(), quote_no: no,
-        quote_date: s.quoteDate, recipient: s.recipient,
-        recipient_email: s.email1, items: tab==='battery'?bf.items:tab==='forklift'?ff.items:tab==='tire'?tf.items:pf.items,
-        notes: tab==='battery'?bf.notes:tab==='forklift'?ff.notes:tab==='tire'?tf.notes:null,
-        total_amount: total, vat_amount: vat, grand_total: total+vat,
-        created_by:'admin@rnfkorea.co.kr',
-      }).then(({error})=>{ if(error) console.error('[이력저장오류]', error.message, error.details); });
-      printHTML(html);
-    }
+    setLoading(true);
+    try {
+      const no = await genNo();
+      let html = '';
+      if(tab==='battery')  html = buildQuoteHTML('battery',  bf, no);
+      if(tab==='forklift') html = buildQuoteHTML('forklift', ff, no);
+      if(tab==='tire')     html = buildQuoteHTML('tire',     tf, no);
+      if(tab==='purchase') html = buildPurchaseHTML(pf, no);
+      if(html) {
+        // 히스토리 저장
+        const total = tab==='battery'?bTotal:tab==='forklift'?fTotal:tab==='tire'?tTotal:pTotal;
+        const vat   = Math.round(total*.1);
+        supabase.from('tb_quotations').insert({
+          quote_type: currentQuoteType(), quote_no: no,
+          quote_date: s.quoteDate, recipient: s.recipient,
+          recipient_email: s.email1, items: tab==='battery'?bf.items:tab==='forklift'?ff.items:tab==='tire'?tf.items:pf.items,
+          notes: tab==='battery'?bf.notes:tab==='forklift'?ff.notes:tab==='tire'?tf.notes:null,
+          total_amount: total, vat_amount: vat, grand_total: total+vat,
+          created_by:'admin@rnfkorea.co.kr',
+        }).then(({error})=>{ if(error) console.error('[이력저장오류]', error.message, error.details); });
+        const bytes = await htmlDocToPdfBytes(html);
+        downloadPdfBytes(bytes, `RNF_${typeLabelOf(tab)}견적서_${s.recipient||'고객'}_${no}.pdf`);
+      }
+    } catch(e:any) { flash(`PDF 생성 오류: ${e.message}`); }
+    setLoading(false);
   };
 
   // ── 견적 발송 시 상담관리(CallManagement) 자동 등록
@@ -1096,12 +1170,14 @@ export default function QuotationPage() {
       });
       if (insertErr) console.error('[이력저장오류]', insertErr.message, insertErr.details);
 
-      // HTML 생성
+      // HTML 생성 → 실제 PDF 파일로 변환해 첨부한다 (본문에는 요약만 표시)
       let html='';
       if(tab==='battery')  html=buildQuoteHTML('battery', bf, no);
       if(tab==='forklift') html=buildQuoteHTML('forklift',ff, no);
       if(tab==='tire')     html=buildQuoteHTML('tire',    tf, no);
       if(tab==='purchase') html=buildPurchaseHTML(pf, no);
+      const pdfBytes = html ? await htmlDocToPdfBytes(html) : null;
+      const fileName = `RNF_${typeLabelOf(tab)}견적서_${s.recipient||'고객'}_${no}.pdf`;
 
       // 수신 목록
       const toList  = [s.email1, s.email2].filter(Boolean);
@@ -1113,9 +1189,9 @@ export default function QuotationPage() {
           recipient: s.recipient,
           toList, ccList,
           totalAmount: total, vatAmount: vat, grandTotal: grand,
-          htmlBody: html,
           extraMessage: s.extraMsg,
-          fileName:'',  xlsxBase64:'',  // PDF 방식 — 첨부 없음
+          pdfBase64: pdfBytes ? bytesToBase64(pdfBytes) : '',
+          fileName,
         },
       });
       if(error) throw error;
@@ -1248,11 +1324,11 @@ export default function QuotationPage() {
     setSmsSending(false);
   };
 
-  // ── 할부견적서 PDF
-  const downloadInstallmentPDF = async () => {
+  // ── 할부견적서 HTML 생성 (다운로드·이메일 첨부 공용)
+  const buildInstallmentHTML = () => {
     const p=n0(iff.principal),r=n0(iff.annualRate),gp=n0(iff.gracePeriod),im=n0(iff.installmentMonths);
     const months=gp+im;
-    if(!p||!r||!months){flash('할부원금, 금리, 기간을 입력해주세요.');return;}
+    if(!p||!r||!months) return null;
     const{payment,rows}=calcAmortization(p,r,months,iff.startYM,gp);
     const totalInterest=rows.reduce((s:number,row:any)=>s+row.interest,0);
     const totalPayment =rows.reduce((s:number,row:any)=>s+row.payment,0);
@@ -1264,10 +1340,12 @@ export default function QuotationPage() {
       <td style="text-align:right">${fmtN(row.interest)}</td><td style="text-align:right">${fmtN(row.balance)}</td>
     </tr>`).join('');
     const html=`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>할부견적서</title>
-<style>@page{size:A4;margin:15mm 14mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}*{box-sizing:border-box;}body{font-family:'맑은 고딕',sans-serif;font-size:11px;color:#1e293b;}
+<style>@page{size:A4;margin:15mm 14mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}*{box-sizing:border-box;}body{font-family:'맑은 고딕',sans-serif;font-size:11px;color:#1e293b;background:#e5e7eb;}
+.doc{max-width:794px;margin:0 auto;background:#fff;padding:16px;}
 table{border-collapse:collapse;width:100%;}th{background:#0a192f;color:#fff;padding:6px 4px;font-size:10px;}
 td{padding:5px 4px;border-bottom:1px solid #f1f5f9;}tr:nth-child(even) td{background:#f8fafc;}
 tr.grace td{color:#94a3b8;font-style:italic;}.tfoot td{background:#e2e8f0;font-weight:700;border-top:2px solid #94a3b8;}</style></head><body>
+<div class="doc">
 <div style="background:#0a192f;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;border-radius:6px;margin-bottom:12px">
   <div style="color:#fff;font-size:18px;font-weight:700">RNF KOREA</div>
   <div style="text-align:right"><div style="color:#f97316;font-size:20px;font-weight:700">할부 견적서</div>
@@ -1297,17 +1375,33 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
   </tr></tfoot>
 </table>
 <p style="margin-top:10px;font-size:9px;color:#94a3b8;text-align:center">※ 실제 납입액은 금융사 기준일·계산방식에 따라 일부 다를 수 있습니다. | 주식회사 알앤에프코리아 | 1551-1873</p>
+</div>
 </body></html>`;
-    const no = await genNo();
-    const {principal:princ,...rest}=iff;
-    supabase.from('tb_quotations').insert({
-      quote_type:'installment',quote_no:no,quote_date:iff.quoteDate,
-      recipient:iff.recipient,recipient_email:iff.email1,
-      items:[{name:iff.itemName,spec:iff.itemSpec,qty:1,price:n0(iff.carPrice)||p}],
-      notes:[`할부원금:${fmtN(p)}원`,`연이율:${r}%`,`거치기간:${gp}개월`,`할부기간:${im}개월`,`월납입:${fmtN(payment)}원`,`금융사:${iff.financeCompany}`],
-      total_amount:p,vat_amount:0,grand_total:p,created_by:'admin@rnfkorea.co.kr',
-    }).then(()=>{});
-    printHTML(html);
+    return html;
+  };
+
+  // ── 할부견적서 PDF 다운로드
+  const downloadInstallmentPDF = async () => {
+    const p=n0(iff.principal),r=n0(iff.annualRate),gp=n0(iff.gracePeriod),im=n0(iff.installmentMonths);
+    if(!p||!r||!(gp+im)){flash('할부원금, 금리, 기간을 입력해주세요.');return;}
+    const html = buildInstallmentHTML();
+    if(!html) return;
+    setLoading(true);
+    try {
+      const{payment}=calcAmortization(p,r,gp+im,iff.startYM,gp);
+      const fmtN=(n:number)=>(()=>{ const a=Math.abs(Math.round(n)); return (n<0?'-':'')+a.toString().replace(/\B(?=(\d{3})+(?!\d))/g,','); })();
+      const no = await genNo();
+      supabase.from('tb_quotations').insert({
+        quote_type:'installment',quote_no:no,quote_date:iff.quoteDate,
+        recipient:iff.recipient,recipient_email:iff.email1,
+        items:[{name:iff.itemName,spec:iff.itemSpec,qty:1,price:n0(iff.carPrice)||p}],
+        notes:[`할부원금:${fmtN(p)}원`,`연이율:${r}%`,`거치기간:${gp}개월`,`할부기간:${im}개월`,`월납입:${fmtN(payment)}원`,`금융사:${iff.financeCompany}`],
+        total_amount:p,vat_amount:0,grand_total:p,created_by:'admin@rnfkorea.co.kr',
+      }).then(()=>{});
+      const bytes = await htmlDocToPdfBytes(html);
+      downloadPdfBytes(bytes, `RNF_할부견적서_${iff.recipient||'고객'}_${no}.pdf`);
+    } catch(e:any) { flash(`PDF 생성 오류: ${e.message}`); }
+    setLoading(false);
   };
 
   const sendInstallmentEmail = async () => {
@@ -1331,11 +1425,15 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
         total_amount:p,vat_amount:0,grand_total:p,created_by:'admin@rnfkorea.co.kr',
       });
       if (insertErr) console.error('[이력저장오류]', insertErr.message, insertErr.details);
+      const installmentHtml = buildInstallmentHTML();
+      const pdfBytes = installmentHtml ? await htmlDocToPdfBytes(installmentHtml) : null;
       const{error}=await supabase.functions.invoke('send-quotation',{
         body:{quoteNo:no,quoteType:'installment',recipient:iff.recipient,toList,ccList,
-          totalAmount:p,vatAmount:0,grandTotal:p,htmlBody:'',extraMessage:iff.extraMsg,
+          totalAmount:p,vatAmount:0,grandTotal:p,extraMessage:iff.extraMsg,
           installmentInfo:{itemName:iff.itemName,financeCompany:iff.financeCompany,
-            principal:p,annualRate:r,gracePeriod:gp,installmentMonths:im,totalMonths:months,payment}},
+            principal:p,annualRate:r,gracePeriod:gp,installmentMonths:im,totalMonths:months,payment},
+          pdfBase64: pdfBytes ? bytesToBase64(pdfBytes) : '',
+          fileName: `RNF_할부견적서_${iff.recipient||'고객'}_${no}.pdf`},
       });
       if(error) throw error;
 
@@ -1385,7 +1483,7 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
                 👁 미리보기
               </button>
               <button onClick={handlePrint} disabled={loading} className="bg-white text-[#0a192f] hover:bg-gray-100 px-4 py-2 rounded text-sm font-medium disabled:opacity-50">
-                🖨️ PDF 출력
+                {loading?'생성 중...':'📥 PDF 다운로드'}
               </button>
               <button onClick={handleEmail} disabled={emailLoading} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded text-sm font-medium disabled:opacity-50">
                 {emailLoading?'발송 중...':'📧 이메일 발송'}
@@ -1640,7 +1738,7 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
             ) : (
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-gray-600">
-                  <tr>{['구분','견적번호','일자','수신인','총액','이메일발송','불러오기','재출력','삭제'].map(h=>(
+                  <tr>{['구분','견적번호','일자','수신인','총액','이메일발송','불러오기','다운로드','삭제'].map(h=>(
                     <th key={h} className="px-3 py-2.5 text-left font-medium text-xs border-b">{h}</th>
                   ))}</tr>
                 </thead>
@@ -1673,21 +1771,27 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
                       </td>
                       <td className="px-3 py-2">
                         <button
-                          onClick={()=>{
+                          disabled={loading}
+                          onClick={async ()=>{
                             const type=row.quote_type as any;
+                            let html: string | null = null;
                             if(type==='battery'||type==='forklift'||type==='tire'){
                               const base = type==='battery'?BF0:type==='forklift'?FF0:TF0;
                               const form = {...base,recipient:row.recipient,email1:row.recipient_email,quoteDate:row.quote_date,items:row.items??base.items,notes:row.notes??base.notes};
-                              const html=buildQuoteHTML(type,form as any,row.quote_no);
-                              printHTML(html);
+                              html=buildQuoteHTML(type,form as any,row.quote_no);
                             } else if(type==='purchase'){
                               const form = {...PF0,recipient:row.recipient,email1:row.recipient_email,quoteDate:row.quote_date,receiverName:row.recipient,items:row.items??PF0.items};
-                              const html=buildPurchaseHTML(form as any,row.quote_no);
-                              printHTML(html);
-                            } else flash('할부 견적서 재출력은 해당 탭에서 다시 입력해 주세요.');
+                              html=buildPurchaseHTML(form as any,row.quote_no);
+                            } else { flash('할부 견적서 재다운로드는 해당 탭에서 다시 입력해 주세요.'); return; }
+                            setLoading(true);
+                            try {
+                              const bytes = await htmlDocToPdfBytes(html);
+                              downloadPdfBytes(bytes, `RNF_${typeLabelOf(type)}견적서_${row.recipient||'고객'}_${row.quote_no}.pdf`);
+                            } catch(e:any) { flash(`PDF 생성 오류: ${e.message}`); }
+                            setLoading(false);
                           }}
-                          className="text-xs text-blue-500 hover:underline"
-                        >출력</button>
+                          className="text-xs text-blue-500 hover:underline disabled:opacity-50"
+                        >다운로드</button>
                       </td>
                       <td className="px-3 py-2">
                         <button
@@ -1720,9 +1824,10 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
               <div className="flex gap-2">
                 <button
                   onClick={()=>{ handlePrint(); setPreviewOpen(false); }}
-                  className="bg-[#0a192f] text-white px-4 py-1.5 rounded text-xs font-medium hover:bg-[#1a3a5f]"
+                  disabled={loading}
+                  className="bg-[#0a192f] text-white px-4 py-1.5 rounded text-xs font-medium hover:bg-[#1a3a5f] disabled:opacity-50"
                 >
-                  🖨️ 인쇄 / PDF 저장
+                  {loading?'생성 중...':'📥 PDF 다운로드'}
                 </button>
                 <button onClick={()=>setPreviewOpen(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none px-2">✕</button>
               </div>

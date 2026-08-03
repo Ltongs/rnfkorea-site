@@ -164,7 +164,10 @@
       "Bash(awk '$1>=4518 && $1<=4536')",
       "Bash(grep -n \"async function toggleSched\\\\|void toggleSched\\\\|is_done:!done\\\\|update\\({is_done:true}\\).eq\\(\\\\\"id\\\\\",schedModal\" /Users/tongsoolee/Desktop/WORKS/Homepage/rnfkorea_deploy_new/pages/secretary/index.tsx)",
       "Bash(grep -n \"update\\({is_done:true}\\).eq\\(\\\\\"id\\\\\",schedModal\" /Users/tongsoolee/Desktop/WORKS/Homepage/rnfkorea_deploy_new/pages/secretary/index.tsx)",
-      "Bash(awk '$1>=4700 && $1<=5290')"
+      "Bash(awk '$1>=4700 && $1<=5290')",
+      "Bash(xargs -I{} sh -c 'echo \"== {} ==\"; git log -1 --format=\"%ad\" --date=short -- {}')",
+      "Bash(echo \"exit: $?\")",
+      "Bash(git -C /Users/tongsoolee/Desktop/WORKS/Homepage/rnfkorea_deploy_new diff pages/work/WithholdingPage.tsx)"
     ]
   }
 }

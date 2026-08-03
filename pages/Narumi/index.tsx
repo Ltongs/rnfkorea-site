@@ -802,14 +802,8 @@ export default function NarumiPage() {
 
       if (error) throw error;
 
-      sendNarumiKakao({
-        type:         "narumi_new",
-        vin:          vinTrim,
-        customerName: dispatchRow.customer_name ?? "",
-        salesRep:     salesRepTrim,
-        deliveryDate: dtTrim,
-        specialNote:  "번호판 중개 건 → 출고 전환",
-      });
+      // 카카오 알림: narumi_tasks 출고전환(is_dispatched) 트리거가 서버에서 직접 발송함
+      // (브라우저 탭이 닫혀도 확실히 발송되도록 서버 트리거 방식으로 전환됨)
 
       setDispatchRow(null);
       await fetchRows();
@@ -931,14 +925,8 @@ export default function NarumiPage() {
         const { error } = await supabase.from("narumi_tasks").insert(payload);
         if (error) throw error;
 
-        sendNarumiKakao({
-          type:         "narumi_new",
-          vin:          "(번호판 중개 건)",
-          customerName: nameTrim,
-          salesRep:     "-",
-          deliveryDate: "-",
-          specialNote:  specialNote.trim() || undefined,
-        });
+        // 카카오 알림: narumi_tasks insert 트리거가 서버에서 직접 발송함
+        // (브라우저 탭이 닫혀도 확실히 발송되도록 서버 트리거 방식으로 전환됨)
 
         onReset();
         await fetchRows();
@@ -1059,15 +1047,8 @@ export default function NarumiPage() {
         await uploadManufactureDocForRow(inserted.id, manufactureImageFile);
       }
 
-      // 카카오 알림
-      sendNarumiKakao({
-        type:         "narumi_new",
-        vin:          vinTrim,
-        customerName: nameTrim,
-        salesRep:     salesRepTrim,
-        deliveryDate: dtTrim,
-        specialNote:  specialNote.trim() || undefined,
-      });
+      // 카카오 알림: narumi_tasks insert 트리거가 서버에서 직접 발송함
+      // (브라우저 탭이 닫혀도 확실히 발송되도록 서버 트리거 방식으로 전환됨)
 
       // 다음 날 할 일 + 일정 자동 등록 (KST 기준)
       const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
