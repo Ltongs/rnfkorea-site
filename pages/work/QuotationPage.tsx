@@ -23,10 +23,12 @@ interface SendInfo {
 }
 
 interface BatteryForm extends SendInfo {
+  docTitle:string; // 견적서 우측 상단 타이틀("배터리 견적서")의 "배터리" 부분 — 직접 수정 가능
   validPeriod:string; paymentTerms:string; deliveryPlace:string;
   items:Item[]; notes:string[];
 }
 interface TireForm extends SendInfo {
+  docTitle:string; // 견적서 우측 상단 타이틀("타이어 견적서")의 "타이어" 부분 — 직접 수정 가능
   validPeriod:string; paymentTerms:string; deliveryPlace:string;
   items:Item[]; notes:string[];
 }
@@ -73,6 +75,7 @@ const SEND0: SendInfo = {
 
 const BF0: BatteryForm = {
   ...SEND0,
+  docTitle:'배터리',
   validPeriod:'견적 후 30일', paymentTerms:'현  금', deliveryPlace:'현지 운송도',
   items:[
     {name:'LFP 배터리 (Spiderway)',   spec:'25.6V / 150Ah', qty:1, price:1_800_000},
@@ -89,6 +92,7 @@ const BF0: BatteryForm = {
 
 const TF0: TireForm = {
   ...SEND0,
+  docTitle:'타이어',
   validPeriod:'견적 후 30일', paymentTerms:'현  금', deliveryPlace:'현지 운송도',
   items:[
     {name:'', spec:'', qty:1, price:0},
@@ -572,7 +576,8 @@ function buildQuoteHTML(type:'battery'|'forklift'|'tire', form:BatteryForm|Forkl
   const total = calcTotal(form.items);
   const vat   = Math.round(total*.1);
   const grand = total+vat;
-  const typeLabel = type==='battery'?'배터리':type==='tire'?'타이어':((form as ForkliftForm).docTitle?.trim() || '지게차');
+  const defaultLabel = type==='battery'?'배터리':type==='tire'?'타이어':'지게차';
+  const typeLabel = form.docTitle?.trim() || defaultLabel;
   const itemRows = [...form.items,...Array(Math.max(0,10-form.items.length)).fill({name:'',spec:'',qty:'',price:''})].map((it,i)=>{
     const inc=it.price==='포함';
     const amt=!inc&&it.price?n0(it.price)*(n0(it.qty)||1):0;
@@ -1517,7 +1522,12 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
         {tab==='battery' && <>
           <SendInfoForm v={bf} onSendChange={updSend(setBf)} emailSuggestions={emailSuggestions}/>
           <div className="bg-white rounded-lg border p-5 space-y-3">
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-3">
+              <div>
+                <Label>견적서 제목</Label>
+                <Input value={bf.docTitle} onChange={e=>setBf(f=>({...f,docTitle:e.target.value}))} placeholder="배터리"/>
+                <p className="text-[11px] text-gray-400 mt-1">우측 상단에 "{bf.docTitle || '배터리'} 견적서"로 표시됩니다.</p>
+              </div>
               <div><Label>유효기간</Label><Input value={bf.validPeriod} onChange={e=>setBf(f=>({...f,validPeriod:e.target.value}))}/></div>
               <div><Label>거래조건</Label><Input value={bf.paymentTerms} onChange={e=>setBf(f=>({...f,paymentTerms:e.target.value}))}/></div>
               <div><Label>인도장소</Label><Input value={bf.deliveryPlace} onChange={e=>setBf(f=>({...f,deliveryPlace:e.target.value}))}/></div>
@@ -1537,7 +1547,12 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
         {tab==='tire' && <>
           <SendInfoForm v={tf} onSendChange={updSend(setTf)} emailSuggestions={emailSuggestions}/>
           <div className="bg-white rounded-lg border p-5 space-y-3">
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-3">
+              <div>
+                <Label>견적서 제목</Label>
+                <Input value={tf.docTitle} onChange={e=>setTf(f=>({...f,docTitle:e.target.value}))} placeholder="타이어"/>
+                <p className="text-[11px] text-gray-400 mt-1">우측 상단에 "{tf.docTitle || '타이어'} 견적서"로 표시됩니다.</p>
+              </div>
               <div><Label>유효기간</Label><Input value={tf.validPeriod} onChange={e=>setTf(f=>({...f,validPeriod:e.target.value}))}/></div>
               <div><Label>거래조건</Label><Input value={tf.paymentTerms} onChange={e=>setTf(f=>({...f,paymentTerms:e.target.value}))}/></div>
               <div><Label>인도장소</Label><Input value={tf.deliveryPlace} onChange={e=>setTf(f=>({...f,deliveryPlace:e.target.value}))}/></div>
