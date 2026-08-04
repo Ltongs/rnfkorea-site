@@ -28,6 +28,9 @@ interface TbOrder {
   payment_out_at: string | null;
   alimtalk_sent: boolean | null;
   memo: string | null;
+  raw_message: string | null;       // 카카오 원문 메시지
+  parsed_confidence: string | null; // Claude 파싱 신뢰도 ("high"/"low")
+  parse_notes: string | null;       // Claude가 남긴 비고(불확실한 부분 등)
 }
 
 // 화면에 보여줄 단순화된 3+1 단계
@@ -469,6 +472,26 @@ export default function OrdersPage() {
                           </label>
                           <button onClick={() => setDeleteConfirm(order)} className={BTR}>삭제</button>
                         </div>
+
+                        {/* 카카오 원문 + AI 파싱 비고 */}
+                        {(order.raw_message || order.parse_notes) && (
+                          <div className="space-y-1.5">
+                            {order.raw_message && (
+                              <div className="bg-white rounded-xl p-2.5 border border-gray-200">
+                                <p className="text-[11px] text-gray-400 mb-0.5">카카오 원문</p>
+                                <p className="text-xs text-gray-600 whitespace-pre-wrap">{order.raw_message}</p>
+                              </div>
+                            )}
+                            {order.parse_notes && (
+                              <div className={`rounded-xl p-2.5 border ${order.parsed_confidence === "low" ? "bg-amber-50 border-amber-200" : "bg-white border-gray-200"}`}>
+                                <p className="text-[11px] text-gray-400 mb-0.5">
+                                  비고{order.parsed_confidence === "low" && <span className="text-amber-600 font-medium"> · 확인 필요</span>}
+                                </p>
+                                <p className="text-xs text-gray-600 whitespace-pre-wrap">{order.parse_notes}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         {/* 메모 */}
                         {order.memo && (

@@ -22,6 +22,7 @@ type SalesInputFields = {
   cm_incentive_rate: number | null;
   incentive_recipient_contractor_id: string | null; // 지급대상(수령자) — 등록된 수탁인(tb_contractors)만 선택 가능
   incentive_recipient_pending: boolean; // 업무위수탁 계약 전이라 수탁인 미등록 상태("미정")
+  note: string | null; // 일반 비고 (admin/파트너 공통 입력)
 };
 
 // 지급대상 select에서 "미정"을 고를 때만 쓰는 화면 전용 sentinel (DB에는 저장되지 않음)
@@ -93,6 +94,7 @@ function emptySalesForm(): SalesInputFields {
     cm_incentive_rate: null,
     incentive_recipient_contractor_id: null,
     incentive_recipient_pending: false,
+    note: "",
   };
 }
 
@@ -178,6 +180,7 @@ export default function OrixIncentivePage() {
         cm_incentive_rate: newSales.cm_incentive_rate,
         incentive_recipient_contractor_id: newSales.incentive_recipient_contractor_id || null,
         incentive_recipient_pending: newSales.incentive_recipient_pending,
+        note: newSales.note?.trim() || null,
       });
       if (err) throw err;
       await notifyNewEntry(newSales);
@@ -204,6 +207,7 @@ export default function OrixIncentivePage() {
       cm_incentive_rate: row.cm_incentive_rate,
       incentive_recipient_contractor_id: row.incentive_recipient_contractor_id,
       incentive_recipient_pending: row.incentive_recipient_pending,
+      note: row.note,
     });
     if (isOrixAdmin) {
       setEditAdmin({
@@ -235,6 +239,7 @@ export default function OrixIncentivePage() {
         cm_incentive_rate: editSales.cm_incentive_rate,
         incentive_recipient_contractor_id: editSales.incentive_recipient_contractor_id || null,
         incentive_recipient_pending: editSales.incentive_recipient_pending,
+        note: editSales.note?.trim() || null,
       };
       if (isOrixAdmin) {
         payload.paid_at = editAdmin.paid_at || null;
@@ -245,8 +250,8 @@ export default function OrixIncentivePage() {
       }
       const { error: err } = await supabase.from(writeTable).update(payload).eq("id", expandedId);
       if (err) throw err;
-      setRowMsg("저장되었습니다.");
       await loadRows();
+      setExpandedId(null); // 저장 성공 시 상세내역 닫기
     } catch (e: any) {
       setRowMsg(e?.message || "저장에 실패했습니다.");
     } finally {
@@ -413,6 +418,15 @@ export default function OrixIncentivePage() {
                   <div className={readonlyClass}>{formatMoney(newCmPreview)}</div>
                 </div>
               </div>
+              <div>
+                <label className={labelClass}>비고</label>
+                <textarea
+                  className="w-full min-h-[70px] px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm font-medium text-navy-900 placeholder:text-gray-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 transition-all"
+                  value={newSales.note ?? ""}
+                  onChange={(e) => setNewSales((p) => ({ ...p, note: e.target.value }))}
+                  placeholder="특이사항이 있으면 입력해주세요."
+                />
+              </div>
               {!!createMsg && <div className="text-sm font-medium text-orange-600">{createMsg}</div>}
               <button
                 onClick={createRow}
@@ -435,7 +449,7 @@ export default function OrixIncentivePage() {
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full min-w-[1100px] text-sm">
                   <thead>
                     <tr className="text-left text-xs font-medium text-gray-400 uppercase border-b border-gray-200">
                       <th className="py-2 pr-4">확정일자</th>
@@ -445,14 +459,16 @@ export default function OrixIncentivePage() {
                       <th className="py-2 pr-4">차종</th>
                       <th className="py-2 pr-4">인센티브율</th>
                       <th className="py-2 pr-4">인센티브 총액</th>
+                      <th className="py-2 pr-4">CM지급인센티브율</th>
                       <th className="py-2 pr-4">CM지급 인센티브</th>
                       <th className="py-2 pr-4">지급대상</th>
                       <th className="py-2 pr-4">지급상태</th>
+                      <th className="py-2 pr-4">비고</th>
                     </tr>
                   </thead>
                   <tbody>
                     {rows.length === 0 && (
-                      <tr><td colSpan={10} className="py-8 text-center text-gray-400">등록된 항목이 없습니다.</td></tr>
+                      <tr><td colSpan={12} className="py-8 text-center text-gray-400">등록된 항목이 없습니다.</td></tr>
                     )}
                     {rows.map((row) => (
                       <React.Fragment key={row.id}>
@@ -463,23 +479,25 @@ export default function OrixIncentivePage() {
                           <td className="py-2.5 pr-4 whitespace-nowrap">{row.confirmed_date ?? "-"}</td>
                           <td className="py-2.5 pr-4 font-medium text-navy-900 whitespace-nowrap">{row.customer_name}</td>
                           <td className="py-2.5 pr-4 whitespace-nowrap">{formatMoney(row.loan_principal)}</td>
-                          <td className="py-2.5 pr-4">{row.product_type ?? "-"}</td>
-                          <td className="py-2.5 pr-4">{row.vehicle_type ?? "-"}</td>
+                          <td className="py-2.5 pr-4 whitespace-nowrap">{row.product_type ?? "-"}</td>
+                          <td className="py-2.5 pr-4 whitespace-nowrap">{row.vehicle_type ?? "-"}</td>
                           <td className="py-2.5 pr-4 whitespace-nowrap">{row.incentive_rate ?? "-"}{row.incentive_rate !== null ? "%" : ""}</td>
                           <td className="py-2.5 pr-4 whitespace-nowrap font-medium">{formatMoney(row.incentive_total)}</td>
+                          <td className="py-2.5 pr-4 whitespace-nowrap">{row.cm_incentive_rate ?? "-"}{row.cm_incentive_rate !== null ? "%" : ""}</td>
                           <td className="py-2.5 pr-4 whitespace-nowrap">{formatMoney(row.cm_paid_incentive)}</td>
                           <td className="py-2.5 pr-4 whitespace-nowrap">{recipientLabel(contractors, row)}</td>
-                          <td className="py-2.5 pr-4">
+                          <td className="py-2.5 pr-4 whitespace-nowrap">
                             {row.paid_at ? (
                               <span className="inline-flex items-center rounded-full border border-green-200 bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700">지급완료</span>
                             ) : (
                               <span className="inline-flex items-center rounded-full border border-gray-200 bg-white px-2.5 py-0.5 text-xs font-medium text-gray-500">미지급</span>
                             )}
                           </td>
+                          <td className="py-2.5 pr-4 max-w-[220px] truncate" title={row.note ?? undefined}>{row.note ?? "-"}</td>
                         </tr>
                         {expandedId === row.id && (
                           <tr className="bg-gray-50">
-                            <td colSpan={10} className="p-4">
+                            <td colSpan={12} className="p-4">
                               <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
                                 <div className="flex items-center justify-between">
                                   <h3 className="text-sm font-semibold text-navy-900">항목 수정</h3>
@@ -552,6 +570,15 @@ export default function OrixIncentivePage() {
                                     <label className={labelClass}>CM지급 인센티브 (자동계산)</label>
                                     <div className={readonlyClass}>{formatMoney(editCmPreview)}</div>
                                   </div>
+                                </div>
+                                <div>
+                                  <label className={labelClass}>비고</label>
+                                  <textarea
+                                    className="w-full min-h-[70px] px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm font-medium text-navy-900 placeholder:text-gray-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 transition-all"
+                                    value={editSales.note ?? ""}
+                                    onChange={(e) => setEditSales((p) => ({ ...p, note: e.target.value }))}
+                                    placeholder="특이사항이 있으면 입력해주세요."
+                                  />
                                 </div>
 
                                 {isOrixAdmin && (
