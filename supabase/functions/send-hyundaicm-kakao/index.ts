@@ -487,6 +487,20 @@ function buildNarumiVariables(body: Record<string, string>): { templateKey: stri
     };
   }
 
+  if (type === "narumi_postal") {
+    return {
+      templateKey: "narumi_status",
+      variables: {
+        "#{VIN}":      body.vin     ?? "-",
+        "#{고객명}":   customerName ?? "-",
+        "#{이전단계}": "등록완료",
+        "#{현재단계}": `우편발송완료 (등기: ${body.trackingNo ?? "-"})`,
+        "#{영업사원}": salesRep ?? "-",
+        "#{시간}":     now,
+      },
+    };
+  }
+
   throw new Error(`나르미 알림톡 변수 빌더: 알 수 없는 type: ${type}`);
 }
 
@@ -1469,15 +1483,11 @@ serve(async (req) => {
           if (qIsJinheung) {
             await sendJinheungNow(q);
           } else if (qIsNarumi) {
-            if (q.type === "narumi_postal") {
+            try {
+              const { templateKey, variables } = buildNarumiVariables(q);
+              await sendNarumiAlimtalkToAll(templateKey, variables, buildMessage(q));
+            } catch {
               await sendSms(buildMessage(q), NARUMI_RECIPIENTS);
-            } else {
-              try {
-                const { templateKey, variables } = buildNarumiVariables(q);
-                await sendNarumiAlimtalkToAll(templateKey, variables, buildMessage(q));
-              } catch {
-                await sendSms(buildMessage(q), NARUMI_RECIPIENTS);
-              }
             }
           } else if (qIsTaesan) {
             try {
@@ -1572,23 +1582,16 @@ serve(async (req) => {
 
     // ── 나르미: 알림톡 발송 ──────────────────────────────────────
     if (isNarumi) {
-      // narumi_postal은 템플릿 없으므로 SMS 유지
-      if (body.type === "narumi_postal") {
+      try {
+        const { templateKey, variables } = buildNarumiVariables(body);
+        const fallbackText = buildMessage(body);
+        console.log("[나르미 알림톡 발송]:", templateKey);
+        await sendNarumiAlimtalkToAll(templateKey, variables, fallbackText);
+      } catch (e) {
+        // 템플릿 없는 타입은 SMS 폴백
+        console.warn("[나르미 알림톡 폴백 SMS]:", (e as Error).message);
         const smsText = buildMessage(body);
-        console.log("[나르미 우편발송 SMS]:", smsText.slice(0, 80));
         await sendSms(smsText, NARUMI_RECIPIENTS);
-      } else {
-        try {
-          const { templateKey, variables } = buildNarumiVariables(body);
-          const fallbackText = buildMessage(body);
-          console.log("[나르미 알림톡 발송]:", templateKey);
-          await sendNarumiAlimtalkToAll(templateKey, variables, fallbackText);
-        } catch (e) {
-          // 템플릿 없는 타입은 SMS 폴백
-          console.warn("[나르미 알림톡 폴백 SMS]:", (e as Error).message);
-          const smsText = buildMessage(body);
-          await sendSms(smsText, NARUMI_RECIPIENTS);
-        }
       }
     }
     // ── 태산통운: 알림톡 발송 (템플릿 미승인 시 자동 SMS 폴백) ──

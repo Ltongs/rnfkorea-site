@@ -168,7 +168,9 @@
       "Bash(xargs -I{} sh -c 'echo \"== {} ==\"; git log -1 --format=\"%ad\" --date=short -- {}')",
       "Bash(echo \"exit: $?\")",
       "Bash(git -C /Users/tongsoolee/Desktop/WORKS/Homepage/rnfkorea_deploy_new diff pages/work/WithholdingPage.tsx)",
-      "Bash(xargs -I{} wc -l {})"
+      "Bash(xargs -I{} wc -l {})",
+      "Bash(grep -E '^[0-9]{8,14}_')",
+      "Bash(git mv *)"
     ]
   }
 }

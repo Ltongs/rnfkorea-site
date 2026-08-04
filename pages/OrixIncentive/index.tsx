@@ -5,7 +5,7 @@
 // 인센티브총액/CM지급인센티브는 DB의 GENERATED 컬럼(대출원금×인센티브율/CM인센티브율 기반)이라 직접 입력하지 않는다.
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, Plus, Upload, Download, Trash2, X, AlertTriangle } from "lucide-react";
+import { Loader2, Plus, Upload, Download, Trash2, X, AlertTriangle, ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 import AppTabBar from "../../components/AppTabBar";
@@ -34,6 +34,7 @@ type AdminOnlyFields = {
   actual_paid_amount: number | null;
   payment_diff_note: string | null;
   wire_receipt_path: string | null;
+  received_from_orix_at: string | null; // RNF(수컴퍼니)가 ORIX로부터 입금받았는지 확인 — paid_at(RNF→수탁인)과는 반대 방향
 };
 
 type Row = SalesInputFields &
@@ -99,7 +100,7 @@ function emptySalesForm(): SalesInputFields {
 }
 
 function emptyAdminForm(): AdminOnlyFields {
-  return { paid_at: "", paid_to_contractor_id: null, actual_paid_amount: null, payment_diff_note: "", wire_receipt_path: null };
+  return { paid_at: "", paid_to_contractor_id: null, actual_paid_amount: null, payment_diff_note: "", wire_receipt_path: null, received_from_orix_at: null };
 }
 
 export default function OrixIncentivePage() {
@@ -118,6 +119,12 @@ export default function OrixIncentivePage() {
   const [newSales, setNewSales] = useState<SalesInputFields>(emptySalesForm());
   const [creating, setCreating] = useState(false);
   const [createMsg, setCreateMsg] = useState("");
+  const [newFormOpen, setNewFormOpen] = useState(false); // 신규 등록 섹션 — 기본 닫힘
+
+  // ── 목록 필터 ──
+  const [monthFilter, setMonthFilter] = useState<string>("all"); // "YYYY-MM" 또는 "all"
+  const [receivedFilter, setReceivedFilter] = useState<"all" | "confirmed" | "unconfirmed">("all");
+  const [paidFilter, setPaidFilter] = useState<"all" | "paid" | "unpaid">("all");
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editSales, setEditSales] = useState<SalesInputFields>(emptySalesForm());
@@ -216,6 +223,7 @@ export default function OrixIncentivePage() {
         actual_paid_amount: row.actual_paid_amount ?? null,
         payment_diff_note: row.payment_diff_note ?? "",
         wire_receipt_path: row.wire_receipt_path ?? null,
+        received_from_orix_at: row.received_from_orix_at ?? null,
       });
     }
   };
@@ -268,6 +276,16 @@ export default function OrixIncentivePage() {
     await loadRows();
   };
 
+  // ORIX로부터 입금(수령) 확인 토글 — 목록에서 바로 처리, 관리자만 가능
+  const toggleReceivedConfirm = async (row: Row) => {
+    if (!isOrixAdmin) return;
+    const next = row.received_from_orix_at ? null : new Date().toISOString();
+    const { error: err } = await supabase.from(writeTable).update({ received_from_orix_at: next }).eq("id", row.id);
+    if (err) { setRowMsg(err.message); return; }
+    setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, received_from_orix_at: next } : r)));
+    if (expandedId === row.id) setEditAdmin((p) => ({ ...p, received_from_orix_at: next }));
+  };
+
   const onUploadReceipt = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !expandedId) return;
@@ -293,7 +311,21 @@ export default function OrixIncentivePage() {
     window.open(data.signedUrl, "_blank");
   };
 
-  const totalIncentive = rows.reduce((sum, r) => sum + (r.incentive_total ?? 0), 0);
+  // 월구분 필터 선택지 — 실데이터(확정일자)에 존재하는 연월만 최신순으로 노출
+  const availableMonths = Array.from(
+    new Set(rows.map((r) => r.confirmed_date?.slice(0, 7)).filter((m): m is string => !!m))
+  ).sort((a, b) => b.localeCompare(a));
+
+  const filteredRows = rows.filter((r) => {
+    if (monthFilter !== "all" && r.confirmed_date?.slice(0, 7) !== monthFilter) return false;
+    if (receivedFilter === "confirmed" && !r.received_from_orix_at) return false;
+    if (receivedFilter === "unconfirmed" && r.received_from_orix_at) return false;
+    if (paidFilter === "paid" && !r.paid_at) return false;
+    if (paidFilter === "unpaid" && r.paid_at) return false;
+    return true;
+  });
+
+  const totalIncentive = filteredRows.reduce((sum, r) => sum + (r.incentive_total ?? 0), 0);
   const newTotalPreview = calcIncentiveTotal(newSales.loan_principal, newSales.incentive_rate);
   const newCmPreview = calcCmPaidIncentive(newSales.loan_principal, newSales.cm_incentive_rate);
   const editTotalPreview = calcIncentiveTotal(editSales.loan_principal, editSales.incentive_rate);
@@ -350,106 +382,152 @@ export default function OrixIncentivePage() {
         ) : (
           <>
             <section className={`${cardClass} p-6 space-y-4`}>
-              <p className={sectionTitleClass}>New</p>
-              <h2 className="text-lg font-semibold text-navy-900">신규 인센티브 항목 등록</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className={labelClass}>확정일자</label>
-                  <input type="date" className={inputClass} value={newSales.confirmed_date ?? ""}
-                    onChange={(e) => setNewSales((p) => ({ ...p, confirmed_date: e.target.value }))} />
-                </div>
-                <div>
-                  <label className={labelClass}>고객명</label>
-                  <input className={inputClass} value={newSales.customer_name}
-                    onChange={(e) => setNewSales((p) => ({ ...p, customer_name: e.target.value }))} placeholder="고객명" />
-                </div>
-                <div>
-                  <label className={labelClass}>대출원금</label>
-                  <input type="number" className={inputClass} value={newSales.loan_principal ?? ""}
-                    onChange={(e) => setNewSales((p) => ({ ...p, loan_principal: e.target.value === "" ? null : Number(e.target.value) }))} placeholder="원" />
-                </div>
-                <div>
-                  <label className={labelClass}>상품구분</label>
-                  <select className={inputClass} value={newSales.product_type ?? ""}
-                    onChange={(e) => setNewSales((p) => ({ ...p, product_type: e.target.value }))}>
-                    <option value="">선택</option>
-                    {PRODUCT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={labelClass}>차종</label>
-                  <input className={inputClass} value={newSales.vehicle_type ?? ""}
-                    onChange={(e) => setNewSales((p) => ({ ...p, vehicle_type: e.target.value }))} placeholder="차종" />
-                </div>
-                <div>
-                  <label className={labelClass}>지급대상 (수탁인)</label>
-                  <select className={inputClass}
-                    value={newSales.incentive_recipient_pending ? RECIPIENT_PENDING_VALUE : (newSales.incentive_recipient_contractor_id ?? "")}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setNewSales((p) => ({
-                        ...p,
-                        incentive_recipient_pending: v === RECIPIENT_PENDING_VALUE,
-                        incentive_recipient_contractor_id: v === RECIPIENT_PENDING_VALUE ? null : (v || null),
-                      }));
-                    }}>
-                    <option value="">선택 (원천징수관리-수탁인관리에 등록 필요)</option>
-                    <option value={RECIPIENT_PENDING_VALUE}>미정 (업무위수탁 계약 전)</option>
-                    {contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={labelClass}>인센티브율 (%)</label>
-                  <input type="number" step="0.01" className={inputClass} value={newSales.incentive_rate ?? ""}
-                    onChange={(e) => setNewSales((p) => ({ ...p, incentive_rate: e.target.value === "" ? null : Number(e.target.value) }))} placeholder="예: 2.5" />
-                </div>
-                <div>
-                  <label className={labelClass}>인센티브 총액 (자동계산)</label>
-                  <div className={readonlyClass}>{formatMoney(newTotalPreview)}</div>
-                </div>
-                <div />
-                <div>
-                  <label className={labelClass}>CM인센티브율 (%)</label>
-                  <input type="number" step="0.01" className={inputClass} value={newSales.cm_incentive_rate ?? ""}
-                    onChange={(e) => setNewSales((p) => ({ ...p, cm_incentive_rate: e.target.value === "" ? null : Number(e.target.value) }))} placeholder="예: 2.5" />
-                </div>
-                <div>
-                  <label className={labelClass}>CM지급 인센티브 (자동계산)</label>
-                  <div className={readonlyClass}>{formatMoney(newCmPreview)}</div>
-                </div>
-              </div>
-              <div>
-                <label className={labelClass}>비고</label>
-                <textarea
-                  className="w-full min-h-[70px] px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm font-medium text-navy-900 placeholder:text-gray-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 transition-all"
-                  value={newSales.note ?? ""}
-                  onChange={(e) => setNewSales((p) => ({ ...p, note: e.target.value }))}
-                  placeholder="특이사항이 있으면 입력해주세요."
-                />
-              </div>
-              {!!createMsg && <div className="text-sm font-medium text-orange-600">{createMsg}</div>}
               <button
-                onClick={createRow}
-                disabled={creating}
-                className="inline-flex items-center gap-1.5 px-6 py-3 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-all disabled:opacity-50"
+                onClick={() => setNewFormOpen((v) => !v)}
+                className="w-full flex items-center justify-between text-left"
               >
-                <Plus className="w-4 h-4" /> {creating ? "저장 중..." : "등록"}
+                <div>
+                  <p className={sectionTitleClass}>New</p>
+                  <h2 className="text-lg font-semibold text-navy-900">신규 인센티브 항목 등록</h2>
+                </div>
+                {newFormOpen ? (
+                  <ChevronUp className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                ) : (
+                  <ChevronDown className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                )}
               </button>
+              {newFormOpen && (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className={labelClass}>확정일자</label>
+                      <input type="date" className={inputClass} value={newSales.confirmed_date ?? ""}
+                        onChange={(e) => setNewSales((p) => ({ ...p, confirmed_date: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className={labelClass}>고객명</label>
+                      <input className={inputClass} value={newSales.customer_name}
+                        onChange={(e) => setNewSales((p) => ({ ...p, customer_name: e.target.value }))} placeholder="고객명" />
+                    </div>
+                    <div>
+                      <label className={labelClass}>대출원금</label>
+                      <input type="number" className={inputClass} value={newSales.loan_principal ?? ""}
+                        onChange={(e) => setNewSales((p) => ({ ...p, loan_principal: e.target.value === "" ? null : Number(e.target.value) }))} placeholder="원" />
+                    </div>
+                    <div>
+                      <label className={labelClass}>상품구분</label>
+                      <select className={inputClass} value={newSales.product_type ?? ""}
+                        onChange={(e) => setNewSales((p) => ({ ...p, product_type: e.target.value }))}>
+                        <option value="">선택</option>
+                        {PRODUCT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={labelClass}>차종</label>
+                      <input className={inputClass} value={newSales.vehicle_type ?? ""}
+                        onChange={(e) => setNewSales((p) => ({ ...p, vehicle_type: e.target.value }))} placeholder="차종" />
+                    </div>
+                    <div>
+                      <label className={labelClass}>지급대상 (수탁인)</label>
+                      <select className={inputClass}
+                        value={newSales.incentive_recipient_pending ? RECIPIENT_PENDING_VALUE : (newSales.incentive_recipient_contractor_id ?? "")}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setNewSales((p) => ({
+                            ...p,
+                            incentive_recipient_pending: v === RECIPIENT_PENDING_VALUE,
+                            incentive_recipient_contractor_id: v === RECIPIENT_PENDING_VALUE ? null : (v || null),
+                          }));
+                        }}>
+                        <option value="">선택 (원천징수관리-수탁인관리에 등록 필요)</option>
+                        <option value={RECIPIENT_PENDING_VALUE}>미정 (업무위수탁 계약 전)</option>
+                        {contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={labelClass}>인센티브율 (%)</label>
+                      <input type="number" step="0.01" className={inputClass} value={newSales.incentive_rate ?? ""}
+                        onChange={(e) => setNewSales((p) => ({ ...p, incentive_rate: e.target.value === "" ? null : Number(e.target.value) }))} placeholder="예: 2.5" />
+                    </div>
+                    <div>
+                      <label className={labelClass}>인센티브 총액 (자동계산)</label>
+                      <div className={readonlyClass}>{formatMoney(newTotalPreview)}</div>
+                    </div>
+                    <div />
+                    <div>
+                      <label className={labelClass}>CM인센티브율 (%)</label>
+                      <input type="number" step="0.01" className={inputClass} value={newSales.cm_incentive_rate ?? ""}
+                        onChange={(e) => setNewSales((p) => ({ ...p, cm_incentive_rate: e.target.value === "" ? null : Number(e.target.value) }))} placeholder="예: 2.5" />
+                    </div>
+                    <div>
+                      <label className={labelClass}>CM지급 인센티브 (자동계산)</label>
+                      <div className={readonlyClass}>{formatMoney(newCmPreview)}</div>
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelClass}>비고</label>
+                    <textarea
+                      className="w-full min-h-[70px] px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm font-medium text-navy-900 placeholder:text-gray-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 transition-all"
+                      value={newSales.note ?? ""}
+                      onChange={(e) => setNewSales((p) => ({ ...p, note: e.target.value }))}
+                      placeholder="특이사항이 있으면 입력해주세요."
+                    />
+                  </div>
+                  {!!createMsg && <div className="text-sm font-medium text-orange-600">{createMsg}</div>}
+                  <button
+                    onClick={createRow}
+                    disabled={creating}
+                    className="inline-flex items-center gap-1.5 px-6 py-3 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-all disabled:opacity-50"
+                  >
+                    <Plus className="w-4 h-4" /> {creating ? "저장 중..." : "등록"}
+                  </button>
+                </>
+              )}
             </section>
 
             <section className={`${cardClass} p-6 space-y-4`}>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <div>
                   <p className={sectionTitleClass}>List</p>
-                  <h2 className="text-lg font-semibold text-navy-900">인센티브 목록 ({rows.length}건)</h2>
+                  <h2 className="text-lg font-semibold text-navy-900">
+                    인센티브 목록 ({filteredRows.length}건{filteredRows.length !== rows.length ? ` / 전체 ${rows.length}건` : ""})
+                  </h2>
                 </div>
                 <div className="text-sm text-gray-500">
                   인센티브 총액 합계: <span className="font-semibold text-navy-900">{formatMoney(totalIncentive)}</span>
                 </div>
               </div>
 
+              <div className="flex flex-wrap items-center gap-2">
+                <select className="h-9 px-3 rounded-xl border border-gray-200 bg-white text-xs font-medium text-navy-900 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 transition-all"
+                  value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)}>
+                  <option value="all">월구분: 전체</option>
+                  {availableMonths.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+                <select className="h-9 px-3 rounded-xl border border-gray-200 bg-white text-xs font-medium text-navy-900 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 transition-all"
+                  value={receivedFilter} onChange={(e) => setReceivedFilter(e.target.value as typeof receivedFilter)}>
+                  <option value="all">수령구분: 전체</option>
+                  <option value="confirmed">수령확인완료</option>
+                  <option value="unconfirmed">수령확인전</option>
+                </select>
+                <select className="h-9 px-3 rounded-xl border border-gray-200 bg-white text-xs font-medium text-navy-900 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 transition-all"
+                  value={paidFilter} onChange={(e) => setPaidFilter(e.target.value as typeof paidFilter)}>
+                  <option value="all">지급구분: 전체</option>
+                  <option value="paid">지급완료</option>
+                  <option value="unpaid">미지급</option>
+                </select>
+                {(monthFilter !== "all" || receivedFilter !== "all" || paidFilter !== "all") && (
+                  <button
+                    onClick={() => { setMonthFilter("all"); setReceivedFilter("all"); setPaidFilter("all"); }}
+                    className="h-9 px-3 rounded-xl border border-gray-200 text-xs font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700 transition-all"
+                  >
+                    필터 초기화
+                  </button>
+                )}
+              </div>
+
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1100px] text-sm">
+                <table className="w-full min-w-[1200px] text-sm">
                   <thead>
                     <tr className="text-left text-xs font-medium text-gray-400 uppercase border-b border-gray-200">
                       <th className="py-2 pr-4">확정일자</th>
@@ -458,6 +536,7 @@ export default function OrixIncentivePage() {
                       <th className="py-2 pr-4">상품구분</th>
                       <th className="py-2 pr-4">차종</th>
                       <th className="py-2 pr-4">인센티브율</th>
+                      <th className="py-2 pr-4">수령확인</th>
                       <th className="py-2 pr-4">인센티브 총액</th>
                       <th className="py-2 pr-4">CM지급인센티브율</th>
                       <th className="py-2 pr-4">CM지급 인센티브</th>
@@ -467,10 +546,12 @@ export default function OrixIncentivePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.length === 0 && (
-                      <tr><td colSpan={12} className="py-8 text-center text-gray-400">등록된 항목이 없습니다.</td></tr>
+                    {filteredRows.length === 0 && (
+                      <tr><td colSpan={13} className="py-8 text-center text-gray-400">
+                        {rows.length === 0 ? "등록된 항목이 없습니다." : "필터 조건에 맞는 항목이 없습니다."}
+                      </td></tr>
                     )}
-                    {rows.map((row) => (
+                    {filteredRows.map((row) => (
                       <React.Fragment key={row.id}>
                         <tr
                           className="border-b border-gray-100 cursor-pointer hover:bg-gray-50"
@@ -482,6 +563,27 @@ export default function OrixIncentivePage() {
                           <td className="py-2.5 pr-4 whitespace-nowrap">{row.product_type ?? "-"}</td>
                           <td className="py-2.5 pr-4 whitespace-nowrap">{row.vehicle_type ?? "-"}</td>
                           <td className="py-2.5 pr-4 whitespace-nowrap">{row.incentive_rate ?? "-"}{row.incentive_rate !== null ? "%" : ""}</td>
+                          <td className="py-2.5 pr-4 whitespace-nowrap">
+                            {isOrixAdmin ? (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); toggleReceivedConfirm(row); }}
+                                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-all ${
+                                  row.received_from_orix_at
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                    : "border-gray-200 bg-white text-gray-500 hover:border-orange-300 hover:text-orange-600"
+                                }`}
+                                title={row.received_from_orix_at ? "클릭하면 수령확인이 해제됩니다" : "ORIX로부터 입금 확인 시 클릭하세요"}
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" /> {row.received_from_orix_at ? "확인완료" : "수령확인"}
+                              </button>
+                            ) : (
+                              row.received_from_orix_at ? (
+                                <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">확인완료</span>
+                              ) : (
+                                <span className="inline-flex items-center rounded-full border border-gray-200 bg-white px-2.5 py-0.5 text-xs font-medium text-gray-500">확인전</span>
+                              )
+                            )}
+                          </td>
                           <td className="py-2.5 pr-4 whitespace-nowrap font-medium">{formatMoney(row.incentive_total)}</td>
                           <td className="py-2.5 pr-4 whitespace-nowrap">{row.cm_incentive_rate ?? "-"}{row.cm_incentive_rate !== null ? "%" : ""}</td>
                           <td className="py-2.5 pr-4 whitespace-nowrap">{formatMoney(row.cm_paid_incentive)}</td>
@@ -497,7 +599,7 @@ export default function OrixIncentivePage() {
                         </tr>
                         {expandedId === row.id && (
                           <tr className="bg-gray-50">
-                            <td colSpan={12} className="p-4">
+                            <td colSpan={13} className="p-4">
                               <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
                                 <div className="flex items-center justify-between">
                                   <h3 className="text-sm font-semibold text-navy-900">항목 수정</h3>

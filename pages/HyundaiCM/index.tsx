@@ -183,13 +183,11 @@ function extFromName(name: string) {
   return i < 0 ? "" : name.slice(i + 1).toLowerCase();
 }
 
-// ─── NH캐피탈 조견표 (최대 인센티브 기준) ────────────────────
+// ─── NH캐피탈 조견표 (건설기계, 2026.07.06~ / 최대 인센티브 기준) ────
 const NH_RATE_TABLE = [
-  { min: 922, max: 1000, rate: 6.3, incentive: 1.7 },
-  { min: 868, max: 921,  rate: 6.4, incentive: 1.7 },
-  { min: 824, max: 867,  rate: 6.5, incentive: 1.7 },
-  { min: 778, max: 823,  rate: 6.6, incentive: 1.7 },
-  { min: 729, max: 777,  rate: 6.8, incentive: 1.7 },
+  { min: 922, max: 1000, rate: 7.3, incentive: 1.7 },
+  { min: 824, max: 921,  rate: 7.5, incentive: 1.7 },
+  { min: 729, max: 823,  rate: 8.1, incentive: 1.7 },
 ];
 function getNhRateByScore(score: number): { rate: number; incentive: number } | null {
   const entry = NH_RATE_TABLE.find((e) => score >= e.min && score <= e.max);
