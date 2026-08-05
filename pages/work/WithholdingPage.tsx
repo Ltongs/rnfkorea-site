@@ -1390,6 +1390,8 @@ function LotteLeaseTab({
   const [form, setForm] = useState<any>(empty);
   const [editId, setEditId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [monthFilter, setMonthFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'set' | 'unset'>('all');
 
   const incentive = form.contract_amount ? calcLotteIncentive(Number(form.contract_amount)) : 0;
 
@@ -1439,8 +1441,22 @@ function LotteLeaseTab({
     onSaved();
   };
 
-  const totalAmount = entries.reduce((s, r) => s + r.contract_amount, 0);
-  const totalIncentive = entries.reduce((s, r) => s + r.incentive_amount, 0);
+  const toggleCollateral = async (r: LotteIncentive) => {
+    await supabase.from('tb_lotte_lease_incentives')
+      .update({ collateral_set: !r.collateral_set })
+      .eq('id', r.id);
+    onSaved();
+  };
+
+  const filteredEntries = entries.filter(r => {
+    const monthOk = monthFilter === 'all' || r.contract_date?.slice(5, 7) === monthFilter;
+    const statusOk = statusFilter === 'all'
+      || (statusFilter === 'set' ? r.collateral_set : !r.collateral_set);
+    return monthOk && statusOk;
+  });
+
+  const totalAmount = filteredEntries.reduce((s, r) => s + r.contract_amount, 0);
+  const totalIncentive = filteredEntries.reduce((s, r) => s + r.incentive_amount, 0);
 
   return (
     <div className="space-y-4">
@@ -1537,6 +1553,39 @@ function LotteLeaseTab({
         </div>
       )}
 
+      {/* 필터 */}
+      <div className="bg-white border rounded-lg p-3 flex items-center gap-3">
+        <span className="text-xs text-gray-500">필터</span>
+        <select
+          value={monthFilter}
+          onChange={e => setMonthFilter(e.target.value)}
+          className="border rounded px-2 py-1.5 text-sm text-gray-700"
+        >
+          <option value="all">전체 월</option>
+          {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map(m => (
+            <option key={m} value={m}>{Number(m)}월</option>
+          ))}
+        </select>
+        <select
+          value={statusFilter}
+          onChange={e => setStatusFilter(e.target.value as 'all' | 'set' | 'unset')}
+          className="border rounded px-2 py-1.5 text-sm text-gray-700"
+        >
+          <option value="all">전체 담보상태</option>
+          <option value="set">설정</option>
+          <option value="unset">미설정</option>
+        </select>
+        {(monthFilter !== 'all' || statusFilter !== 'all') && (
+          <button
+            onClick={() => { setMonthFilter('all'); setStatusFilter('all'); }}
+            className="text-xs text-gray-400 hover:underline"
+          >
+            필터 초기화
+          </button>
+        )}
+        <span className="text-xs text-gray-400 ml-auto">{filteredEntries.length}건 표시 중</span>
+      </div>
+
       {/* 목록 */}
       <div className="bg-white rounded-lg border overflow-hidden">
         <table className="w-full text-sm">
@@ -1548,19 +1597,23 @@ function LotteLeaseTab({
             </tr>
           </thead>
           <tbody>
-            {entries.length === 0 && (
+            {filteredEntries.length === 0 && (
               <tr><td colSpan={8} className="px-3 py-8 text-center text-gray-400">등록된 계약이 없습니다.</td></tr>
             )}
-            {entries.map(r => (
+            {filteredEntries.map(r => (
               <tr key={r.id} className="border-b hover:bg-gray-50">
                 <td className="px-3 py-2.5 text-gray-700">{r.contract_date}</td>
                 <td className="px-3 py-2.5 text-gray-500 text-xs">{r.contract_no || '—'}</td>
                 <td className="px-3 py-2.5 font-medium">{r.customer_name}</td>
                 <td className="px-3 py-2.5 text-right">{fmt(r.contract_amount)}</td>
                 <td className="px-3 py-2.5">
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${r.collateral_set ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                  <button
+                    onClick={() => toggleCollateral(r)}
+                    title={r.collateral_set ? '클릭 시 미설정으로 변경' : '클릭 시 설정으로 변경'}
+                    className={`text-xs px-2 py-0.5 rounded-full transition-colors ${r.collateral_set ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                  >
                     {r.collateral_set ? '설정' : '미설정'}
-                  </span>
+                  </button>
                 </td>
                 <td className="px-3 py-2.5 text-right text-blue-700 font-medium">{fmt(r.incentive_amount)}</td>
                 <td className="px-3 py-2.5 text-gray-500 text-xs">{r.note}</td>
