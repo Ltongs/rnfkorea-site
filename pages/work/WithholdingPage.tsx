@@ -89,6 +89,9 @@ interface OrixRecipientRow {
   cm_paid_incentive: number | null;
   paid_at: string | null;
   note: string | null;
+  incentive_recipient_contractor_id: string | null;
+  incentive_recipient_pending: boolean;
+  recipient_name: string | null;
 }
 
 interface LotteIncentive {
@@ -198,6 +201,25 @@ export default function WithholdingPage() {
       .order('confirmed_date', { ascending: false });
     setOrixRecipients(data ?? []);
   }, []);
+
+  // 지급대상 탭에서 "미지급"을 클릭하면 지급완료 처리 + 지급내역 자동 등록을 한 트랜잭션으로 수행.
+  // (RPC 내부에서 지급대상 미지정/중복 처리 등을 재검증하므로 클라이언트 검증은 UX용 보조 역할)
+  const markOrixPaid = async (row: OrixRecipientRow) => {
+    if (row.incentive_recipient_pending || !row.incentive_recipient_contractor_id) {
+      flash('지급대상(수탁인)이 지정되지 않았습니다. 오릭스 인센티브 관리 화면에서 먼저 지정해주세요.');
+      return;
+    }
+    setLoading(true);
+    const { error: err } = await supabase.rpc('mark_orix_incentive_paid', { p_incentive_id: row.id });
+    setLoading(false);
+    if (err) {
+      flash(err.message || '지급 처리에 실패했습니다.');
+      return;
+    }
+    loadOrixRecipients();
+    loadPayments();
+    flash('지급 처리되어 지급내역에 등록되었습니다.');
+  };
 
   const loadMonthly = useCallback(async () => {
     const { data } = await supabase
@@ -462,6 +484,8 @@ export default function WithholdingPage() {
               <OrixRecipientTab
                 rows={orixRecipients.filter(r => r.confirmed_date?.startsWith(filterYear))}
                 year={filterYear}
+                loading={loading}
+                onMarkPaid={markOrixPaid}
               />
             )}
             {tab === '수탁인 관리' && (
@@ -1299,14 +1323,21 @@ function GiftCardTab({
 // ─── 지급대상 탭 (수Company) ─────────────────────────────────
 // 오릭스 인센티브 관리(별도 페이지)에서 입력한 항목 중 수익자가 수Company인 것만
 // 읽기전용으로 그대로 보여준다. 등록/수정/삭제는 오릭스 인센티브 관리 화면에서만 가능하다.
-function OrixRecipientTab({ rows, year }: { rows: OrixRecipientRow[]; year: string }) {
+function OrixRecipientTab({
+  rows, year, loading, onMarkPaid,
+}: {
+  rows: OrixRecipientRow[];
+  year: string;
+  loading: boolean;
+  onMarkPaid: (row: OrixRecipientRow) => void;
+}) {
   const totalIncentive = rows.reduce((s, r) => s + (r.incentive_total ?? 0), 0);
   const totalCmPaid = rows.reduce((s, r) => s + (r.cm_paid_incentive ?? 0), 0);
 
   return (
     <div className="space-y-4">
       <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700">
-        📋 오릭스 인센티브 관리 화면에서 입력한 항목 중 수익자가 <strong>수Company</strong>인 건만 표시됩니다. 등록·수정은 오릭스 인센티브 관리 화면에서 해주세요.
+        📋 오릭스 인센티브 관리 화면에서 입력한 항목 중 수익자가 <strong>수Company</strong>인 건만 표시됩니다. 등록·수정은 오릭스 인센티브 관리 화면에서 해주세요. 지급상태의 <strong>미지급</strong>을 클릭하면 지급완료로 바뀌면서 지급내역에 자동 등록됩니다.
       </div>
 
       <div className="grid grid-cols-3 gap-4">
@@ -1325,17 +1356,17 @@ function OrixRecipientTab({ rows, year }: { rows: OrixRecipientRow[]; year: stri
       </div>
 
       <div className="bg-white rounded-lg border overflow-x-auto">
-        <table className="w-full text-sm min-w-[900px]">
+        <table className="w-full text-sm min-w-[1050px]">
           <thead className="bg-gray-50 text-gray-600">
             <tr>
-              {['확정일자', '고객명', '대출원금', '상품구분', '차종', '인센티브율', '인센티브 총액', 'CM지급 인센티브', '지급상태', '비고'].map(h => (
+              {['확정일자', '고객명', '대출원금', '상품구분', '차종', '인센티브율', '인센티브 총액', 'CM지급 인센티브', '지급대상', '지급상태', '비고'].map(h => (
                 <th key={h} className="px-3 py-2.5 text-left font-medium border-b">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
-              <tr><td colSpan={10} className="px-3 py-8 text-center text-gray-400">해당 연도에 등록된 항목이 없습니다.</td></tr>
+              <tr><td colSpan={11} className="px-3 py-8 text-center text-gray-400">해당 연도에 등록된 항목이 없습니다.</td></tr>
             )}
             {rows.map(r => (
               <tr key={r.id} className="border-b hover:bg-gray-50">
@@ -1347,11 +1378,21 @@ function OrixRecipientTab({ rows, year }: { rows: OrixRecipientRow[]; year: stri
                 <td className="px-3 py-2.5">{r.incentive_rate ?? '—'}{r.incentive_rate !== null ? '%' : ''}</td>
                 <td className="px-3 py-2.5 text-right font-medium">{fmt(r.incentive_total ?? 0)}</td>
                 <td className="px-3 py-2.5 text-right text-blue-700 font-medium">{fmt(r.cm_paid_incentive ?? 0)}</td>
+                <td className="px-3 py-2.5 text-gray-600">
+                  {r.incentive_recipient_pending ? '미정' : (r.recipient_name ?? '—')}
+                </td>
                 <td className="px-3 py-2.5">
                   {r.paid_at ? (
                     <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">지급완료</span>
                   ) : (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">미지급</span>
+                    <button
+                      onClick={() => onMarkPaid(r)}
+                      disabled={loading}
+                      title="클릭 시 지급완료로 변경되고 지급내역에 등록됩니다"
+                      className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 hover:bg-orange-100 hover:text-orange-700 transition-colors disabled:opacity-50"
+                    >
+                      미지급
+                    </button>
                   )}
                 </td>
                 <td className="px-3 py-2.5 text-gray-500 text-xs">{r.note}</td>

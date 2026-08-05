@@ -282,6 +282,15 @@ export default function OrixIncentivePage() {
     await loadRows();
   };
 
+  // 수익자 구분 — 목록에서 바로 선택 변경 (상세 수정 폼을 펼치지 않아도 처리)
+  const updateBeneficiary = async (row: Row, value: string) => {
+    const nextValue = value || null;
+    const { error: err } = await supabase.from(writeTable).update({ beneficiary: nextValue }).eq("id", row.id);
+    if (err) { setRowMsg(err.message); return; }
+    setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, beneficiary: nextValue } : r)));
+    if (expandedId === row.id) setEditSales((p) => ({ ...p, beneficiary: nextValue }));
+  };
+
   // ORIX로부터 입금(수령) 확인 토글 — 목록에서 바로 처리, 관리자만 가능
   const toggleReceivedConfirm = async (row: Row) => {
     if (!isOrixAdmin) return;
@@ -603,7 +612,16 @@ export default function OrixIncentivePage() {
                           <td className="py-2.5 pr-4 whitespace-nowrap">{row.cm_incentive_rate ?? "-"}{row.cm_incentive_rate !== null ? "%" : ""}</td>
                           <td className="py-2.5 pr-4 whitespace-nowrap">{formatMoney(row.cm_paid_incentive)}</td>
                           <td className="py-2.5 pr-4 whitespace-nowrap">{recipientLabel(contractors, row)}</td>
-                          <td className="py-2.5 pr-4 whitespace-nowrap">{row.beneficiary ?? "-"}</td>
+                          <td className="py-2.5 pr-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                            <select
+                              className="h-8 px-2 rounded-lg border border-gray-200 bg-white text-xs font-medium text-navy-900 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 transition-all"
+                              value={row.beneficiary ?? ""}
+                              onChange={(e) => updateBeneficiary(row, e.target.value)}
+                            >
+                              <option value="">미선택</option>
+                              {BENEFICIARIES.map((b) => <option key={b} value={b}>{b}</option>)}
+                            </select>
+                          </td>
                           <td className="py-2.5 pr-4 whitespace-nowrap">
                             {row.paid_at ? (
                               <span className="inline-flex items-center rounded-full border border-green-200 bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700">지급완료</span>
