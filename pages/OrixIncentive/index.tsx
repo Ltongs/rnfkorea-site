@@ -11,6 +11,7 @@ import { useAuth } from "../../lib/auth";
 import AppTabBar from "../../components/AppTabBar";
 
 const PRODUCT_TYPES = ["할부", "리스", "기타"] as const;
+const BENEFICIARIES = ["수Company", "이동수"] as const;
 
 type SalesInputFields = {
   confirmed_date: string | null;
@@ -22,6 +23,7 @@ type SalesInputFields = {
   cm_incentive_rate: number | null;
   incentive_recipient_contractor_id: string | null; // 지급대상(수령자) — 등록된 수탁인(tb_contractors)만 선택 가능
   incentive_recipient_pending: boolean; // 업무위수탁 계약 전이라 수탁인 미등록 상태("미정")
+  beneficiary: string | null; // 수익자 구분 — 수Company(제휴사 명의) / 이동수(대표 개인)
   note: string | null; // 일반 비고 (admin/파트너 공통 입력)
 };
 
@@ -95,6 +97,7 @@ function emptySalesForm(): SalesInputFields {
     cm_incentive_rate: null,
     incentive_recipient_contractor_id: null,
     incentive_recipient_pending: false,
+    beneficiary: null,
     note: "",
   };
 }
@@ -187,6 +190,7 @@ export default function OrixIncentivePage() {
         cm_incentive_rate: newSales.cm_incentive_rate,
         incentive_recipient_contractor_id: newSales.incentive_recipient_contractor_id || null,
         incentive_recipient_pending: newSales.incentive_recipient_pending,
+        beneficiary: newSales.beneficiary || null,
         note: newSales.note?.trim() || null,
       });
       if (err) throw err;
@@ -214,6 +218,7 @@ export default function OrixIncentivePage() {
       cm_incentive_rate: row.cm_incentive_rate,
       incentive_recipient_contractor_id: row.incentive_recipient_contractor_id,
       incentive_recipient_pending: row.incentive_recipient_pending,
+      beneficiary: row.beneficiary,
       note: row.note,
     });
     if (isOrixAdmin) {
@@ -247,6 +252,7 @@ export default function OrixIncentivePage() {
         cm_incentive_rate: editSales.cm_incentive_rate,
         incentive_recipient_contractor_id: editSales.incentive_recipient_contractor_id || null,
         incentive_recipient_pending: editSales.incentive_recipient_pending,
+        beneficiary: editSales.beneficiary || null,
         note: editSales.note?.trim() || null,
       };
       if (isOrixAdmin) {
@@ -445,6 +451,14 @@ export default function OrixIncentivePage() {
                       </select>
                     </div>
                     <div>
+                      <label className={labelClass}>수익자 구분</label>
+                      <select className={inputClass} value={newSales.beneficiary ?? ""}
+                        onChange={(e) => setNewSales((p) => ({ ...p, beneficiary: e.target.value || null }))}>
+                        <option value="">선택</option>
+                        {BENEFICIARIES.map((b) => <option key={b} value={b}>{b}</option>)}
+                      </select>
+                    </div>
+                    <div>
                       <label className={labelClass}>인센티브율 (%)</label>
                       <input type="number" step="0.01" className={inputClass} value={newSales.incentive_rate ?? ""}
                         onChange={(e) => setNewSales((p) => ({ ...p, incentive_rate: e.target.value === "" ? null : Number(e.target.value) }))} placeholder="예: 2.5" />
@@ -541,13 +555,14 @@ export default function OrixIncentivePage() {
                       <th className="py-2 pr-4">CM지급인센티브율</th>
                       <th className="py-2 pr-4">CM지급 인센티브</th>
                       <th className="py-2 pr-4">지급대상</th>
+                      <th className="py-2 pr-4">수익자</th>
                       <th className="py-2 pr-4">지급상태</th>
                       <th className="py-2 pr-4">비고</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredRows.length === 0 && (
-                      <tr><td colSpan={13} className="py-8 text-center text-gray-400">
+                      <tr><td colSpan={14} className="py-8 text-center text-gray-400">
                         {rows.length === 0 ? "등록된 항목이 없습니다." : "필터 조건에 맞는 항목이 없습니다."}
                       </td></tr>
                     )}
@@ -588,6 +603,7 @@ export default function OrixIncentivePage() {
                           <td className="py-2.5 pr-4 whitespace-nowrap">{row.cm_incentive_rate ?? "-"}{row.cm_incentive_rate !== null ? "%" : ""}</td>
                           <td className="py-2.5 pr-4 whitespace-nowrap">{formatMoney(row.cm_paid_incentive)}</td>
                           <td className="py-2.5 pr-4 whitespace-nowrap">{recipientLabel(contractors, row)}</td>
+                          <td className="py-2.5 pr-4 whitespace-nowrap">{row.beneficiary ?? "-"}</td>
                           <td className="py-2.5 pr-4 whitespace-nowrap">
                             {row.paid_at ? (
                               <span className="inline-flex items-center rounded-full border border-green-200 bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700">지급완료</span>
@@ -599,7 +615,7 @@ export default function OrixIncentivePage() {
                         </tr>
                         {expandedId === row.id && (
                           <tr className="bg-gray-50">
-                            <td colSpan={13} className="p-4">
+                            <td colSpan={14} className="p-4">
                               <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
                                 <div className="flex items-center justify-between">
                                   <h3 className="text-sm font-semibold text-navy-900">항목 수정</h3>
@@ -651,6 +667,14 @@ export default function OrixIncentivePage() {
                                       <option value="">선택 (원천징수관리-수탁인관리에 등록 필요)</option>
                                       <option value={RECIPIENT_PENDING_VALUE}>미정 (업무위수탁 계약 전)</option>
                                       {contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className={labelClass}>수익자 구분</label>
+                                    <select className={inputClass} value={editSales.beneficiary ?? ""}
+                                      onChange={(e) => setEditSales((p) => ({ ...p, beneficiary: e.target.value || null }))}>
+                                      <option value="">선택</option>
+                                      {BENEFICIARIES.map((b) => <option key={b} value={b}>{b}</option>)}
                                     </select>
                                   </div>
                                   <div>

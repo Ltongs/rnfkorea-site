@@ -76,6 +76,21 @@ interface GiftCardEntry {
   note: string | null;
 }
 
+interface OrixRecipientRow {
+  id: string;
+  confirmed_date: string | null;
+  customer_name: string;
+  loan_principal: number | null;
+  product_type: string | null;
+  vehicle_type: string | null;
+  incentive_rate: number | null;
+  incentive_total: number | null;
+  cm_incentive_rate: number | null;
+  cm_paid_incentive: number | null;
+  paid_at: string | null;
+  note: string | null;
+}
+
 interface LotteIncentive {
   id: string;
   contract_date: string;
@@ -94,7 +109,9 @@ const calcWithholding = (amount: number) => Math.floor(amount * RATE);
 const LOTTE_RATE = 0.005;
 const calcLotteIncentive = (amount: number) => Math.floor(amount * LOTTE_RATE);
 
-const TABS = ['지급내역', '수탁인 관리', '상품권 관리', '월별 현황', '연간 집계'] as const;
+// '지급대상' 탭은 수Company 선택 시에만 노출 — 오릭스 인센티브 중 수익자가 수Company인
+// 항목을 그대로 보여주는 읽기전용 탭 (자체 데이터 없이 orix_incentives를 조회)
+const TABS = ['지급내역', '지급대상', '수탁인 관리', '상품권 관리', '월별 현황', '연간 집계'] as const;
 type Tab = typeof TABS[number];
 
 // 상단 원천징수자/제휴사 선택 — RNF Korea·수Company는 기존 5개 탭을 공유하고,
@@ -120,6 +137,7 @@ export default function WithholdingPage() {
   const [monthly, setMonthly] = useState<MonthlyRow[]>([]);
   const [annual, setAnnual] = useState<AnnualRow[]>([]);
   const [lotteIncentives, setLotteIncentives] = useState<LotteIncentive[]>([]);
+  const [orixRecipients, setOrixRecipients] = useState<OrixRecipientRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
 
@@ -173,6 +191,14 @@ export default function WithholdingPage() {
     setLotteIncentives(data ?? []);
   }, []);
 
+  const loadOrixRecipients = useCallback(async () => {
+    const { data } = await supabase
+      .from('orix_incentives_sucompany_view')
+      .select('*')
+      .order('confirmed_date', { ascending: false });
+    setOrixRecipients(data ?? []);
+  }, []);
+
   const loadMonthly = useCallback(async () => {
     const { data } = await supabase
       .from('v_withholding_monthly')
@@ -202,7 +228,13 @@ export default function WithholdingPage() {
     if (tab === '월별 현황') loadMonthly();
     if (tab === '연간 집계') loadAnnual();
     if (tab === '상품권 관리' && giftCards.length === 0) loadGiftCards();
-  }, [tab, filterYear, showLotte, loadMonthly, loadAnnual, loadGiftCards, giftCards.length]);
+    if (tab === '지급대상') loadOrixRecipients();
+  }, [tab, filterYear, showLotte, loadMonthly, loadAnnual, loadGiftCards, giftCards.length, loadOrixRecipients]);
+
+  // '지급대상' 탭은 수Company 선택 시에만 존재하므로, RNF Korea 등으로 전환하면 지급내역으로 되돌린다.
+  useEffect(() => {
+    if (tab === '지급대상' && agent !== '수Company') setTab('지급내역');
+  }, [agent, tab]);
 
   const flash = (m: string) => {
     setMsg(m);
@@ -380,7 +412,7 @@ export default function WithholdingPage() {
       {!showLotte && (
         <div className="bg-white border-b">
           <div className="max-w-6xl mx-auto flex">
-            {TABS.map(t => (
+            {TABS.filter(t => t !== '지급대상' || agent === '수Company').map(t => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -424,6 +456,12 @@ export default function WithholdingPage() {
                 setLoading={setLoading}
                 onSaved={() => { loadPayments(); flash('저장되었습니다.'); }}
                 flash={flash}
+              />
+            )}
+            {tab === '지급대상' && agent === '수Company' && (
+              <OrixRecipientTab
+                rows={orixRecipients.filter(r => r.confirmed_date?.startsWith(filterYear))}
+                year={filterYear}
               />
             )}
             {tab === '수탁인 관리' && (
@@ -1249,6 +1287,74 @@ function GiftCardTab({
                     <button onClick={() => handleDelete(e.id)} className="text-red-400 hover:underline text-xs">삭제</button>
                   </div>
                 </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── 지급대상 탭 (수Company) ─────────────────────────────────
+// 오릭스 인센티브 관리(별도 페이지)에서 입력한 항목 중 수익자가 수Company인 것만
+// 읽기전용으로 그대로 보여준다. 등록/수정/삭제는 오릭스 인센티브 관리 화면에서만 가능하다.
+function OrixRecipientTab({ rows, year }: { rows: OrixRecipientRow[]; year: string }) {
+  const totalIncentive = rows.reduce((s, r) => s + (r.incentive_total ?? 0), 0);
+  const totalCmPaid = rows.reduce((s, r) => s + (r.cm_paid_incentive ?? 0), 0);
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700">
+        📋 오릭스 인센티브 관리 화면에서 입력한 항목 중 수익자가 <strong>수Company</strong>인 건만 표시됩니다. 등록·수정은 오릭스 인센티브 관리 화면에서 해주세요.
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-white rounded-lg border p-4">
+          <p className="text-xs text-gray-500">{year}년 건수</p>
+          <p className="text-xl font-bold text-gray-800 mt-1">{rows.length.toLocaleString('ko-KR')}건</p>
+        </div>
+        <div className="bg-white rounded-lg border p-4">
+          <p className="text-xs text-gray-500">인센티브 총액 합계</p>
+          <p className="text-xl font-bold text-gray-800 mt-1">{fmt(totalIncentive)}원</p>
+        </div>
+        <div className="bg-white rounded-lg border p-4">
+          <p className="text-xs text-gray-500">CM지급 인센티브 합계</p>
+          <p className="text-xl font-bold text-blue-700 mt-1">{fmt(totalCmPaid)}원</p>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg border overflow-x-auto">
+        <table className="w-full text-sm min-w-[900px]">
+          <thead className="bg-gray-50 text-gray-600">
+            <tr>
+              {['확정일자', '고객명', '대출원금', '상품구분', '차종', '인센티브율', '인센티브 총액', 'CM지급 인센티브', '지급상태', '비고'].map(h => (
+                <th key={h} className="px-3 py-2.5 text-left font-medium border-b">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr><td colSpan={10} className="px-3 py-8 text-center text-gray-400">해당 연도에 등록된 항목이 없습니다.</td></tr>
+            )}
+            {rows.map(r => (
+              <tr key={r.id} className="border-b hover:bg-gray-50">
+                <td className="px-3 py-2.5 text-gray-700">{r.confirmed_date ?? '—'}</td>
+                <td className="px-3 py-2.5 font-medium">{r.customer_name}</td>
+                <td className="px-3 py-2.5 text-right">{fmt(r.loan_principal ?? 0)}</td>
+                <td className="px-3 py-2.5 text-gray-600">{r.product_type ?? '—'}</td>
+                <td className="px-3 py-2.5 text-gray-600">{r.vehicle_type ?? '—'}</td>
+                <td className="px-3 py-2.5">{r.incentive_rate ?? '—'}{r.incentive_rate !== null ? '%' : ''}</td>
+                <td className="px-3 py-2.5 text-right font-medium">{fmt(r.incentive_total ?? 0)}</td>
+                <td className="px-3 py-2.5 text-right text-blue-700 font-medium">{fmt(r.cm_paid_incentive ?? 0)}</td>
+                <td className="px-3 py-2.5">
+                  {r.paid_at ? (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">지급완료</span>
+                  ) : (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">미지급</span>
+                  )}
+                </td>
+                <td className="px-3 py-2.5 text-gray-500 text-xs">{r.note}</td>
               </tr>
             ))}
           </tbody>
