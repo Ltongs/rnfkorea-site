@@ -770,7 +770,7 @@ export default function QuotationPage() {
   const [consultationId, setConsultationId] = useState<number|null>(null);
   useEffect(() => {
     const t = searchParams.get('type') as TabType;
-    if(t && ['battery','forklift','tire','installment','purchase'].includes(t)) setTab(t);
+    if(t && ['battery','forklift','tire','installment','purchase','history'].includes(t)) setTab(t);
 
     const cid = searchParams.get('consultationId');
     if (cid && !isNaN(Number(cid))) setConsultationId(Number(cid));

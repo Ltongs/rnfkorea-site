@@ -2900,37 +2900,6 @@ const SecretaryPage:React.FC = () => {
   const [jNewSaving,setJNewSaving] = useState(false);
   const [jNewForm,setJNewForm] = useState({customer_name:"",product_spec:"",quantity:"",memo:"",order_date:todayStr(),product_type:"tire",consultation_id:""});
   const [jAmtModal,setJAmtModal] = useState<any|null>(null);
-  // ── 견적서 이력관리
-  const [quotMode,setQuotMode]         = useState<"write"|"history">("write");
-  const [quotRows,setQuotRows]         = useState<any[]>([]);
-  const [quotLoading,setQuotLoading]   = useState(false);
-  const [quotLoaded,setQuotLoaded]     = useState(false);
-  const [quotFilter,setQuotFilter]     = useState<"all"|"battery"|"forklift"|"tire"|"installment"|"statement">("all");
-  const [quotSearch,setQuotSearch]     = useState("");
-
-  async function fetchQuotRows(){
-    setQuotLoading(true);
-    const {data} = await supabase.from("tb_quotations")
-      .select("id,quote_no,quote_type,quote_date,recipient,recipient_email,total_amount,vat_amount,grand_total,email_sent,email_sent_at,created_at,notes")
-      .order("created_at",{ascending:false})
-      .limit(200);
-    setQuotRows(data??[]);
-    setQuotLoading(false);
-    setQuotLoaded(true);
-  }
-
-  const filteredQuotRows = React.useMemo(()=>{
-    return (quotRows)
-      .filter(r=> quotFilter==="all" || r.quote_type===quotFilter)
-      .filter(r=>{
-        if(!quotSearch) return true;
-        const q = quotSearch.toLowerCase();
-        return (r.recipient??"").toLowerCase().includes(q)
-          || (r.quote_no??"").toLowerCase().includes(q)
-          || (r.notes??"").toLowerCase().includes(q);
-      });
-  },[quotRows, quotFilter, quotSearch]);
-
   // ── 실적관리 탭 ─────────────────────────────────────────────────────────────────
   const [perfYear,setPerfYear]           = useState(new Date().getFullYear());
   const [perfMonth,setPerfMonth]         = useState(new Date().getMonth()+1);
@@ -4665,7 +4634,6 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
   useEffect(()=>{if(tab==="email"){void loadEmailReports();}},[tab,loadEmailReports]);
   useEffect(()=>{if(tab==="memo"){void loadMemos();}},[tab,loadMemos]);
   useEffect(()=>{if(tab==="cns"){ void fetchCnsRows(); }},[tab]);
-  useEffect(()=>{if(tab==="quotation"){ setQuotMode("write"); }},[tab]);
   useEffect(()=>{if(tab==="performance"){ void loadPerfData(); }},[tab]);
   useEffect(()=>{
     if(tab!=="narumi") return;
@@ -6861,127 +6829,38 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
           {tab==="quotation"&&(
             <div className="space-y-3 pb-4 w-full">
 
-              {/* ── 작성 버튼 + 이력관리 토글 ── */}
-              {quotMode==="write"&&(
-                <div className="flex flex-col items-center gap-4 py-10 w-full">
-                  <div className="text-4xl">📋</div>
-                  <h2 className="text-lg font-bold text-[#0f172a]">견적서 작성</h2>
-                  <p className="text-sm text-gray-500 text-center">지게차 · 배터리 · 타이어 · 할부금융 견적서를 작성하고<br/>이메일 · SMS로 발송할 수 있습니다.</p>
-                  <div className="flex flex-wrap justify-center gap-3">
-                    <button onClick={()=>navigate("/work/quotation?type=battery")}
-                      className="px-5 py-2.5 bg-[#0f172a] text-white rounded-xl text-sm font-semibold hover:opacity-90 transition-all">
-                      🔋 배터리 견적
-                    </button>
-                    <button onClick={()=>navigate("/work/quotation?type=forklift")}
-                      className="px-5 py-2.5 bg-orange-500 text-white rounded-xl text-sm font-semibold hover:bg-orange-600 transition-all">
-                      🚜 지게차 견적
-                    </button>
-                    <button onClick={()=>navigate("/work/quotation?type=tire")}
-                      className="px-5 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-semibold hover:bg-teal-700 transition-all">
-                      🛞 타이어 견적
-                    </button>
-                    <button onClick={()=>navigate("/work/quotation?type=installment")}
-                      className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all">
-                      💳 할부금융 견적
-                    </button>
-                    <button onClick={()=>navigate("/work/statement")}
-                      className="px-5 py-2.5 bg-gray-700 text-white rounded-xl text-sm font-semibold hover:bg-gray-800 transition-all">
-                      📑 거래명세서
-                    </button>
-                    <button onClick={()=>{setQuotMode("history"); if(!quotLoaded) void fetchQuotRows();}}
-                      className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 transition-all">
-                      📂 이력관리
-                    </button>
-                  </div>
+              {/* ── 작성 버튼 ── */}
+              <div className="flex flex-col items-center gap-4 py-10 w-full">
+                <div className="text-4xl">📋</div>
+                <h2 className="text-lg font-bold text-[#0f172a]">견적서 작성</h2>
+                <p className="text-sm text-gray-500 text-center">지게차 · 배터리 · 타이어 · 할부금융 견적서를 작성하고<br/>이메일 · SMS로 발송할 수 있습니다.</p>
+                <div className="flex flex-wrap justify-center gap-3">
+                  <button onClick={()=>navigate("/work/quotation?type=battery")}
+                    className="px-5 py-2.5 bg-[#0f172a] text-white rounded-xl text-sm font-semibold hover:opacity-90 transition-all">
+                    🔋 배터리 견적
+                  </button>
+                  <button onClick={()=>navigate("/work/quotation?type=forklift")}
+                    className="px-5 py-2.5 bg-orange-500 text-white rounded-xl text-sm font-semibold hover:bg-orange-600 transition-all">
+                    🚜 지게차 견적
+                  </button>
+                  <button onClick={()=>navigate("/work/quotation?type=tire")}
+                    className="px-5 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-semibold hover:bg-teal-700 transition-all">
+                    🛞 타이어 견적
+                  </button>
+                  <button onClick={()=>navigate("/work/quotation?type=installment")}
+                    className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all">
+                    💳 할부금융 견적
+                  </button>
+                  <button onClick={()=>navigate("/work/statement")}
+                    className="px-5 py-2.5 bg-gray-700 text-white rounded-xl text-sm font-semibold hover:bg-gray-800 transition-all">
+                    📑 거래명세서
+                  </button>
+                  <button onClick={()=>navigate("/work/quotation?type=history")}
+                    className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 transition-all">
+                    📂 이력관리
+                  </button>
                 </div>
-              )}
-
-              {/* ── 이력관리 뷰 ── */}
-              {quotMode==="history"&&(
-                <div className="space-y-3">
-                  {/* 헤더 */}
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <p className="text-sm font-semibold text-[#0f172a]">📂 견적서 이력</p>
-                    <div className="flex gap-1.5">
-                      <button className={BTG} onClick={()=>void fetchQuotRows()}>새로고침</button>
-                      <button className={BTS} onClick={()=>setQuotMode("write")}>← 작성으로</button>
-                    </div>
-                  </div>
-
-                  {/* 구분 필터 버튼 */}
-                  <div className="flex gap-1.5 flex-wrap">
-                    {([
-                      {v:"all",       l:"전체"},
-                      {v:"battery",   l:"🔋 배터리"},
-                      {v:"forklift",  l:"🚜 지게차"},
-                      {v:"tire",      l:"🛞 타이어"},
-                      {v:"installment",l:"💳 할부금융"},
-                      {v:"statement", l:"📑 거래명세서"},
-                    ] as {v:typeof quotFilter; l:string}[]).map(({v,l})=>(
-                      <button key={v} onClick={()=>setQuotFilter(v)}
-                        className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${quotFilter===v?"bg-[#0f172a] text-white border-[#0f172a]":"bg-white text-gray-500 border-gray-200 hover:border-gray-400"}`}>
-                        {l}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* 검색 */}
-                  <div className="relative">
-                    <input className={`${CTRL} pr-8`} placeholder="거래처명 · 견적번호 · 비고 검색"
-                      value={quotSearch} onChange={e=>setQuotSearch(e.target.value)}/>
-                    {quotSearch&&(
-                      <button onClick={()=>setQuotSearch("")}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm">✕</button>
-                    )}
-                  </div>
-
-                  {/* 목록 */}
-                  {quotLoading?(
-                    <p className="text-sm text-gray-400 text-center py-8">불러오는 중...</p>
-                  ):filteredQuotRows.length===0?(
-                    <p className="text-sm text-gray-400 text-center py-8">이력이 없습니다.</p>
-                  ):(
-                    <div className={`${CARD} divide-y divide-gray-100`}>
-                      {filteredQuotRows.map((r:any)=>{
-                        const TYPE_LABEL:Record<string,string> = {battery:"🔋 배터리",forklift:"🚜 지게차",tire:"🛞 타이어",installment:"💳 할부금융",statement:"📑 거래명세서",purchase:"🛒 발주서"};
-                        const TYPE_COLOR:Record<string,string> = {battery:"bg-emerald-100 text-emerald-700",forklift:"bg-orange-100 text-orange-700",tire:"bg-teal-100 text-teal-700",installment:"bg-blue-100 text-blue-700",statement:"bg-gray-100 text-gray-700",purchase:"bg-purple-100 text-purple-700"};
-                        const navigate_url = r.quote_type==="statement" ? "/work/statement" : `/work/quotation?type=${r.quote_type}`;
-                        return (
-                          <div key={r.id} className="p-3 hover:bg-gray-50 transition-all">
-                            <div className="flex items-start gap-2">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                                  <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${TYPE_COLOR[r.quote_type]??"bg-gray-100 text-gray-600"}`}>
-                                    {TYPE_LABEL[r.quote_type]??r.quote_type}
-                                  </span>
-                                  {r.email_sent&&(
-                                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-sky-50 text-sky-600 border border-sky-200 font-medium">📧 발송완료</span>
-                                  )}
-                                </div>
-                                <div className="flex items-baseline gap-2 flex-wrap">
-                                  <span className="text-sm font-semibold text-[#0f172a]">{r.recipient||"(거래처 없음)"}</span>
-                                  <span className="text-xs text-gray-400">{r.quote_no}</span>
-                                </div>
-                                <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                                  {r.grand_total>0&&(
-                                    <span className="text-xs font-semibold text-orange-600">{r.grand_total.toLocaleString("ko-KR")}원</span>
-                                  )}
-                                  <span className="text-[11px] text-gray-400">{r.quote_date||r.created_at?.slice(0,10)}</span>
-                                  {r.notes&&<span className="text-[11px] text-gray-400 truncate max-w-[160px]">{r.notes}</span>}
-                                </div>
-                              </div>
-                              <button onClick={()=>navigate(navigate_url)}
-                                className="px-2.5 py-1 rounded-xl text-[11px] border border-gray-200 text-gray-500 hover:border-orange-300 hover:text-orange-600 transition-all flex-shrink-0">
-                                열기
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
+              </div>
             </div>
           )}
 

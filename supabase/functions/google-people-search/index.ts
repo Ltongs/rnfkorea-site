@@ -16,7 +16,7 @@ const CORS = {
 
 const CLIENT_ID     = Deno.env.get("GOOGLE_CLIENT_ID")!;
 const CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
-const ADMIN_GCAL_EMAIL = "admin@rnfkorea.co.kr";
+const ADMIN_GCAL_EMAIL = "ltongs7@gmail.com";
 
 // deno-lint-ignore no-explicit-any
 async function getValidAdminToken(db: any) {
