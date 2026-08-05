@@ -48,7 +48,7 @@ type Row = SalesInputFields &
     created_at: string;
   };
 
-type Contractor = { id: string; name: string };
+type Contractor = { id: string; name: string; withholding_agent: "RNF Korea" | "수Company" };
 
 const cardClass =
   "border border-gray-200 rounded-2xl bg-white shadow-sm hover:shadow-md transition-all";
@@ -74,6 +74,26 @@ function contractorName(contractors: Contractor[], id: string | null | undefined
 function recipientLabel(contractors: Contractor[], row: { incentive_recipient_contractor_id?: string | null; incentive_recipient_pending?: boolean }) {
   if (row.incentive_recipient_pending) return "미정";
   return contractorName(contractors, row.incentive_recipient_contractor_id);
+}
+
+// 수익자=수Company 건은 원천징수관리>수Company>지급대상 탭에 노출되고, "미지급→지급완료"
+// 처리 시 그 지급대상(수탁인)의 원천징수자 기준으로 지급내역 탭에 등록된다. 따라서
+// 지급대상은 원천징수자가 수Company로 등록된 수탁인 중에서만 고를 수 있어야 화면 간
+// 표시가 어긋나지 않는다. 수익자=이동수는 이 원천징수 흐름을 타지 않으므로 제한하지 않는다.
+function contractorsForBeneficiary(contractors: Contractor[], beneficiary: string | null) {
+  if (beneficiary === "수Company") return contractors.filter((c) => c.withholding_agent === "수Company");
+  return contractors;
+}
+
+// 수익자=수Company인데 지급대상(수탁인)의 원천징수자가 수Company가 아니면, 지급완료 처리
+// 시 지급내역이 원천징수관리>수Company 탭이 아니라 다른 탭에 등록돼버려 화면이 어긋난다.
+function recipientAgentMismatch(
+  contractors: Contractor[],
+  row: { beneficiary: string | null; incentive_recipient_contractor_id?: string | null; incentive_recipient_pending?: boolean }
+) {
+  if (row.beneficiary !== "수Company" || row.incentive_recipient_pending || !row.incentive_recipient_contractor_id) return false;
+  const c = contractors.find((x) => x.id === row.incentive_recipient_contractor_id);
+  return !!c && c.withholding_agent !== "수Company";
 }
 
 // DB의 GENERATED 컬럼과 동일한 계산식 — 저장 전 화면에 미리보기로 보여주기 위한 용도.
@@ -150,7 +170,7 @@ export default function OrixIncentivePage() {
 
   const loadContractors = async () => {
     // 지급대상(수령자) 선택은 admin/파트너 모두 사용하므로 둘 다 로드한다.
-    const { data } = await supabase.from("orix_contractors_picker_view").select("id, name").order("name");
+    const { data } = await supabase.from("orix_contractors_picker_view").select("id, name, withholding_agent").order("name");
     setContractors((data ?? []) as Contractor[]);
   };
 
@@ -443,6 +463,26 @@ export default function OrixIncentivePage() {
                         onChange={(e) => setNewSales((p) => ({ ...p, vehicle_type: e.target.value }))} placeholder="차종" />
                     </div>
                     <div>
+                      <label className={labelClass}>수익자 구분</label>
+                      <select className={inputClass} value={newSales.beneficiary ?? ""}
+                        onChange={(e) => {
+                          const b = e.target.value || null;
+                          setNewSales((p) => {
+                            const allowed = contractorsForBeneficiary(contractors, b);
+                            const stillValid = !!p.incentive_recipient_contractor_id && allowed.some((c) => c.id === p.incentive_recipient_contractor_id);
+                            return {
+                              ...p,
+                              beneficiary: b,
+                              incentive_recipient_contractor_id: stillValid ? p.incentive_recipient_contractor_id : null,
+                              incentive_recipient_pending: stillValid ? p.incentive_recipient_pending : false,
+                            };
+                          });
+                        }}>
+                        <option value="">선택</option>
+                        {BENEFICIARIES.map((b) => <option key={b} value={b}>{b}</option>)}
+                      </select>
+                    </div>
+                    <div>
                       <label className={labelClass}>지급대상 (수탁인)</label>
                       <select className={inputClass}
                         value={newSales.incentive_recipient_pending ? RECIPIENT_PENDING_VALUE : (newSales.incentive_recipient_contractor_id ?? "")}
@@ -456,15 +496,7 @@ export default function OrixIncentivePage() {
                         }}>
                         <option value="">선택 (원천징수관리-수탁인관리에 등록 필요)</option>
                         <option value={RECIPIENT_PENDING_VALUE}>미정 (업무위수탁 계약 전)</option>
-                        {contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className={labelClass}>수익자 구분</label>
-                      <select className={inputClass} value={newSales.beneficiary ?? ""}
-                        onChange={(e) => setNewSales((p) => ({ ...p, beneficiary: e.target.value || null }))}>
-                        <option value="">선택</option>
-                        {BENEFICIARIES.map((b) => <option key={b} value={b}>{b}</option>)}
+                        {contractorsForBeneficiary(contractors, newSales.beneficiary).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
                     </div>
                     <div>
@@ -611,7 +643,17 @@ export default function OrixIncentivePage() {
                           <td className="py-2.5 pr-4 whitespace-nowrap font-medium">{formatMoney(row.incentive_total)}</td>
                           <td className="py-2.5 pr-4 whitespace-nowrap">{row.cm_incentive_rate ?? "-"}{row.cm_incentive_rate !== null ? "%" : ""}</td>
                           <td className="py-2.5 pr-4 whitespace-nowrap">{formatMoney(row.cm_paid_incentive)}</td>
-                          <td className="py-2.5 pr-4 whitespace-nowrap">{recipientLabel(contractors, row)}</td>
+                          <td className="py-2.5 pr-4 whitespace-nowrap">
+                            {recipientLabel(contractors, row)}
+                            {recipientAgentMismatch(contractors, row) && (
+                              <span
+                                className="ml-1 text-orange-500"
+                                title="지급대상(수탁인)의 원천징수자가 수Company가 아닙니다. 지급완료 처리 시 지급내역이 다른 탭에 등록됩니다."
+                              >
+                                ⚠
+                              </span>
+                            )}
+                          </td>
                           <td className="py-2.5 pr-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                             <select
                               className="h-8 px-2 rounded-lg border border-gray-200 bg-white text-xs font-medium text-navy-900 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 transition-all"
@@ -671,6 +713,26 @@ export default function OrixIncentivePage() {
                                       onChange={(e) => setEditSales((p) => ({ ...p, vehicle_type: e.target.value }))} />
                                   </div>
                                   <div>
+                                    <label className={labelClass}>수익자 구분</label>
+                                    <select className={inputClass} value={editSales.beneficiary ?? ""}
+                                      onChange={(e) => {
+                                        const b = e.target.value || null;
+                                        setEditSales((p) => {
+                                          const allowed = contractorsForBeneficiary(contractors, b);
+                                          const stillValid = !!p.incentive_recipient_contractor_id && allowed.some((c) => c.id === p.incentive_recipient_contractor_id);
+                                          return {
+                                            ...p,
+                                            beneficiary: b,
+                                            incentive_recipient_contractor_id: stillValid ? p.incentive_recipient_contractor_id : null,
+                                            incentive_recipient_pending: stillValid ? p.incentive_recipient_pending : false,
+                                          };
+                                        });
+                                      }}>
+                                      <option value="">선택</option>
+                                      {BENEFICIARIES.map((b) => <option key={b} value={b}>{b}</option>)}
+                                    </select>
+                                  </div>
+                                  <div>
                                     <label className={labelClass}>지급대상 (수탁인)</label>
                                     <select className={inputClass}
                                       value={editSales.incentive_recipient_pending ? RECIPIENT_PENDING_VALUE : (editSales.incentive_recipient_contractor_id ?? "")}
@@ -684,16 +746,13 @@ export default function OrixIncentivePage() {
                                       }}>
                                       <option value="">선택 (원천징수관리-수탁인관리에 등록 필요)</option>
                                       <option value={RECIPIENT_PENDING_VALUE}>미정 (업무위수탁 계약 전)</option>
-                                      {contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                      {contractorsForBeneficiary(contractors, editSales.beneficiary).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                                     </select>
-                                  </div>
-                                  <div>
-                                    <label className={labelClass}>수익자 구분</label>
-                                    <select className={inputClass} value={editSales.beneficiary ?? ""}
-                                      onChange={(e) => setEditSales((p) => ({ ...p, beneficiary: e.target.value || null }))}>
-                                      <option value="">선택</option>
-                                      {BENEFICIARIES.map((b) => <option key={b} value={b}>{b}</option>)}
-                                    </select>
+                                    {recipientAgentMismatch(contractors, editSales) && (
+                                      <p className="mt-1 text-xs font-medium text-orange-600">
+                                        ⚠ 이 수탁인의 원천징수자가 수Company가 아니어서, 지급완료 처리 시 지급내역이 원천징수관리&gt;수Company 탭이 아닌 다른 탭에 등록됩니다.
+                                      </p>
+                                    )}
                                   </div>
                                   <div>
                                     <label className={labelClass}>인센티브율 (%)</label>
