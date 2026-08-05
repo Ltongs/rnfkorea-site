@@ -1384,6 +1384,13 @@ function OrixRecipientTab({
                 <td className="px-3 py-2.5">
                   {r.paid_at ? (
                     <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">지급완료</span>
+                  ) : r.incentive_recipient_pending || !r.incentive_recipient_contractor_id ? (
+                    <span
+                      title="오릭스 인센티브 관리 화면에서 지급대상(수탁인)을 먼저 지정해야 지급 처리할 수 있습니다"
+                      className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 cursor-not-allowed"
+                    >
+                      지급대상 미정
+                    </span>
                   ) : (
                     <button
                       onClick={() => onMarkPaid(r)}
