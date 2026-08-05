@@ -899,7 +899,7 @@ export default function QuotationPage() {
         html=`<div style="font-family:'맑은 고딕',sans-serif;padding:20px;font-size:12px">
           <div style="background:#0a192f;padding:14px 18px;border-radius:6px;margin-bottom:12px;display:flex;justify-content:space-between">
             <div style="color:#fff;font-size:16px;font-weight:700">RNF KOREA</div>
-            <div style="color:#f97316;font-size:16px;font-weight:700">할부 견적서</div>
+            <div style="color:#f97316;font-size:16px;font-weight:700">${iff.financeCompany} 할부견적서</div>
           </div>
           <p style="font-size:13px;margin-bottom:10px">수신: <strong>${iff.recipient||'(수신인 미입력)'}</strong> 귀중</p>
           <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px">
@@ -1353,7 +1353,7 @@ tr.grace td{color:#94a3b8;font-style:italic;}.tfoot td{background:#e2e8f0;font-w
 <div class="doc">
 <div style="background:#0a192f;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;border-radius:6px;margin-bottom:12px">
   <div style="color:#fff;font-size:18px;font-weight:700">RNF KOREA</div>
-  <div style="text-align:right"><div style="color:#f97316;font-size:20px;font-weight:700">할부 견적서</div>
+  <div style="text-align:right"><div style="color:#f97316;font-size:20px;font-weight:700">${iff.financeCompany} 할부견적서</div>
   <div style="color:#94a3b8;font-size:9px">${iff.quoteDate}</div></div>
 </div>
 ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${iff.recipient}${iff.companyName?` (${iff.companyName})`:''}</strong> 귀중</p>`:''}
@@ -1864,7 +1864,7 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
       <div ref={installmentPreviewRef} style={{position:'absolute',left:'-9999px',top:'0',width:'600px',fontFamily:"'Malgun Gothic',sans-serif",background:'#fff',padding:'20px'}}>
         <div style={{background:'#0a192f',padding:'14px 18px',borderRadius:'6px',marginBottom:'12px',display:'flex',justifyContent:'space-between'}}>
           <div style={{color:'#fff',fontSize:'16px',fontWeight:700}}>RNF KOREA</div>
-          <div style={{color:'#f97316',fontSize:'16px',fontWeight:700}}>할부 견적서</div>
+          <div style={{color:'#f97316',fontSize:'16px',fontWeight:700}}>{iff.financeCompany} 할부견적서</div>
         </div>
         {iff.recipient&&<p style={{fontSize:'12px',marginBottom:'8px'}}>수신: <strong>{iff.recipient}</strong> 귀중</p>}
         {n0(iff.principal)>0&&n0(iff.annualRate)>0&&n0(iff.installmentMonths)>0&&(()=>{
