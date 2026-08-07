@@ -196,6 +196,20 @@ export default function FaxCampaignPage() {
     return [...rows].sort((a, b) => (b.sent_at ?? "").localeCompare(a.sent_at ?? ""));
   }, [logs, historyFilter]);
 
+  // 캠페인별 성공/실패 건수 — "지금 발송" 버튼을 다시 누르면 성공한 건은 자동으로
+  // 건너뛰고 실패/미시도 건만 재시도되므로, 이미 실패가 있는 캠페인은 버튼 문구를
+  // "실패건 재발송"으로 바꿔 보여준다(로직은 이미 그렇게 동작함, 문구만 명확히).
+  const campaignStats = useMemo(() => {
+    const m = new Map<string, { success: number; failed: number }>();
+    for (const l of logs) {
+      const s = m.get(l.campaign_id) ?? { success: 0, failed: 0 };
+      if (l.status === "success") s.success += 1;
+      else if (l.status === "failed") s.failed += 1;
+      m.set(l.campaign_id, s);
+    }
+    return m;
+  }, [logs]);
+
   const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -462,6 +476,10 @@ export default function FaxCampaignPage() {
                           >
                             {sendingCampaignId === c.id ? (
                               <><Loader2 className="w-3.5 h-3.5 animate-spin" /> 발송 중...</>
+                            ) : (campaignStats.get(c.id)?.failed ?? 0) > 0 ? (
+                              <><Send className="w-3.5 h-3.5" /> 실패 {campaignStats.get(c.id)!.failed}건 재발송</>
+                            ) : (campaignStats.get(c.id)?.success ?? 0) > 0 ? (
+                              <><Send className="w-3.5 h-3.5" /> 재발송 (미시도분)</>
                             ) : (
                               <><Send className="w-3.5 h-3.5" /> 지금 발송</>
                             )}
