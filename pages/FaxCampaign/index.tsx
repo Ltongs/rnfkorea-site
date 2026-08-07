@@ -106,6 +106,12 @@ export default function FaxCampaignPage() {
 
   const [historyFilter, setHistoryFilter] = useState<string>("all");
 
+  const [newContactRegion, setNewContactRegion] = useState("");
+  const [newContactName, setNewContactName] = useState("");
+  const [newContactFax, setNewContactFax] = useState("");
+  const [addingContact, setAddingContact] = useState(false);
+  const [addContactMsg, setAddContactMsg] = useState("");
+
   const loadAll = async () => {
     setLoading(true);
     setError("");
@@ -239,6 +245,37 @@ export default function FaxCampaignPage() {
       setFormMsg(e?.message || "캠페인 생성에 실패했습니다.");
     } finally {
       setCreatingCampaign(false);
+    }
+  };
+
+  const addContact = async () => {
+    const name = newContactName.trim();
+    const fax = newContactFax.trim();
+    if (!name) { setAddContactMsg("상호(골프장명)를 입력해주세요."); return; }
+    if (!fax) { setAddContactMsg("팩스번호를 입력해주세요."); return; }
+    if (parseFaxNumbers(fax).length === 0) {
+      setAddContactMsg("팩스번호 형식을 확인해주세요 (예: 031-123-4567).");
+      return;
+    }
+    setAddingContact(true);
+    setAddContactMsg("");
+    try {
+      const { error: insertErr } = await supabase.from("golf_course_contacts").insert({
+        region: newContactRegion.trim() || "기타",
+        name,
+        fax,
+        is_active: true,
+      });
+      if (insertErr) throw insertErr;
+      setNewContactRegion("");
+      setNewContactName("");
+      setNewContactFax("");
+      setAddContactMsg("추가되었습니다.");
+      await loadAll();
+    } catch (e: any) {
+      setAddContactMsg(e?.message || "추가에 실패했습니다.");
+    } finally {
+      setAddingContact(false);
     }
   };
 
@@ -456,6 +493,41 @@ export default function FaxCampaignPage() {
                     미발송만 보기
                   </label>
                 </div>
+              </div>
+
+              {/* ── 임의 추가 ── */}
+              <div className="rounded-xl border border-dashed border-gray-300 p-4">
+                <p className="text-xs font-medium text-gray-500 mb-3">골프장 임의 추가 (상호 + 팩스번호)</p>
+                <div className="flex flex-col md:flex-row gap-3">
+                  <input
+                    className={`${inputClass} md:w-40`}
+                    value={newContactRegion}
+                    onChange={(e) => setNewContactRegion(e.target.value)}
+                    placeholder="지역 (예: 경기 용인시)"
+                  />
+                  <input
+                    className={inputClass}
+                    value={newContactName}
+                    onChange={(e) => setNewContactName(e.target.value)}
+                    placeholder="상호(골프장명) *"
+                  />
+                  <input
+                    className={inputClass}
+                    value={newContactFax}
+                    onChange={(e) => setNewContactFax(e.target.value)}
+                    placeholder="팩스번호 * (예: 031-123-4567)"
+                  />
+                  <button
+                    onClick={addContact}
+                    disabled={addingContact}
+                    className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-navy-900 text-white text-sm font-semibold hover:bg-navy-800 transition-all disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {addingContact ? "추가 중..." : "추가"}
+                  </button>
+                </div>
+                {!!addContactMsg && (
+                  <div className="mt-2 text-sm font-medium text-orange-600">{addContactMsg}</div>
+                )}
               </div>
               <div className="overflow-x-auto max-h-[480px] overflow-y-auto">
                 <table className="w-full text-sm">
