@@ -59,6 +59,20 @@ function formatDateTime(v: string | null) {
   return new Date(v).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
 }
 
+function formatDateTimeShort(v: string | null) {
+  if (!v) return "";
+  return new Date(v).toLocaleString("ko-KR", {
+    timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+  });
+}
+
+function formatFaxNumberPretty(digits: string) {
+  const d = digits.slice(0, 11);
+  if (d.length === 11) return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
+  if (d.length === 10) return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+  return digits;
+}
+
 // send-fax-campaign Edge Function과 동일한 패턴 — 팩스 필드 하나에 번호가 여러 개
 // 있으면(예: "031-672-6011, 033-573-0876") 전부 별도 발송 대상으로 파싱한다.
 const FAX_NUMBER_PATTERN = /(?:0\d{1,2}|1\d{3})[-.\s)]?\d{3,4}[-.\s]?\d{4}/g;
@@ -125,18 +139,39 @@ export default function FaxCampaignPage() {
     [contacts],
   );
 
-  const sentContactIds = useMemo(
-    () => new Set(logs.filter((l) => l.status === "success").map((l) => l.contact_id)),
-    [logs],
-  );
+  // 골프장+팩스번호 조합별 "가장 최근" 발송 로그 — 번호별 상세 발송상태 표시에 사용
+  const latestLogByContactFax = useMemo(() => {
+    const m = new Map<string, FaxSendLog>();
+    for (const l of logs) {
+      const key = `${l.contact_id}|${l.fax_number}`;
+      const prev = m.get(key);
+      if (!prev || (l.sent_at ?? "") > (prev.sent_at ?? "")) m.set(key, l);
+    }
+    return m;
+  }, [logs]);
+
+  // 골프장 1곳의 팩스번호별 발송상태 상세 — 번호가 여러 개면 각각 별도로 판정한다.
+  const getContactSendDetail = (c: GolfCourseContact) => {
+    if (!c.is_active || !c.fax) return { numbers: [] as { num: string; log?: FaxSendLog }[], allSuccess: false, anySuccess: false };
+    const parsed = parseFaxNumbers(c.fax);
+    const numbers = parsed.length > 0 ? parsed : [c.fax.replace(/[^0-9]/g, "") || c.fax];
+    const details = numbers.map((num) => ({ num, log: latestLogByContactFax.get(`${c.id}|${num}`) }));
+    return {
+      numbers: details,
+      allSuccess: details.every((d) => d.log?.status === "success"),
+      anySuccess: details.some((d) => d.log?.status === "success"),
+    };
+  };
 
   const filteredContacts = useMemo(() => {
     return contacts.filter((c) => {
       if (regionFilter !== "all" && c.region !== regionFilter) return false;
-      if (unsentOnly && sentContactIds.has(c.id)) return false;
+      // 번호가 여러 개인 골프장은 "모든 번호가 발송완료"일 때만 발송완료로 취급한다.
+      if (unsentOnly && c.is_active && c.fax && getContactSendDetail(c).allSuccess) return false;
       return true;
     });
-  }, [contacts, regionFilter, unsentOnly, sentContactIds]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contacts, regionFilter, unsentOnly, latestLogByContactFax]);
 
   const campaignById = useMemo(() => {
     const m = new Map<string, FaxCampaign>();
@@ -428,35 +463,47 @@ export default function FaxCampaignPage() {
                     <tr className="text-left text-xs font-medium text-gray-400 uppercase border-b border-gray-200">
                       <th className="py-2 pr-4">지역</th>
                       <th className="py-2 pr-4">골프장명</th>
-                      <th className="py-2 pr-4">팩스</th>
-                      <th className="py-2 pr-4">전화</th>
-                      <th className="py-2 pr-4">홀수/형태</th>
-                      <th className="py-2 pr-4">발송상태</th>
+                      <th className="py-2 pr-4">발송상태 (번호별)</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredContacts.map((c) => (
-                      <tr key={c.id} className="border-b border-gray-100">
-                        <td className="py-2 pr-4 text-gray-600 whitespace-nowrap">{c.region}</td>
-                        <td className="py-2 pr-4 font-medium text-navy-900 whitespace-nowrap">{c.name}</td>
-                        <td className="py-2 pr-4 text-gray-600 whitespace-nowrap">{c.fax ?? "-"}</td>
-                        <td className="py-2 pr-4 text-gray-500 whitespace-nowrap">{c.phone ?? "-"}</td>
-                        <td className="py-2 pr-4 text-gray-500">{c.holes_type ?? "-"}</td>
-                        <td className="py-2 pr-4">
-                          {!c.is_active ? (
-                            <span className="text-xs font-medium text-gray-400">팩스없음</span>
-                          ) : sentContactIds.has(c.id) ? (
-                            <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600">
-                              <CheckCircle2 className="w-3.5 h-3.5" /> 발송완료
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-500">
-                              <XCircle className="w-3.5 h-3.5" /> 미발송
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredContacts.map((c) => {
+                      const detail = getContactSendDetail(c);
+                      return (
+                        <tr key={c.id} className="border-b border-gray-100">
+                          <td className="py-2 pr-4 text-gray-600 whitespace-nowrap align-top">{c.region}</td>
+                          <td className="py-2 pr-4 font-medium text-navy-900 whitespace-nowrap align-top">{c.name}</td>
+                          <td className="py-2 pr-4">
+                            {!c.is_active ? (
+                              <span className="text-xs font-medium text-gray-400">팩스없음</span>
+                            ) : (
+                              <div className="flex flex-col gap-1">
+                                {detail.numbers.map(({ num, log }) => (
+                                  <div key={num} className="flex items-center gap-1.5 whitespace-nowrap">
+                                    <span className="text-xs text-gray-500 font-mono">{formatFaxNumberPretty(num)}</span>
+                                    {log?.status === "success" ? (
+                                      <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600">
+                                        <CheckCircle2 className="w-3.5 h-3.5" /> 성공
+                                        {log.sent_at && <span className="text-gray-400 font-normal">· {formatDateTimeShort(log.sent_at)}</span>}
+                                      </span>
+                                    ) : log?.status === "failed" ? (
+                                      <span className="inline-flex items-center gap-1 text-xs font-medium text-red-500" title={log.error_message ?? ""}>
+                                        <XCircle className="w-3.5 h-3.5" /> 실패
+                                        {log.sent_at && <span className="text-gray-400 font-normal">· {formatDateTimeShort(log.sent_at)}</span>}
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-500">
+                                        <XCircle className="w-3.5 h-3.5" /> 미발송
+                                      </span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
