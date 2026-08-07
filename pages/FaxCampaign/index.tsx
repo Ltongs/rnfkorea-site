@@ -2,7 +2,7 @@
 // 골프장 팩스 자동발송 관리: 골프장 리스트/필터, 브로셔 업로드 + 캠페인 생성, 발송 실행, 발송이력 조회
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, Send, Upload, FileText, CheckCircle2, XCircle } from "lucide-react";
+import { Loader2, Send, Upload, FileText, CheckCircle2, XCircle, Clock, RefreshCw } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import AppTabBar from "../../components/AppTabBar";
 
@@ -104,6 +104,9 @@ export default function FaxCampaignPage() {
   const [sendingCampaignId, setSendingCampaignId] = useState<string | null>(null);
   const [sendResultMsg, setSendResultMsg] = useState("");
 
+  const [refreshingStatus, setRefreshingStatus] = useState(false);
+  const [refreshMsg, setRefreshMsg] = useState("");
+
   const [historyFilter, setHistoryFilter] = useState<string>("all");
 
   const [newContactRegion, setNewContactRegion] = useState("");
@@ -200,11 +203,12 @@ export default function FaxCampaignPage() {
   // 건너뛰고 실패/미시도 건만 재시도되므로, 이미 실패가 있는 캠페인은 버튼 문구를
   // "실패건 재발송"으로 바꿔 보여준다(로직은 이미 그렇게 동작함, 문구만 명확히).
   const campaignStats = useMemo(() => {
-    const m = new Map<string, { success: number; failed: number }>();
+    const m = new Map<string, { success: number; failed: number; sent: number }>();
     for (const l of logs) {
-      const s = m.get(l.campaign_id) ?? { success: 0, failed: 0 };
+      const s = m.get(l.campaign_id) ?? { success: 0, failed: 0, sent: 0 };
       if (l.status === "success") s.success += 1;
       else if (l.status === "failed") s.failed += 1;
+      else if (l.status === "sent") s.sent += 1;
       m.set(l.campaign_id, s);
     }
     return m;
@@ -294,10 +298,11 @@ export default function FaxCampaignPage() {
   };
 
   const sendCampaignNow = async (campaign: FaxCampaign) => {
-    // 이 캠페인에서 이미 성공적으로 발송된 (골프장, 팩스번호) 조합 — 재발송 시 스킵 대상
+    // 이 캠페인에서 이미 발송 접수(sent)됐거나 성공(success) 확정된 (골프장, 팩스번호) 조합
+    // — 재발송 시 스킵 대상. sent를 빼먹으면 아직 확인 전인 번호에 중복 발송될 수 있다.
     const sentPairsForCampaign = new Set(
       logs
-        .filter((l) => l.campaign_id === campaign.id && l.status === "success")
+        .filter((l) => l.campaign_id === campaign.id && (l.status === "success" || l.status === "sent"))
         .map((l) => `${l.contact_id}|${l.fax_number}`),
     );
 
@@ -329,13 +334,33 @@ export default function FaxCampaignPage() {
       if (fnErr) throw fnErr;
       if (data?.error) throw new Error(data.error);
       setSendResultMsg(
-        `"${campaign.campaign_name}" 발송 완료 — 성공 ${data.success}건 / 실패 ${data.failed}건 / 스킵(이미발송) ${data.skipped}건`,
+        `"${campaign.campaign_name}" 발송 접수 완료 — 접수 ${data.accepted}건 / 형식오류 실패 ${data.failed}건 / 스킵(이미발송) ${data.skipped}건. ` +
+        `팩스는 접수 이후 실제 도달까지 시간이 걸리니, 잠시 후 "상태 새로고침"으로 진짜 성공/실패를 확인해주세요.`,
       );
       await loadAll();
     } catch (e: any) {
       setSendResultMsg(e?.message || "발송 중 오류가 발생했습니다.");
     } finally {
       setSendingCampaignId(null);
+    }
+  };
+
+  const refreshStatus = async () => {
+    setRefreshingStatus(true);
+    setRefreshMsg("");
+    try {
+      const { data, error: fnErr } = await supabase.functions.invoke("refresh-fax-status", { body: {} });
+      if (fnErr) throw fnErr;
+      if (data?.error) throw new Error(data.error);
+      setRefreshMsg(
+        `상태 확인 완료 — 확인 ${data.checked}건 중 성공 ${data.success}건 / 실패 ${data.failed}건 확정` +
+        (data.stillPending ? ` / 아직 발송 진행중 ${data.stillPending}건(다시 새로고침 필요)` : ""),
+      );
+      await loadAll();
+    } catch (e: any) {
+      setRefreshMsg(e?.message || "상태 확인 중 오류가 발생했습니다.");
+    } finally {
+      setRefreshingStatus(false);
     }
   };
 
@@ -436,8 +461,29 @@ export default function FaxCampaignPage() {
 
             {/* ── 캠페인 목록 ── */}
             <section className={`${cardClass} p-6 space-y-4`}>
-              <p className={sectionTitleClass}>Campaigns</p>
-              <h2 className="text-lg font-semibold text-navy-900">캠페인 목록</h2>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className={sectionTitleClass}>Campaigns</p>
+                  <h2 className="text-lg font-semibold text-navy-900">캠페인 목록</h2>
+                </div>
+                <button
+                  onClick={refreshStatus}
+                  disabled={refreshingStatus}
+                  title="접수된(sent) 팩스의 실제 최종 배송 성공/실패를 Solapi에 다시 확인합니다"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 text-xs font-semibold hover:border-gray-300 hover:bg-gray-50 transition-all disabled:opacity-40"
+                >
+                  {refreshingStatus ? (
+                    <><Loader2 className="w-3.5 h-3.5 animate-spin" /> 확인 중...</>
+                  ) : (
+                    <><RefreshCw className="w-3.5 h-3.5" /> 상태 새로고침</>
+                  )}
+                </button>
+              </div>
+              {!!refreshMsg && (
+                <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-medium text-navy-900">
+                  {refreshMsg}
+                </div>
+              )}
               {!!sendResultMsg && (
                 <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-medium text-navy-900">
                   {sendResultMsg}
@@ -581,6 +627,11 @@ export default function FaxCampaignPage() {
                                         <XCircle className="w-3.5 h-3.5" /> 실패
                                         {log.sent_at && <span className="text-gray-400 font-normal">· {formatDateTimeShort(log.sent_at)}</span>}
                                       </span>
+                                    ) : log?.status === "sent" ? (
+                                      <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-500" title="Solapi 접수는 됐지만 실제 배송 성공/실패는 아직 확인되지 않았습니다. 상태 새로고침을 눌러주세요.">
+                                        <Clock className="w-3.5 h-3.5" /> 접수됨(확인중)
+                                        {log.sent_at && <span className="text-gray-400 font-normal">· {formatDateTimeShort(log.sent_at)}</span>}
+                                      </span>
                                     ) : (
                                       <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-500">
                                         <XCircle className="w-3.5 h-3.5" /> 미발송
@@ -637,6 +688,10 @@ export default function FaxCampaignPage() {
                           {l.status === "success" ? (
                             <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600">
                               <CheckCircle2 className="w-3.5 h-3.5" /> 성공
+                            </span>
+                          ) : l.status === "sent" ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-500" title="아직 실제 배송 결과 확인 전입니다.">
+                              <Clock className="w-3.5 h-3.5" /> 접수됨(확인중)
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 text-xs font-medium text-red-500" title={l.error_message ?? ""}>

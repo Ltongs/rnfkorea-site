@@ -93,11 +93,13 @@ serve(async (req) => {
     const { data: contacts, error: contactsErr } = await contactsQuery;
     if (contactsErr) throw contactsErr;
 
+    // "success"뿐 아니라 "sent"(접수는 됐지만 최종 배송 확인 전)도 재발송 대상에서 제외해야
+    // 한다 — 안 그러면 아직 확인 중인 번호에 똑같은 팩스가 중복으로 다시 나갈 수 있다.
     const { data: existingLogs, error: logsErr } = await supabase
       .from("fax_send_log")
       .select("contact_id, fax_number, status")
       .eq("campaign_id", campaignId)
-      .eq("status", "success");
+      .in("status", ["success", "sent"]);
     if (logsErr) throw logsErr;
     const alreadySent = new Set(
       (existingLogs ?? []).map((l) => `${l.contact_id}|${l.fax_number}`),
@@ -162,7 +164,10 @@ serve(async (req) => {
         });
         const data = await res.json();
         if (res.ok && !data.errorCode) {
-          status = "success";
+          // 팩스는 비동기 발송이라 이 시점엔 Solapi가 "접수"했다는 것만 확인된 상태다.
+          // 실제 수신 성공/실패는 몇 초~몇십 초 뒤에나 확정되므로, refresh-fax-status가
+          // 나중에 최종 결과로 갱신하기 전까지는 "sent"(접수됨, 확인 전)로만 기록한다.
+          status = "sent";
           solapiMessageId = data.messageId ?? null;
         } else {
           errorMessage = JSON.stringify(data);
@@ -190,12 +195,12 @@ serve(async (req) => {
 
     await supabase.from("fax_campaigns").update({ status: "done" }).eq("id", campaignId);
 
-    const successCount = results.filter((r) => r.status === "success").length;
+    const acceptedCount = results.filter((r) => r.status === "sent").length;
     return new Response(
       JSON.stringify({
-        sent: results.length,
-        success: successCount,
-        failed: results.length - successCount,
+        attempted: results.length,
+        accepted: acceptedCount, // Solapi 접수 완료 — 실제 배송 확인은 아직 안 됨(추후 상태 새로고침 필요)
+        failed: results.length - acceptedCount, // 형식 오류 등으로 접수 자체가 안 된 건
         skipped: allTargets.length - targets.length,
         results,
       }),
