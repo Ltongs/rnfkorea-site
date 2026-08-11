@@ -13,6 +13,18 @@ const SENDER_PHONE      = Deno.env.get("SOLAPI_SENDER")     ?? "01050549006";
 const RECIPIENTS_RAW = Deno.env.get("SMS_RECIPIENTS") ?? "01050549006,01095250707,01079310339";
 const RECIPIENTS     = RECIPIENTS_RAW.split(",").map((n) => n.replace(/\D/g, ""));
 
+// 현대건설기계 영업사원(배성구) 번호 — 딜에 "영업사원 알림 제외" 체크 시 이 번호만 제외하고 발송
+const HCM_SALES_REP_PHONE = (Deno.env.get("HCM_SALES_REP_PHONE") ?? "01079310339").replace(/\D/g, "");
+
+// skipSalesRepAlert 플래그에 맞는 HCM 수신자 목록 산출 (JSON boolean/string 둘 다 허용)
+function isTruthyFlag(v: unknown): boolean {
+  return v === true || v === "true";
+}
+function hcmRecipientsFor(body: Record<string, unknown>): string[] {
+  if (!isTruthyFlag(body.skipSalesRepAlert)) return RECIPIENTS;
+  return RECIPIENTS.filter((n) => n !== HCM_SALES_REP_PHONE);
+}
+
 // 나르미 전용 수신자
 const NARUMI_RECIPIENTS_RAW = Deno.env.get("NARUMI_SMS_RECIPIENTS") ?? "01050549006,01020793025";
 const NARUMI_RECIPIENTS     = NARUMI_RECIPIENTS_RAW.split(",").map((n) => n.replace(/\D/g, ""));
@@ -258,11 +270,12 @@ async function sendHcmAlimtalkToAll(
   templateKey: string,
   variables: Record<string, string>,
   fallbackText: string,
+  recipients: string[] = RECIPIENTS,
 ): Promise<void> {
   const templateId = HCM_TEMPLATES[templateKey];
   if (!templateId) throw new Error(`HCM 템플릿 키 없음: ${templateKey}`);
   await Promise.all(
-    RECIPIENTS.map((to) => sendHcmAlimtalk(to, templateId, variables, fallbackText))
+    recipients.map((to) => sendHcmAlimtalk(to, templateId, variables, fallbackText))
   );
 }
 
@@ -1504,7 +1517,7 @@ serve(async (req) => {
             }
           } else {
             const { templateKey, variables } = buildHcmVariables(q);
-            await sendHcmAlimtalkToAll(templateKey, variables, buildMessage(q));
+            await sendHcmAlimtalkToAll(templateKey, variables, buildMessage(q), hcmRecipientsFor(q));
           }
           await db.from("pending_kakao_queue").delete().eq("id", item.id);
           flushed++;
@@ -1612,8 +1625,9 @@ serve(async (req) => {
     else {
       const { templateKey, variables } = buildHcmVariables(body);
       const fallbackText = buildMessage(body);
-      console.log("[HCM 알림톡 발송]:", templateKey);
-      await sendHcmAlimtalkToAll(templateKey, variables, fallbackText);
+      const recipients = hcmRecipientsFor(body);
+      console.log("[HCM 알림톡 발송]:", templateKey, isTruthyFlag(body.skipSalesRepAlert) ? "(영업사원 제외)" : "");
+      await sendHcmAlimtalkToAll(templateKey, variables, fallbackText, recipients);
     }
 
     // ── 신규 접수 시 자동 등록 (HCM) ─────────────────────────

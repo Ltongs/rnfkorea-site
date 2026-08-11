@@ -125,6 +125,7 @@ type HCMTask = {
   closed_at?: string | null;
   phone_scrubbed_at?: string | null;
   case_no?: string | null;
+  skip_sales_rep_alert?: boolean | null; // 체크 시 영업사원(배성구)에게 알림톡 미발송 (admin 전용)
 };
 
 // ─── 유틸 ─────────────────────────────────────────────────
@@ -317,6 +318,7 @@ export default function HyundaiCMPage() {
   const [vatDeferredAmount,     setVatDeferredAmount]     = useState("");
   const [salesRep,              setSalesRep]              = useState("");
   const [specialNote,           setSpecialNote]           = useState("");
+  const [skipSalesRepAlert,     setSkipSalesRepAlert]     = useState(false); // admin 전용: 체크 시 영업사원(배성구) 알림 제외
 
   // ── 데이터 ──
   const [rows,    setRows]    = useState<HCMTask[]>([]);
@@ -430,6 +432,7 @@ export default function HyundaiCMPage() {
   const [editLoanPeriod,            setEditLoanPeriod]            = useState("");
   const [editSalesRep,              setEditSalesRep]              = useState("");
   const [editSpecialNote,           setEditSpecialNote]           = useState("");
+  const [editSkipSalesRepAlert,     setEditSkipSalesRepAlert]     = useState(false); // admin 전용: 영업사원 알림 제외
 
   // ── 메모 ──
   const [memoDrafts,   setMemoDrafts]   = useState<Record<string, string>>({});
@@ -943,13 +946,14 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       const row = rows.find((r) => String(r.id) === String(rowId));
       if (row) {
         sendKakaoNotify({
-          type:           "vehicle_reg_upload",
-          caseNo:         caseNoMap[String(rowId)] ?? String(rowId),
-          customerName:   row.customer_name,
-          customerType:   row.customer_type,
-          equipmentTon:   row.equipment_ton,
-          financeCompany: row.finance_company,
-          salesRep:       row.sales_rep,
+          type:              "vehicle_reg_upload",
+          caseNo:            caseNoMap[String(rowId)] ?? String(rowId),
+          customerName:      row.customer_name,
+          customerType:      row.customer_type,
+          equipmentTon:      row.equipment_ton,
+          financeCompany:    row.finance_company,
+          salesRep:          row.sales_rep,
+          skipSalesRepAlert: row.skip_sales_rep_alert,
         });
       }
     } catch (e: any) {
@@ -1028,13 +1032,14 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       const row = rows.find((r) => String(r.id) === String(rowId));
       if (row) {
         sendKakaoNotify({
-          type:           "tax_invoice_upload",
-          caseNo:         caseNoMap[String(rowId)] ?? String(rowId),
-          customerName:   row.customer_name,
-          customerType:   row.customer_type,
-          equipmentTon:   row.equipment_ton,
-          financeCompany: row.finance_company,
-          salesRep:       row.sales_rep,
+          type:              "tax_invoice_upload",
+          caseNo:            caseNoMap[String(rowId)] ?? String(rowId),
+          customerName:      row.customer_name,
+          customerType:      row.customer_type,
+          equipmentTon:      row.equipment_ton,
+          financeCompany:    row.finance_company,
+          salesRep:          row.sales_rep,
+          skipSalesRepAlert: row.skip_sales_rep_alert,
         });
       }
     } catch (e: any) {
@@ -1234,7 +1239,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     setInstallmentPrincipal(""); setFinanceCompany("NH캐피탈");
     setInterestRate(""); setIncentive("");
     setVatDeferred("N"); setVatDeferredAmount("");
-    setSalesRep(""); setSpecialNote("");
+    setSalesRep(""); setSpecialNote(""); setSkipSalesRepAlert(false);
   };
 
   const onAdd = async () => {
@@ -1269,6 +1274,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         loan_period:             null,
         sales_rep:               salesRep.trim(),
         special_note:            specialNote.trim() || null,
+        skip_sales_rep_alert:    isAdmin ? skipSalesRepAlert : false,
         status:                  "접수" as HCMStatus,
         phone_scrubbed_at:       null,
         doc_id_card: null, doc_employment: null, doc_income: null,
@@ -1292,6 +1298,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         financeCompany:       payload.finance_company,
         salesRep:             payload.sales_rep,
         installmentPrincipal: payload.installment_principal,
+        skipSalesRepAlert:    payload.skip_sales_rep_alert,
       });
 
       // 구글 캘린더 자동 동기화 (접수일 = 일정)
@@ -1397,6 +1404,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         salesRep:             row.sales_rep,
         prevStatus:           row.status,
         nextStatus:           next,
+        skipSalesRepAlert:    row.skip_sales_rep_alert,
       };
       sendKakaoNotify(kakaoPayload);
     }
@@ -1440,6 +1448,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         incentive:            patch.incentive,
         vatDeferredAmount:    patch.vat_deferred_amount,
         loanPeriod:           patch.loan_period,
+        skipSalesRepAlert:    confirmModal.skip_sales_rep_alert,
       });
 
       setConfirmModal(null);
@@ -1547,6 +1556,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         vehicleAmount:    patch.vehicle_amount ? String(patch.vehicle_amount) : undefined,
         attachAmount:     patch.attach_amount ? String(patch.attach_amount) : undefined,
         creditNote:       patch.credit_note ?? undefined,
+        skipSalesRepAlert: row.skip_sales_rep_alert,
       });
 
       setCreditModal(null);
@@ -1573,6 +1583,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     setEditLoanPeriod(row.loan_period != null ? String(row.loan_period) : "");
     setEditSalesRep(row.sales_rep ?? "");
     setEditSpecialNote(row.special_note ?? "");
+    setEditSkipSalesRepAlert(row.skip_sales_rep_alert ?? false);
   };
 
   const closeEditModal = () => { if (editSaving) return; setEditRow(null); };
@@ -1598,6 +1609,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         loan_period:            editLoanPeriod.trim() ? parseInt(editLoanPeriod, 10) || null : null,
         sales_rep:              editSalesRep.trim() || null,
         special_note:           editSpecialNote.trim() || null,
+        // admin만 UI에 체크박스가 노출되므로, admin이 아닌 경우 기존 값을 그대로 유지한다.
+        ...(isAdmin ? { skip_sales_rep_alert: editSkipSalesRepAlert } : {}),
         // 전화번호 변경 시 마스킹 초기화
         ...(onlyDigits(editCustomerPhone) !== onlyDigits(editRow?.customer_phone ?? "")
           ? { phone_scrubbed_at: null }
@@ -1657,6 +1670,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           salesRep:             patch.sales_rep ?? "-",
           prevStatus:           editRow.status,
           changedSummary,
+          skipSalesRepAlert:    editSkipSalesRepAlert,
         });
       }
 
@@ -2269,6 +2283,21 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               />
             </div>
 
+            {isAdmin && (
+              <div className="mt-3 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="skip-sales-rep-alert-new"
+                  checked={skipSalesRepAlert}
+                  onChange={(e) => setSkipSalesRepAlert(e.target.checked)}
+                  className="h-4 w-4 accent-orange-500"
+                />
+                <label htmlFor="skip-sales-rep-alert-new" className="text-xs font-medium text-gray-600">
+                  영업사원 알림 제외 (체크 시 이 건은 배성구 팀장에게 카카오 알림톡이 발송되지 않습니다)
+                </label>
+              </div>
+            )}
+
             {err && (
               <div className="mt-3 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm font-medium">{err}</div>
             )}
@@ -2650,13 +2679,14 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                               onClick={() => {
                                 if (!window.confirm("인센티브 지급 완료 알림을 발송하시겠습니까?")) return;
                                 sendKakaoNotify({
-                                  type:           "incentive_paid",
-                                  caseNo:         caseNoMap[String(r.id)] ?? String(r.id),
-                                  customerName:   r.customer_name,
-                                  customerType:   r.customer_type,
-                                  equipmentTon:   r.equipment_ton,
-                                  financeCompany: r.finance_company,
-                                  salesRep:       r.sales_rep,
+                                  type:              "incentive_paid",
+                                  caseNo:            caseNoMap[String(r.id)] ?? String(r.id),
+                                  customerName:      r.customer_name,
+                                  customerType:      r.customer_type,
+                                  equipmentTon:      r.equipment_ton,
+                                  financeCompany:    r.finance_company,
+                                  salesRep:          r.sales_rep,
+                                  skipSalesRepAlert: r.skip_sales_rep_alert,
                                 });
                                 setIncentivePaidIds((prev) => new Set([...prev, String(r.id)]));
                               }}
@@ -2956,6 +2986,22 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               <label className={labelClass}>특이사항</label>
               <textarea value={editSpecialNote} onChange={(e) => setEditSpecialNote(e.target.value)} placeholder="신용조회 결과, 금융사 조건, 특이사항..." className="min-h-[90px] w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm text-[#0f172a] placeholder:text-gray-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 resize-none transition-all" disabled={editSaving} />
             </div>
+
+            {isAdmin && (
+              <div className="mt-3 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="skip-sales-rep-alert-edit"
+                  checked={editSkipSalesRepAlert}
+                  onChange={(e) => setEditSkipSalesRepAlert(e.target.checked)}
+                  disabled={editSaving}
+                  className="h-4 w-4 accent-orange-500"
+                />
+                <label htmlFor="skip-sales-rep-alert-edit" className="text-xs font-medium text-gray-600">
+                  영업사원 알림 제외 (체크 시 이 건은 배성구 팀장에게 카카오 알림톡이 발송되지 않습니다)
+                </label>
+              </div>
+            )}
 
             <div className="mt-3 flex justify-end gap-3">
               <button onClick={closeEditModal} disabled={editSaving} className={btnSecondary}>취소</button>
