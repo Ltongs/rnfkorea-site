@@ -1274,7 +1274,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         loan_period:             null,
         sales_rep:               salesRep.trim(),
         special_note:            specialNote.trim() || null,
-        skip_sales_rep_alert:    isAdmin ? skipSalesRepAlert : false,
+        skip_sales_rep_alert:    isAdminLevel ? skipSalesRepAlert : false,
         status:                  "접수" as HCMStatus,
         phone_scrubbed_at:       null,
         doc_id_card: null, doc_employment: null, doc_income: null,
@@ -1610,7 +1610,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         sales_rep:              editSalesRep.trim() || null,
         special_note:           editSpecialNote.trim() || null,
         // admin만 UI에 체크박스가 노출되므로, admin이 아닌 경우 기존 값을 그대로 유지한다.
-        ...(isAdmin ? { skip_sales_rep_alert: editSkipSalesRepAlert } : {}),
+        ...(isAdminLevel ? { skip_sales_rep_alert: editSkipSalesRepAlert } : {}),
         // 전화번호 변경 시 마스킹 초기화
         ...(onlyDigits(editCustomerPhone) !== onlyDigits(editRow?.customer_phone ?? "")
           ? { phone_scrubbed_at: null }
@@ -2283,7 +2283,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               />
             </div>
 
-            {isAdmin && (
+            {isAdminLevel && (
               <div className="mt-3 flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -2987,7 +2987,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               <textarea value={editSpecialNote} onChange={(e) => setEditSpecialNote(e.target.value)} placeholder="신용조회 결과, 금융사 조건, 특이사항..." className="min-h-[90px] w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm text-[#0f172a] placeholder:text-gray-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 resize-none transition-all" disabled={editSaving} />
             </div>
 
-            {isAdmin && (
+            {isAdminLevel && (
               <div className="mt-3 flex items-center gap-2">
                 <input
                   type="checkbox"
