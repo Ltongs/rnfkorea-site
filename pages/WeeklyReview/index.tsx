@@ -366,7 +366,7 @@ export default function WeeklyReviewPage() {
             <div className="space-y-2">
               {/* 할부금융 확정 */}
               <Section id="fin" color="bg-blue-50 border-blue-200" hColor="text-blue-700" title="💳 할부금융 확정" sub="이번 주 확정 기준">
-                <RowItem label="🏗 현대CM" cnt={hcm.length} amt={hcmAmt} />
+                <RowItem label="🏗 현대건기(부산경남)" cnt={hcm.length} amt={hcmAmt} />
                 <RowItem label="🚛 태산통운" cnt={taesan.length} amt={taesanAmt} />
                 <RowItem label="📋 기타금융" cnt={otherFin.length} amt={otherFinAmt} />
                 <div className="flex items-center justify-between py-2 px-4 bg-blue-100/60">
@@ -380,7 +380,7 @@ export default function WeeklyReviewPage() {
               {expanded === "fin" && (
                 <div className="grid md:grid-cols-3 gap-2 -mt-1">
                   {[
-                    { label: "현대CM", rows: hcm, cols: (r: Row) => [r.customer_name, r.company_name, r.finance_company, r.equipment_ton ? r.equipment_ton + "톤" : "", (r.installment_principal ?? r.purchase_amount) ? fmtWon(r.installment_principal ?? r.purchase_amount) : ""].filter(Boolean).join(" · ") },
+                    { label: "현대건기(부산경남)", rows: hcm, cols: (r: Row) => [r.customer_name, r.company_name, r.finance_company, r.equipment_ton ? r.equipment_ton + "톤" : "", (r.installment_principal ?? r.purchase_amount) ? fmtWon(r.installment_principal ?? r.purchase_amount) : ""].filter(Boolean).join(" · ") },
                     { label: "태산통운", rows: taesan, cols: (r: Row) => [r.customer_name, r.company_name, r.finance_company, (r.installment_principal ?? r.purchase_amount) ? fmtWon(r.installment_principal ?? r.purchase_amount) : ""].filter(Boolean).join(" · ") },
                     { label: "기타금융", rows: otherFin, cols: (r: Row) => [r.customer_name, r.finance_company, r.finance_product, r.amount ? fmtWon(r.amount) : ""].filter(Boolean).join(" · ") },
                   ].map(({ label, rows, cols }) => rows.length > 0 && (

@@ -142,7 +142,7 @@ const MANUAL_BODY_HTML = `
       <a href="#dashboard">운영대시보드</a>
       <a href="#weeklyreview">주간리뷰</a>
       <div class="grp">사업부 전용 업무</div>
-      <a href="#hyundaicm">현대건설기계 할부금융</a>
+      <a href="#hyundaicm">현대건기(부산경남) 할부금융</a>
       <a href="#taesan">태산통운</a>
       <a href="#narumi">나르미</a>
       <a href="#rentalos">Rental_O/S</a>
@@ -156,7 +156,7 @@ const MANUAL_BODY_HTML = `
     <div class="hero">
       <p class="eyebrow">Internal operations guide</p>
       <h1>RNF Korea 업무페이지 사용 매뉴얼</h1>
-      <p>AI비서, 상담관리, 매출/매입 관리부터 현대건설기계·태산통운·나르미·Rental_O/S·수출까지, 사내 업무용 화면 전체를 한 곳에서 정리했습니다. 왼쪽 목차에서 필요한 화면으로 바로 이동하세요.</p>
+      <p>AI비서, 상담관리, 매출/매입 관리부터 현대건기(부산경남)·태산통운·나르미·Rental_O/S·수출까지, 사내 업무용 화면 전체를 한 곳에서 정리했습니다. 왼쪽 목차에서 필요한 화면으로 바로 이동하세요.</p>
       <div class="legend">
         <span class="pill new">● 접수 / 신규</span>
         <span class="pill prog">● 진행중</span>
@@ -175,8 +175,8 @@ const MANUAL_BODY_HTML = `
           <tr><td class="k">매출</td><td>세금계산서가 실제로 발행된 건만 매출로 집계합니다 (<span class="mono">tax_invoice = true</span>). 계약이 됐거나 납품이 끝났어도 계산서가 안 나갔으면 매출에 안 잡힙니다.</td><td>운영대시보드 · 주간리뷰 · 매출/매입 관리</td></tr>
           <tr><td class="k">보험 완료</td><td>증권이 실제로 발급된 시점을 완료로 봅니다. 설계요청·상담중 단계는 완료가 아닙니다.</td><td>운영대시보드 · 주간리뷰 · AI비서 실적관리</td></tr>
           <tr><td class="k">타이어·배터리·지게차·수출 상담 4단계</td><td><span class="mono">계약 → 납품 → 계산서발행</span>(중간에 <span class="mono">취소</span> 가능). 상담관리와 AI비서가 같은 4단계 용어를 씁니다.</td><td>상담관리 · AI비서</td></tr>
-          <tr><td class="k">할부금융(현대CM·태산통운) 6단계</td><td><span class="mono">접수 → 신용조회 → 승인/보완/거절 → 확정</span>. 확정만 실적으로 집계됩니다.</td><td>현대CM · 태산통운 · 운영대시보드 · 주간리뷰</td></tr>
-          <tr><td class="k">문서/케이스 번호</td><td><span class="mono">RNF-YYMM-NNNNNN</span> 형식으로 회사 전체가 하나의 카운터를 공유합니다(매달 초기화). 견적서·거래명세서·RentalOS 딜·수출문의·현대CM/태산통운 케이스번호가 모두 이 방식입니다. 이 통일 이전에 발급된 번호는 예전 형식 그대로 남아있습니다.</td><td>견적서 · 거래명세서 · RentalOS · 수출문의 · 현대CM · 태산통운</td></tr>
+          <tr><td class="k">할부금융(현대건기(부산경남)·태산통운) 6단계</td><td><span class="mono">접수 → 신용조회 → 승인/보완/거절 → 확정</span>. 확정만 실적으로 집계됩니다.</td><td>현대건기(부산경남) · 태산통운 · 운영대시보드 · 주간리뷰</td></tr>
+          <tr><td class="k">문서/케이스 번호</td><td><span class="mono">RNF-YYMM-NNNNNN</span> 형식으로 회사 전체가 하나의 카운터를 공유합니다(매달 초기화). 견적서·거래명세서·RentalOS 딜·수출문의·현대건기(부산경남)/태산통운 케이스번호가 모두 이 방식입니다. 이 통일 이전에 발급된 번호는 예전 형식 그대로 남아있습니다.</td><td>견적서 · 거래명세서 · RentalOS · 수출문의 · 현대건기(부산경남) · 태산통운</td></tr>
         </tbody>
       </table>
       <h3>전체 흐름</h3>
@@ -186,14 +186,14 @@ const MANUAL_BODY_HTML = `
         <span class="step">③ 매출/매입 등록</span><span class="arrow">→</span>
         <span class="step">④ 집계 확인</span>
       </div>
-      <p>①은 <b>상담관리</b>(또는 AI비서 통합상담 탭)에서 받고, ②는 타이어·배터리·지게차는 AI비서 진흥주문 탭에서, 할부금융은 현대CM·태산통운 전용 화면에서, 등록대행은 나르미에서 각각 처리합니다. ③ 계산서발행 시점에 <b>매출/매입 관리</b>에 자동 또는 수동으로 반영되고, ④ 그 결과를 <b>운영대시보드</b>(현재 스냅샷)와 <b>주간리뷰</b>(주간 단위 흐름)에서 확인합니다.</p>
+      <p>①은 <b>상담관리</b>(또는 AI비서 통합상담 탭)에서 받고, ②는 타이어·배터리·지게차는 AI비서 진흥주문 탭에서, 할부금융은 현대건기(부산경남)·태산통운 전용 화면에서, 등록대행은 나르미에서 각각 처리합니다. ③ 계산서발행 시점에 <b>매출/매입 관리</b>에 자동 또는 수동으로 반영되고, ④ 그 결과를 <b>운영대시보드</b>(현재 스냅샷)와 <b>주간리뷰</b>(주간 단위 흐름)에서 확인합니다.</p>
       <div class="quick">
         <a href="#callmanagement"><div class="qname">📞 상담관리</div><div class="qwho">/work/call-management</div></a>
         <a href="#secretary"><div class="qname">💬 AI비서</div><div class="qwho">/work/secretary</div></a>
         <a href="#financehub"><div class="qname">💵 매출/매입 관리</div><div class="qwho">/work/finance-hub</div></a>
         <a href="#dashboard"><div class="qname">📊 운영대시보드</div><div class="qwho">/work/dashboard</div></a>
         <a href="#weeklyreview"><div class="qname">📈 주간리뷰</div><div class="qwho">/work/weekly-review</div></a>
-        <a href="#hyundaicm"><div class="qname">🏗 현대CM 할부금융</div><div class="qwho">/hyundaicm</div></a>
+        <a href="#hyundaicm"><div class="qname">🏗 현대건기(부산경남) 할부금융</div><div class="qwho">/hyundaicm</div></a>
         <a href="#taesan"><div class="qname">🚚 태산통운</div><div class="qwho">/taesan</div></a>
         <a href="#narumi"><div class="qname">🚛 나르미</div><div class="qwho">/narumi</div></a>
         <a href="#rentalos"><div class="qname">🚐 Rental_O/S</div><div class="qwho">/rental-os</div></a>
@@ -223,7 +223,7 @@ const MANUAL_BODY_HTML = `
           <tr><td class="k">타이어</td><td>차량정보, 타이어 규격(전/후), 유입경로</td><td>발주가 확정되면 진흥주문(AI비서)으로 자동 연동</td></tr>
           <tr><td class="k">배터리</td><td>차종, 전압, 용량(Ah), 수량</td><td></td></tr>
           <tr><td class="k">지게차</td><td>톤수, 형식, 판매방식</td><td></td></tr>
-          <tr><td class="k">금융</td><td>금융사, 금융상품, 금액</td><td>하위구분에 "현대CM"·"태산통운"을 고르면 각 전용 화면 실적과 자동으로 구분 집계됩니다</td></tr>
+          <tr><td class="k">금융</td><td>금융사, 금융상품, 금액</td><td>하위구분에 "현대건기(부산경남)"·"태산통운"을 고르면 각 전용 화면 실적과 자동으로 구분 집계됩니다</td></tr>
           <tr><td class="k">보험</td><td>보험사, 보험종류</td><td>증권발급 시점에 완료 처리</td></tr>
           <tr><td class="k">수출</td><td>회사명, 지역</td><td></td></tr>
         </tbody>
@@ -247,7 +247,7 @@ const MANUAL_BODY_HTML = `
           <tr><td class="k">📊 업무현황</td><td>전체 업무 진행 스냅샷</td></tr>
           <tr><td class="k">🗂 통합상담</td><td>상담관리와 별개로 관리자가 직접 빠르게 등록하는 상담 입력 (복잡한 업종은 상담관리로 안내)</td></tr>
           <tr><td class="k">📦 주문·상담</td><td>상담 건에 연결된 발주 현황</td></tr>
-          <tr><td class="k">🏗 현대CM · 🚐 Rental_O/S</td><td>각 전용 페이지로 바로 이동(클릭 시 새 화면)</td></tr>
+          <tr><td class="k">🏗 현대건기(부산경남) · 🚐 Rental_O/S</td><td>각 전용 페이지로 바로 이동(클릭 시 새 화면)</td></tr>
           <tr><td class="k">🔧 진흥주문</td><td>타이어 발주 처리 — 아래 별도 설명</td></tr>
           <tr><td class="k">🚛 나르미</td><td>나르미 전용 화면으로 이동</td></tr>
           <tr><td class="k">📋 견적서</td><td>배터리·지게차·할부금융 견적서 작성 및 발송(문자/이메일)</td></tr>
@@ -262,7 +262,7 @@ const MANUAL_BODY_HTML = `
       <div class="flow"><span class="step">접수(진흥전달)</span><span class="arrow">→</span><span class="step">발송(납품완료)</span><span class="arrow">→</span><span class="step">계산서발행</span><span class="arrow">→</span><span class="step">종결</span></div>
       <p>"종결"이 되려면 <b>납품완료 + 휠반납 + 매출건 연결</b> 세 가지가 다 있어야 합니다. 계산서발행만으로는 종결이 안 됩니다 — 휠반납 체크와 매출연결까지 마쳐야 목록에서 완료로 표시됩니다.</p>
       <h3>📈 실적관리 탭</h3>
-      <p>타이어·배터리·지게차·금융(기타)·보험·현대CM·태산통운·나르미·Rental_O/S의 <b>확정된 실적만</b> 기간별로 모아 보여줍니다. 여기 나오는 숫자는 대시보드·주간리뷰와 같은 기준(매출=계산서 발행, 보험=증권발급)으로 계산되니 서로 다르게 보이면 기간 설정을 먼저 확인하세요.</p>
+      <p>타이어·배터리·지게차·금융(기타)·보험·현대건기(부산경남)·태산통운·나르미·Rental_O/S의 <b>확정된 실적만</b> 기간별로 모아 보여줍니다. 여기 나오는 숫자는 대시보드·주간리뷰와 같은 기준(매출=계산서 발행, 보험=증권발급)으로 계산되니 서로 다르게 보이면 기간 설정을 먼저 확인하세요.</p>
       <h3>🌏 수출장비 탭</h3>
       <p>굴삭기·지게차·고소작업대 매물을 등록/수정하고, <b>매출연결</b>이 아니라 <b>문의 내역</b>을 확인하는 두 가지 뷰를 토글로 전환합니다. 문의 내역은 대기/연락완료/종결 3단계로 처리 상태를 남길 수 있고, 문의가 어떤 매물에서 들어왔는지 배지로 표시됩니다.</p>
     </section>
@@ -299,7 +299,7 @@ const MANUAL_BODY_HTML = `
         <span class="path">/work/dashboard</span>
       </div>
       <div class="meta-row"><span><b>접근권한</b> · 관리자 전용</span></div>
-      <p class="lead">지금 시점의 스냅샷을 한눈에 보는 화면입니다. 월간/누적(YTD) 매출, 금융 확정금액(현대CM·태산통운·기타금융 합계), 진흥주문 현황 등을 KPI 카드로 보여줍니다.</p>
+      <p class="lead">지금 시점의 스냅샷을 한눈에 보는 화면입니다. 월간/누적(YTD) 매출, 금융 확정금액(현대건기(부산경남)·태산통운·기타금융 합계), 진흥주문 현황 등을 KPI 카드로 보여줍니다.</p>
       <p>모든 숫자는 개요에서 설명한 공통 정의(매출=세금계산서 발행 기준)를 따르므로, 계약·상담 단계 건은 여기 안 잡힙니다. "지금 얼마나 확정됐는가"를 보는 화면이지 파이프라인 전체를 보는 화면은 아닙니다 — 진행중인 상담 전체 흐름은 상담관리에서 확인하세요.</p>
     </section>
 
@@ -312,7 +312,7 @@ const MANUAL_BODY_HTML = `
       <p class="lead">이번 주(월~일) 동안 상담·확정·발주·납품이 얼마나 있었는지 업종별로 정리한 주간 보고 화면입니다.</p>
       <ul class="tick">
         <li><b>매출(품목별)</b> — 대시보드와 동일하게 세금계산서 발행 기준</li>
-        <li><b>취급액</b> — 세금계산서 발행 전이라도 이번 주에 확정된 금액(예: 현대CM·태산통운 확정 건)까지 포함한 별도 지표. 매출과 헷갈리지 않도록 두 숫자를 나란히 봅니다</li>
+        <li><b>취급액</b> — 세금계산서 발행 전이라도 이번 주에 확정된 금액(예: 현대건기(부산경남)·태산통운 확정 건)까지 포함한 별도 지표. 매출과 헷갈리지 않도록 두 숫자를 나란히 봅니다</li>
         <li><b>상담/확정/납품 건수</b> — 업종별 이번 주 처리 건수</li>
       </ul>
       <p>월요일 아침에 지난주 실적을 빠르게 훑어볼 때 쓰는 화면입니다.</p>
@@ -320,11 +320,11 @@ const MANUAL_BODY_HTML = `
 
     <section class="page" id="hyundaicm">
       <div class="head">
-        <h2><span class="icon">🏗</span>현대건설기계 할부금융</h2>
+        <h2><span class="icon">🏗</span>현대건기(부산경남) 할부금융</h2>
         <span class="path">/hyundaicm</span>
       </div>
-      <div class="meta-row"><span><b>접근권한</b> · 관리자, 현대건설기계 담당자, NH캐피탈 담당자·직원</span></div>
-      <p class="lead">HD현대건설기계 부산/경남 대리점이 판매하는 중고 굴삭기 등 건설장비의 할부금융 승인 절차를 처리하는 전용 화면입니다. 화면 코드에 보험·수출 관련 흔적이 남아있지만 <b>실제로는 할부금융 업무만</b> 다룹니다 — 보험·수출 상담은 상담관리로 접수하세요.</p>
+      <div class="meta-row"><span><b>접근권한</b> · 관리자, 현대건기(부산경남) 담당자, NH캐피탈 담당자·직원</span></div>
+      <p class="lead">HD현대건기 부산/경남 대리점이 판매하는 중고 굴삭기 등 건설장비의 할부금융 승인 절차를 처리하는 전용 화면입니다. 화면 코드에 보험·수출 관련 흔적이 남아있지만 <b>실제로는 할부금융 업무만</b> 다룹니다 — 보험·수출 상담은 상담관리로 접수하세요.</p>
       <div class="flow"><span class="step">접수</span><span class="arrow">→</span><span class="step">신용조회</span><span class="arrow">→</span><span class="step">승인 / 보완 / 거절</span><span class="arrow">→</span><span class="step">확정</span></div>
       <p>단계는 <b>한 번에 한 단계씩만</b> 전진하며 건너뛸 수 없습니다. 되돌리기(이전 단계로)는 관리자만 가능합니다. 확정된 건만 실적(대시보드·주간리뷰의 "금융 확정금액")에 잡힙니다 — 이 업무는 중개수수료 구조라 세금계산서를 직접 발행하지 않으므로, 매출/매입 관리가 아니라 이 화면의 확정 건수·금액으로 실적을 확인합니다.</p>
       <h3>서류 업로드 — 역할별로 가능한 범위가 다릅니다</h3>
@@ -333,8 +333,8 @@ const MANUAL_BODY_HTML = `
         <thead><tr><th>서류</th><th>업로드</th><th>다운로드/열람</th><th>보관기간</th></tr></thead>
         <tbody>
           <tr><td class="k">신분증·사업자등록증·통장사본 등 기본서류</td><td>관리자, NH캐피탈 담당자(파트너)</td><td>조회 권한자 전체</td><td>확정 후 <b>24시간</b></td></tr>
-          <tr><td class="k">차량등록증</td><td>관리자, 현대건설기계 담당자, NH캐피탈 담당자</td><td>관리자, NH캐피탈 담당자·직원 — <b style="color:var(--st-stop-ink)">업로드한 현대건설기계 담당자 본인은 다운로드 불가</b></td><td>확정 후 <b>72시간</b></td></tr>
-          <tr><td class="k">세금계산서</td><td>관리자, 현대건설기계 담당자</td><td>조회 권한자 전체(제한 없음)</td><td>확정 후 <b>72시간</b></td></tr>
+          <tr><td class="k">차량등록증</td><td>관리자, 현대건기(부산경남) 담당자, NH캐피탈 담당자</td><td>관리자, NH캐피탈 담당자·직원 — <b style="color:var(--st-stop-ink)">업로드한 현대건기(부산경남) 담당자 본인은 다운로드 불가</b></td><td>확정 후 <b>72시간</b></td></tr>
+          <tr><td class="k">세금계산서</td><td>관리자, 현대건기(부산경남) 담당자</td><td>조회 권한자 전체(제한 없음)</td><td>확정 후 <b>72시간</b></td></tr>
         </tbody>
       </table>
       </div>
@@ -354,7 +354,7 @@ const MANUAL_BODY_HTML = `
         <span class="path">/taesan</span>
       </div>
       <div class="meta-row"><span><b>접근권한</b> · 관리자, 태산통운 담당자</span></div>
-      <p class="lead">태산통운 소속 차주가 구매하는 화물차(카고/윙바디 특장차)의 할부금융 승인 절차를 처리합니다. 화면 구조는 현대CM과 같지만, <b>태산통운 담당자 계정의 권한이 훨씬 제한적</b>입니다.</p>
+      <p class="lead">태산통운 소속 차주가 구매하는 화물차(카고/윙바디 특장차)의 할부금융 승인 절차를 처리합니다. 화면 구조는 현대건기(부산경남)과 같지만, <b>태산통운 담당자 계정의 권한이 훨씬 제한적</b>입니다.</p>
       <div class="flow"><span class="step">접수</span><span class="arrow">→</span><span class="step">신용조회</span><span class="arrow">→</span><span class="step">승인 / 보완 / 거절</span><span class="arrow">→</span><span class="step">확정</span></div>
       <h3>태산통운 담당자 계정이 할 수 있는 일 / 없는 일</h3>
       <ul class="tick">
@@ -362,8 +362,8 @@ const MANUAL_BODY_HTML = `
         <li><b>불가능</b> — 상태 변경(신용조회 진행·승인/보완/거절·확정 처리 전부), 기존 정보 수정, 삭제, 차량등록증·세금계산서 <b>업로드</b></li>
       </ul>
       <p>즉 태산통운 담당자가 신규 건을 등록하면, 그 이후 진행(신용조회 → 승인/보완/거절 → 확정)은 반드시 <b>관리자</b>가 처리해야 합니다. 접수만 해두고 방치되지 않도록 관리자가 주기적으로 확인이 필요합니다.</p>
-      <p>입력 항목은 화물차 특성에 맞게 메이커·톤수·연식·특장(윙바디/카고)이 추가로 있고, 부가세 후불 개념은 없습니다. 확정 처리 화면도 현대CM보다 간소화되어 대출원금만 재확인하면 됩니다. <b>인센티브 지급 기능은 이 화면에는 없습니다.</b></p>
-      <div class="note">기본서류·전화번호는 <b>확정 후 24시간</b>, 차량등록증·지입사 사업자등록증은 <b>업로드 후 72시간</b> 지나면 매시간 자동으로 실제 삭제·마스킹됩니다(현대CM과 동일한 방식). 필요한 서류는 기한 전에 미리 받아두세요. (톱니바퀴의 카카오 알림 설정 버튼은 현재 연결된 화면이 없어 눌러도 반응이 없을 수 있지만, 실제 알림 발송에는 영향 없습니다.)</div>
+      <p>입력 항목은 화물차 특성에 맞게 메이커·톤수·연식·특장(윙바디/카고)이 추가로 있고, 부가세 후불 개념은 없습니다. 확정 처리 화면도 현대건기(부산경남)보다 간소화되어 대출원금만 재확인하면 됩니다. <b>인센티브 지급 기능은 이 화면에는 없습니다.</b></p>
+      <div class="note">기본서류·전화번호는 <b>확정 후 24시간</b>, 차량등록증·지입사 사업자등록증은 <b>업로드 후 72시간</b> 지나면 매시간 자동으로 실제 삭제·마스킹됩니다(현대건기(부산경남)과 동일한 방식). 필요한 서류는 기한 전에 미리 받아두세요. (톱니바퀴의 카카오 알림 설정 버튼은 현재 연결된 화면이 없어 눌러도 반응이 없을 수 있지만, 실제 알림 발송에는 영향 없습니다.)</div>
     </section>
 
     <section class="page" id="narumi">
@@ -417,7 +417,7 @@ const MANUAL_BODY_HTML = `
         <li>첨부파일·상태변경·메모 이력은 딜 카드 안의 히스토리 타임라인에 전부 자동으로 남습니다.</li>
         <li>딜을 삭제하면 첨부파일까지 함께 완전히 삭제되며 <b>복구할 수 없습니다.</b></li>
       </ul>
-      <div class="note"><b>알림은 신규 등록 시에만</b> 관리자 번호로 발송되고, 상태변경·수정·파일첨부 시에는 알림이 가지 않습니다. 또한 전용 알림 템플릿이 아직 없어 현대CM 템플릿을 재사용 중이라 메시지 항목명이 "금융사"/"할부원금"처럼 할부금융 용어로 표시됩니다(내용 자체는 정상 발송이니 문구만 참고). 업무시간(평일 09~19시) 외에 등록된 건은 다음 영업일 09시에 모아서 발송됩니다.</div>
+      <div class="note"><b>알림은 신규 등록 시에만</b> 관리자 번호로 발송되고, 상태변경·수정·파일첨부 시에는 알림이 가지 않습니다. 또한 전용 알림 템플릿이 아직 없어 현대건기(부산경남) 템플릿을 재사용 중이라 메시지 항목명이 "금융사"/"할부원금"처럼 할부금융 용어로 표시됩니다(내용 자체는 정상 발송이니 문구만 참고). 업무시간(평일 09~19시) 외에 등록된 건은 다음 영업일 09시에 모아서 발송됩니다.</div>
     </section>
 
     <section class="page" id="export">
@@ -425,7 +425,7 @@ const MANUAL_BODY_HTML = `
         <h2><span class="icon">🌏</span>수출장비</h2>
         <span class="path">/export-shop</span>
       </div>
-      <div class="meta-row"><span><b>접근권한</b> · 매물 등록: 관리자·현대건설기계 담당자 / 문의 확인: AI비서 접근 권한자</span></div>
+      <div class="meta-row"><span><b>접근권한</b> · 매물 등록: 관리자·현대건기(부산경남) 담당자 / 문의 확인: AI비서 접근 권한자</span></div>
       <p class="lead">고객이 직접 보는 <b>공개 쇼핑몰</b>과, 담당자가 매물을 등록하고 문의를 확인하는 <b>내부 관리</b> 두 부분으로 나뉩니다. 다른 업무와 달리 로그인 없이 접근하는 공개 페이지가 절반을 차지합니다.</p>
       <h3>공개 쇼핑몰 (고객용, 로그인 불필요)</h3>
       <p>굴삭기·지게차·고소작업대 매물을 카테고리별로 둘러보고, 매물 상세의 "Request Quote →"를 누르면 해당 매물 정보가 자동으로 채워진 문의 폼(<span class="mono">/export-shop/inquiry</span>)으로 이동합니다. 상세 모달의 "🔗 공유" 버튼은 그 매물로 바로 스크롤·강조되는 링크를 복사합니다.</p>
@@ -454,7 +454,7 @@ const MANUAL_BODY_HTML = `
           <tr><td class="k">매출/매입 관리</td><td class="mono">/work/finance-hub</td><td>관리자 전용</td></tr>
           <tr><td class="k">운영대시보드</td><td class="mono">/work/dashboard</td><td>관리자 전용</td></tr>
           <tr><td class="k">주간리뷰</td><td class="mono">/work/weekly-review</td><td>관리자 전용</td></tr>
-          <tr><td class="k">현대건설기계</td><td class="mono">/hyundaicm</td><td>관리자, 현대건설기계 담당자, NH캐피탈 담당자·직원</td></tr>
+          <tr><td class="k">현대건기(부산경남)</td><td class="mono">/hyundaicm</td><td>관리자, 현대건기(부산경남) 담당자, NH캐피탈 담당자·직원</td></tr>
           <tr><td class="k">태산통운</td><td class="mono">/taesan</td><td>관리자, 태산통운 담당자</td></tr>
           <tr><td class="k">나르미</td><td class="mono">/narumi</td><td>관리자, 나르미모터스, 롯데오토리스, 보험전담</td></tr>
           <tr><td class="k">Rental_O/S</td><td class="mono">/rental-os</td><td>관리자, RentalOS 파트너 1개 계정</td></tr>

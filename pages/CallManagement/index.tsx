@@ -128,7 +128,7 @@ type ExternalFinanceRow = {
 
 const EXTERNAL_FINANCE_STATUSES = ["접수", "신용조회", "승인", "보완", "거절", "확정"] as const;
 function externalFinanceSourceLabel(source: ExternalFinanceSource) {
-  return source === "hyundaicm" ? "🏗 현대CM" : "🚛 태산통운";
+  return source === "hyundaicm" ? "🏗 현대건기(부산경남)" : "🚛 태산통운";
 }
 function externalFinanceFullPageUrl(row: ExternalFinanceRow) {
   return row._source === "hyundaicm" ? `/hyundaicm?id=${row.id}` : `/taesan?id=${row.id}`;

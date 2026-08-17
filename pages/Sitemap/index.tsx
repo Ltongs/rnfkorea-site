@@ -60,9 +60,14 @@ const sections: SiteSection[] = [
       { label: "사이트맵", to: "/sitemap", desc: "전체 구성 안내" },
       { label: "나르미업무", to: "/narumi/login", desc: "내부 업무 시스템 로그인" },
       {
-        label: "현대건설기계업무",
+        label: "현대건기업무(부산경남)",
         to: "/hyundaicm",
-        desc: "현대건설기계 전용 업무 메뉴",
+        desc: "현대건기(부산경남) 전용 업무 메뉴",
+      },
+      {
+        label: "현대지게차업무(경기북부)",
+        to: "/brother",
+        desc: "현대지게차 경기북부판매 전용 업무 메뉴",
       },
     ],
   },

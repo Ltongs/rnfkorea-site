@@ -72,7 +72,7 @@ export default function KakaoConnectPage() {
   if (!userRole) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="rounded-2xl border border-red-200 bg-red-50 text-red-700 px-6 py-4 text-sm font-medium">
-        관리자 또는 현대건설기계 담당자만 접근할 수 있습니다.
+        관리자 또는 현대건기(부산경남) 담당자만 접근할 수 있습니다.
       </div>
     </div>
   );
@@ -97,7 +97,7 @@ export default function KakaoConnectPage() {
           <h2 className="text-xl font-semibold text-navy-900 mb-4">연결 상태</h2>
           <div className="space-y-2 text-sm text-gray-600">
             <div><span className="font-medium text-navy-900 w-20 inline-block">계정:</span>{user?.email}</div>
-            <div><span className="font-medium text-navy-900 w-20 inline-block">역할:</span>{isAdminLevel ? "관리자" : "현대건설기계 담당자"}</div>
+            <div><span className="font-medium text-navy-900 w-20 inline-block">역할:</span>{isAdminLevel ? "관리자" : "현대건기(부산경남) 담당자"}</div>
             <div><span className="font-medium text-navy-900 w-20 inline-block">상태:</span>
               {checking ? "확인 중..." : connected
                 ? <span className="text-emerald-600 font-semibold">✓ 연결됨</span>

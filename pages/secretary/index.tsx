@@ -7,16 +7,16 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
-type TabKey = "chat"|"schedule"|"status"|"orders"|"jinheung"|"narumi"|"email"|"memo"|"financehub"|"exportshop"|"quotation"|"cns"|"performance"|"rentalos"|"hyundaicm"|"numbersearch"|"taesan"|"callmanagement"|"faxcampaign"|"orix";
+type TabKey = "chat"|"schedule"|"status"|"orders"|"jinheung"|"narumi"|"email"|"memo"|"financehub"|"exportshop"|"quotation"|"cns"|"performance"|"rentalos"|"hyundaicm"|"numbersearch"|"taesan"|"callmanagement"|"faxcampaign"|"orix"|"brother";
 // 메뉴 탭 순서 — 상단 탭바 렌더링과 Ctrl+Option+←/→ 단축키 이동이 이 배열 하나를 공유합니다.
 // (다른 업무 페이지들의 공용 탭바인 components/AppTabBar.tsx의 APP_TAB_ORDER와 항상 같은 구성으로 맞춘다.)
 // "orix" 탭은 admin@rnfkorea.co.kr/ltongs7@gmail.com(isOrixAdmin)에게만 렌더링되므로
 // everyasset.fc@gmail.com 등 다른 AI비서 접근 계정에는 보이지 않는다 (렌더링 시 필터링).
-const TAB_ORDER: TabKey[] = ["chat","schedule","status","cns","orders","hyundaicm","jinheung","narumi","taesan","quotation","performance","rentalos","exportshop","financehub","callmanagement","faxcampaign","orix","numbersearch","email","memo"];
+const TAB_ORDER: TabKey[] = ["chat","schedule","status","cns","orders","hyundaicm","brother","jinheung","narumi","taesan","quotation","performance","rentalos","exportshop","financehub","callmanagement","faxcampaign","orix","numbersearch","email","memo"];
 // 별도 로그인/RouteGuard를 쓰는 독립 페이지로 즉시 이동만 하는 탭(내용을 이 안에서 렌더링하지 않음).
 // tab 상태를 sessionStorage에 남기면, 이동 후 "AI비서" 페이지가 새로 마운트될 때 저장된 tab 값을
 // 다시 읽어 useEffect가 곧바로 재이동시켜 "뒤로가기가 안 먹히는" 문제가 생기므로 setTabAndSave를 타지 않는다.
-const EXTERNAL_TAB_LINKS: Partial<Record<TabKey,string>> = { hyundaicm:"/hyundaicm", rentalos:"/rental-os", taesan:"/taesan", callmanagement:"/work/call-management", faxcampaign:"/work/fax-campaign", orix:"/orix" };
+const EXTERNAL_TAB_LINKS: Partial<Record<TabKey,string>> = { hyundaicm:"/hyundaicm", brother:"/brother", rentalos:"/rental-os", taesan:"/taesan", callmanagement:"/work/call-management", faxcampaign:"/work/fax-campaign", orix:"/orix" };
 // 통합상담 탭 서브필터
 type CnsActiveTab = "통합상담" | "할부금융" | "보험" | "지게차" | "배터리" | "타이어" | "나르미" | "Rental_O/S";
 const CNS_WORK_TYPES: Record<CnsActiveTab, string[]> = {
@@ -201,7 +201,8 @@ function fhStageLabelNoWheel(delivered:boolean, salesLinked:boolean, invoiced:bo
 const WL:Record<string,string> = {
   insurance:"보험",tire:"타이어",finance:"금융",forklift:"지게차",battery:"배터리",
   registration_insurance:"보험",tire_sales:"타이어",forklift_sales:"지게차",battery_sales:"배터리",
-  finance_hcm:"현대CM금융",narumi:"나르미",rentalos:"Rental_O/S",
+  finance_hcm:"현대건기(부산경남)금융",narumi:"나르미",rentalos:"Rental_O/S",
+  finance_brother:"현대지게차경기북부금융",
 };
 const CAT_LBL:Record<string,string> = {meeting:"미팅",call:"통화",task:"업무",followup:"사후관리"};
 const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:"진행중",done:"완료",in_progress:"진행중",completed:"완료",closed:"종결",waiting_customer:"고객대기",on_hold:"보류",forwarded:"진흥전달",delivered:"납품완료",wheel_returned:"휠반납",invoiced:"계산서발행",confirmed:"확정",approved:"승인",rejected:"거절",supplement:"보완",credit_check:"신용조회",received:"접수",cancelled:"취소",registered:"등록완료",docs:"서류준비",insurance:"보험확인",contacted:"연락완료",
@@ -216,7 +217,7 @@ const STS_LBL:Record<string,string> = {new:"신규",pending:"대기",processing:
   "접수":"접수","신용조회":"신용조회","승인":"승인","보완":"보완","거절":"거절","서류등록":"서류등록","전자계약발송":"전자계약발송","확정":"확정","취소":"취소",
 };
 const PRI_LBL:Record<string,string> = {urgent:"긴급",normal:"일반",low:"낮음"};
-const ACT_LBL:Record<string,string> = {todo:"✅ 할일",schedule:"📅 일정",order:"📦 주문",consult_update:"🔄 상담 업데이트",hyundaicm_update:"🏗 현대건설기계 변경",narumi_update:"🚛 나르미 단계 변경",schedule_update:"📅 일정 업데이트",schedule_edit:"✏️ 일정 수정",order_update:"📦 주문 상태 변경",memo:"📝 메모 저장",todo_edit:"✏️ 할일 수정"};
+const ACT_LBL:Record<string,string> = {todo:"✅ 할일",schedule:"📅 일정",order:"📦 주문",consult_update:"🔄 상담 업데이트",hyundaicm_update:"🏗 현대건기(부산경남) 변경",narumi_update:"🚛 나르미 단계 변경",schedule_update:"📅 일정 업데이트",schedule_edit:"✏️ 일정 수정",order_update:"📦 주문 상태 변경",memo:"📝 메모 저장",todo_edit:"✏️ 할일 수정"};
 const CAT_CLR:Record<string,string> = {meeting:"#60a5fa",call:"#fb923c",followup:"#c084fc",task:"#34d399"};
 
 // ─── 유틸 ─────────────────────────────────────────────────────────────────────
@@ -2116,7 +2117,7 @@ function SavedCard({actions,saved,onNav}:{actions:Record<string,unknown>[];saved
               <button className="text-xs text-emerald-600 hover:underline ml-2 flex-shrink-0" onClick={()=>window.open(`/work/call-management?id=${s.id}`,"_blank")}>상담내역→</button>
             )}
             {a.type==="hyundaicm_update"&&s?.id&&(
-              <button className="text-xs text-blue-600 hover:underline ml-2 flex-shrink-0" onClick={()=>window.open(`/hyundaicm?id=${s.id}`,"_blank")}>현대건설기계→</button>
+              <button className="text-xs text-blue-600 hover:underline ml-2 flex-shrink-0" onClick={()=>window.open(`/hyundaicm?id=${s.id}`,"_blank")}>현대건기(부산경남)→</button>
             )}
           </div>
         );
@@ -2280,7 +2281,7 @@ function StatusTabContent({
       </div>
       <div className="grid grid-cols-5 gap-2.5">
         {[
-          {label:"현대건설기계",emoji:"🏗",cnt:hCount,total:hTotal,bg:"bg-blue-50",txt:"text-blue-700"},
+          {label:"현대건기(부산경남)",emoji:"🏗",cnt:hCount,total:hTotal,bg:"bg-blue-50",txt:"text-blue-700"},
           {label:"나르미",       emoji:"🚛",cnt:nCount,total:nTotal,bg:"bg-emerald-50",txt:"text-emerald-700"},
           {label:"금융상담",     emoji:"💰",cnt:cFinance.length,total:cFinanceTotal,bg:"bg-violet-50",txt:"text-violet-700"},
           {label:"타이어상담",   emoji:"🔘",cnt:cTire.length,total:cTireTotal,bg:"bg-amber-50",txt:"text-amber-700"},
@@ -2296,7 +2297,7 @@ function StatusTabContent({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className={`${CARD} p-4`}>
           <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-semibold text-[#0f172a]">🏗 현대건설기계 심사 현황</p>
+            <p className="text-sm font-semibold text-[#0f172a]">🏗 현대건기(부산경남) 심사 현황</p>
             <button className={BTG} onClick={()=>onNavigate("/hyundaicm")}>전체 보기 →</button>
           </div>
           {statusLoading?<p className="text-xs text-gray-400">불러오는 중...</p>
@@ -2390,7 +2391,7 @@ function PendingHyundaiCard({phu,onConfirm,onReject}:{phu:PendingHyundaiUpdate[]
         const patch = a.patch as Record<string,unknown>|undefined;
         return (
           <div key={idx} className="border border-blue-200 rounded-xl bg-blue-50 p-3">
-            <p className="text-xs font-semibold text-blue-700 mb-2">🏗 현대건설기계 상태 변경 확인</p>
+            <p className="text-xs font-semibold text-blue-700 mb-2">🏗 현대건기(부산경남) 상태 변경 확인</p>
             {/* 변경 내용 */}
             <div className="bg-white rounded-lg p-2.5 mb-2 border border-blue-100">
               <div className="flex items-center gap-2 mb-1">
@@ -3231,7 +3232,7 @@ const SecretaryPage:React.FC = () => {
 
     // ── 요약 자동 조합 ──
     const autoSummary =
-      isHcm    ? ([cnsHcmCustomerType,cnsHcmEquipmentTon,cnsHcmFinanceCompany,cnsHcmPrincipal?`${parseInt(cnsHcmPrincipal,10).toLocaleString("ko-KR")}원`:""].filter(Boolean).join(" / ")||"현대CM 상담")
+      isHcm    ? ([cnsHcmCustomerType,cnsHcmEquipmentTon,cnsHcmFinanceCompany,cnsHcmPrincipal?`${parseInt(cnsHcmPrincipal,10).toLocaleString("ko-KR")}원`:""].filter(Boolean).join(" / ")||"현대건기(부산경남) 상담")
     : isTaesan ? ([cnsHcmCustomerType,cnsHcmEquipmentTon,cnsHcmFinanceCompany,cnsHcmPrincipal?`${parseInt(cnsHcmPrincipal,10).toLocaleString("ko-KR")}원`:""].filter(Boolean).join(" / ")||"태산통운 상담")
     : isGenFin ? ([cnsFinanceCategory,cnsFinanceVehicleModel,cnsFinanceProduct,cnsFinanceCompany,cnsFinanceAmount?`${parseInt(cnsFinanceAmount,10).toLocaleString("ko-KR")}원`:""].filter(Boolean).join(" / ")||"금융 상담")
     : isIns    ? ([cnsInsVehicleNo,cnsInsVehicleModel,cnsInsRequest,cnsInsCompany].filter(Boolean).join(" / ")||"보험 상담")
@@ -3302,7 +3303,7 @@ const SecretaryPage:React.FC = () => {
         call_datetime:cnsCallDatetime?new Date(cnsCallDatetime+"T09:00:00").toISOString():new Date().toISOString(),
       });
       cnsReset(); setCnsShowCreate(false);
-      showToast("현대CM 등록 완료"); void fetchCnsRows(); return;
+      showToast("현대건기(부산경남) 등록 완료"); void fetchCnsRows(); return;
     }
 
     // ── 태산통운: taesan_tasks 저장 → consultation_cases도 생성 ──
@@ -5054,7 +5055,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       setMsgs(p=>p.map((m,i)=>i!==msgIdx?m:{...m,pendingHyundaiUpdates:[],saved:[...(m.saved??[]),...(d.saved??[])]}));
       showToast(`${match.customer_name} → ${action.next_status as string} 변경 + 카카오 알림 발송`);
       if(tab==="status") void loadStatusData();
-    }catch{showToast("현대건설기계 업데이트 실패","err");}
+    }catch{showToast("현대건기(부산경남) 업데이트 실패","err");}
     setChatLoading(false);
   }
   function rejectHyundaiUpdate(msgIdx:number,uidx:number){
@@ -5349,7 +5350,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               }}>
                 {t==="email"
                   ? <span className="flex items-center gap-1">📧 이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
-                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",jinheung:"🔧 진흥주문",narumi:"🚛 나르미",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비",quotation:"📋 견적서",cns:"🗂 통합상담",performance:"📈 실적관리",rentalos:"🚐 Rental_O/S",hyundaicm:"🏗 현대CM",numbersearch:"🔍 번호검색",taesan:"🚚 태산통운",callmanagement:"📞 상담관리",faxcampaign:"📠 팩스발송",orix:"💰 ORIX인센티브"}[t as string]
+                  : {chat:"💬 채팅",schedule:"📅 일정",status:"📊 업무현황",orders:"📦 주문·상담",jinheung:"🔧 진흥주문",narumi:"🚛 나르미",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비",quotation:"📋 견적서",cns:"🗂 통합상담",performance:"📈 실적관리",rentalos:"🚐 Rental_O/S",hyundaicm:"🏗 현대건기(부산경남)",numbersearch:"🔍 번호검색",taesan:"🚚 태산통운",callmanagement:"📞 상담관리",faxcampaign:"📠 팩스발송",orix:"💰 ORIX인센티브",brother:"🚜 현대지게차 경기북부"}[t as string]
                 }
               </button>
             ))}
@@ -6437,7 +6438,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
             <div className="space-y-4 pb-4">
               <div>
                 <p className="text-sm font-semibold text-[#0f172a]">🔍 번호검색</p>
-                <p className="text-xs text-gray-400 mt-0.5">견적서·RentalOS 딜·수출문의·거래명세서·현대CM/태산통운 케이스를 번호 하나로 찾습니다. 새 번호(RNF-2607-000001)와 예전 번호 둘 다 검색됩니다.</p>
+                <p className="text-xs text-gray-400 mt-0.5">견적서·RentalOS 딜·수출문의·거래명세서·현대건기(부산경남)/태산통운 케이스를 번호 하나로 찾습니다. 새 번호(RNF-2607-000001)와 예전 번호 둘 다 검색됩니다.</p>
               </div>
               <div className="flex gap-2">
                 <input
@@ -6951,7 +6952,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                     {/* ── 할부금융 취급액 ── */}
                     <Section id="fin" color="bg-blue-50 border-blue-200" hColor="text-blue-700"
                       title="💳 할부금융 취급액" sub="확정완료 기준">
-                      <RowItem label="🏗 현대CM" cnt={perfHcm.length} amt={hcmAmt}/>
+                      <RowItem label="🏗 현대건기(부산경남)" cnt={perfHcm.length} amt={hcmAmt}/>
                       <RowItem label="🚛 태산통운" cnt={perfTaesan.length} amt={taesAmt}/>
                       <RowItem label="📋 기타금융" cnt={perfOtherFin.length} amt={finAmt}/>
                       <div className="flex items-center justify-between py-2 px-4 bg-blue-100/60">
@@ -6964,7 +6965,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                       {perfExpanded==="fin"&&(
                         <>
                           {[
-                            {label:"현대CM", rows:perfHcm, cols:(r:any)=>[r.customer_name,r.company_name,r.finance_company,r.equipment_ton?r.equipment_ton+"톤":"",r.installment_principal?(r.installment_principal.toLocaleString("ko-KR")+"원"):""].filter(Boolean).join(" · ")},
+                            {label:"현대건기(부산경남)", rows:perfHcm, cols:(r:any)=>[r.customer_name,r.company_name,r.finance_company,r.equipment_ton?r.equipment_ton+"톤":"",r.installment_principal?(r.installment_principal.toLocaleString("ko-KR")+"원"):""].filter(Boolean).join(" · ")},
                             {label:"태산통운", rows:perfTaesan, cols:(r:any)=>[r.customer_name,r.company_name,r.finance_company,r.equipment_ton?r.equipment_ton+"톤":"",(r.installment_principal??r.purchase_amount)?((r.installment_principal??r.purchase_amount).toLocaleString("ko-KR")+"원"):""].filter(Boolean).join(" · ")},
                             {label:"기타금융", rows:perfOtherFin, cols:(r:any)=>[r.customer_name,r.finance_company,r.finance_product,r.amount?(r.amount.toLocaleString("ko-KR")+"원"):""].filter(Boolean).join(" · ")},
                           ].map(({label,rows,cols})=>rows.length>0&&(
@@ -7105,7 +7106,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                     <div>
                       <label className={LBL}>금융 유형</label>
                       <div className="flex gap-1.5 flex-wrap">
-                        {[{k:"",l:"일반"},{k:"현대CM",l:"현대CM"},{k:"태산통운",l:"태산통운"},{k:"기타금융",l:"기타금융"}].map(({k,l})=>(
+                        {[{k:"",l:"일반"},{k:"현대CM",l:"현대건기(부산경남)"},{k:"태산통운",l:"태산통운"},{k:"기타금융",l:"기타금융"}].map(({k,l})=>(
                           <button key={k} onClick={()=>setCnsSub(k)}
                             className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${cnsSub===k?"bg-blue-600 text-white border-blue-600":"bg-white text-gray-500 border-gray-200 hover:border-gray-400"}`}>
                             {l}
@@ -7137,7 +7138,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                       {/* ── 1-A 현대CM / 1-B 태산통운 공통 폼 ── */}
                       {(cnsSub==="현대CM"||cnsSub==="태산통운")&&(
                         <div className="pt-1">
-                          <p className="text-xs font-semibold text-orange-500 mb-2">{cnsSub==="현대CM"?"현대건설기계 상담":"태산통운 상담"}</p>
+                          <p className="text-xs font-semibold text-orange-500 mb-2">{cnsSub==="현대CM"?"현대건기(부산경남) 상담":"태산통운 상담"}</p>
                           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
                             <div>
                               <label className={LBL}>고객 구분</label>

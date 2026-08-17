@@ -1,7 +1,6 @@
-// pages/HyundaiCM/index.tsx
+// pages/Brother/index.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Settings } from "lucide-react";
 import html2canvas from "html2canvas";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
@@ -125,7 +124,7 @@ type HCMTask = {
   closed_at?: string | null;
   phone_scrubbed_at?: string | null;
   case_no?: string | null;
-  skip_sales_rep_alert?: boolean | null; // 체크 시 영업사원(배성구)에게 알림톡 미발송 (admin 전용)
+  skip_sales_rep_alert?: boolean | null; // 체크 시 영업사원(김서정)에게 알림톡 미발송 (admin 전용)
 };
 
 // ─── 유틸 ─────────────────────────────────────────────────
@@ -258,7 +257,7 @@ const DOC_FIELDS: { key: keyof HCMTask; label: string; dbCol: string }[] = [
   { key: "doc_income",            label: "통장사본",              dbCol: "doc_income" },
   { key: "doc_estimate",          label: "견적서/계약서",         dbCol: "doc_estimate" },
   { key: "doc_excavator_license", label: "굴삭기조종면허증",      dbCol: "doc_excavator_license" },
-  // doc_etc는 hcm_etc_docs 테이블로 분리됨
+  // doc_etc는 brother_etc_docs 테이블로 분리됨
 ];
 
 // ─── 스타일 상수 ──────────────────────────────────────────
@@ -283,25 +282,23 @@ const btnGhost =
   "bg-white text-sm font-medium text-gray-600 hover:border-gray-300 transition-all disabled:opacity-50";
 
 // ─── 메인 컴포넌트 ────────────────────────────────────────
-export default function HyundaiCMPage() {
-  const { user, logout, isAdmin, isSubAdmin, isHyundaiCM, isNhCapital, isNhCapitalStaff, isOrixPartner } = useAuth() as any;
+export default function BrotherPage() {
+  const { user, logout, isAdmin, isSubAdmin, isGbn } = useAuth() as any;
   const nav = useNavigate();
   const [searchParams] = useSearchParams();
   const focusId = searchParams.get("id"); // 업무현황에서 딜 클릭 시 전달되는 id
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches
     || (window.navigator as any).standalone === true;
   const isAdminLevel           = isAdmin || isSubAdmin;
-  // ORIX 조용백은 현대건기(부산경남) 페이지에서 농협캐피탈(isNhCapital)과 동일한 권한을 갖되,
-  // 태산통운 접근은 없다(isNhCapital과 분리됨) — 이 페이지 안에서만 둘을 합쳐서 취급.
-  const isNhCapitalOrOrix      = isNhCapital || isOrixPartner;
-  const canCreate              = isAdminLevel || isHyundaiCM || isNhCapitalOrOrix;
-  const canEditExisting        = isAdminLevel || isNhCapitalOrOrix;
-  const canChangeStatus        = isAdminLevel || isNhCapitalOrOrix || isNhCapitalStaff;
-  const canUploadDoc           = isAdminLevel || isNhCapitalOrOrix;
-  const canUploadVehicleRegDoc = isAdminLevel || isHyundaiCM || isNhCapitalOrOrix || isNhCapitalStaff; // 목록 열람+다운로드 가능 여부 (NH캐피탈 직원 포함)
-  const canActuallyUploadVehicleRegDoc = isAdminLevel || isHyundaiCM || isNhCapitalOrOrix; // 실제 업로드 버튼 노출 여부 — NH캐피탈 직원(조회 전용)은 제외
-  const canUploadTaxInvoice    = isHyundaiCM || isAdminLevel;  // 세금계산서 업로드: p2001103 + admin + ltongs7
-  const canDelete              = isAdminLevel || isNhCapitalOrOrix;
+  // 외부 파트너 없이 admin + 담당자(김서정, isGbn) 단일 티어
+  const canCreate              = isAdminLevel || isGbn;
+  const canEditExisting        = isAdminLevel || isGbn;
+  const canChangeStatus        = isAdminLevel || isGbn;
+  const canUploadDoc           = isAdminLevel || isGbn;
+  const canUploadVehicleRegDoc = isAdminLevel || isGbn;
+  const canActuallyUploadVehicleRegDoc = isAdminLevel || isGbn;
+  const canUploadTaxInvoice    = isAdminLevel || isGbn;
+  const canDelete              = isAdminLevel;
 
   // ── 신규 접수 폼 ──
   const [customerType,          setCustomerType]          = useState<CustomerType>("개인");
@@ -318,7 +315,7 @@ export default function HyundaiCMPage() {
   const [vatDeferredAmount,     setVatDeferredAmount]     = useState("");
   const [salesRep,              setSalesRep]              = useState("");
   const [specialNote,           setSpecialNote]           = useState("");
-  const [skipSalesRepAlert,     setSkipSalesRepAlert]     = useState(false); // admin 전용: 체크 시 영업사원(배성구) 알림 제외
+  const [skipSalesRepAlert,     setSkipSalesRepAlert]     = useState(false); // admin 전용: 체크 시 영업사원(김서정) 알림 제외
 
   // ── 데이터 ──
   const [rows,    setRows]    = useState<HCMTask[]>([]);
@@ -489,35 +486,14 @@ export default function HyundaiCMPage() {
   // ── 인센티브 지급 완료 상태 (한 번 누르면 비활성화) ──
   const [incentivePaidIds, setIncentivePaidIds] = useState<Set<string>>(new Set());
 
-  // ── 보류(재통화 예약) ──
-  const KAKAO_RECIPIENTS = [
-    { id: "tongs",    label: "이동수 (관리자)" },
-    { id: "p2001103", label: "현대건기(부산경남) 담당자" },
-    { id: "nhcap",    label: "NH캐피탈 담당자" },
-    { id: "woori",    label: "우리금융캐피탈 담당자" },
-  ] as const;
-  type RecipientId = typeof KAKAO_RECIPIENTS[number]["id"];
-
-  // 할부금융사별 카카오 발송 대상 목록 전환
-  // - NH캐피탈  건: NH캐피탈 담당자만 노출 (우리금융캐피탈 담당자는 숨김)
-  // - 우리금융캐피탈 건: 우리금융캐피탈 담당자만 노출 (NH캐피탈 담당자는 숨김)
-  // - 그 외(오릭스캐피탈 등): 캐피탈사 전용 항목은 모두 숨김
-  const getVisibleKakaoRecipients = (financeCompany?: string | null) => {
-    if (financeCompany === "우리금융캐피탈") {
-      return KAKAO_RECIPIENTS.filter((r) => r.id !== "nhcap");
-    }
-    if (financeCompany === "NH캐피탈") {
-      return KAKAO_RECIPIENTS.filter((r) => r.id !== "woori");
-    }
-    return KAKAO_RECIPIENTS.filter((r) => r.id !== "nhcap" && r.id !== "woori");
-  };
+  // ── 보류(재통화 예약) ── 수신자는 항상 고정 3명(admin/ltongs7/김서정)이라 선택 UI 없음
+  const FIXED_RECIPIENT_LABEL = "관리자, 김서정 과장";
 
   const [holdModal,        setHoldModal]        = useState<HCMTask | null>(null);
   const [approvalModal,    setApprovalModal]    = useState<HCMTask | null>(null); // 승인조건 확인 모달
   const [holdDate,         setHoldDate]         = useState("");        // YYYY-MM-DD
   const [holdTime,         setHoldTime]         = useState("10:00");   // HH:MM
   const [holdNote,         setHoldNote]         = useState("");
-  const [holdRecipients,   setHoldRecipients]   = useState<RecipientId[]>([]);
   const [holdSaving,       setHoldSaving]       = useState(false);
   // rowId → 보류 정보 캐시
   const [holdMap, setHoldMap] = useState<Record<string, { scheduled_at: string; note: string | null; recipients: string[] }>>({});
@@ -531,12 +507,10 @@ export default function HyundaiCMPage() {
     setHoldDate(ymd);
     setHoldTime("10:00");
     setHoldNote("");
-    setHoldRecipients([]);
   };
 
   const saveHold = async () => {
     if (!holdModal) return;
-    if (holdRecipients.length === 0) { alert("알림 받을 담당자를 1명 이상 선택해주세요."); return; }
     if (!holdDate) { alert("날짜를 선택해주세요."); return; }
 
     setHoldSaving(true);
@@ -546,24 +520,23 @@ export default function HyundaiCMPage() {
         record_id:    String(holdModal.id),
         scheduled_at: scheduledAt,
         note:         holdNote.trim() || null,
-        recipients:   holdRecipients,
         is_sent:      false,
       };
       // upsert: 같은 record_id의 미발송 보류를 덮어씀
       const { error } = await supabase
-        .from("hcm_holds")
+        .from("brother_holds")
         .upsert(payload, { onConflict: "record_id" });
       if (error) throw error;
 
       setHoldMap((prev) => ({
         ...prev,
-        [String(holdModal.id)]: { scheduled_at: scheduledAt, note: holdNote.trim() || null, recipients: holdRecipients },
+        [String(holdModal.id)]: { scheduled_at: scheduledAt, note: holdNote.trim() || null, recipients: [] },
       }));
 
-      // 카카오 알림 — 보류 등록 즉시: 전체 수신자에게 "보류 등록됨" 알림
-      // (send-hyundaicm-kakao는 hold_registered 타입을 전체 RECIPIENTS로 발송)
+      // 카카오 알림 — 보류 등록 즉시: 고정 3명(admin/ltongs7/김서정)에게 "보류 등록됨" 알림
       const row = holdModal;
       sendKakaoNotify({
+        channel:      "brother",
         type:         "hold_registered",
         caseNo:       caseNoMap[String(row.id)] ?? String(row.id),
         customerName: row.customer_name,
@@ -572,10 +545,8 @@ export default function HyundaiCMPage() {
         salesRep:     row.sales_rep      ?? "",
         scheduledAt,  // ISO 문자열 → Edge Function에서 KST 포맷팅
         holdNote:     holdNote.trim() || "",
-        // 선택 수신자 이름 목록 (메시지 내 참고용)
-        recipientNames: holdRecipients
-          .map((id) => KAKAO_RECIPIENTS.find((r) => r.id === id)?.label ?? id)
-          .join(", "),
+        recipientNames: FIXED_RECIPIENT_LABEL,
+        skipSalesRepAlert: row.skip_sales_rep_alert,
       } as any);
 
       setHoldModal(null);
@@ -679,7 +650,7 @@ export default function HyundaiCMPage() {
 </style>
 </head><body>
 <h1>원리금균등분납 상환스케줄</h1>
-<p class="subtitle">RNF Korea · 현대건기(부산경남) 할부금융</p>
+<p class="subtitle">RNF Korea · 현대지게차 경기북부판매 할부금융</p>
 ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중</p>` : ''}
 <div class="meta">
   <div class="meta-item"><label>고객명</label><span>${displayName}</span></div>
@@ -782,7 +753,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     if (!user) return;
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const title = `${task.company_name ?? task.customer_name} (${task.equipment_ton ?? "현대건기(부산경남)"}) 접수`;
+      const title = `${task.company_name ?? task.customer_name} (${task.equipment_ton ?? "현대지게차경기북부"}) 접수`;
       const description = [
         task.equipment_ton ? `장비: ${task.equipment_ton}` : null,
         task.finance_company ? `금융사: ${task.finance_company}` : null,
@@ -804,7 +775,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               title,
               description,
               schedule_date: todayIso,
-              source_table: "hyundaicm_tasks",
+              source_table: "brother_tasks",
               source_id: task.id,
             },
           }),
@@ -812,7 +783,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       );
       const d = await res.json();
       if (d?.task?.id) {
-        await supabase.from("hyundaicm_tasks").update({ gcal_task_id: d.task.id }).eq("id", task.id);
+        await supabase.from("brother_tasks").update({ gcal_task_id: d.task.id }).eq("id", task.id);
       }
     } catch (e) {
       console.warn("[hcm gcal task sync] 전송 실패:", e);
@@ -823,7 +794,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
   const completeHcmGcalTask = async (taskId: number | string) => {
     if (!user) return;
     try {
-      const { data: row } = await supabase.from("hyundaicm_tasks").select("gcal_task_id").eq("id", taskId).maybeSingle();
+      const { data: row } = await supabase.from("brother_tasks").select("gcal_task_id").eq("id", taskId).maybeSingle();
       if (!row?.gcal_task_id) return;
       const { data: { session } } = await supabase.auth.getSession();
       await fetch(
@@ -846,7 +817,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
   const fetchVehicleRegFiles = async (rowIds: (string | number)[]) => {
     if (rowIds.length === 0) return;
     const { data } = await supabase
-      .from("vehicle_reg_doc_uploads")
+      .from("brother_vehicle_reg_doc_uploads")
       .select("id, record_id, file_name, storage_path, uploaded_at, expires_at")
       .in("record_id", rowIds.map(String))
       .order("uploaded_at", { ascending: false });
@@ -864,7 +835,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
   const fetchEtcDocs = async (rowIds: (string | number)[]) => {
     if (rowIds.length === 0) return;
     const { data } = await supabase
-      .from("hcm_etc_docs")
+      .from("brother_etc_docs")
       .select("id, task_id, file_name, storage_path, uploaded_at")
       .in("task_id", rowIds.map(Number))
       .order("uploaded_at", { ascending: true });
@@ -886,12 +857,12 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       const safeName = `${Date.now()}.${ext}`;
       const path     = `hyundaicm/${String(rowId)}/etc/${safeName}`;
       const { error: upErr } = await supabase.storage
-        .from("hcm_docs")
+        .from("brother_docs")
         .upload(path, file, { upsert: false, contentType: file.type || undefined });
       if (upErr) throw upErr;
       const displayName = docLabel.trim() || file.name;
       const { error: dbErr } = await supabase
-        .from("hcm_etc_docs")
+        .from("brother_etc_docs")
         .insert({ task_id: Number(rowId), storage_path: path, file_name: displayName, file_size: file.size });
       if (dbErr) throw dbErr;
       await fetchEtcDocs([rowId]);
@@ -906,8 +877,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     if (!canUploadDoc) return;
     if (!confirm("기타서류를 삭제하시겠습니까?")) return;
     try {
-      await supabase.storage.from("hcm_docs").remove([storagePath]);
-      await supabase.from("hcm_etc_docs").delete().eq("id", docId);
+      await supabase.storage.from("brother_docs").remove([storagePath]);
+      await supabase.from("brother_etc_docs").delete().eq("id", docId);
       setEtcDocs((prev) => ({
         ...prev,
         [String(rowId)]: (prev[String(rowId)] ?? []).filter((d) => d.id !== docId),
@@ -925,12 +896,12 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       const path     = `${rowId}/${safeName}`;
 
       const { error: upErr } = await supabase.storage
-        .from("vehicle-reg-docs")
+        .from("brother-vehicle-reg-docs")
         .upload(path, file, { upsert: false });
       if (upErr) throw upErr;
 
       const { error: dbErr } = await supabase
-        .from("vehicle_reg_doc_uploads")
+        .from("brother_vehicle_reg_doc_uploads")
         .insert({
           record_id:    String(rowId),
           uploaded_by:  user?.id,
@@ -946,6 +917,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       const row = rows.find((r) => String(r.id) === String(rowId));
       if (row) {
         sendKakaoNotify({
+          channel:           "brother",
           type:              "vehicle_reg_upload",
           caseNo:            caseNoMap[String(rowId)] ?? String(rowId),
           customerName:      row.customer_name,
@@ -968,11 +940,11 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     try {
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       if (isMobile) {
-        const { data, error } = await supabase.storage.from("vehicle-reg-docs").createSignedUrl(path, 60);
+        const { data, error } = await supabase.storage.from("brother-vehicle-reg-docs").createSignedUrl(path, 60);
         if (error || !data?.signedUrl) throw error ?? new Error("URL 생성 실패");
         window.open(data.signedUrl, "_blank");
       } else {
-        const { data, error } = await supabase.storage.from("vehicle-reg-docs").download(path);
+        const { data, error } = await supabase.storage.from("brother-vehicle-reg-docs").download(path);
         if (error || !data) { alert("다운로드 실패: " + error?.message); return; }
         const url = URL.createObjectURL(data);
         const a   = document.createElement("a");
@@ -987,7 +959,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
   const fetchTaxInvoiceFiles = async (rowIds: (string | number)[]) => {
     if (rowIds.length === 0) return;
     const { data } = await supabase
-      .from("tax_invoice_uploads")
+      .from("brother_tax_invoice_uploads")
       .select("id, record_id, file_name, storage_path, uploaded_at, invoice_type")
       .in("record_id", rowIds.map(String))
       .order("uploaded_at", { ascending: false });
@@ -1010,12 +982,12 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       const path     = `${rowId}/${invoiceType}_${safeName}`;
 
       const { error: upErr } = await supabase.storage
-        .from("tax-invoices")
+        .from("brother-tax-invoices")
         .upload(path, file, { upsert: false });
       if (upErr) throw upErr;
 
       const { error: dbErr } = await supabase
-        .from("tax_invoice_uploads")
+        .from("brother_tax_invoice_uploads")
         .insert({
           record_id:    String(rowId),
           uploaded_by:  user?.id,
@@ -1032,6 +1004,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       const row = rows.find((r) => String(r.id) === String(rowId));
       if (row) {
         sendKakaoNotify({
+          channel:           "brother",
           type:              "tax_invoice_upload",
           caseNo:            caseNoMap[String(rowId)] ?? String(rowId),
           customerName:      row.customer_name,
@@ -1052,11 +1025,11 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     try {
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       if (isMobile) {
-        const { data, error } = await supabase.storage.from("tax-invoices").createSignedUrl(path, 60);
+        const { data, error } = await supabase.storage.from("brother-tax-invoices").createSignedUrl(path, 60);
         if (error || !data?.signedUrl) throw error ?? new Error("URL 생성 실패");
         window.open(data.signedUrl, "_blank");
       } else {
-        const { data, error } = await supabase.storage.from("tax-invoices").download(path);
+        const { data, error } = await supabase.storage.from("brother-tax-invoices").download(path);
         if (error || !data) { alert("다운로드 실패: " + error?.message); return; }
         const url = URL.createObjectURL(data);
         const a   = document.createElement("a");
@@ -1075,11 +1048,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         Date.now() - HIDE_CLOSED_AFTER_DAYS_FOR_NON_ADMIN * 24 * 60 * 60 * 1000
       ).toISOString();
 
-      let q = supabase.from("hyundaicm_tasks").select("*");
-      // NH캐피탈 직원(조회 전용)은 할부금융사가 NH캐피탈인 건만 조회 가능 — 쿼리 단계에서부터 제한
-      if (isNhCapitalStaff) {
-        q = q.eq("finance_company", "NH캐피탈");
-      }
+      let q = supabase.from("brother_tasks").select("*");
       if (!isAdmin) {
         q = q.or(`status.neq.확정,created_at.gte.${cutoffISO}`);
       } else if (!showClosed) {
@@ -1089,11 +1058,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       const { data, error } = await q.order("created_at", { ascending: false });
       if (error) throw error;
 
-      const fetchedRows = (data ?? []) as HCMTask[];
-      // NH캐피탈 직원(조회 전용)은 할부금융사가 NH캐피탈인 건만 조회 가능
-      const nextRows = isNhCapitalStaff
-        ? fetchedRows.filter((r) => r.finance_company === "NH캐피탈")
-        : fetchedRows;
+      const nextRows = (data ?? []) as HCMTask[];
       setRows(nextRows);
       const drafts: Record<string, string> = {};
       const credits: Record<string, HCMStatus> = {};
@@ -1121,7 +1086,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         const ids = nextRows.map((r) => String(r.id));
         if (ids.length > 0) {
           const { data: holds } = await supabase
-            .from("hcm_holds")
+            .from("brother_holds")
             .select("record_id, scheduled_at, note, recipients")
             .in("record_id", ids)
             .eq("is_sent", false);
@@ -1139,7 +1104,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     }
   };
 
-  useEffect(() => { fetchRows(); }, [showClosed, isAdmin, isHyundaiCM, isNhCapitalStaff]); // eslint-disable-line
+  useEffect(() => { fetchRows(); }, [showClosed, isAdmin, isGbn]); // eslint-disable-line
 
 
   // ─── 모바일 파일 선택 후 세션 자동 복구 ─────────────────────
@@ -1282,7 +1247,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         closed_at: null,
       };
       const { data: inserted, error } = await supabase
-        .from("hyundaicm_tasks")
+        .from("brother_tasks")
         .insert(payload)
         .select()
         .single();
@@ -1290,6 +1255,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
       // 카카오 알림 (비동기, 실패해도 업무 영향 없음)
       sendKakaoNotify({
+        channel:              "brother",
         type:                 "new",
         caseNo:               newCaseNo,
         customerName:         payload.customer_name,
@@ -1314,7 +1280,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
         // 접수 시 할일 + 일정 자동 등록 (단 1회)
         const todayStr = new Date().toISOString().slice(0, 10);
-        const regTitle = `${payload.customer_name} (현대건기(부산경남) - 접수)`;
+        const regTitle = `${payload.customer_name} (현대지게차경기북부 - 접수)`;
         const regDesc  = [
           `케이스: ${newCaseNo}`,
           payload.equipment_ton   ? `장비: ${payload.equipment_ton}`    : null,
@@ -1331,7 +1297,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
             title: regTitle, description: regDesc,
             schedule_date: todayStr, category: "followup",
             related_type: "finance", progress_stage: "접수",
-            work_type: "finance_hcm",
+            work_type: "finance_brother",
           }),
         ]);
       }
@@ -1383,7 +1349,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       setCreditResults((prev) => ({ ...prev, [String(row.id)]: next }));
     }
     setRows((prev) => prev.map((r) => String(r.id) === String(row.id) ? { ...r, ...patch } : r));
-    const { error } = await supabase.from("hyundaicm_tasks").update(patch).eq("id", row.id as any);
+    const { error } = await supabase.from("brother_tasks").update(patch).eq("id", row.id as any);
     if (error) {
       setRows((prev) => prev.map((r) => String(r.id) === String(row.id) ? { ...r, status: row.status } : r));
       alert(error.message);
@@ -1394,6 +1360,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       }
       // 카카오 알림 (비동기, 실패해도 업무 영향 없음)
       const kakaoPayload: Record<string, unknown> = {
+        channel:              "brother",
         type:                 "status_change",
         caseNo:               caseNoMap[String(row.id)] ?? String(row.id),
         customerName:         row.customer_name,
@@ -1424,7 +1391,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         incentive:            confirmIncentive.trim() ? parseFloat(confirmIncentive) || null : null,
         vat_deferred_amount:  confirmVatAmount.trim() ? parseInt(onlyDigits(confirmVatAmount), 10) || null : null,
       };
-      const { error } = await supabase.from("hyundaicm_tasks").update(patch).eq("id", confirmModal.id as any);
+      const { error } = await supabase.from("brother_tasks").update(patch).eq("id", confirmModal.id as any);
       if (error) throw error;
       setRows((prev) => prev.map((r) => String(r.id) === String(confirmModal.id) ? { ...r, ...patch } : r));
 
@@ -1433,6 +1400,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
       // 카카오 알림
       sendKakaoNotify({
+        channel:              "brother",
         type:                 "status_change",
         caseNo:               caseNoMap[String(confirmModal.id)] ?? String(confirmModal.id),
         customerName:         confirmModal.customer_name,
@@ -1464,7 +1432,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         await Promise.all([
           supabase.from("secretary_todos").insert({
             title:       `${custName} 설정`,
-            description: `[현대건기(부산경남)] ${custName} 확정 건 - 설정(담보) 등록 확인`,
+            description: `[현대지게차경기북부] ${custName} 확정 건 - 설정(담보) 등록 확인`,
             priority:    "urgent",
             category:    "finance",
             due_date:    tomorrowDate,
@@ -1472,7 +1440,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           }),
           supabase.from("secretary_todos").insert({
             title:       `${custName} 원본`,
-            description: `[현대건기(부산경남)] ${custName} 확정 건 - 원본서류 징구 확인`,
+            description: `[현대지게차경기북부] ${custName} 확정 건 - 원본서류 징구 확인`,
             priority:    "urgent",
             category:    "finance",
             due_date:    tomorrowDate,
@@ -1480,7 +1448,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           }),
         ]);
       } catch (todoErr) {
-        console.error("[현대건기(부산경남) 확정 사후 할 일 등록 오류]:", todoErr);
+        console.error("[현대지게차경기북부 확정 사후 할 일 등록 오류]:", todoErr);
       }
     } catch (e: any) { alert(e?.message || "저장 실패"); }
     finally { setConfirmSaving(false); }
@@ -1491,7 +1459,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     setMemoSavingId(rowId);
     try {
       const note = memoDrafts[String(rowId)] ?? "";
-      const { error } = await supabase.from("hyundaicm_tasks").update({ special_note: note || null }).eq("id", rowId as any);
+      const { error } = await supabase.from("brother_tasks").update({ special_note: note || null }).eq("id", rowId as any);
       if (error) throw error;
       setRows((prev) => prev.map((r) => String(r.id) === String(rowId) ? { ...r, special_note: note || null } : r));
     } catch (e: any) { alert(e?.message || "메모 저장 실패"); }
@@ -1528,7 +1496,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         // 신용결과 처리 시 입력한 메모를 본문 특이사항에도 반영(대체)
         special_note:        creditNote.trim() || null,
       };
-      const { error } = await supabase.from("hyundaicm_tasks").update(patch).eq("id", row.id as any);
+      const { error } = await supabase.from("brother_tasks").update(patch).eq("id", row.id as any);
       if (error) throw error;
       setRows((prev) => prev.map((r) => String(r.id) === String(row.id) ? { ...r, ...patch } : r));
       setCreditResults((prev) => ({ ...prev, [String(row.id)]: next }));
@@ -1537,6 +1505,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       // 카카오 알림 — 동일 상태 재저장(조건 수정)인 경우 "수정 알림", 신규 상태 변경인 경우 기존 알림
       const isConditionUpdate = row.status === next; // 이미 같은 상태(예: 승인)에서 재저장 = 조건 수정
       sendKakaoNotify({
+        channel:          "brother",
         type:             isConditionUpdate ? "credit_condition_updated" : "status_change",
         caseNo:           caseNoMap[String(row.id)] ?? String(row.id),
         customerName:     row.customer_name,
@@ -1616,7 +1585,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           ? { phone_scrubbed_at: null }
           : {}),
       };
-      const { error } = await supabase.from("hyundaicm_tasks").update(patch).eq("id", editRow.id as any);
+      const { error } = await supabase.from("brother_tasks").update(patch).eq("id", editRow.id as any);
       if (error) throw error;
       setRows((prev) => prev.map((r) => String(r.id) === String(editRow.id) ? { ...r, ...patch } : r));
 
@@ -1655,6 +1624,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           : "변경사항 없음";
 
         sendKakaoNotify({
+          channel:              "brother",
           type:                 "edit",
           caseNo:               caseNoMap[String(editRow.id)] ?? String(editRow.id),
           customerName:         patch.customer_name,
@@ -1694,9 +1664,9 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     const path = `hyundaicm/${String(rowId)}/${dbCol}.${ext}`;
     setUploadingDocKey(`${rowId}_${dbCol}`);
     try {
-      const { error: upErr } = await supabase.storage.from("hcm_docs").upload(path, file, { upsert: true, contentType: file.type || undefined });
+      const { error: upErr } = await supabase.storage.from("brother_docs").upload(path, file, { upsert: true, contentType: file.type || undefined });
       if (upErr) throw upErr;
-      const { error: dbErr } = await supabase.from("hyundaicm_tasks").update({ [dbCol]: path }).eq("id", rowId as any);
+      const { error: dbErr } = await supabase.from("brother_tasks").update({ [dbCol]: path }).eq("id", rowId as any);
       if (dbErr) throw dbErr;
       setRows((prev) => prev.map((r) => String(r.id) === String(rowId) ? { ...r, [dbCol]: path } : r));
       alert(`${label} 업로드 완료`);
@@ -1714,13 +1684,13 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       if (isMobile) {
         // 모바일: Signed URL로 새 탭에서 열기 (a.click()은 모바일에서 동작 안 함)
         const { data, error } = await supabase.storage
-          .from("hcm_docs")
+          .from("brother_docs")
           .createSignedUrl(path, 60); // 60초 유효
         if (error || !data?.signedUrl) throw error ?? new Error("URL 생성 실패");
         window.open(data.signedUrl, "_blank");
       } else {
         // PC: Blob 다운로드
-        const { data, error } = await supabase.storage.from("hcm_docs").download(path);
+        const { data, error } = await supabase.storage.from("brother_docs").download(path);
         if (error) throw error;
         const url = URL.createObjectURL(data);
         const a   = document.createElement("a");
@@ -1742,14 +1712,14 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       const target = rows.find((r) => String(r.id) === String(rowId));
       if (target) {
         const paths = DOC_FIELDS.map((f) => target[f.key] as string | null).filter(Boolean) as string[];
-        // 기타서류(hcm_etc_docs) storage 경로도 함께 삭제
+        // 기타서류(brother_etc_docs) storage 경로도 함께 삭제
         const etcPaths = (etcDocs[String(rowId)] ?? []).map((d) => d.path);
         const allPaths = [...paths, ...etcPaths];
-        if (allPaths.length > 0) await supabase.storage.from("hcm_docs").remove(allPaths);
+        if (allPaths.length > 0) await supabase.storage.from("brother_docs").remove(allPaths);
       }
       // 삭제 전 gcal_task_id 조회 → 구글 할일도 삭제
-      const { data: gcalRow } = await supabase.from("hyundaicm_tasks").select("gcal_task_id").eq("id", rowId as any).maybeSingle();
-      const { error } = await supabase.from("hyundaicm_tasks").delete().eq("id", rowId as any);
+      const { data: gcalRow } = await supabase.from("brother_tasks").select("gcal_task_id").eq("id", rowId as any).maybeSingle();
+      const { error } = await supabase.from("brother_tasks").delete().eq("id", rowId as any);
       if (error) throw error;
       if (gcalRow?.gcal_task_id && user) {
         try {
@@ -2024,13 +1994,9 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-semibold hover:border-gray-300 hover:text-gray-700 transition-all">
               ← AI비서
             </button>
-            <span className="text-sm font-semibold text-[#0f172a]">🏗 현대건기(부산경남)</span>
+            <span className="text-sm font-semibold text-[#0f172a]">🚜 현대지게차 경기북부판매</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <button onClick={() => nav("/hyundaicm/kakao-connect")} title="카카오톡 알림 설정"
-              className="inline-flex items-center justify-center w-7 h-7 rounded-xl border border-gray-200 text-gray-400 hover:border-gray-300 hover:text-gray-600 transition-all">
-              <Settings size={13} />
-            </button>
             <button onClick={() => { if (window.confirm("로그아웃 하시겠습니까?")) logout(); }}
               className="inline-flex items-center px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-medium hover:border-gray-300 transition-all">
               로그아웃
@@ -2039,7 +2005,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         </div>
 
         <div className="px-4">
-          <AppTabBar activeTab="hyundaicm" />
+          <AppTabBar activeTab="brother" />
         </div>
 
         {/* ── 상태 요약 뱃지 ── */}
@@ -2122,7 +2088,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         {focusId && (
           <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-50 border border-blue-200">
             <button
-              onClick={() => nav("/hyundaicm")}
+              onClick={() => nav("/brother")}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-blue-200 text-blue-700 text-xs font-semibold hover:bg-blue-50 transition-all shrink-0"
             >
               ← 전체 목록
@@ -2293,7 +2259,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                   className="h-4 w-4 accent-orange-500"
                 />
                 <label htmlFor="skip-sales-rep-alert-new" className="text-xs font-medium text-gray-600">
-                  영업사원 알림 제외 (체크 시 이 건은 배성구 팀장에게 카카오 알림톡이 발송되지 않습니다)
+                  영업사원 알림 제외 (체크 시 이 건은 김서정 과장에게 카카오 알림톡이 발송되지 않습니다)
                 </label>
               </div>
             )}
@@ -2679,6 +2645,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                               onClick={() => {
                                 if (!window.confirm("인센티브 지급 완료 알림을 발송하시겠습니까?")) return;
                                 sendKakaoNotify({
+                                  channel:           "brother",
                                   type:              "incentive_paid",
                                   caseNo:            caseNoMap[String(r.id)] ?? String(r.id),
                                   customerName:      r.customer_name,
@@ -2816,7 +2783,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                                 </span>
                               </p>
                             </div>
-                            {(isAdmin || isSubAdmin || isNhCapitalOrOrix || isNhCapitalStaff) && (
+                            {(isAdmin || isSubAdmin || isGbn) && (
                             <button
                               onClick={() => downloadVehicleRegDoc(f.path, f.name)}
                               className="shrink-0 px-3 py-1 rounded-xl border border-emerald-200 text-emerald-700 text-xs font-medium hover:border-emerald-400 transition-all"
@@ -2998,7 +2965,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                   className="h-4 w-4 accent-orange-500"
                 />
                 <label htmlFor="skip-sales-rep-alert-edit" className="text-xs font-medium text-gray-600">
-                  영업사원 알림 제외 (체크 시 이 건은 배성구 팀장에게 카카오 알림톡이 발송되지 않습니다)
+                  영업사원 알림 제외 (체크 시 이 건은 김서정 과장에게 카카오 알림톡이 발송되지 않습니다)
                 </label>
               </div>
             )}
@@ -3307,7 +3274,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
             <div style={{ position: "absolute", left: "-9999px", top: 0, width: "560px" }}>
               <div ref={scheduleTableRef} style={{ fontFamily: "'Malgun Gothic','맑은 고딕',sans-serif", background: "#fff", padding: "24px", color: "#1e293b" }}>
                 <h1 style={{ fontSize: "18px", fontWeight: 700, margin: "0 0 4px", color: "#0a192f" }}>원리금균등분납 상환스케줄</h1>
-                <p style={{ fontSize: "12px", color: "#64748b", marginBottom: "16px" }}>현대건기(부산경남) 할부금융</p>
+                <p style={{ fontSize: "12px", color: "#64748b", marginBottom: "16px" }}>현대지게차 경기북부판매 할부금융</p>
                 {scheduleRecipient && (
                   <p style={{ fontSize: "13px", marginBottom: "12px" }}>수신: <strong style={{ color: "#0a192f" }}>{scheduleRecipient}</strong> 귀중</p>
                 )}
@@ -3943,40 +3910,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                   </div>
                 </div>
 
-                {/* 알림 받을 담당자 */}
-                <div>
-                  <label className={labelClass}>알림 받을 담당자 * (복수 선택 가능)</label>
-                  <div className="space-y-2">
-                    {getVisibleKakaoRecipients(holdModal?.finance_company).map((rec) => {
-                      const checked = holdRecipients.includes(rec.id as RecipientId);
-                      return (
-                        <button
-                          key={rec.id}
-                          type="button"
-                          onClick={() => {
-                            setHoldRecipients((prev) =>
-                              checked
-                                ? prev.filter((id) => id !== rec.id)
-                                : [...prev, rec.id as RecipientId]
-                            );
-                          }}
-                          disabled={holdSaving}
-                          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-sm font-medium transition-all ${
-                            checked
-                              ? "bg-amber-50 border-amber-400 text-amber-800"
-                              : "bg-white border-gray-200 text-gray-600 hover:border-amber-200"
-                          }`}
-                        >
-                          <span className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 text-xs ${
-                            checked ? "bg-amber-500 border-amber-500 text-white" : "border-gray-300"
-                          }`}>{checked ? "✓" : ""}</span>
-                          {rec.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
                 {/* 메모 */}
                 <div>
                   <label className={labelClass}>메모 (선택)</label>
@@ -3991,11 +3924,11 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                 </div>
 
                 {/* 예약 요약 */}
-                {holdDate && holdRecipients.length > 0 && (
+                {holdDate && (
                   <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-800">
                     <p className="font-semibold mb-1">📋 예약 요약</p>
                     <p>일시: {holdDate} {holdTime}</p>
-                    <p>수신: {holdRecipients.map((id) => KAKAO_RECIPIENTS.find((r) => r.id === id)?.label ?? id).join(", ")}</p>
+                    <p>수신: {FIXED_RECIPIENT_LABEL} (고정)</p>
                     {holdNote && <p className="mt-1 text-amber-600">메모: {holdNote}</p>}
                   </div>
                 )}

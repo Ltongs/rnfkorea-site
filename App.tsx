@@ -57,6 +57,8 @@ import LoginPage from "./pages/Login/index";
 import HyundaiCMPage from "./pages/HyundaiCM/index";
 import HyundaiCMLoginPage from "./pages/HyundaiCM/Login";
 import HyundaiCMRouteGuard from "./pages/HyundaiCM/Routeguard";
+import BrotherPage from "./pages/Brother/index";
+import BrotherRouteGuard from "./pages/Brother/Routeguard";
 import TaesanPage from "./pages/Taesan/index";
 import TaesanLoginPage from "./pages/Taesan/Login";
 import TaesanRouteGuard from "./pages/Taesan/Routeguard";
@@ -548,6 +550,7 @@ function ScrollToTopButton() {
     || pathname.startsWith("/work/fax-campaign")
     || pathname.startsWith("/orix")
     || pathname.startsWith("/hyundaicm")
+    || pathname.startsWith("/brother")
     || pathname.startsWith("/taesan")
     || pathname.startsWith("/rental-os")
     || pathname.startsWith("/work/narumi");
@@ -1245,6 +1248,10 @@ const Footer: React.FC = () => {
       nav("/taesan/login");
       return;
     }
+    if (path === "/brother") {
+      nav(path);
+      return;
+    }
     if (user && canViewAll) nav(path);
     else nav("/narumi/login");
   };
@@ -1354,7 +1361,12 @@ const Footer: React.FC = () => {
               </li>
               <li>
                 <Link to="/hyundaicm/login" className="hover:text-orange-500 transition-colors">
-                  - 현대건설기계업무
+                  - 현대건기(부산경남)업무
+                </Link>
+              </li>
+              <li>
+                <Link to="/brother" className="hover:text-orange-500 transition-colors">
+                  - 현대지게차(경기북부)업무
                 </Link>
               </li>
             </ul>
@@ -1447,6 +1459,7 @@ const AppRoutes = () => {
     || pathname.startsWith("/work/fax-campaign")
     || pathname.startsWith("/orix")
     || pathname.startsWith("/hyundaicm")
+    || pathname.startsWith("/brother")
     || pathname.startsWith("/taesan")
     || pathname.startsWith("/rental-os")
     || pathname.startsWith("/narumi");
@@ -1456,6 +1469,7 @@ const AppRoutes = () => {
     || pathname.startsWith("/work/")
     || pathname.startsWith("/orix")
     || pathname.startsWith("/hyundaicm")
+    || pathname.startsWith("/brother")
     || pathname.startsWith("/taesan")
     || pathname.startsWith("/rental-os")
     || pathname.startsWith("/narumi");
@@ -1559,6 +1573,16 @@ const AppRoutes = () => {
             </HyundaiCMRouteGuard>
           } />
           <Route path="/kakao-callback" element={<KakaoCallbackPage />} />
+
+          {/* 현대지게차 경기북부판매 (김서정 과장) */}
+          <Route
+            path="/brother"
+            element={
+              <BrotherRouteGuard>
+                <BrotherPage />
+              </BrotherRouteGuard>
+            }
+          />
 
           {/* 태산통운 */}
           <Route path="/taesan/login" element={<TaesanLoginPage />} />

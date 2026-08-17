@@ -12,10 +12,10 @@ import { useAuth } from "../lib/auth";
 export type AppTabKey =
   | "chat" | "schedule" | "status" | "orders" | "jinheung" | "narumi" | "email" | "memo"
   | "financehub" | "exportshop" | "quotation" | "cns" | "performance" | "rentalos"
-  | "hyundaicm" | "numbersearch" | "taesan" | "callmanagement" | "faxcampaign" | "orix";
+  | "hyundaicm" | "numbersearch" | "taesan" | "callmanagement" | "faxcampaign" | "orix" | "brother";
 
 export const APP_TAB_ORDER: AppTabKey[] = [
-  "chat", "schedule", "status", "cns", "orders", "hyundaicm", "jinheung", "narumi",
+  "chat", "schedule", "status", "cns", "orders", "hyundaicm", "brother", "jinheung", "narumi",
   "taesan", "quotation", "performance", "rentalos", "exportshop", "financehub",
   "callmanagement", "faxcampaign", "orix", "numbersearch", "email", "memo",
 ];
@@ -23,6 +23,7 @@ export const APP_TAB_ORDER: AppTabKey[] = [
 // 클릭 시 이 페이지 안에서 렌더링하지 않고 곧바로 다른 라우트로 이동하는 탭
 export const APP_EXTERNAL_TAB_LINKS: Partial<Record<AppTabKey, string>> = {
   hyundaicm: "/hyundaicm",
+  brother: "/brother",
   rentalos: "/rental-os",
   taesan: "/taesan",
   callmanagement: "/work/call-management",
@@ -34,8 +35,9 @@ const APP_TAB_LABELS: Record<AppTabKey, string> = {
   chat: "💬 채팅", schedule: "📅 일정", status: "📊 업무현황", orders: "📦 주문·상담",
   jinheung: "🔧 진흥주문", narumi: "🚛 나르미", memo: "📝 메모", financehub: "💵 매출/매입",
   exportshop: "🌏 수출장비", quotation: "📋 견적서", cns: "🗂 통합상담", performance: "📈 실적관리",
-  rentalos: "🚐 Rental_O/S", hyundaicm: "🏗 현대CM", numbersearch: "🔍 번호검색",
+  rentalos: "🚐 Rental_O/S", hyundaicm: "🏗 현대건기(부산경남)", numbersearch: "🔍 번호검색",
   taesan: "🚚 태산통운", callmanagement: "📞 상담관리", faxcampaign: "📠 팩스발송", orix: "💰 ORIX인센티브", email: "📧 이메일",
+  brother: "🚜 현대지게차 경기북부",
 };
 
 // pages/secretary/index.tsx의 탭 버튼 스타일(TB/TA/TI)과 완전히 동일하게 맞춘다.
@@ -48,7 +50,7 @@ export default function AppTabBar({ activeTab }: { activeTab: AppTabKey }) {
   const [unreadEmail, setUnreadEmail] = useState(0);
   const {
     isOrixAdmin, isOrixPartner, isAdmin, isSubAdmin, canViewAll, isInsuranceManager,
-    isHyundaiCM, isNhCapital, isNhCapitalStaff, isTaesan, isRentalOS,
+    isHyundaiCM, isNhCapital, isNhCapitalStaff, isTaesan, isRentalOS, isGbn,
   } = useAuth() as any;
   const isAdminLevel = isAdmin || isSubAdmin;
 
@@ -65,6 +67,7 @@ export default function AppTabBar({ activeTab }: { activeTab: AppTabKey }) {
     orix: isOrixAdmin || isOrixPartner,
     narumi: canViewAll,
     hyundaicm: isAdminLevel || isHyundaiCM || isNhCapital || isNhCapitalStaff || isOrixPartner,
+    brother: isAdminLevel || isGbn,
     taesan: isAdminLevel || isTaesan || isNhCapital,
     rentalos: isAdminLevel || isRentalOS,
     callmanagement: isAdminLevel || isInsuranceManager, // CallManagement/index.tsx의 canAccessConsulting과 동일 조건

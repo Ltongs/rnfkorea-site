@@ -1003,7 +1003,7 @@ const DashboardPage: React.FC = () => {
                   value: formatCurrency(financeSummary.confirmedAmount.month + hcmTaesanSummary.month.hcmAmount + hcmTaesanSummary.month.taesanAmount),
                   ytd: formatCurrency(financeSummary.confirmedAmount.ytd + hcmTaesanSummary.ytd.hcmAmount + hcmTaesanSummary.ytd.taesanAmount),
                   icon: <CircleDollarSign className="w-4 h-4 text-orange-500" />,
-                  sub: "현대CM·태산통운·기타금융 확정 합계",
+                  sub: "현대건기(부산경남)·태산통운·기타금융 확정 합계",
                 },
                 {
                   label: "타이어 판매전환율",
@@ -1370,7 +1370,7 @@ const DashboardPage: React.FC = () => {
 
                   <div className="grid grid-cols-3 gap-3">
                     {[
-                      { label: "🏗 현대CM", month: hcmTaesanSummary.month.hcmAmount, ytd: hcmTaesanSummary.ytd.hcmAmount, cnt: hcmTaesanSummary.month.hcmCount },
+                      { label: "🏗 현대건기(부산경남)", month: hcmTaesanSummary.month.hcmAmount, ytd: hcmTaesanSummary.ytd.hcmAmount, cnt: hcmTaesanSummary.month.hcmCount },
                       { label: "🚛 태산통운", month: hcmTaesanSummary.month.taesanAmount, ytd: hcmTaesanSummary.ytd.taesanAmount, cnt: hcmTaesanSummary.month.taesanCount },
                       { label: "📋 기타금융", month: otherFinMonth, ytd: otherFinYtd, cnt: otherFinMonthCnt },
                     ].map((row) => (

@@ -26,6 +26,7 @@ type AuthContextType = {
   isInsAI: boolean;       // AI 비서 (Ins) 전용 (everyasset.fc@gmail.com)
   isTaesan: boolean;      // 태산통운 (yj565012@naver.com) - 태산통운 탭 전용, 신규등록/자료첨부만 가능
   isRentalOS: boolean;    // Rental_O/S (kohd1222@naver.com) - 렌탈 딜 아웃소싱 페이지 전용
+  isGbn: boolean;         // 현대지게차 경기북부판매 (김서정 과장, hj5321006@naver.com) - /brother 페이지 전용
   isOrixAdmin: boolean;   // ORIX 인센티브 페이지 관리자 (admin@rnfkorea.co.kr, ltongs7@gmail.com만 — everyasset.fc@gmail.com 제외)
   isOrixPartner: boolean; // ORIX 조용백 (yongbaek_jo@orix.co.kr) - ORIX 인센티브 페이지 + 현대CM 페이지 전용, 태산통운 접근 불가
   isInternal: boolean;
@@ -68,6 +69,7 @@ function getRoleFlags(emailRaw?: string | null) {
   const isInsAI            = email === "everyasset.fc@gmail.com"; // AI 비서 (Ins) 전용
   const isTaesan            = email === "yj565012@naver.com";      // 태산통운 (신규등록완료) - 태산통운 탭 전용
   const isRentalOS          = email === "kohd1222@naver.com";      // Rental_O/S (렌탈 딜 아웃소싱) 전용
+  const isGbn               = email === "hj5321006@naver.com";     // 현대지게차 경기북부판매 김서정 과장 - /brother 페이지 전용
   // ORIX 인센티브 페이지 전용 권한 — isSubAdmin(everyasset.fc@gmail.com 포함)을 그대로 쓰지 않고
   // "이 메뉴는 두 사람만" 요구사항에 맞춰 admin@rnfkorea.co.kr + ltongs7@gmail.com만 명시적으로 좁힘.
   const isOrixAdmin         = isAdmin || email === "ltongs7@gmail.com";
@@ -92,6 +94,7 @@ function getRoleFlags(emailRaw?: string | null) {
     isInsAI,
     isTaesan,
     isRentalOS,
+    isGbn,
     isOrixAdmin,
     isOrixPartner,
     isInternal,
@@ -111,6 +114,7 @@ function getPermissions(emailRaw?: string | null) {
     isInsAI,
     isTaesan,
     isRentalOS,
+    isGbn,
     isOrixAdmin,
     isOrixPartner,
     isInternal,
@@ -130,6 +134,7 @@ function getPermissions(emailRaw?: string | null) {
     isInsAI,
     isTaesan,
     isRentalOS,
+    isGbn,
     isOrixAdmin,
     isOrixPartner,
     isInternal,
@@ -239,6 +244,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isInsAI:            permissionState.isInsAI,
       isTaesan:           permissionState.isTaesan,
       isRentalOS:         permissionState.isRentalOS,
+      isGbn:              permissionState.isGbn,
       isOrixAdmin:        permissionState.isOrixAdmin,
       isOrixPartner:      permissionState.isOrixPartner,
       isInternal:         permissionState.isInternal,

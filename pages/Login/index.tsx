@@ -15,11 +15,13 @@ function defaultLandingFor(auth: {
   isAdmin?: boolean; isSubAdmin?: boolean; isInsAI?: boolean; isRentalOS?: boolean;
   isHyundaiCM?: boolean; isNhCapital?: boolean; isNhCapitalStaff?: boolean; isOrixPartner?: boolean;
   isTaesan?: boolean; isNarumi?: boolean; isLotte?: boolean; isInsuranceManager?: boolean;
+  isGbn?: boolean;
 }): string {
   if (auth.isAdmin || auth.isSubAdmin) return "/work/secretary";
   if (auth.isInsAI) return "/work/secretary-ins";
   if (auth.isRentalOS) return "/rental-os";
   if (auth.isHyundaiCM || auth.isNhCapital || auth.isNhCapitalStaff || auth.isOrixPartner) return "/hyundaicm";
+  if (auth.isGbn) return "/brother";
   if (auth.isTaesan) return "/taesan";
   if (auth.isNarumi || auth.isLotte || auth.isInsuranceManager) return "/narumi";
   return "/";

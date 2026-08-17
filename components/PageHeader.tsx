@@ -93,7 +93,7 @@ function calcMobileMenuStyle(btnEl: HTMLButtonElement | null): MobileMenuStyle {
 export default function PageHeader() {
   const { pathname } = useLocation();
   const nav = useNavigate();
-  const { user, canViewAll, isAdmin, isSubAdmin, isNarumi, isLotte, isInsuranceManager, isHyundaiCM, isNhCapital, isNhCapitalStaff, isOrixPartner, isInsAI, isTaesan, isRentalOS, logout } = useAuth() as any;
+  const { user, canViewAll, isAdmin, isSubAdmin, isNarumi, isLotte, isInsuranceManager, isHyundaiCM, isNhCapital, isNhCapitalStaff, isOrixPartner, isInsAI, isTaesan, isRentalOS, isGbn, logout } = useAuth() as any;
   const isAdminLevel = isAdmin || isSubAdmin;
 
   // 참고: PWA 앱은 manifest.json의 start_url(/work/secretary 등)로 곧장 진입하며,
@@ -278,7 +278,7 @@ export default function PageHeader() {
       return;
     }
 
-    // 현대건설기계: 항상 현대건설기계 로그인으로 (RouteGuard가 권한 처리)
+    // 현대건기(부산경남): 항상 현대건기(부산경남) 로그인으로 (RouteGuard가 권한 처리)
     if (path === "/hyundaicm") {
       nav("/hyundaicm/login");
       return;
@@ -293,6 +293,12 @@ export default function PageHeader() {
     // Rental_O/S: 항상 Rental_O/S 로그인으로 (RouteGuard가 권한 처리)
     if (path === "/rental-os") {
       nav("/rental-os/login");
+      return;
+    }
+
+    // 현대지게차 경기북부판매: 전용 로그인 페이지 없이 일반 로그인 사용 (RouteGuard가 권한 처리)
+    if (path === "/brother") {
+      nav(path);
       return;
     }
 
@@ -583,7 +589,17 @@ export default function PageHeader() {
                       className={dropItem}
                       onClick={() => goWorkInternalOnly("/hyundaicm")}
                     >
-                      현대건설기계업무
+                      현대건기(부산경남)업무
+                    </button>
+                  )}
+
+                  {(isAdminLevel || isGbn || !user) && (
+                    <button
+                      type="button"
+                      className={dropItem}
+                      onClick={() => goWorkInternalOnly("/brother")}
+                    >
+                      현대지게차(경기북부)업무
                     </button>
                   )}
 
