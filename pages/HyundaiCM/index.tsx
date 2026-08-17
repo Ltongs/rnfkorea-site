@@ -2804,6 +2804,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                       {(vehicleRegFiles[String(r.id)] ?? []).map((f, idx) => {
                         const uploadedDate = new Date(f.uploadedAt);
                         const expiresDate  = new Date(uploadedDate.getTime() + 72 * 60 * 60 * 1000);
+                        const isExpiredDoc = Date.now() >= expiresDate.getTime();
                         const hoursLeft    = Math.max(0, Math.round((expiresDate.getTime() - Date.now()) / (1000 * 60 * 60)));
                         return (
                           <div key={idx} className="flex items-center justify-between gap-3 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-1.5">
@@ -2811,15 +2812,21 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                               <p className="text-sm font-medium text-emerald-800 truncate">{f.name}</p>
                               <p className="text-xs text-gray-400 mt-0.5">
                                 {formatCreatedAt(f.uploadedAt)} 업로드 &nbsp;·&nbsp;
-                                <span className={hoursLeft < 6 ? "text-red-500 font-semibold" : "text-gray-400"}>
-                                  {hoursLeft}시간 후 자동삭제
-                                </span>
+                                {isExpiredDoc ? (
+                                  <span className="text-red-500 font-semibold">삭제 처리 중</span>
+                                ) : (
+                                  <span className={hoursLeft < 6 ? "text-red-500 font-semibold" : "text-gray-400"}>
+                                    {hoursLeft}시간 후 자동삭제
+                                  </span>
+                                )}
                               </p>
                             </div>
                             {(isAdmin || isSubAdmin || isNhCapitalOrOrix || isNhCapitalStaff) && (
                             <button
                               onClick={() => downloadVehicleRegDoc(f.path, f.name)}
-                              className="shrink-0 px-3 py-1 rounded-xl border border-emerald-200 text-emerald-700 text-xs font-medium hover:border-emerald-400 transition-all"
+                              disabled={isExpiredDoc}
+                              title={isExpiredDoc ? "보관기간이 지나 자동삭제 처리 중입니다" : undefined}
+                              className={`shrink-0 px-3 py-1 rounded-xl border text-xs font-medium transition-all ${isExpiredDoc ? "border-gray-200 text-gray-300 cursor-not-allowed" : "border-emerald-200 text-emerald-700 hover:border-emerald-400"}`}
                             >다운로드</button>
                             )}
                           </div>
@@ -2845,6 +2852,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                       {(taxInvoiceFiles[String(r.id)] ?? []).map((f, idx) => {
                         const uploadedDate = new Date(f.uploadedAt);
                         const expiresDate  = new Date(uploadedDate.getTime() + 72 * 60 * 60 * 1000);
+                        const isExpiredDoc = Date.now() >= expiresDate.getTime();
                         const hoursLeft    = Math.max(0, Math.round((expiresDate.getTime() - Date.now()) / (1000 * 60 * 60)));
                         const isAttach     = f.invoiceType === "attach";
                         return (
@@ -2858,14 +2866,20 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                               </div>
                               <p className="text-xs text-gray-400 mt-0.5">
                                 {formatCreatedAt(f.uploadedAt)} 업로드 &nbsp;·&nbsp;
-                                <span className={hoursLeft < 6 ? "text-red-500 font-semibold" : "text-gray-400"}>
-                                  {hoursLeft}시간 후 자동삭제
-                                </span>
+                                {isExpiredDoc ? (
+                                  <span className="text-red-500 font-semibold">삭제 처리 중</span>
+                                ) : (
+                                  <span className={hoursLeft < 6 ? "text-red-500 font-semibold" : "text-gray-400"}>
+                                    {hoursLeft}시간 후 자동삭제
+                                  </span>
+                                )}
                               </p>
                             </div>
                             <button
                               onClick={() => downloadTaxInvoice(f.path, f.name)}
-                              className={`shrink-0 px-3 py-1 rounded-xl border text-xs font-medium transition-all ${isAttach ? "border-cyan-200 text-cyan-700 hover:border-cyan-400" : "border-blue-200 text-blue-700 hover:border-blue-400"}`}
+                              disabled={isExpiredDoc}
+                              title={isExpiredDoc ? "보관기간이 지나 자동삭제 처리 중입니다" : undefined}
+                              className={`shrink-0 px-3 py-1 rounded-xl border text-xs font-medium transition-all ${isExpiredDoc ? "border-gray-200 text-gray-300 cursor-not-allowed" : isAttach ? "border-cyan-200 text-cyan-700 hover:border-cyan-400" : "border-blue-200 text-blue-700 hover:border-blue-400"}`}
                             >다운로드</button>
                           </div>
                         );
