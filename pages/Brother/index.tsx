@@ -132,6 +132,13 @@ type HCMTask = {
 // ─── 유틸 ─────────────────────────────────────────────────
 function onlyDigits(s: string) { return (s ?? "").replace(/\D/g, ""); }
 
+// 지게차 모델명 앞 두 자리 숫자로 톤수 자동 인식 (예: 25D-9S → 2.5톤, 40B-X → 4.0톤)
+function deriveTonFromModel(model: string): string | null {
+  const m = (model ?? "").trim().match(/^(\d{2})/);
+  if (!m) return null;
+  return `${(parseInt(m[1], 10) / 10).toFixed(1)}톤`;
+}
+
 function formatPhoneKR(raw: string) {
   const d = onlyDigits(raw).slice(0, 11);
   if (d.length <= 3) return d;
@@ -2183,11 +2190,17 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               )}
               <div>
                 <label className={labelClass}>모델명</label>
-                <input value={modelName} onChange={(e) => setModelName(e.target.value)} placeholder="예: 25D-9A" className={inputClass} />
+                <input value={modelName} onChange={(e) => {
+                  const v = e.target.value;
+                  setModelName(v);
+                  const ton = deriveTonFromModel(v);
+                  if (ton) setEquipmentTon(ton);
+                }} placeholder="예: 25D-9A" className={inputClass} />
               </div>
               <div>
                 <label className={labelClass}>톤수</label>
                 <input value={equipmentTon} onChange={(e) => setEquipmentTon(e.target.value)} placeholder="예: 2.5톤" className={inputClass} />
+                <p className="mt-1 text-xs text-gray-400">모델명 앞 두 자리로 자동 인식됩니다 (직접 수정 가능)</p>
               </div>
               <div>
                 <label className={labelClass}>엔진형식</label>
@@ -2919,7 +2932,12 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               <div><label className={labelClass}>고객명 *</label><input value={editCustomerName} onChange={(e) => setEditCustomerName(e.target.value)} className={inputClass} disabled={editSaving} placeholder="홍길동" /></div>
               <div><label className={labelClass}>전화번호</label><input value={editCustomerPhone} onChange={(e) => setEditCustomerPhone(formatPhoneKR(e.target.value))} className={inputClass} disabled={editSaving} inputMode="tel" /></div>
               {editCustomerType === "법인" && <div><label className={labelClass}>대표자명</label><input value={editCeoName} onChange={(e) => setEditCeoName(e.target.value)} className={inputClass} disabled={editSaving} placeholder="홍길동" /></div>}
-              <div><label className={labelClass}>모델명</label><input value={editModelName} onChange={(e) => setEditModelName(e.target.value)} className={inputClass} disabled={editSaving} placeholder="예: 25D-9A" /></div>
+              <div><label className={labelClass}>모델명</label><input value={editModelName} onChange={(e) => {
+                const v = e.target.value;
+                setEditModelName(v);
+                const ton = deriveTonFromModel(v);
+                if (ton) setEditEquipmentTon(ton);
+              }} className={inputClass} disabled={editSaving} placeholder="예: 25D-9A" /></div>
               <div><label className={labelClass}>톤수</label><input value={editEquipmentTon} onChange={(e) => setEditEquipmentTon(e.target.value)} className={inputClass} disabled={editSaving} placeholder="예: 2.5톤" /></div>
               <div>
                 <label className={labelClass}>엔진형식</label>
