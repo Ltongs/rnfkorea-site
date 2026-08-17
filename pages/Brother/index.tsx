@@ -91,6 +91,7 @@ type HCMTask = {
   repayment_sent_at?: string | null;
   repayment_sent_channel?: "sms" | null;
   repayment_sent_to?: string | null;
+  model_name: string | null;           // 모델명
   equipment_ton: string | null;        // 톤수
   engine_type: string | null;          // 엔진형식: 디젤 / 전동(납산) / 전동(리튬)
   purchase_amount: number | null;      // 차량가격 (차량+어태치 합산)
@@ -306,6 +307,7 @@ export default function BrotherPage() {
   const [customerName,          setCustomerName]          = useState("");
   const [customerPhone,         setCustomerPhone]         = useState("");
   const [ceoName,                setCeoName]                = useState("");
+  const [modelName,             setModelName]             = useState("");
   const [equipmentTon,          setEquipmentTon]          = useState("");
   const [engineType,            setEngineType]            = useState<string>("디젤");
   const [purchaseAmount,        setPurchaseAmount]        = useState("");
@@ -420,6 +422,7 @@ export default function BrotherPage() {
   const [editCustomerName,          setEditCustomerName]          = useState("");
   const [editCustomerPhone,         setEditCustomerPhone]         = useState("");
   const [editCeoName,               setEditCeoName]                = useState("");
+  const [editModelName,             setEditModelName]             = useState("");
   const [editEquipmentTon,          setEditEquipmentTon]          = useState("");
   const [editEngineType,            setEditEngineType]            = useState<string>("디젤");
   const [editPurchaseAmount,        setEditPurchaseAmount]        = useState("");
@@ -1140,6 +1143,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         (r.customer_name ?? "").toLowerCase().includes(q) ||
         (r.company_name ?? "").toLowerCase().includes(q) ||
         (r.equipment_ton ?? "").toLowerCase().includes(q) ||
+        (r.model_name ?? "").toLowerCase().includes(q) ||
         (r.finance_company ?? "").toLowerCase().includes(q) ||
         (r.sales_rep ?? "").toLowerCase().includes(q) ||
         (r.special_note ?? "").toLowerCase().includes(q) ||
@@ -1203,7 +1207,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
   // ─── 신규 접수 ───────────────────────────────────────────
   const onReset = () => {
     setCustomerType("개인"); setCustomerName(""); setCustomerPhone("");
-    setCeoName(""); setEquipmentTon(""); setEngineType("디젤"); setPurchaseAmount("");
+    setCeoName(""); setModelName(""); setEquipmentTon(""); setEngineType("디젤"); setPurchaseAmount("");
     setInstallmentPrincipal(""); setFinanceCompany("NH캐피탈");
     setInterestRate(""); setIncentive("");
     setVatDeferred("N"); setVatDeferredAmount("");
@@ -1231,6 +1235,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         customer_phone:          onlyDigits(customerPhone) || null,
         company_name:            customerType === "법인" ? customerName.trim() : null,
         ceo_name:                customerType === "법인" ? (ceoName.trim() || null) : null,
+        model_name:              modelName.trim() || null,
         equipment_ton:           equipmentTon.trim() || null,
         engine_type:             engineType || null,
         purchase_amount:         purchaseAmount.trim() ? parseInt(onlyDigits(purchaseAmount), 10) || null : null,
@@ -1545,6 +1550,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     setEditCustomerName(row.customer_name ?? "");
     setEditCustomerPhone(formatPhoneKR(row.customer_phone ?? ""));
     setEditCeoName(row.ceo_name ?? "");
+    setEditModelName(row.model_name ?? "");
     setEditEquipmentTon(row.equipment_ton ?? "");
     setEditEngineType(row.engine_type ?? "디젤");
     setEditPurchaseAmount(row.purchase_amount != null ? String(row.purchase_amount) : "");
@@ -1573,6 +1579,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         customer_phone:         onlyDigits(editCustomerPhone) || null,
         company_name:           editCustomerType === "법인" ? editCustomerName.trim() : null,
         ceo_name:               editCustomerType === "법인" ? (editCeoName.trim() || null) : null,
+        model_name:             editModelName.trim() || null,
         equipment_ton:          editEquipmentTon.trim() || null,
         engine_type:            editEngineType || null,
         purchase_amount:        editPurchaseAmount.trim() ? parseInt(onlyDigits(editPurchaseAmount), 10) || null : null,
@@ -1608,6 +1615,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           changes.push({ label: "고객명", before: editRow.customer_name ?? "-", after: patch.customer_name });
         if (patch.customer_phone !== (editRow.customer_phone ?? null))
           changes.push({ label: "전화번호", before: editRow.customer_phone ?? "-", after: patch.customer_phone ?? "-" });
+        if (patch.model_name !== (editRow.model_name ?? null))
+          changes.push({ label: "모델명", before: editRow.model_name ?? "-", after: patch.model_name ?? "-" });
         if (patch.equipment_ton !== (editRow.equipment_ton ?? null))
           changes.push({ label: "톤수", before: editRow.equipment_ton ?? "-", after: patch.equipment_ton ?? "-" });
         if (patch.engine_type !== (editRow.engine_type ?? null))
@@ -2173,8 +2182,12 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                 </div>
               )}
               <div>
+                <label className={labelClass}>모델명</label>
+                <input value={modelName} onChange={(e) => setModelName(e.target.value)} placeholder="예: 25D-9A" className={inputClass} />
+              </div>
+              <div>
                 <label className={labelClass}>톤수</label>
-                <input value={equipmentTon} onChange={(e) => setEquipmentTon(e.target.value)} placeholder="예: 20톤" className={inputClass} />
+                <input value={equipmentTon} onChange={(e) => setEquipmentTon(e.target.value)} placeholder="예: 2.5톤" className={inputClass} />
               </div>
               <div>
                 <label className={labelClass}>엔진형식</label>
@@ -2395,6 +2408,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                       </div>
                       {[
                         { label: "할부금융사", value: r.finance_company ?? "-" },
+                        { label: "모델명",     value: r.model_name ?? "-" },
                         { label: "톤수",       value: r.equipment_ton ?? "-" },
                         { label: "엔진형식",   value: r.engine_type ?? "-" },
                         { label: "차량가격",   value: formatAmount(r.purchase_amount) },
@@ -2905,7 +2919,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               <div><label className={labelClass}>고객명 *</label><input value={editCustomerName} onChange={(e) => setEditCustomerName(e.target.value)} className={inputClass} disabled={editSaving} placeholder="홍길동" /></div>
               <div><label className={labelClass}>전화번호</label><input value={editCustomerPhone} onChange={(e) => setEditCustomerPhone(formatPhoneKR(e.target.value))} className={inputClass} disabled={editSaving} inputMode="tel" /></div>
               {editCustomerType === "법인" && <div><label className={labelClass}>대표자명</label><input value={editCeoName} onChange={(e) => setEditCeoName(e.target.value)} className={inputClass} disabled={editSaving} placeholder="홍길동" /></div>}
-              <div><label className={labelClass}>톤수</label><input value={editEquipmentTon} onChange={(e) => setEditEquipmentTon(e.target.value)} className={inputClass} disabled={editSaving} placeholder="예: 20톤" /></div>
+              <div><label className={labelClass}>모델명</label><input value={editModelName} onChange={(e) => setEditModelName(e.target.value)} className={inputClass} disabled={editSaving} placeholder="예: 25D-9A" /></div>
+              <div><label className={labelClass}>톤수</label><input value={editEquipmentTon} onChange={(e) => setEditEquipmentTon(e.target.value)} className={inputClass} disabled={editSaving} placeholder="예: 2.5톤" /></div>
               <div>
                 <label className={labelClass}>엔진형식</label>
                 <select value={editEngineType} onChange={(e) => setEditEngineType(e.target.value)} className={inputClass} disabled={editSaving}>
