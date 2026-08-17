@@ -139,6 +139,16 @@ function deriveTonFromModel(model: string): string | null {
   return `${(parseInt(m[1], 10) / 10).toFixed(1)}톤`;
 }
 
+// 톤수 두 자리 다음 문자로 엔진형식 자동 인식 (D=디젤, B-X=전동(리튬), B=전동(납산), R=좌승(납산))
+function deriveEngineTypeFromModel(model: string): string | null {
+  const code = (model ?? "").trim().replace(/^\d{2}/, "");
+  if (/^B-?X/i.test(code)) return "전동(리튬)";
+  if (/^B/i.test(code)) return "전동(납산)";
+  if (/^D/i.test(code)) return "디젤";
+  if (/^R/i.test(code)) return "좌승(납산)";
+  return null;
+}
+
 function formatPhoneKR(raw: string) {
   const d = onlyDigits(raw).slice(0, 11);
   if (d.length <= 3) return d;
@@ -2195,6 +2205,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                   setModelName(v);
                   const ton = deriveTonFromModel(v);
                   if (ton) setEquipmentTon(ton);
+                  const eng = deriveEngineTypeFromModel(v);
+                  if (eng) setEngineType(eng);
                 }} placeholder="예: 25D-9A" className={inputClass} />
               </div>
               <div>
@@ -2208,7 +2220,9 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                   <option value="디젤">디젤</option>
                   <option value="전동(납산)">전동(납산)</option>
                   <option value="전동(리튬)">전동(리튬)</option>
+                  <option value="좌승(납산)">좌승(납산)</option>
                 </select>
+                <p className="mt-1 text-xs text-gray-400">모델명의 D/B-X/B/R로 자동 인식됩니다 (직접 수정 가능)</p>
               </div>
               <div>
                 <label className={labelClass}>차량가격 (원)</label>
@@ -2937,6 +2951,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                 setEditModelName(v);
                 const ton = deriveTonFromModel(v);
                 if (ton) setEditEquipmentTon(ton);
+                const eng = deriveEngineTypeFromModel(v);
+                if (eng) setEditEngineType(eng);
               }} className={inputClass} disabled={editSaving} placeholder="예: 25D-9A" /></div>
               <div><label className={labelClass}>톤수</label><input value={editEquipmentTon} onChange={(e) => setEditEquipmentTon(e.target.value)} className={inputClass} disabled={editSaving} placeholder="예: 2.5톤" /></div>
               <div>
@@ -2945,6 +2961,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                   <option value="디젤">디젤</option>
                   <option value="전동(납산)">전동(납산)</option>
                   <option value="전동(리튬)">전동(리튬)</option>
+                  <option value="좌승(납산)">좌승(납산)</option>
                 </select>
               </div>
               <div><label className={labelClass}>차량가격 (원)</label><input value={editPurchaseAmount} onChange={(e) => setEditPurchaseAmount(onlyDigits(e.target.value))} className={inputClass} disabled={editSaving} inputMode="numeric" /></div>
