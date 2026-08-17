@@ -139,13 +139,13 @@ function deriveTonFromModel(model: string): string | null {
   return `${(parseInt(m[1], 10) / 10).toFixed(1)}톤`;
 }
 
-// 톤수 두 자리 다음 문자로 엔진형식 자동 인식 (D=디젤, B-X=전동(리튬), B=전동(납산), R=입승(납산))
+// 톤수 두 자리 다음 문자로 엔진형식 자동 인식 (D=디젤, B-X=전동(리튬), BR=입승(납산), B=전동(납산))
 function deriveEngineTypeFromModel(model: string): string | null {
   const code = (model ?? "").trim().replace(/^\d{2}/, "");
   if (/^B-?X/i.test(code)) return "전동(리튬)";
+  if (/^BR/i.test(code)) return "입승(납산)";
   if (/^B/i.test(code)) return "전동(납산)";
   if (/^D/i.test(code)) return "디젤";
-  if (/^R/i.test(code)) return "입승(납산)";
   return null;
 }
 
