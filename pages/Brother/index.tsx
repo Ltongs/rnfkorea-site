@@ -2225,7 +2225,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                 <p className="mt-1 text-xs text-gray-400">모델명의 D/B-X/B/R로 자동 인식됩니다 (직접 수정 가능)</p>
               </div>
               <div>
-                <label className={labelClass}>차량가격 (원)</label>
+                <label className={labelClass}>차량가격 (원, VAT불포함)</label>
                 <input
                   value={purchaseAmount ? Number(purchaseAmount).toLocaleString("ko-KR") : ""}
                   onChange={(e) => setPurchaseAmount(onlyDigits(e.target.value))}
@@ -2241,6 +2241,15 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                   placeholder="120,000,000" inputMode="numeric" className={inputClass}
                 />
                 {installmentPrincipal && <p className="mt-1 text-xs text-gray-400">{Number(installmentPrincipal).toLocaleString("ko-KR")}원</p>}
+              </div>
+              <div>
+                <label className={labelClass}>선수율</label>
+                <div className={inputClass + " flex items-center bg-gray-50 text-gray-600 font-medium"}>
+                  {purchaseAmount && installmentPrincipal
+                    ? `${((1 - Number(installmentPrincipal) / (Number(purchaseAmount) * 1.1)) * 100).toFixed(1)}%`
+                    : "-"}
+                </div>
+                <p className="mt-1 text-xs text-gray-400">1 - 할부원금/(차량가격×1.1)</p>
               </div>
               <div>
                 <label className={labelClass}>할부금융사</label>
@@ -2438,12 +2447,12 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                         { label: "모델명",     value: r.model_name ?? "-" },
                         { label: "톤수",       value: r.equipment_ton ?? "-" },
                         { label: "엔진형식",   value: r.engine_type ?? "-" },
-                        { label: "차량가격",   value: formatAmount(r.purchase_amount) },
+                        { label: "차량가격 (VAT불포함)", value: formatAmount(r.purchase_amount) },
                         { label: "대출한도",   value: formatAmount(r.loan_limit ?? r.installment_principal) },
                         { label: "선수율",     value: (() => {
                             const principal = r.loan_limit ?? r.installment_principal;
                             return (r.purchase_amount && principal != null)
-                              ? `${(((r.purchase_amount - principal) / r.purchase_amount) * 100).toFixed(1)}%`
+                              ? `${((1 - principal / (r.purchase_amount * 1.1)) * 100).toFixed(1)}%`
                               : "-";
                           })() },
                         { label: "금리",       value: r.interest_rate != null ? `${r.interest_rate}%` : "-" },
@@ -2964,8 +2973,16 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                   <option value="입승(납산)">입승(납산)</option>
                 </select>
               </div>
-              <div><label className={labelClass}>차량가격 (원)</label><input value={editPurchaseAmount} onChange={(e) => setEditPurchaseAmount(onlyDigits(e.target.value))} className={inputClass} disabled={editSaving} inputMode="numeric" /></div>
+              <div><label className={labelClass}>차량가격 (원, VAT불포함)</label><input value={editPurchaseAmount} onChange={(e) => setEditPurchaseAmount(onlyDigits(e.target.value))} className={inputClass} disabled={editSaving} inputMode="numeric" /></div>
               <div><label className={labelClass}>할부원금 (원)</label><input value={editInstallmentPrincipal} onChange={(e) => setEditInstallmentPrincipal(onlyDigits(e.target.value))} className={inputClass} disabled={editSaving} inputMode="numeric" /></div>
+              <div>
+                <label className={labelClass}>선수율</label>
+                <div className={inputClass + " flex items-center bg-gray-50 text-gray-600 font-medium"}>
+                  {editPurchaseAmount && editInstallmentPrincipal
+                    ? `${((1 - Number(editInstallmentPrincipal) / (Number(editPurchaseAmount) * 1.1)) * 100).toFixed(1)}%`
+                    : "-"}
+                </div>
+              </div>
               <div><label className={labelClass}>할부금융사</label><select value={editFinanceCompany} onChange={(e) => setEditFinanceCompany(e.target.value)} className={inputClass} disabled={editSaving}><option value="NH캐피탈">NH캐피탈</option><option value="오릭스캐피탈">오릭스캐피탈</option><option value="우리금융캐피탈">우리금융캐피탈</option></select></div>
               {/* 부가세 후불 + 금액 + 대출기간 + 영업사원 */}
               <div className="col-span-1 sm:col-span-2 md:col-span-3">
@@ -3877,7 +3894,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-gray-500">선수율</span>
                       <span className="text-sm font-semibold text-emerald-600">
-                        {(((purchaseDisplay - (r.loan_limit ?? r.installment_principal ?? 0)) / purchaseDisplay) * 100).toFixed(1)}%
+                        {((1 - (r.loan_limit ?? r.installment_principal ?? 0) / (purchaseDisplay * 1.1)) * 100).toFixed(1)}%
                       </span>
                     </div>
                   )}

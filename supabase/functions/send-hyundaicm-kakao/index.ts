@@ -1062,7 +1062,7 @@ function buildBrotherMessage(body: Record<string, string>): string {
     const purchase  = purchaseAmount       ? Number(purchaseAmount)       : null;
     const principal = installmentPrincipal ? Number(installmentPrincipal) : null;
     const downRate  = (purchase && principal)
-      ? `${(((purchase - principal) / purchase) * 100).toFixed(1)}%` : null;
+      ? `${((1 - principal / (purchase * 1.1)) * 100).toFixed(1)}%` : null;
     return [
       "[현대지게차 경기북부 할부 확정]", "",
       `번호: ${caseNo ?? "-"}`,
@@ -1666,7 +1666,7 @@ function buildBrotherVariables(body: Record<string, string>): { templateKey: str
     const purchase  = purchaseAmount       ? Number(purchaseAmount)       : null;
     const principal = installmentPrincipal ? Number(installmentPrincipal) : null;
     const downRate  = (purchase && principal)
-      ? `${(((purchase - principal) / purchase) * 100).toFixed(1)}%` : "-";
+      ? `${((1 - principal / (purchase * 1.1)) * 100).toFixed(1)}%` : "-";
     return {
       templateKey: "brother_confirmed",
       variables: {
