@@ -92,6 +92,7 @@ type HCMTask = {
   repayment_sent_channel?: "sms" | null;
   repayment_sent_to?: string | null;
   equipment_ton: string | null;        // 톤수
+  engine_type: string | null;          // 엔진형식: 디젤 / 전동(납산) / 전동(리튬)
   purchase_amount: number | null;      // 차량가격 (차량+어태치 합산)
   vehicle_amount: number | null;       // 차량가격 (순수 차량)
   attach_amount: number | null;        // 어태치 가격
@@ -306,6 +307,7 @@ export default function BrotherPage() {
   const [customerPhone,         setCustomerPhone]         = useState("");
   const [ceoName,                setCeoName]                = useState("");
   const [equipmentTon,          setEquipmentTon]          = useState("");
+  const [engineType,            setEngineType]            = useState<string>("디젤");
   const [purchaseAmount,        setPurchaseAmount]        = useState("");
   const [installmentPrincipal,  setInstallmentPrincipal]  = useState("");
   const [financeCompany,        setFinanceCompany]        = useState<string>("NH캐피탈");
@@ -419,6 +421,7 @@ export default function BrotherPage() {
   const [editCustomerPhone,         setEditCustomerPhone]         = useState("");
   const [editCeoName,               setEditCeoName]                = useState("");
   const [editEquipmentTon,          setEditEquipmentTon]          = useState("");
+  const [editEngineType,            setEditEngineType]            = useState<string>("디젤");
   const [editPurchaseAmount,        setEditPurchaseAmount]        = useState("");
   const [editInstallmentPrincipal,  setEditInstallmentPrincipal]  = useState("");
   const [editFinanceCompany,        setEditFinanceCompany]        = useState<string>("NH캐피탈");
@@ -1200,7 +1203,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
   // ─── 신규 접수 ───────────────────────────────────────────
   const onReset = () => {
     setCustomerType("개인"); setCustomerName(""); setCustomerPhone("");
-    setCeoName(""); setEquipmentTon(""); setPurchaseAmount("");
+    setCeoName(""); setEquipmentTon(""); setEngineType("디젤"); setPurchaseAmount("");
     setInstallmentPrincipal(""); setFinanceCompany("NH캐피탈");
     setInterestRate(""); setIncentive("");
     setVatDeferred("N"); setVatDeferredAmount("");
@@ -1229,6 +1232,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         company_name:            customerType === "법인" ? customerName.trim() : null,
         ceo_name:                customerType === "법인" ? (ceoName.trim() || null) : null,
         equipment_ton:           equipmentTon.trim() || null,
+        engine_type:             engineType || null,
         purchase_amount:         purchaseAmount.trim() ? parseInt(onlyDigits(purchaseAmount), 10) || null : null,
         installment_principal:   installmentPrincipal.trim() ? parseInt(onlyDigits(installmentPrincipal), 10) || null : null,
         finance_company:         financeCompany || null,
@@ -1542,6 +1546,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     setEditCustomerPhone(formatPhoneKR(row.customer_phone ?? ""));
     setEditCeoName(row.ceo_name ?? "");
     setEditEquipmentTon(row.equipment_ton ?? "");
+    setEditEngineType(row.engine_type ?? "디젤");
     setEditPurchaseAmount(row.purchase_amount != null ? String(row.purchase_amount) : "");
     setEditInstallmentPrincipal(row.installment_principal != null ? String(row.installment_principal) : "");
     setEditFinanceCompany(row.finance_company ?? "NH캐피탈");
@@ -1569,6 +1574,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         company_name:           editCustomerType === "법인" ? editCustomerName.trim() : null,
         ceo_name:               editCustomerType === "법인" ? (editCeoName.trim() || null) : null,
         equipment_ton:          editEquipmentTon.trim() || null,
+        engine_type:            editEngineType || null,
         purchase_amount:        editPurchaseAmount.trim() ? parseInt(onlyDigits(editPurchaseAmount), 10) || null : null,
         installment_principal:  editInstallmentPrincipal.trim() ? parseInt(onlyDigits(editInstallmentPrincipal), 10) || null : null,
         finance_company:        editFinanceCompany || null,
@@ -1604,6 +1610,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           changes.push({ label: "전화번호", before: editRow.customer_phone ?? "-", after: patch.customer_phone ?? "-" });
         if (patch.equipment_ton !== (editRow.equipment_ton ?? null))
           changes.push({ label: "톤수", before: editRow.equipment_ton ?? "-", after: patch.equipment_ton ?? "-" });
+        if (patch.engine_type !== (editRow.engine_type ?? null))
+          changes.push({ label: "엔진형식", before: editRow.engine_type ?? "-", after: patch.engine_type ?? "-" });
         if (patch.finance_company !== (editRow.finance_company ?? null))
           changes.push({ label: "금융사", before: editRow.finance_company ?? "-", after: patch.finance_company ?? "-" });
         if (patch.purchase_amount !== (editRow.purchase_amount ?? null))
@@ -2169,6 +2177,14 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                 <input value={equipmentTon} onChange={(e) => setEquipmentTon(e.target.value)} placeholder="예: 20톤" className={inputClass} />
               </div>
               <div>
+                <label className={labelClass}>엔진형식</label>
+                <select value={engineType} onChange={(e) => setEngineType(e.target.value)} className={inputClass}>
+                  <option value="디젤">디젤</option>
+                  <option value="전동(납산)">전동(납산)</option>
+                  <option value="전동(리튬)">전동(리튬)</option>
+                </select>
+              </div>
+              <div>
                 <label className={labelClass}>차량가격 (원)</label>
                 <input
                   value={purchaseAmount ? Number(purchaseAmount).toLocaleString("ko-KR") : ""}
@@ -2380,6 +2396,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                       {[
                         { label: "할부금융사", value: r.finance_company ?? "-" },
                         { label: "톤수",       value: r.equipment_ton ?? "-" },
+                        { label: "엔진형식",   value: r.engine_type ?? "-" },
                         { label: "차량가격",   value: formatAmount(r.purchase_amount) },
                         { label: "대출한도",   value: formatAmount(r.loan_limit ?? r.installment_principal) },
                         { label: "선수율",     value: (() => {
@@ -2889,6 +2906,14 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               <div><label className={labelClass}>전화번호</label><input value={editCustomerPhone} onChange={(e) => setEditCustomerPhone(formatPhoneKR(e.target.value))} className={inputClass} disabled={editSaving} inputMode="tel" /></div>
               {editCustomerType === "법인" && <div><label className={labelClass}>대표자명</label><input value={editCeoName} onChange={(e) => setEditCeoName(e.target.value)} className={inputClass} disabled={editSaving} placeholder="홍길동" /></div>}
               <div><label className={labelClass}>톤수</label><input value={editEquipmentTon} onChange={(e) => setEditEquipmentTon(e.target.value)} className={inputClass} disabled={editSaving} placeholder="예: 20톤" /></div>
+              <div>
+                <label className={labelClass}>엔진형식</label>
+                <select value={editEngineType} onChange={(e) => setEditEngineType(e.target.value)} className={inputClass} disabled={editSaving}>
+                  <option value="디젤">디젤</option>
+                  <option value="전동(납산)">전동(납산)</option>
+                  <option value="전동(리튬)">전동(리튬)</option>
+                </select>
+              </div>
               <div><label className={labelClass}>차량가격 (원)</label><input value={editPurchaseAmount} onChange={(e) => setEditPurchaseAmount(onlyDigits(e.target.value))} className={inputClass} disabled={editSaving} inputMode="numeric" /></div>
               <div><label className={labelClass}>할부원금 (원)</label><input value={editInstallmentPrincipal} onChange={(e) => setEditInstallmentPrincipal(onlyDigits(e.target.value))} className={inputClass} disabled={editSaving} inputMode="numeric" /></div>
               <div><label className={labelClass}>할부금융사</label><select value={editFinanceCompany} onChange={(e) => setEditFinanceCompany(e.target.value)} className={inputClass} disabled={editSaving}><option value="NH캐피탈">NH캐피탈</option><option value="오릭스캐피탈">오릭스캐피탈</option><option value="우리금융캐피탈">우리금융캐피탈</option></select></div>
