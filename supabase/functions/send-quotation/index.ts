@@ -87,6 +87,7 @@ serve(async (req) => {
       emailHtml = `<html><body style="font-family:Arial;max-width:600px;margin:auto;padding:20px;">
         <h2 style="color:#0a192f">${label} — ${quoteNo}</h2>
         <p><strong>${recipient}</strong> 귀중</p>
+        ${extraMessage ? `<p>${extraMessage}</p>` : ""}
         <table style="border-collapse:collapse;width:100%;margin:16px 0">
           <tr><td style="padding:8px;background:#f1f5f9">공급가액</td><td style="padding:8px;text-align:right">${fmt(totalAmount)}원</td></tr>
           <tr><td style="padding:8px;background:#f1f5f9">부가세</td><td style="padding:8px;text-align:right">${fmt(vatAmount)}원</td></tr>
@@ -95,7 +96,6 @@ serve(async (req) => {
             <td style="padding:8px;text-align:right;background:#0a192f;color:#f97316;font-weight:bold;font-size:16px">${fmt(grandTotal)}원</td>
           </tr>
         </table>
-        ${extraMessage ? `<p>${extraMessage}</p>` : ""}
         <p style="color:#94a3b8;font-size:11px">주식회사 알앤에프코리아 | 1551-1873</p>
       </body></html>`;
     }
