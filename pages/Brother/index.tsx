@@ -326,7 +326,7 @@ export default function BrotherPage() {
   const [ceoName,                setCeoName]                = useState("");
   const [modelName,             setModelName]             = useState("");
   const [equipmentTon,          setEquipmentTon]          = useState("");
-  const [engineType,            setEngineType]            = useState<string>("디젤");
+  const [engineType,            setEngineType]            = useState<string>("");
   const [purchaseAmount,        setPurchaseAmount]        = useState("");
   const [installmentPrincipal,  setInstallmentPrincipal]  = useState("");
   const [financeCompany,        setFinanceCompany]        = useState<string>("NH캐피탈");
@@ -441,7 +441,7 @@ export default function BrotherPage() {
   const [editCeoName,               setEditCeoName]                = useState("");
   const [editModelName,             setEditModelName]             = useState("");
   const [editEquipmentTon,          setEditEquipmentTon]          = useState("");
-  const [editEngineType,            setEditEngineType]            = useState<string>("디젤");
+  const [editEngineType,            setEditEngineType]            = useState<string>("");
   const [editPurchaseAmount,        setEditPurchaseAmount]        = useState("");
   const [editInstallmentPrincipal,  setEditInstallmentPrincipal]  = useState("");
   const [editFinanceCompany,        setEditFinanceCompany]        = useState<string>("NH캐피탈");
@@ -1224,7 +1224,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
   // ─── 신규 접수 ───────────────────────────────────────────
   const onReset = () => {
     setCustomerType("개인"); setCustomerName(""); setCustomerPhone("");
-    setCeoName(""); setModelName(""); setEquipmentTon(""); setEngineType("디젤"); setPurchaseAmount("");
+    setCeoName(""); setModelName(""); setEquipmentTon(""); setEngineType(""); setPurchaseAmount("");
     setInstallmentPrincipal(""); setFinanceCompany("NH캐피탈");
     setInterestRate(""); setIncentive("");
     setVatDeferred("N"); setVatDeferredAmount("");
@@ -1569,7 +1569,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     setEditCeoName(row.ceo_name ?? "");
     setEditModelName(row.model_name ?? "");
     setEditEquipmentTon(row.equipment_ton ?? "");
-    setEditEngineType(row.engine_type ?? "디젤");
+    setEditEngineType(row.engine_type ?? "");
     setEditPurchaseAmount(row.purchase_amount != null ? String(row.purchase_amount) : "");
     setEditInstallmentPrincipal(row.installment_principal != null ? String(row.installment_principal) : "");
     setEditFinanceCompany(row.finance_company ?? "NH캐피탈");
@@ -2211,18 +2211,13 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               </div>
               <div>
                 <label className={labelClass}>톤수</label>
-                <input value={equipmentTon} onChange={(e) => setEquipmentTon(e.target.value)} placeholder="예: 2.5톤" className={inputClass} />
-                <p className="mt-1 text-xs text-gray-400">모델명 앞 두 자리로 자동 인식됩니다 (직접 수정 가능)</p>
+                <div className={inputClass + " flex items-center bg-gray-50 text-gray-600 font-medium"}>{equipmentTon || "-"}</div>
+                <p className="mt-1 text-xs text-gray-400">모델명 앞 두 자리로 자동 인식됩니다 (직접 입력 불가)</p>
               </div>
               <div>
                 <label className={labelClass}>엔진형식</label>
-                <select value={engineType} onChange={(e) => setEngineType(e.target.value)} className={inputClass}>
-                  <option value="디젤">디젤</option>
-                  <option value="전동(납산)">전동(납산)</option>
-                  <option value="전동(리튬)">전동(리튬)</option>
-                  <option value="입승(납산)">입승(납산)</option>
-                </select>
-                <p className="mt-1 text-xs text-gray-400">모델명의 D/B-X/B/R로 자동 인식됩니다 (직접 수정 가능)</p>
+                <div className={inputClass + " flex items-center bg-gray-50 text-gray-600 font-medium"}>{engineType || "-"}</div>
+                <p className="mt-1 text-xs text-gray-400">모델명의 D/B-X/BR/B로 자동 인식됩니다 (직접 입력 불가)</p>
               </div>
               <div>
                 <label className={labelClass}>차량가격 (원, VAT불포함)</label>
@@ -2963,16 +2958,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                 const eng = deriveEngineTypeFromModel(v);
                 if (eng) setEditEngineType(eng);
               }} className={inputClass} disabled={editSaving} placeholder="예: 25D-9A" /></div>
-              <div><label className={labelClass}>톤수</label><input value={editEquipmentTon} onChange={(e) => setEditEquipmentTon(e.target.value)} className={inputClass} disabled={editSaving} placeholder="예: 2.5톤" /></div>
-              <div>
-                <label className={labelClass}>엔진형식</label>
-                <select value={editEngineType} onChange={(e) => setEditEngineType(e.target.value)} className={inputClass} disabled={editSaving}>
-                  <option value="디젤">디젤</option>
-                  <option value="전동(납산)">전동(납산)</option>
-                  <option value="전동(리튬)">전동(리튬)</option>
-                  <option value="입승(납산)">입승(납산)</option>
-                </select>
-              </div>
+              <div><label className={labelClass}>톤수</label><div className={inputClass + " flex items-center bg-gray-50 text-gray-600 font-medium"}>{editEquipmentTon || "-"}</div></div>
+              <div><label className={labelClass}>엔진형식</label><div className={inputClass + " flex items-center bg-gray-50 text-gray-600 font-medium"}>{editEngineType || "-"}</div></div>
               <div><label className={labelClass}>차량가격 (원, VAT불포함)</label><input value={editPurchaseAmount} onChange={(e) => setEditPurchaseAmount(onlyDigits(e.target.value))} className={inputClass} disabled={editSaving} inputMode="numeric" /></div>
               <div><label className={labelClass}>할부원금 (원)</label><input value={editInstallmentPrincipal} onChange={(e) => setEditInstallmentPrincipal(onlyDigits(e.target.value))} className={inputClass} disabled={editSaving} inputMode="numeric" /></div>
               <div>
