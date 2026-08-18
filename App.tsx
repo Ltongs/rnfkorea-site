@@ -1421,7 +1421,7 @@ const ProtectedRoute: React.FC<{
 };
 
 const AppRoutes = () => {
-  const { isAdmin, isSubAdmin, isInsAI, loading } = useAuth() as any;
+  const { user, isAdmin, isSubAdmin, isInsAI, loading } = useAuth() as any;
   const isAdminLevel = isAdmin || isSubAdmin;
   // ✅ useLocation은 early return(아래 loading 분기) 이전, 컴포넌트 최상단에서
   //    단 한 번만 호출한다. early return 뒤에서 호출하거나 본문 여러 곳에서
@@ -1443,12 +1443,14 @@ const AppRoutes = () => {
   // 곧바로 진입하므로 "/"로 들어올 일이 거의 없고, 들어오더라도 홈페이지를 보여주는 것이 맞음.
   // 즉 "/"에서 계정 기준 강제 리다이렉트는 하지 않는다 — 브라우저에서 admin이 전체 사이트를 볼 수 있어야 함.
   // 🚧 TEMP: 골프카트 LFP 배터리 프로모션 기간 동안 "/"를 골프카트 랜딩페이지로 임시 교체.
+  // 단, 로그인된 사용자(직원)는 광고성 랜딩페이지 대신 기존 홈페이지를 보도록 함.
   // 기존 홈페이지는 /home 에서 계속 볼 수 있음. 프로모션 종료 후 아래 줄을 <HomePage />로 되돌릴 것.
-  const rootElement = <GolfCartLfpPage />;
+  const rootElement = user ? <HomePage /> : <GolfCartLfpPage />;
 
   // 🚧 TEMP: 골프카트 랜딩페이지는 전역 헤더/푸터 없이 독립된 광고성 페이지로 노출.
+  // 로그인된 사용자는 "/"에서 HomePage를 보므로 일반 헤더/푸터를 유지한다.
   // 프로모션 종료 후 "/"를 HomePage로 되돌릴 때 아래 "/" 조건도 함께 제거할 것.
-  const isGolfCartLanding = pathname === "/" || pathname === "/golfcart-battery";
+  const isGolfCartLanding = pathname === "/golfcart-battery" || (pathname === "/" && !user);
 
   const hideHeader =
     isGolfCartLanding
