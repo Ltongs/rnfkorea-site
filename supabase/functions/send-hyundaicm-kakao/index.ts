@@ -26,7 +26,7 @@ function hcmRecipientsFor(body: Record<string, unknown>): string[] {
 }
 
 // 나르미 전용 수신자
-const NARUMI_RECIPIENTS_RAW = Deno.env.get("NARUMI_SMS_RECIPIENTS") ?? "01050549006,01020793025";
+const NARUMI_RECIPIENTS_RAW = Deno.env.get("NARUMI_SMS_RECIPIENTS") ?? "01050549006,01020793025,01046215989";
 const NARUMI_RECIPIENTS     = NARUMI_RECIPIENTS_RAW.split(",").map((n) => n.replace(/\D/g, ""));
 
 // ─── HCM 카카오 알림톡 설정 ──────────────────────────────────
@@ -83,8 +83,8 @@ const BROTHER_TEMPLATES: Record<string, string> = {
 
 const BROTHER_PAGE_URL = "https://rnfkorea.co.kr/brother";
 
-// 현대지게차 경기북부판매 수신자 — admin/ltongs7(동일 번호, 자동 중복제거)/김서정/강신규
-const BROTHER_RECIPIENTS_RAW = Deno.env.get("BROTHER_SMS_RECIPIENTS") ?? "01050549006,01090988189,01095250707";
+// 현대지게차 경기북부판매 수신자 — admin/ltongs7(동일 번호, 자동 중복제거)/김서정/강신규/010-3637-0928
+const BROTHER_RECIPIENTS_RAW = Deno.env.get("BROTHER_SMS_RECIPIENTS") ?? "01050549006,01090988189,01095250707,01036370928";
 const BROTHER_RECIPIENTS     = [...new Set(BROTHER_RECIPIENTS_RAW.split(",").map((n) => n.replace(/\D/g, "")))];
 
 // 담당 영업사원(김서정) 번호 — 딜에 "영업사원 알림 제외" 체크 시 이 번호만 제외하고 발송
