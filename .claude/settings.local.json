@@ -174,7 +174,9 @@
       "Bash(curl -s \"http://localhost:5173/pages/work/WithholdingPage.tsx\" -o /dev/null -w \"HTTP %{http_code}\\\\n\")",
       "Bash(timeout 115 npx tsc --noEmit -p tsconfig.json > /tmp/tsc_out.txt 2>&1; echo \"EXIT:$?\"; wc -l /tmp/tsc_out.txt)",
       "Bash(awk 'NR==959,NR==1156' supabase/functions/send-hyundaicm-kakao/index.ts)",
-      "Bash(echo \"exit:$?\")"
+      "Bash(echo \"exit:$?\")",
+      "Bash(crontab -l)",
+      "Read(//Users/tongsoolee/Library/LaunchAgents/**)"
     ]
   }
 }

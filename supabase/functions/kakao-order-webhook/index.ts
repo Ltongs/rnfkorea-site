@@ -6,6 +6,33 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
+// ── 업무시간(09~19시 KST) 외, 또는 주말/공휴일 판정 헬퍼 ──
+// 19시~익일 09시, 주말/공휴일에 발생한 알림톡은 즉시 보내지 않고 pending_kakao_queue에
+// channel:"jinheung_orders"로 쌓아두었다가, pg_cron이 매일 09:00 KST에 flush_queue로 재발송한다.
+const kstDateStr = (d: Date) => {
+  const k = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  return `${k.getUTCFullYear()}-${String(k.getUTCMonth() + 1).padStart(2, "0")}-${String(k.getUTCDate()).padStart(2, "0")}`;
+};
+const isWeekendKST = (d: Date) => {
+  const k = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  const day = k.getUTCDay(); // 0=일, 6=토
+  return day === 0 || day === 6;
+};
+const isHolidayKST = async (d: Date) => {
+  const { data } = await supabase.from("kr_holidays").select("holiday_date").eq("holiday_date", kstDateStr(d)).maybeSingle();
+  return !!data;
+};
+const isBusinessDay = async (d: Date) => !isWeekendKST(d) && !(await isHolidayKST(d));
+const isOffHoursKST = (d: Date) => {
+  const k = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  const hour = k.getUTCHours();
+  return hour >= 19 || hour < 9;
+};
+async function shouldQueueNow(): Promise<boolean> {
+  const now = new Date();
+  return isOffHoursKST(now) || !(await isBusinessDay(now));
+}
+
 // ─── 템플릿 ID 맵 ────────────────────────────────────────────
 const TEMPLATES: Record<string, string> = {
   order_received:      Deno.env.get("SOLAPI_TEMPLATE_ID_ORDER")      ?? "",
@@ -128,6 +155,58 @@ async function sendAlimtalk(
   return true;
 }
 
+const STATUS_TEMPLATE_MAP: Record<string, string> = {
+  forwarded:      "order_forwarded",
+  delivered:      "order_delivered",
+  wheel_returned: "order_wheel_returned",
+  invoiced:       "order_invoiced",
+  billed_in:      "order_billed_in",
+  payment_in:     "order_payment_in",
+  payment_out:    "order_payment_out",
+};
+
+// ── 단계 변경 알림톡 실제 발송 (flush_queue에서도 재사용) ──
+async function sendStatusChangeNow(body: Record<string, unknown>): Promise<void> {
+  const { status, customerName, productSpec, quantity, amount } = body as Record<string, string>;
+  const templateCode = STATUS_TEMPLATE_MAP[status];
+  if (!templateCode) return;
+  const jinheungPhone = Deno.env.get("JINHEUNG_PHONE")!;
+  const variables: Record<string, string> = {
+    "#{고객사}":   customerName || "확인필요",
+    "#{품목}":     productSpec  || "확인필요",
+    "#{수량}":     quantity     || "-",
+    "#{청구금액}": amount ? `${Number(amount).toLocaleString("ko-KR")}원` : "-",
+    "#{입금금액}": amount ? `${Number(amount).toLocaleString("ko-KR")}원` : "-",
+    "#{송금금액}": amount ? `${Number(amount).toLocaleString("ko-KR")}원` : "-",
+  };
+  await sendAlimtalk(jinheungPhone, templateCode, variables);
+}
+
+// ── 신규 주문 접수 알림톡 실제 발송 (flush_queue에서도 재사용) ──
+async function sendNewOrderNow(
+  orderId: string,
+  parsed: { customer_name: string | null; product_spec: string | null; quantity: number | null; confidence: string; notes: string | null },
+  rawMessage: string,
+): Promise<void> {
+  const jinheungPhone = Deno.env.get("JINHEUNG_PHONE")!;
+  const templateCode  = parsed.confidence === "high" ? "order_received" : "order_confirm_needed";
+  const variables: Record<string, string> = {
+    "#{고객사}":   parsed.customer_name || "확인필요",
+    "#{품목}":     parsed.product_spec  || "확인필요",
+    "#{수량}":     parsed.quantity?.toString() || "확인필요",
+    "#{요청사항}": parsed.notes || "-",
+    "#{파싱내용}": `${parsed.product_spec || ""} ${parsed.quantity || ""}개`.trim(),
+    "#{원문}":     rawMessage.slice(0, 50),
+  };
+  const alimtalkSent = await sendAlimtalk(jinheungPhone, templateCode, variables);
+  if (alimtalkSent) {
+    await supabase.from("tb_orders").update({
+      alimtalk_sent:    true,
+      alimtalk_sent_at: new Date().toISOString(),
+    }).eq("id", orderId);
+  }
+}
+
 // ─── 메인 핸들러 ─────────────────────────────────────────────
 serve(async (req) => {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
@@ -135,33 +214,52 @@ serve(async (req) => {
   try {
     const body = await req.json();
 
+    // ── flush_queue: pg_cron이 매일 09:00 KST에 호출 → 큐 일괄 발송 ──
+    // 오늘이 주말/공휴일이면 발송하지 않고 큐에 그대로 남겨둠(다음 영업일 09:00에 재시도).
+    if (body?.type === "flush_queue") {
+      if (!(await isBusinessDay(new Date()))) {
+        return new Response(
+          JSON.stringify({ flushed: 0, message: "오늘은 영업일이 아니라 다음 영업일 09:00에 발송됩니다." }),
+          { headers: { "Content-Type": "application/json" } }
+        );
+      }
+      const { data: items, error: qErr } = await supabase
+        .from("pending_kakao_queue")
+        .select("*")
+        .eq("payload->>channel", "jinheung_orders")
+        .order("created_at", { ascending: true });
+      if (qErr) throw new Error(`큐 조회 실패: ${qErr.message}`);
+
+      let flushed = 0;
+      for (const item of items ?? []) {
+        try {
+          const q = item.payload as Record<string, unknown>;
+          if (q.kind === "status_change") {
+            await sendStatusChangeNow(q);
+          } else if (q.kind === "new_order") {
+            await sendNewOrderNow(q.orderId as string, q.parsed as Parameters<typeof sendNewOrderNow>[1], q.rawMessage as string);
+          }
+          await supabase.from("pending_kakao_queue").delete().eq("id", item.id);
+          flushed++;
+        } catch (e) {
+          console.error(`[진흥 발주 큐 발송 실패] id=${item.id}:`, (e as Error).message);
+        }
+      }
+      return new Response(
+        JSON.stringify({ flushed, total: (items ?? []).length }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    }
+
     // ── 단계 변경 이벤트 (웹 페이지에서 직접 호출) ──
     if (body?.event === "status_change") {
-      const { orderId, status, customerName, productSpec, quantity, amount } = body;
-      const jinheungPhone = Deno.env.get("JINHEUNG_PHONE")!;
-      const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
-
-      const templateMap: Record<string, string> = {
-        forwarded:      "order_forwarded",
-        delivered:      "order_delivered",
-        wheel_returned: "order_wheel_returned",
-        invoiced:       "order_invoiced",
-        billed_in:      "order_billed_in",
-        payment_in:     "order_payment_in",
-        payment_out:    "order_payment_out",
-      };
-
-      const templateCode = templateMap[status];
-      if (templateCode) {
-        const variables: Record<string, string> = {
-          "#{고객사}":   customerName || "확인필요",
-          "#{품목}":     productSpec  || "확인필요",
-          "#{수량}":     quantity     || "-",
-          "#{청구금액}": amount ? `${Number(amount).toLocaleString("ko-KR")}원` : "-",
-          "#{입금금액}": amount ? `${Number(amount).toLocaleString("ko-KR")}원` : "-",
-          "#{송금금액}": amount ? `${Number(amount).toLocaleString("ko-KR")}원` : "-",
-        };
-        await sendAlimtalk(jinheungPhone, templateCode, variables);
+      if (STATUS_TEMPLATE_MAP[body.status]) {
+        if (await shouldQueueNow()) {
+          await supabase.from("pending_kakao_queue").insert({ payload: { channel: "jinheung_orders", kind: "status_change", ...body } });
+          console.log(`[진흥 발주 큐 저장] status=${body.status} → 다음 영업일 09:00 KST 발송 예정`);
+        } else {
+          await sendStatusChangeNow(body);
+        }
       }
 
       return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
@@ -212,25 +310,14 @@ serve(async (req) => {
       console.error("통합상담 미러 등록 실패(무시):", mirrorErr);
     }
 
-    // 3. 알림톡 발송
-    const jinheungPhone = Deno.env.get("JINHEUNG_PHONE")!;
-    const templateCode  = parsed.confidence === "high" ? "order_received" : "order_confirm_needed";
-    const variables: Record<string, string> = {
-      "#{고객사}":   parsed.customer_name || "확인필요",
-      "#{품목}":     parsed.product_spec  || "확인필요",
-      "#{수량}":     parsed.quantity?.toString() || "확인필요",
-      "#{요청사항}": parsed.notes || "-",
-      "#{파싱내용}": `${parsed.product_spec || ""} ${parsed.quantity || ""}개`.trim(),
-      "#{원문}":     rawMessage.slice(0, 50),
-    };
-
-    const alimtalkSent = await sendAlimtalk(jinheungPhone, templateCode, variables);
-
-    if (alimtalkSent) {
-      await supabase.from("tb_orders").update({
-        alimtalk_sent:    true,
-        alimtalk_sent_at: new Date().toISOString(),
-      }).eq("id", order.id);
+    // 3. 알림톡 발송 (19시~익일 09시, 주말/공휴일에는 큐에 저장 후 다음 영업일 09:00 KST 발송)
+    if (await shouldQueueNow()) {
+      await supabase.from("pending_kakao_queue").insert({
+        payload: { channel: "jinheung_orders", kind: "new_order", orderId: order.id, parsed, rawMessage },
+      });
+      console.log(`[진흥 발주 큐 저장] order=${order.id} → 다음 영업일 09:00 KST 발송 예정`);
+    } else {
+      await sendNewOrderNow(order.id, parsed, rawMessage);
     }
 
     // 4. 오픈빌더 응답

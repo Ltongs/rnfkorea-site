@@ -41,6 +41,22 @@ interface ForkliftForm extends SendInfo {
   installmentMonths:string;
   notes:string[];
 }
+interface HyundaiOption { name:string; price:string|number; } // price: 숫자 또는 '기본옵션'
+interface HyundaiForkliftForm extends SendInfo {
+  dealerRepName:string; dealerRepTitle:string;      // 담당자명 / 직급 (예: 이동수 / 과장)
+  dealerPhone:string; dealerTel:string; dealerFax:string;
+  modelName:string;   // 여러 줄 가능 (예: "25BR-X\n전동지게차\n(입승식)")
+  tonnage:string; qty:string|number; vehiclePrice:string|number;
+  options:HyundaiOption[];
+  freeNote:string;              // 옵션표 하단 강조 문구 (예: "#납산배터리 및 충전기 무상 지급")
+  discountAmount:string|number; // 할인금액
+  downPayment:string|number;    // 계약금
+  installmentRate:string; installmentPrincipal:string; // 할부원금(공란이면 최종판매가-계약금으로 자동계산)
+  registrationFeeEstimate:string|number; // 등록 예상 비용
+  deliveryNotes:string[];       // 3. 납기 및 특약사항
+  brotherOptions:string[];      // 4. 형제옵션(선택사항) — 선택된 항목명 목록
+  attachmentNote:string;        // "덧발(　　)" 빈칸에 채울 값
+}
 interface InstallmentForm extends SendInfo {
   companyName:string; itemName:string; itemSpec:string;
   carPrice:number|string; attachmentPrice:number|string;
@@ -131,6 +147,39 @@ const FF0: ForkliftForm = {
   ],
 };
 
+// 4x4 배치 그대로 유지 (한 칸은 원본 양식대로 공란)
+const BROTHER_OPTIONS_GRID: (string|null)[][] = [
+  ['덧발',            '썬루프',      '공구박스(조수석,운전석)', '후방,측면 안전레이저'],
+  ['콤프레샤(일반/고급)', 'LED라이트',   '흙받이(앞바퀴,뒤바퀴)',   '더블코인 ASSY(스페아)'],
+  ['음성감지기(일반/GPS)','보조발판',    '도난메인스위치',          '전방카메라'],
+  ['실내 신발보관대',    '보조 백미러', null,                     '선풍기'],
+];
+
+const HF0: HyundaiForkliftForm = {
+  ...SEND0,
+  recipient:'VIP',
+  dealerRepName:'이동수', dealerRepTitle:'과장',
+  dealerPhone:'010-5054-9006', dealerTel:'031-574-1400', dealerFax:'0303-3130-9981',
+  modelName:'25BR-X\n전동지게차\n(입승식)',
+  tonnage:'2.5톤', qty:1, vehiclePrice:32_400_000,
+  options:[
+    {name:'3스풀, 포크1050MM', price:'기본옵션'},
+    {name:'우레탄타이어',       price:'기본옵션'},
+    {name:'3단마스트(최대올림높이6500MM)', price:3_000_000},
+  ],
+  freeNote:'#납산배터리 및 충전기 무상 지급',
+  discountAmount:3_000_000, downPayment:'',
+  installmentRate:'', installmentPrincipal:'',
+  registrationFeeEstimate:'',
+  deliveryNotes:[
+    'A/S 보증기간 1년 또는 2000시간 선도래 적용',
+    '납기 : 계약후 60일 전, 후',
+    '할부 이율은 신용조회 후 확인 하실 수 있습니다.',
+    '등록이전비 별도 (전동차 2.2% 취득세 30일 자진신고 납부)',
+  ],
+  brotherOptions:[], attachmentNote:'',
+};
+
 const IF0: InstallmentForm = {
   ...SEND0,
   companyName:'', itemName:'CPD25-A7LIH4-S (전동지게차)', itemSpec:'3.0톤',
@@ -164,6 +213,30 @@ const NumInput = ({value, onChange, className='', ...rest}: {value:string|number
 };
 const calcTotal = (items:Item[]) =>
   items.reduce((s,it)=>{ if(!it.price||it.price==='포함') return s; return s+n0(it.price)*(n0(it.qty)||1); },0);
+
+// ─── 현대건설기계 경기북부판매 지게차 견적서 계산 ──────────────
+const calcHyundaiOptionSum = (options:HyundaiOption[]) =>
+  options.reduce((s,o)=> s + (o.price==='기본옵션'||o.price===''?0:n0(o.price)), 0);
+// 최종판매가(부가세 별도) = 차량가격 + 옵션합계 - 할인금액
+const calcHyundaiFinal = (hf:HyundaiForkliftForm) =>
+  Math.max(0, n0(hf.vehiclePrice) + calcHyundaiOptionSum(hf.options) - n0(hf.discountAmount));
+// 이력 저장·SMS 캡처용 — 차량 1행 + 옵션 행들을 공용 Item[] 형태로 변환
+const hyundaiFormItems = (hf:HyundaiForkliftForm): Item[] => [
+  { name: hf.modelName.replace(/\n/g,' '), spec: hf.tonnage, qty: hf.qty, price: hf.vehiclePrice },
+  ...hf.options.map(o => ({ name:o.name, spec:'', qty:'', price:o.price })),
+];
+const KO_DOW = ['일','월','화','수','목','금','토'];
+const formatKoDate = (dateStr:string) => {
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 ${KO_DOW[d.getDay()]}요일`;
+};
+const addDays = (dateStr:string, days:number) => {
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  d.setDate(d.getDate()+days);
+  return d.toISOString().slice(0,10);
+};
 
 function pmt(p:number, rate:number, months:number) {
   const r = rate/100/12;
@@ -744,8 +817,122 @@ ${form.note?`<div style="background:#f8fafc;border-radius:6px;padding:10px;margi
 </body></html>`;
 }
 
+// ─── PDF HTML: 현대건설기계 경기북부판매 지게차 구입 견적서 ────
+// (RNF 자체 발신 견적서와 달리, 딜러사 명의로 발행하는 별도 양식)
+function buildHyundaiForkliftHTML(hf: HyundaiForkliftForm, quoteNo: string) {
+  const optSum        = calcHyundaiOptionSum(hf.options);
+  const beforeDiscount = n0(hf.vehiclePrice) + optSum;
+  const finalPrice     = calcHyundaiFinal(hf);       // 최종판매가 (부가세 별도)
+  const vat            = Math.round(finalPrice * .1);
+  const totalWithVat   = finalPrice + vat;            // 총판매가격 (부가세포함)
+  const downPayment    = n0(hf.downPayment);
+  const deliveryAmount = totalWithVat - downPayment;   // 인도금
+  const rate           = n0(hf.installmentRate);
+  const principal       = n0(hf.installmentPrincipal) || (finalPrice - downPayment);
+  const validUntil     = addDays(hf.quoteDate, 30);
+  const rows           = hf.options.length ? hf.options : [{name:'',price:''}];
+  const rowspan        = rows.length;
+
+  const optionRows = rows.map((o,i)=>`
+    <tr>
+      ${i===0?`
+      <td rowspan="${rowspan}" style="border:1px solid #333;padding:8px;text-align:center;white-space:pre-line;font-weight:700">${(hf.modelName||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')}</td>
+      <td rowspan="${rowspan}" style="border:1px solid #333;padding:8px;text-align:center">${hf.tonnage||''}</td>
+      <td rowspan="${rowspan}" style="border:1px solid #333;padding:8px;text-align:center">${hf.qty||''}</td>
+      <td rowspan="${rowspan}" style="border:1px solid #333;padding:8px;text-align:right">${fmt(n0(hf.vehiclePrice))}</td>`:''}
+      <td style="border:1px solid #333;padding:6px 8px">${o.name?`${i+1}. ${o.name}`:''}</td>
+      <td style="border:1px solid #333;padding:6px 8px;text-align:right">${o.price==='기본옵션'?'기본옵션':o.price?fmt(n0(o.price)):''}</td>
+    </tr>`).join('');
+
+  const brotherGrid = BROTHER_OPTIONS_GRID.map(row => row.map(opt=>{
+    if(opt===null) return `<div></div>`;
+    const checked = hf.brotherOptions.includes(opt);
+    const label = opt==='덧발' ? `덧발(${hf.attachmentNote?hf.attachmentNote:'　　'})` : opt;
+    return `<div style="font-size:10.5px;padding:3px 0">${checked?'●':'○'} ${label}</div>`;
+  }).join('')).join('');
+
+  return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
+<title>지게차 구입 견적서 ${quoteNo}</title>
+<style>
+  @page{size:A4;margin:15mm 14mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}
+  *{box-sizing:border-box;}
+  body{font-family:'맑은 고딕','Malgun Gothic',sans-serif;font-size:12px;color:#1a1a1a;margin:0;background:#e5e7eb;}
+  table{border-collapse:collapse;width:100%;}
+  .doc{max-width:794px;margin:0 auto;background:#fff;padding:24px 28px;}
+</style></head><body>
+<div class="doc">
+  <div style="text-align:center;font-size:24px;font-weight:800;letter-spacing:2px;margin-bottom:14px">지게차 구입 견적서</div>
+
+  <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+    <div style="text-align:right;font-size:11px;line-height:1.6">
+      <div style="font-size:13px;font-weight:700">현대건설기계 경기북부판매㈜</div>
+      <div style="font-weight:700">${hf.dealerRepName} ${hf.dealerRepTitle}(${hf.dealerPhone})</div>
+      <div>T:${hf.dealerTel}, F:${hf.dealerFax}</div>
+      <div>견적제출일자 : ${formatKoDate(hf.quoteDate)}</div>
+      <div>견적유효일자 : ${formatKoDate(validUntil)}</div>
+    </div>
+  </div>
+
+  <div style="border-bottom:2px solid #1a1a1a;padding-bottom:8px;margin-bottom:6px;font-size:17px;font-weight:800">
+    ${hf.recipient || 'VIP'} 대표님 귀중
+  </div>
+  <div style="font-size:11px;color:#333;margin-bottom:4px">귀사의 무궁한 발전을 기원합니다.</div>
+  <div style="font-size:11px;color:#333;margin-bottom:10px">요청하신 <strong>${(hf.modelName||'').replace(/\n/g,' ')}</strong> 구입 견적서를 아래와 같이 제출합니다.</div>
+  <div style="text-align:center;font-weight:700;margin-bottom:14px">- 아 래 -</div>
+
+  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+    <div style="font-weight:700;font-size:13px">1. 가격조건</div>
+    <div style="font-size:10px;color:#555">[단위:원]</div>
+  </div>
+  <table style="margin-bottom:16px;font-size:11px">
+    <thead><tr style="background:#f1f5f9">
+      ${['모델명','톤수','수량','차량가격','옵션','옵션가격'].map(h=>`<th style="border:1px solid #333;padding:6px;font-weight:700">${h}</th>`).join('')}
+    </tr></thead>
+    <tbody>
+      ${optionRows}
+      ${hf.freeNote?`<tr><td colspan="6" style="border:1px solid #333;padding:6px 8px;text-align:center;color:#1d4ed8;font-weight:700">${hf.freeNote}</td></tr>`:''}
+      <tr><td colspan="4" style="border:1px solid #333"></td><td style="border:1px solid #333;padding:6px 8px;font-weight:700;background:#f8fafc">옵션합계</td><td style="border:1px solid #333;padding:6px 8px;text-align:right;font-weight:700;background:#f8fafc">${fmt(optSum)}</td></tr>
+      <tr><td colspan="4" rowspan="3" style="border:1px solid #333"></td><td style="border:1px solid #333;padding:8px;text-align:center;font-weight:700">총　합　계</td><td style="border:1px solid #333;padding:8px;text-align:right;font-weight:700">${fmt(beforeDiscount)}</td></tr>
+      <tr><td style="border:1px solid #333;padding:8px;text-align:center;font-weight:700">할　인　금　액</td><td style="border:1px solid #333;padding:8px;text-align:right;font-weight:700">${fmt(n0(hf.discountAmount))}</td></tr>
+      <tr style="background:#fde047"><td style="border:1px solid #333;padding:9px;text-align:center;font-weight:800">최종 판매가(부가세 별도)</td><td style="border:1px solid #333;padding:9px;text-align:right;font-weight:800;font-size:13px">${fmt(finalPrice)}</td></tr>
+    </tbody>
+  </table>
+
+  <div style="font-weight:700;font-size:13px;margin-bottom:6px">2. 결제조건</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;margin-bottom:16px;font-size:11px">
+    <table>
+      <tbody>
+        <tr><td style="border:1px solid #333;padding:6px 8px;background:#f8fafc;font-weight:700;width:45%">판매가</td><td style="border:1px solid #333;padding:6px 8px;text-align:right">${fmt(finalPrice)}</td></tr>
+        <tr><td style="border:1px solid #333;padding:6px 8px;background:#f8fafc;font-weight:700">부가세</td><td style="border:1px solid #333;padding:6px 8px;text-align:right">${fmt(vat)}</td></tr>
+        <tr><td style="border:1px solid #333;padding:6px 8px;background:#f8fafc;font-weight:700">총판매가격(부가세포함)</td><td style="border:1px solid #333;padding:6px 8px;text-align:right">${fmt(totalWithVat)}</td></tr>
+        <tr><td style="border:1px solid #333;padding:6px 8px;background:#f8fafc;font-weight:700">계약금</td><td style="border:1px solid #333;padding:6px 8px;text-align:right">${downPayment?fmt(downPayment):'-'}</td></tr>
+        <tr><td style="border:1px solid #333;padding:6px 8px;background:#f8fafc;font-weight:700">인도금</td><td style="border:1px solid #333;padding:6px 8px;text-align:right">${downPayment?fmt(deliveryAmount):'-'}</td></tr>
+      </tbody>
+    </table>
+    <table>
+      <tbody>
+        <tr><td colspan="2" style="border:1px solid #333;padding:6px 8px;background:#f8fafc;font-weight:700;text-align:center">할부원금${rate?` (연 ${rate}%)`:''}</td></tr>
+        ${[36,48,60].map(m=>`<tr><td style="border:1px solid #333;padding:6px 8px">${m}개월</td><td style="border:1px solid #333;padding:6px 8px;text-align:right">${rate&&principal?fmt(pmt(principal,rate,m)):''}</td></tr>`).join('')}
+        <tr><td style="border:1px solid #333;padding:6px 8px;background:#f8fafc;font-weight:700">등록 예상 비용</td><td style="border:1px solid #333;padding:6px 8px;text-align:right">${hf.registrationFeeEstimate?fmt(n0(hf.registrationFeeEstimate)):'-'}</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="font-weight:700;font-size:13px;margin-bottom:6px">3. 납기 및 특약사항</div>
+  <div style="margin-bottom:16px;font-size:11px;line-height:1.7">
+    ${hf.deliveryNotes.map((n,i)=>`<div>${i+1}. ${n}</div>`).join('')}
+  </div>
+
+  <div style="font-weight:700;font-size:13px;margin-bottom:6px">4. 형제옵션(선택사항)</div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:2px 8px;border:1px solid #cbd5e1;border-radius:4px;padding:8px 12px">
+    ${brotherGrid}
+  </div>
+</div>
+</body></html>`;
+}
+
 // ─── 메인 페이지 ────────────────────────────────────────────
-type TabType = 'battery'|'forklift'|'tire'|'installment'|'purchase'|'history';
+type TabType = 'battery'|'forklift'|'hyundaiForklift'|'tire'|'installment'|'purchase'|'history';
 
 export default function QuotationPage() {
   const navigate = useNavigate();
@@ -754,11 +941,12 @@ export default function QuotationPage() {
   // 탭 전환 시 발송정보(recipient/email/phone/extraMsg) 를 다음 탭으로 유지
   const sendInfoKeys = ['recipient','email1','email2','phone1','phone2','extraMsg'] as const;
   function switchTab(newTab: TabType) {
-    const src: any = tab==='battery'?bf : tab==='forklift'?ff : tab==='tire'?tf : tab==='installment'?iff : pf;
+    const src: any = tab==='battery'?bf : tab==='forklift'?ff : tab==='hyundaiForklift'?hf : tab==='tire'?tf : tab==='installment'?iff : pf;
     const si: any  = {};
     sendInfoKeys.forEach(k => { si[k] = src[k] ?? ''; });
     setBf(f  => ({...f,  ...si}));
     setFf(f  => ({...f,  ...si}));
+    setHf(f  => ({...f,  ...si}));
     setTf(f  => ({...f,  ...si}));
     setIff(f => ({...f,  ...si}));
     setPf(f  => ({...f,  ...si}));
@@ -770,7 +958,7 @@ export default function QuotationPage() {
   const [consultationId, setConsultationId] = useState<number|null>(null);
   useEffect(() => {
     const t = searchParams.get('type') as TabType;
-    if(t && ['battery','forklift','tire','installment','purchase','history'].includes(t)) setTab(t);
+    if(t && ['battery','forklift','hyundaiForklift','tire','installment','purchase','history'].includes(t)) setTab(t);
 
     const cid = searchParams.get('consultationId');
     if (cid && !isNaN(Number(cid))) setConsultationId(Number(cid));
@@ -783,6 +971,7 @@ export default function QuotationPage() {
       if (phone) si.phone1 = phone;
       setBf(f => ({...f, ...si}));
       setFf(f => ({...f, ...si}));
+      setHf(f => ({...f, ...si}));
       setTf(f => ({...f, ...si}));
       setIff(f => ({...f, ...si}));
     }
@@ -790,6 +979,7 @@ export default function QuotationPage() {
 
   const [bf, setBf]   = useState<BatteryForm>(BF0);
   const [ff, setFf]   = useState<ForkliftForm>(FF0);
+  const [hf, setHf]   = useState<HyundaiForkliftForm>(HF0);
   const [tf, setTf]   = useState<TireForm>(TF0);
   const [iff, setIff] = useState<InstallmentForm>(IF0);
   const [pf, setPf]   = useState<PurchaseForm>(PF0);
@@ -831,6 +1021,20 @@ export default function QuotationPage() {
         notes: row.notes?.length ? row.notes : prev.notes,
       }));
       setTab('forklift');
+    } else if ((type as any) === 'hyundai_forklift') {
+      // 딜러 견적 특성상 할인·계약금·할부조건은 매 건 새로 협의되므로, 모델/옵션/수신정보만 복원하고
+      // 나머지 조건 필드는 기본값으로 남겨 다시 입력하도록 한다.
+      const items = row.items ?? [];
+      setHf(prev => ({
+        ...prev, ...baseInfo,
+        modelName:    items[0]?.name || prev.modelName,
+        tonnage:      items[0]?.spec || prev.tonnage,
+        qty:          items[0]?.qty ?? prev.qty,
+        vehiclePrice: items[0]?.price ?? prev.vehiclePrice,
+        options:      items.slice(1).length ? items.slice(1).map(it=>({name:it.name,price:it.price})) : prev.options,
+        deliveryNotes: row.notes?.length ? row.notes : prev.deliveryNotes,
+      }));
+      setTab('hyundaiForklift');
     } else if (type === 'tire') {
       setTf(prev => ({
         ...prev, ...baseInfo,
@@ -876,6 +1080,7 @@ export default function QuotationPage() {
     const no = '(발송 시 채번)'; // 미리보기는 실제 문서가 아니므로 번호를 소모하지 않는다
     if(tab==='battery')      html = buildQuoteHTML('battery',  bf, no);
     else if(tab==='forklift')html = buildQuoteHTML('forklift', ff, no);
+    else if(tab==='hyundaiForklift') html = buildHyundaiForkliftHTML(hf, no);
     else if(tab==='tire')    html = buildQuoteHTML('tire',     tf, no);
     else if(tab==='purchase')html = buildPurchaseHTML(pf, no);
     else if(tab==='installment') {
@@ -929,6 +1134,7 @@ export default function QuotationPage() {
 
   const bTotal = calcTotal(bf.items);
   const fTotal = calcTotal(ff.items);
+  const hTotal = calcHyundaiFinal(hf); // 최종판매가 (부가세 별도) — 다른 탭의 "공급가액"에 대응
   const tTotal = calcTotal(tf.items);
   const pTotal = calcTotal(pf.items);
 
@@ -1020,13 +1226,13 @@ export default function QuotationPage() {
 
   // ── 현재 폼 정보 추출
   const currentSend = (): SendInfo =>
-    tab==='battery'?bf:tab==='forklift'?ff:tab==='tire'?tf:tab==='installment'?iff:pf;
+    tab==='battery'?bf:tab==='forklift'?ff:tab==='hyundaiForklift'?hf:tab==='tire'?tf:tab==='installment'?iff:pf;
 
   const currentQuoteType = () =>
-    tab==='purchase'?'purchase':tab;
+    tab==='purchase'?'purchase':tab==='hyundaiForklift'?'hyundai_forklift':tab;
 
   // ── PDF 다운로드
-  const typeLabelOf = (t:TabType) => t==='battery'?'배터리':t==='forklift'?'지게차':t==='tire'?'타이어':t==='purchase'?'발주서':'견적서';
+  const typeLabelOf = (t:TabType) => t==='battery'?'배터리':t==='forklift'?'지게차':t==='hyundaiForklift'?'지게차(현대판매)':t==='tire'?'타이어':t==='purchase'?'발주서':'견적서';
 
   const handlePrint = async () => {
     const s = currentSend();
@@ -1037,17 +1243,18 @@ export default function QuotationPage() {
       let html = '';
       if(tab==='battery')  html = buildQuoteHTML('battery',  bf, no);
       if(tab==='forklift') html = buildQuoteHTML('forklift', ff, no);
+      if(tab==='hyundaiForklift') html = buildHyundaiForkliftHTML(hf, no);
       if(tab==='tire')     html = buildQuoteHTML('tire',     tf, no);
       if(tab==='purchase') html = buildPurchaseHTML(pf, no);
       if(html) {
         // 히스토리 저장
-        const total = tab==='battery'?bTotal:tab==='forklift'?fTotal:tab==='tire'?tTotal:pTotal;
+        const total = tab==='battery'?bTotal:tab==='forklift'?fTotal:tab==='hyundaiForklift'?hTotal:tab==='tire'?tTotal:pTotal;
         const vat   = Math.round(total*.1);
         supabase.from('tb_quotations').insert({
           quote_type: currentQuoteType(), quote_no: no,
           quote_date: s.quoteDate, recipient: s.recipient,
-          recipient_email: s.email1, items: tab==='battery'?bf.items:tab==='forklift'?ff.items:tab==='tire'?tf.items:pf.items,
-          notes: tab==='battery'?bf.notes:tab==='forklift'?ff.notes:tab==='tire'?tf.notes:null,
+          recipient_email: s.email1, items: tab==='battery'?bf.items:tab==='forklift'?ff.items:tab==='hyundaiForklift'?hyundaiFormItems(hf):tab==='tire'?tf.items:pf.items,
+          notes: tab==='battery'?bf.notes:tab==='forklift'?ff.notes:tab==='hyundaiForklift'?hf.deliveryNotes:tab==='tire'?tf.notes:null,
           total_amount: total, vat_amount: vat, grand_total: total+vat,
           created_by:'admin@rnfkorea.co.kr',
         }).then(({error})=>{ if(error) console.error('[이력저장오류]', error.message, error.details); });
@@ -1159,11 +1366,11 @@ export default function QuotationPage() {
     setEmailLoading(true);
     try {
       const no    = await genNo();
-      const total = tab==='battery'?bTotal:tab==='forklift'?fTotal:tab==='tire'?tTotal:pTotal;
+      const total = tab==='battery'?bTotal:tab==='forklift'?fTotal:tab==='hyundaiForklift'?hTotal:tab==='tire'?tTotal:pTotal;
       const vat   = Math.round(total*.1);
       const grand = total+vat;
-      const items = tab==='battery'?bf.items:tab==='forklift'?ff.items:tab==='tire'?tf.items:pf.items;
-      const notes = tab==='battery'?bf.notes:tab==='forklift'?ff.notes:tab==='tire'?tf.notes:null;
+      const items = tab==='battery'?bf.items:tab==='forklift'?ff.items:tab==='hyundaiForklift'?hyundaiFormItems(hf):tab==='tire'?tf.items:pf.items;
+      const notes = tab==='battery'?bf.notes:tab==='forklift'?ff.notes:tab==='hyundaiForklift'?hf.deliveryNotes:tab==='tire'?tf.notes:null;
 
       // DB 저장 — 실패해도 발송 자체는 계속 진행하되, 이력 누락을 사용자에게 알린다
       const { error: insertErr } = await supabase.from('tb_quotations').insert({
@@ -1179,6 +1386,7 @@ export default function QuotationPage() {
       let html='';
       if(tab==='battery')  html=buildQuoteHTML('battery', bf, no);
       if(tab==='forklift') html=buildQuoteHTML('forklift',ff, no);
+      if(tab==='hyundaiForklift') html=buildHyundaiForkliftHTML(hf, no);
       if(tab==='tire')     html=buildQuoteHTML('tire',    tf, no);
       if(tab==='purchase') html=buildPurchaseHTML(pf, no);
       const pdfBytes = html ? await htmlDocToPdfBytes(html) : null;
@@ -1208,7 +1416,7 @@ export default function QuotationPage() {
 
       if (tab !== 'purchase') {
         void registerConsultationFromQuote({
-          workType: tab==='battery'?'battery_sales':tab==='forklift'?'forklift_sales':'tire_sales',
+          workType: tab==='battery'?'battery_sales':(tab==='forklift'||tab==='hyundaiForklift')?'forklift_sales':'tire_sales',
           customerName: s.recipient,
           phone: s.phone1 || s.phone2,
           quoteNo: no,
@@ -1245,6 +1453,7 @@ export default function QuotationPage() {
         smsQuoteNo = no2;
         const htmlStr = tab==='battery' ? buildQuoteHTML('battery', bf, no2)
           : tab==='forklift' ? buildQuoteHTML('forklift', ff, no2)
+          : tab==='hyundaiForklift' ? buildHyundaiForkliftHTML(hf, no2)
           : tab==='tire' ? buildQuoteHTML('tire', tf, no2)
           : buildPurchaseHTML(pf, no2);
         const bodyMatch = htmlStr.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
@@ -1297,11 +1506,11 @@ export default function QuotationPage() {
 
       // DB 저장 — 이메일 발송과 동일하게 SMS/MMS 발송도 이력에 남긴다.
       if (smsQuoteNo) {
-        const smsTotal = tab==='battery'?bTotal:tab==='forklift'?fTotal:tab==='tire'?tTotal:tab==='installment'?n0(iff.principal):pTotal;
+        const smsTotal = tab==='battery'?bTotal:tab==='forklift'?fTotal:tab==='hyundaiForklift'?hTotal:tab==='tire'?tTotal:tab==='installment'?n0(iff.principal):pTotal;
         const smsVat   = tab==='installment'?0:Math.round(smsTotal*.1);
-        const smsItems = tab==='battery'?bf.items:tab==='forklift'?ff.items:tab==='tire'?tf.items
+        const smsItems = tab==='battery'?bf.items:tab==='forklift'?ff.items:tab==='hyundaiForklift'?hyundaiFormItems(hf):tab==='tire'?tf.items
           :tab==='installment'?[{name:iff.itemName,spec:iff.itemSpec,qty:1,price:n0(iff.carPrice)||n0(iff.principal)}]:pf.items;
-        const smsNotes = tab==='battery'?bf.notes:tab==='forklift'?ff.notes:tab==='tire'?tf.notes:null;
+        const smsNotes = tab==='battery'?bf.notes:tab==='forklift'?ff.notes:tab==='hyundaiForklift'?hf.deliveryNotes:tab==='tire'?tf.notes:null;
         const { error: smsInsertErr } = await supabase.from('tb_quotations').insert({
           quote_type: currentQuoteType(), quote_no: smsQuoteNo,
           quote_date: tab==='installment'?iff.quoteDate:s.quoteDate,
@@ -1315,11 +1524,11 @@ export default function QuotationPage() {
 
       if (tab !== 'purchase') {
         void registerConsultationFromQuote({
-          workType: tab==='battery'?'battery_sales':tab==='forklift'?'forklift_sales':tab==='tire'?'tire_sales':'finance',
+          workType: tab==='battery'?'battery_sales':(tab==='forklift'||tab==='hyundaiForklift')?'forklift_sales':tab==='tire'?'tire_sales':'finance',
           customerName: s.recipient,
           phone: phones[0],
           quoteNo: smsQuoteNo || `MMS-${Date.now()}`,
-          items: tab==='battery'?bf.items:tab==='forklift'?ff.items:tab==='tire'?tf.items:tab==='installment'?[{name:iff.itemName,spec:iff.itemSpec,qty:1,price:iff.carPrice}]:undefined,
+          items: tab==='battery'?bf.items:tab==='forklift'?ff.items:tab==='hyundaiForklift'?hyundaiFormItems(hf):tab==='tire'?tf.items:tab==='installment'?[{name:iff.itemName,spec:iff.itemSpec,qty:1,price:iff.carPrice}]:undefined,
           consultationId,
         });
       }
@@ -1462,8 +1671,13 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
   const updF=(i:number,k:keyof Item,v:any)=>setFf(f=>{const items=[...f.items];items[i]={...items[i],[k]:v};return{...f,items};});
   const updT=(i:number,k:keyof Item,v:any)=>setTf(f=>{const items=[...f.items];items[i]={...items[i],[k]:v};return{...f,items};});
   const updP=(i:number,k:keyof Item,v:any)=>setPf(f=>{const items=[...f.items];items[i]={...items[i],[k]:v};return{...f,items};});
+  const updHfOpt=(i:number,k:keyof HyundaiOption,v:any)=>setHf(f=>{const options=[...f.options];options[i]={...options[i],[k]:v};return{...f,options};});
+  const toggleBrotherOption=(name:string)=>setHf(f=>({
+    ...f,
+    brotherOptions: f.brotherOptions.includes(name) ? f.brotherOptions.filter(o=>o!==name) : [...f.brotherOptions, name],
+  }));
 
-  const TABS:[TabType,string][] = [['battery','🔋 배터리'],['forklift','🚜 지게차'],['tire','🛞 타이어'],['installment','💳 할부'],['purchase','📝 발주서'],['history','📋 이력']];
+  const TABS:[TabType,string][] = [['battery','🔋 배터리'],['forklift','🚜 지게차'],['hyundaiForklift','🚜 지게차(현대판매)'],['tire','🛞 타이어'],['installment','💳 할부'],['purchase','📝 발주서'],['history','📋 이력']];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1656,6 +1870,122 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
           </div>
         </>}
 
+        {/* ══ 지게차(현대판매) 탭 — 현대건설기계 경기북부판매㈜ 명의 견적서 ══ */}
+        {tab==='hyundaiForklift' && <>
+          <SendInfoForm v={hf} onSendChange={updSend(setHf)} emailSuggestions={emailSuggestions}/>
+          <div className="bg-white rounded-lg border p-5">
+            <h2 className="font-semibold text-gray-800 mb-3 text-sm">담당자 정보</h2>
+            <div className="grid grid-cols-5 gap-3">
+              <div><Label>담당자명</Label><Input value={hf.dealerRepName} onChange={e=>setHf(f=>({...f,dealerRepName:e.target.value}))}/></div>
+              <div><Label>직급</Label><Input value={hf.dealerRepTitle} onChange={e=>setHf(f=>({...f,dealerRepTitle:e.target.value}))}/></div>
+              <div><Label>휴대폰</Label><Input value={hf.dealerPhone} onChange={e=>setHf(f=>({...f,dealerPhone:e.target.value}))}/></div>
+              <div><Label>전화(T)</Label><Input value={hf.dealerTel} onChange={e=>setHf(f=>({...f,dealerTel:e.target.value}))}/></div>
+              <div><Label>팩스(F)</Label><Input value={hf.dealerFax} onChange={e=>setHf(f=>({...f,dealerFax:e.target.value}))}/></div>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg border p-5">
+            <h2 className="font-semibold text-gray-800 mb-3 text-sm">차량 정보</h2>
+            <div className="grid grid-cols-4 gap-3">
+              <div className="col-span-2">
+                <Label>모델명 (여러 줄 가능)</Label>
+                <textarea value={hf.modelName} onChange={e=>setHf(f=>({...f,modelName:e.target.value}))} rows={2}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"/>
+              </div>
+              <div><Label>톤수</Label><Input value={hf.tonnage} onChange={e=>setHf(f=>({...f,tonnage:e.target.value}))}/></div>
+              <div><Label>수량</Label><Input type="number" value={hf.qty} onChange={e=>setHf(f=>({...f,qty:e.target.value}))}/></div>
+              <div className="col-span-2"><Label>차량가격 (원)</Label><NumInput value={hf.vehiclePrice} onChange={v=>setHf(f=>({...f,vehiclePrice:v}))}/></div>
+              <div className="col-span-2"><Label>옵션표 하단 강조 문구</Label><Input value={hf.freeNote} onChange={e=>setHf(f=>({...f,freeNote:e.target.value}))} placeholder="예: #납산배터리 및 충전기 무상 지급"/></div>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg border p-5">
+            <h2 className="font-semibold text-gray-800 mb-3 text-sm">옵션</h2>
+            <div className="space-y-2">
+              {hf.options.map((o,i)=>{
+                const isBasic = o.price==='기본옵션';
+                return (
+                  <div key={i} className="flex gap-2 items-center">
+                    <Input value={o.name} onChange={e=>updHfOpt(i,'name',e.target.value)} placeholder="옵션명" className="flex-1"/>
+                    <label className="flex items-center gap-1 text-xs text-gray-500 shrink-0">
+                      <input type="checkbox" checked={isBasic} onChange={e=>updHfOpt(i,'price',e.target.checked?'기본옵션':'')}/>
+                      기본옵션
+                    </label>
+                    {!isBasic && <NumInput value={o.price} onChange={v=>updHfOpt(i,'price',v)} className="w-36" placeholder="옵션가격"/>}
+                    <button onClick={()=>setHf(f=>({...f,options:f.options.filter((_,idx)=>idx!==i)}))} className="text-red-400 text-xs px-2 shrink-0">삭제</button>
+                  </div>
+                );
+              })}
+              <button onClick={()=>setHf(f=>({...f,options:[...f.options,{name:'',price:''}]}))} className="text-xs border px-3 py-1.5 rounded hover:bg-gray-50">+ 옵션 추가</button>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg border p-5">
+            <h2 className="font-semibold text-gray-800 mb-4 text-sm">가격 · 결제조건</h2>
+            <div className="grid grid-cols-3 gap-3">
+              <div><Label>할인금액 (원)</Label><NumInput value={hf.discountAmount} onChange={v=>setHf(f=>({...f,discountAmount:v}))}/></div>
+              <div><Label>계약금 (원)</Label><NumInput value={hf.downPayment} onChange={v=>setHf(f=>({...f,downPayment:v}))}/></div>
+              <div><Label>등록 예상 비용 (원)</Label><NumInput value={hf.registrationFeeEstimate} onChange={v=>setHf(f=>({...f,registrationFeeEstimate:v}))}/></div>
+              <div><Label>할부금리 (%)</Label><Input type="number" step="0.1" value={hf.installmentRate} onChange={e=>setHf(f=>({...f,installmentRate:e.target.value}))} placeholder="예: 6.5"/></div>
+              <div><Label>할부원금 (원)</Label><NumInput value={hf.installmentPrincipal} onChange={v=>setHf(f=>({...f,installmentPrincipal:v}))} placeholder="자동계산 (최종판매가-계약금)"/></div>
+            </div>
+            {(()=>{
+              const optSum   = calcHyundaiOptionSum(hf.options);
+              const before   = n0(hf.vehiclePrice) + optSum;
+              const final_   = hTotal;
+              const vat      = Math.round(final_*.1);
+              const withVat  = final_+vat;
+              const dp       = n0(hf.downPayment);
+              return (
+                <div className="mt-4 bg-[#f1f5f9] rounded-lg p-4 grid grid-cols-3 gap-3 text-center">
+                  {[['옵션합계',fmt(optSum)],['총합계',fmt(before)],['최종판매가(VAT별도)',fmt(final_)],['부가세',fmt(vat)],['총판매가격(VAT포함)',fmt(withVat)],['인도금',dp?fmt(withVat-dp):'-']].map(([l,v])=>(
+                    <div key={l}><p className="text-xs text-gray-500 mb-1">{l}</p><p className="font-bold text-sm text-[#0a192f]">{v}{v!=='-'?'원':''}</p></div>
+                  ))}
+                </div>
+              );
+            })()}
+            {n0(hf.installmentRate)>0&&(()=>{
+              const dp = n0(hf.downPayment);
+              const ip = n0(hf.installmentPrincipal) || (hTotal - dp);
+              const r  = n0(hf.installmentRate);
+              if(ip<=0||r<=0) return null;
+              return (
+                <div className="mt-3 bg-white border rounded-lg p-4">
+                  <p className="text-xs text-gray-500 mb-3">할부 월납입금 — 원금 <strong>{fmt(ip)}원</strong> / 연이율 {r}%</p>
+                  <div className="flex gap-6">
+                    {[36,48,60].map(m=>(
+                      <div key={m} className="text-center">
+                        <p className="text-xs mb-1 text-gray-400">{m}개월</p>
+                        <p className="font-bold text-sm text-[#0a192f]">{fmt(pmt(ip,r,m))}원</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+          <div className="bg-white rounded-lg border p-5">
+            <h2 className="font-semibold text-gray-800 mb-3 text-sm">납기 및 특약사항</h2>
+            <NoteEditor notes={hf.deliveryNotes} onChange={n=>setHf(f=>({...f,deliveryNotes:n}))}/>
+          </div>
+          <div className="bg-white rounded-lg border p-5">
+            <h2 className="font-semibold text-gray-800 mb-3 text-sm">형제옵션 (선택사항)</h2>
+            <div className="grid grid-cols-4 gap-x-4 gap-y-2">
+              {BROTHER_OPTIONS_GRID.flat().map((opt,i)=>{
+                if(opt===null) return <div key={i}/>;
+                const checked = hf.brotherOptions.includes(opt);
+                return (
+                  <label key={opt} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input type="checkbox" checked={checked} onChange={()=>toggleBrotherOption(opt)}/>
+                    {opt}
+                    {opt==='덧발' && (
+                      <input value={hf.attachmentNote} onChange={e=>setHf(f=>({...f,attachmentNote:e.target.value}))}
+                        placeholder="규격" className="w-16 border border-gray-300 rounded px-1.5 py-0.5 text-xs"/>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        </>}
+
         {/* ══ 할부 탭 ══ */}
         {tab==='installment' && <>
           <SendInfoForm v={iff} onSendChange={updSend(setIff)} emailSuggestions={emailSuggestions}/>
@@ -1764,11 +2094,12 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
                         <span className={`text-xs px-2 py-0.5 rounded-full ${
                           row.quote_type==='battery'?'bg-green-100 text-green-700':
                           row.quote_type==='forklift'?'bg-blue-100 text-blue-700':
+                          row.quote_type==='hyundai_forklift'?'bg-sky-100 text-sky-700':
                           row.quote_type==='installment'?'bg-purple-100 text-purple-700':
                           row.quote_type==='tire'?'bg-orange-100 text-orange-700':
                           'bg-gray-100 text-gray-700'
                         }`}>
-                          {row.quote_type==='battery'?'배터리':row.quote_type==='forklift'?'지게차':row.quote_type==='installment'?'할부':row.quote_type==='tire'?'타이어':'발주서'}
+                          {row.quote_type==='battery'?'배터리':row.quote_type==='forklift'?'지게차':row.quote_type==='hyundai_forklift'?'지게차(현대판매)':row.quote_type==='installment'?'할부':row.quote_type==='tire'?'타이어':'발주서'}
                         </span>
                       </td>
                       <td className="px-3 py-2 font-mono text-xs text-gray-600">{row.quote_no}</td>
@@ -1794,6 +2125,19 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
                               const base = type==='battery'?BF0:type==='forklift'?FF0:TF0;
                               const form = {...base,recipient:row.recipient,email1:row.recipient_email,quoteDate:row.quote_date,items:row.items??base.items,notes:row.notes??base.notes};
                               html=buildQuoteHTML(type,form as any,row.quote_no);
+                            } else if(type==='hyundai_forklift'){
+                              const items = row.items ?? [];
+                              const form: HyundaiForkliftForm = {
+                                ...HF0,
+                                recipient:row.recipient, email1:row.recipient_email, quoteDate:row.quote_date,
+                                modelName: items[0]?.name || HF0.modelName,
+                                tonnage:   items[0]?.spec || HF0.tonnage,
+                                qty:       items[0]?.qty ?? HF0.qty,
+                                vehiclePrice: items[0]?.price ?? HF0.vehiclePrice,
+                                options:   items.slice(1).length ? items.slice(1).map(it=>({name:it.name,price:it.price})) : HF0.options,
+                                deliveryNotes: row.notes?.length ? row.notes : HF0.deliveryNotes,
+                              };
+                              html=buildHyundaiForkliftHTML(form,row.quote_no);
                             } else if(type==='purchase'){
                               const form = {...PF0,recipient:row.recipient,email1:row.recipient_email,quoteDate:row.quote_date,receiverName:row.recipient,items:row.items??PF0.items};
                               html=buildPurchaseHTML(form as any,row.quote_no);
@@ -1801,7 +2145,8 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
                             setLoading(true);
                             try {
                               const bytes = await htmlDocToPdfBytes(html);
-                              downloadPdfBytes(bytes, `RNF_${typeLabelOf(type)}견적서_${row.recipient||'고객'}_${row.quote_no}.pdf`);
+                              const label = type==='hyundai_forklift' ? '지게차(현대판매)' : typeLabelOf(type);
+                              downloadPdfBytes(bytes, `RNF_${label}견적서_${row.recipient||'고객'}_${row.quote_no}.pdf`);
                             } catch(e:any) { flash(`PDF 생성 오류: ${e.message}`); }
                             setLoading(false);
                           }}
@@ -1823,7 +2168,7 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
         )}
 
         {/* ══ SMS 캡처용 히든 프리뷰 ══ */}
-        {['battery','forklift','purchase','installment'].includes(tab) && (
+        {['battery','forklift','hyundaiForklift','purchase','installment'].includes(tab) && (
           <div className="text-xs text-gray-400 text-center pb-2">
             MMS 발송 시 현재 입력 내용이 이미지로 캡처됩니다.
           </div>

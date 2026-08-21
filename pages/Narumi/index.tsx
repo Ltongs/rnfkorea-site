@@ -37,6 +37,7 @@ type NarumiTask = {
   vehicle_doc_path?: string | null;
   vehicle_doc_uploaded_at?: string | null;
   manufacture_doc_path?: string | null;
+  insurance_doc_path?: string | null;
   customer_phone?: string | null;
   customer_phone_set_at?: string | null;
   customer_phone_scrubbed_at?: string | null;
@@ -410,10 +411,15 @@ export default function NarumiPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const manufactureInputRef = useRef<HTMLInputElement | null>(null);
   const rowManufactureInputRef = useRef<HTMLInputElement | null>(null);
+  const rowInsuranceDocInputRef = useRef<HTMLInputElement | null>(null);
 
   const [pendingUploadRowId, setPendingUploadRowId] = useState<string | number | null>(null);
   const [pendingManufactureUploadRowId, setPendingManufactureUploadRowId] = useState<string | number | null>(null);
   const [manufactureUploadingId, setManufactureUploadingId] = useState<string | number | null>(null);
+  const [manufactureConfirm, setManufactureConfirm] = useState<{ rowId: string | number; file: File } | null>(null);
+  const [insuranceDocUploadingId, setInsuranceDocUploadingId] = useState<string | number | null>(null);
+  const [pendingInsuranceDocUploadRowId, setPendingInsuranceDocUploadRowId] = useState<string | number | null>(null);
+  const [insuranceDocConfirm, setInsuranceDocConfirm] = useState<{ rowId: string | number; file: File } | null>(null);
   const [insuranceModalRow, setInsuranceModalRow] = useState<NarumiTask | null>(null);
   const [postalOpenRowId, setPostalOpenRowId] = useState<string | number | null>(null);
   const [postalTrackingNo, setPostalTrackingNo] = useState("");
@@ -838,6 +844,27 @@ export default function NarumiPage() {
     if (dbErr) throw dbErr;
   };
 
+  const uploadInsuranceDocForRow = async (rowId: string | number, file: File) => {
+    const ext = extFromName(file.name) || "jpg";
+    const path = `${String(rowId)}/insurance_policy.${ext}`;
+
+    const { error: upErr } = await supabase.storage
+      .from("vehicle_docs")
+      .upload(path, file, {
+        upsert: true,
+        contentType: file.type || undefined,
+      });
+
+    if (upErr) throw upErr;
+
+    const { error: dbErr } = await supabase
+      .from("narumi_tasks")
+      .update({ insurance_doc_path: path })
+      .eq("id", rowId as any);
+
+    if (dbErr) throw dbErr;
+  };
+
   // ─── 카카오 알림 ─────────────────────────────────────────
   const NARUMI_KAKAO_URL = "https://nfwtsptqloefsbpjvdyu.supabase.co/functions/v1/send-hyundaicm-kakao";
 
@@ -1151,10 +1178,10 @@ export default function NarumiPage() {
       );
       alert(error.message);
     } else {
-      // 단계 변경 시 카카오 알림톡 발송
+      // 단계 변경 시 카카오 알림톡 발송 — 이전 단계는 표기하지 않고 현재 단계만 알린다.
       const keyToStatus: Record<string, { prev: string; next: string }> = {
-        docs_ready:    { prev: "보험완료", next: "등록서류" },
-        is_registered: { prev: "등록서류", next: "등록완료" },
+        docs_ready:    { prev: "-", next: "등록서류 수취" },
+        is_registered: { prev: "-", next: "등록완료" },
       };
       const stageChange = keyToStatus[key];
       if (stageChange && nextVal === true) {
@@ -1229,7 +1256,17 @@ export default function NarumiPage() {
       throw error ?? new Error("업데이트 대상을 찾지 못했습니다(권한 또는 동기화 문제일 수 있습니다).");
     }
 
-    // 보험확인 단계는 SMS 미발송
+    // 보험 완료 처리 시에만 카카오 알림톡 발송 (해제 시에는 발송하지 않음)
+    if (nextVal) {
+      sendNarumiKakao({
+        type:       "narumi_status",
+        vin:        row.vin,
+        customerName: row.customer_name,
+        salesRep:   row.sales_rep,
+        prevStatus: "-",
+        nextStatus: "보험완료",
+      });
+    }
   };
 
   const hasIssuedInsuranceCase = async (vin: string) => {
@@ -1294,8 +1331,6 @@ export default function NarumiPage() {
     } catch (e: any) {
       alert("나르미 보험 단계 업데이트에 실패했습니다: " + (e?.message || "알 수 없는 오류") + "\n상담관리 화면으로는 이동하지만, 나르미 목록의 보험 버튼은 비활성화되지 않았을 수 있습니다.");
     }
-
-    // 보험확인 단계는 SMS 미발송
 
     navigate("/work/call-management", {
       state: {
@@ -1855,7 +1890,7 @@ VIN: ${nextVin}`);
     rowManufactureInputRef.current?.click();
   };
 
-  const onRowManufacturePicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onRowManufacturePicked = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
     const rowId = pendingManufactureUploadRowId;
     e.target.value = "";
@@ -1867,14 +1902,63 @@ VIN: ${nextVin}`);
       return;
     }
 
+    // 바로 업로드하지 않고 확인 모달을 띄워 파일명을 한 번 더 확인시킨다.
+    setManufactureConfirm({ rowId, file });
+  };
+
+  const confirmManufactureUpload = async () => {
+    if (!manufactureConfirm) return;
+    const { rowId, file } = manufactureConfirm;
+
     setManufactureUploadingId(rowId);
     try {
       await uploadManufactureDocForRow(rowId, file);
       await fetchRows();
+      setManufactureConfirm(null);
     } catch (e: any) {
       alert(e?.message || "제작증 첨부 실패");
     } finally {
       setManufactureUploadingId(null);
+    }
+  };
+
+  const onClickInsuranceDocAttach = (r: NarumiTask) => {
+    if (!canCreate) {
+      alert("보험증권 첨부 권한이 없습니다.");
+      return;
+    }
+    setPendingInsuranceDocUploadRowId(r.id);
+    rowInsuranceDocInputRef.current?.click();
+  };
+
+  const onRowInsuranceDocPicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    const rowId = pendingInsuranceDocUploadRowId;
+    e.target.value = "";
+    setPendingInsuranceDocUploadRowId(null);
+    if (!file || rowId == null) return;
+
+    if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
+      alert("이미지 또는 PDF 파일만 첨부할 수 있습니다.");
+      return;
+    }
+
+    setInsuranceDocConfirm({ rowId, file });
+  };
+
+  const confirmInsuranceDocUpload = async () => {
+    if (!insuranceDocConfirm) return;
+    const { rowId, file } = insuranceDocConfirm;
+
+    setInsuranceDocUploadingId(rowId);
+    try {
+      await uploadInsuranceDocForRow(rowId, file);
+      await fetchRows();
+      setInsuranceDocConfirm(null);
+    } catch (e: any) {
+      alert(e?.message || "보험증권 첨부 실패");
+    } finally {
+      setInsuranceDocUploadingId(null);
     }
   };
 
@@ -1906,6 +1990,7 @@ VIN: ${nextVin}`);
       <input ref={fileInputRef} type="file" accept="image/*,.pdf" className="hidden" onChange={onFilePicked} />
       <input ref={manufactureInputRef} type="file" accept="image/*,.pdf" className="hidden" onChange={onManufacturePicked} />
       <input ref={rowManufactureInputRef} type="file" accept="image/*,.pdf" className="hidden" onChange={onRowManufacturePicked} />
+      <input ref={rowInsuranceDocInputRef} type="file" accept="image/*,.pdf" className="hidden" onChange={onRowInsuranceDocPicked} />
 
       {/* ── 헤더 + 요약 뱃지 (전부 한 덩어리로 고정) ── */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-30 space-y-3 pb-3">
@@ -2351,282 +2436,297 @@ VIN: ${nextVin}`);
                 </div>
 
                 {/* 카드 바디 */}
-                <div className="px-4 md:px-3.5 py-2.5 grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="px-4 md:px-3.5 py-2.5 space-y-3">
 
-                  {/* 왼쪽: 기본 정보 + 단계 버튼 */}
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <p className={infoLabel}>VIN</p>
-                        <p className={infoValue}>{r.vin || "-"}</p>
-                      </div>
-                      <div>
-                        <p className={infoLabel}>출고일</p>
-                        <p className={infoValue}>{r.delivery_date_text || "-"}</p>
-                      </div>
-                      <div>
-                        <p className={infoLabel}>고객명</p>
-                        <p className={infoValue}>{displayName}</p>
-                      </div>
-                      <div>
-                        <p className={infoLabel}>전화번호</p>
-                        {dialable && !shouldMaskPhoneForUI(r) ? (
-                          <a href={`tel:${dialable}`} className="mt-1 text-sm font-semibold text-orange-600 hover:underline break-all">
-                            {displayPhone}
-                          </a>
-                        ) : (
-                          <p className={infoValue}>{displayPhone}</p>
-                        )}
-                      </div>
-                      <div>
-                        <p className={infoLabel}>영업사원</p>
-                        <p className={infoValue}>
-                          {r.sales_rep || "-"}
-                          {r.sales_rep_phone && (
-                            <>
-                              {" / "}
-                              <a href={`tel:${onlyDigits(r.sales_rep_phone)}`} className="font-semibold text-orange-600 hover:underline">
-                                {formatPhoneKR(r.sales_rep_phone)}
-                              </a>
-                            </>
-                          )}
-                        </p>
-                      </div>
-                      <div>
-                        <p className={infoLabel}>접수일시</p>
-                        <p className={infoValue}>{formatCreatedAt(r.created_at)}</p>
-                      </div>
-                      <div>
-                        <p className={infoLabel}>금융구분</p>
-                        <p className={infoValue}>
-                          {r.finance_type || "-"}
-                          {r.finance_type === "할부" && (r.is_lotte_autolease ? " (롯데오토리스 Y)" : " (롯데오토리스 N)")}
-                          {r.finance_type === "리스" && r.lease_company ? ` (${r.lease_company})` : ""}
-                        </p>
-                      </div>
-                      <div>
-                        <p className={infoLabel}>용도</p>
-                        <p className={infoValue}>{r.vehicle_use_type || "-"}{r.business_type ? ` / ${r.business_type}` : ""}</p>
-                      </div>
-                      <div>
-                        <p className={infoLabel}>임시번호판 반납</p>
-                        <p className="mt-1">
-                          {r.temp_plate_returned === true ? (
-                            <span className={`${pillBase} ${pillDone}`}>Y</span>
-                          ) : r.temp_plate_returned === false ? (
-                            <span className={`${pillBase} ${pillProg}`}>N{r.temp_plate_return_due_date ? ` · ${r.temp_plate_return_due_date}` : ""}</span>
-                          ) : (
-                            <span className={`${pillBase} ${pillGray}`}>-</span>
-                          )}
-                        </p>
-                      </div>
+                  {/* 1~2줄: 기본 정보 (VIN ~ 임시번호판 반납, 컴팩트 그리드) */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                    <div>
+                      <p className={infoLabel}>VIN</p>
+                      <p className={infoValue}>{r.vin || "-"}</p>
                     </div>
-
-                    {/* 단계 버튼 */}
-                    {brokeragePending ? (
-                      <div>
-                        <p className={`${infoLabel} mb-2`}>번호판 중개 결과</p>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <select
-                            value={r.brokerage_result ?? ""}
-                            onChange={(e) => saveBrokerageResult(r.id, e.target.value || null)}
-                            disabled={!canChangeStatus}
-                            className={compactInputClass + " !h-[40px] !w-auto"}
-                          >
-                            <option value="">결과 미정</option>
-                            <option value="중개완료">중개완료</option>
-                            <option value="보류">보류</option>
-                            <option value="취소">취소</option>
-                          </select>
-                          {canChangeStatus && (
-                            <button
-                              type="button"
-                              onClick={() => openDispatchModal(r)}
-                              className="inline-flex items-center justify-center px-3 py-2 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-all"
-                            >
-                              출고
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <div>
-                        <p className={`${infoLabel} mb-2`}>진행 단계</p>
-                        <div className="flex flex-wrap gap-2">
-                          {/* 보험 */}
-                          <button
-                            type="button"
-                            disabled={isLocked || isHold || !canChangeStatus || r.has_insurance}
-                            onClick={() => handleInsuranceButtonClick(r)}
-                            className={`${btnBase} ${isLocked || isHold || r.has_insurance ? btnDisabled : btnOff}`}
-                          >
-                            보험
-                          </button>
-                          {/* 등록서류 */}
-                          <button
-                            type="button"
-                            disabled={isLocked || isHold || !canChangeStatus}
-                            onClick={() => !isLocked && !isHold && toggleStage(r.id, "docs_ready")}
-                            className={`${btnBase} ${isLocked || isHold ? btnDisabled : r.docs_ready ? btnOn : btnOff}`}
-                          >
-                            등록서류
-                          </button>
-                          {/* 등록완료 */}
-                          <button
-                            type="button"
-                            disabled={isLocked || isHold || !canChangeStatus}
-                            onClick={() => !isLocked && !isHold && toggleStage(r.id, "is_registered")}
-                            className={`${btnBase} ${isLocked || isHold ? btnDisabled : r.is_registered ? btnOn : btnOff}`}
-                          >
-                            등록완료
-                          </button>
-                          {/* 차량등록증 */}
-                          <button
-                            type="button"
-                            disabled={!canDocUp}
-                            onClick={() => onClickVehicleDocUpload(r)}
-                            className={`${btnBase} ${!canDocUp ? btnDisabled : isLocked ? btnOn : btnOff}`}
-                          >
-                            {uploadingId === r.id ? "업로드중" : "차량등록증"}
-                          </button>
-                          {/* 우편발송 — 등록완료 상태이고 canChangeStatus 권한이 있으면 isLocked 여부 관계없이 표시 */}
-                          {r.is_registered && canChangeStatus && (
-                            <button
-                              type="button"
-                              onClick={() => postalOpenRowId === r.id ? closePostalForm() : openPostalForm(r)}
-                              className={`${btnBase} ${r.postal_mail_sent ? btnOn : btnOff}`}
-                              title={r.postal_mail_sent ? "우편발송 정보 조회/수정" : "우편발송 정보 입력"}
-                            >
-                              {r.postal_mail_sent ? "우편조회" : "우편발송"}
-                            </button>
-                          )}
-                          {/* 보류 — 등록완료 전이고 잠금 전일 때만 표시 */}
-                          {!r.is_registered && canChangeStatus && !isLocked && (
-                            <button
-                              type="button"
-                              onClick={() => toggleHold(r)}
-                              className={`${btnBase} ${isHold ? "bg-gray-500 text-white border-gray-500" : btnOff}`}
-                            >
-                              {isHold ? "보류해제" : "보류"}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 제작증 / 차량등록증 다운로드 */}
-                    <div className="flex flex-wrap gap-2">
-                      {r.manufacture_doc_path ? (
-                        <button
-                          type="button"
-                          onClick={() => openStorageFile(r.manufacture_doc_path!).catch((e: any) => alert(e?.message || "보기 실패"))}
-                          className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-gray-300 bg-white text-navy-900 font-semibold text-xs hover:shadow-md transition-all"
-                        >
-                          제작증 보기
-                        </button>
+                    <div>
+                      <p className={infoLabel}>출고일</p>
+                      <p className={infoValue}>{r.delivery_date_text || "-"}</p>
+                    </div>
+                    <div>
+                      <p className={infoLabel}>고객명</p>
+                      <p className={infoValue}>{displayName}</p>
+                    </div>
+                    <div>
+                      <p className={infoLabel}>전화번호</p>
+                      {dialable && !shouldMaskPhoneForUI(r) ? (
+                        <a href={`tel:${dialable}`} className="mt-1 text-sm font-semibold text-orange-600 hover:underline break-all">
+                          {displayPhone}
+                        </a>
                       ) : (
-                        !isLocked && canCreate && (
-                          <button
-                            type="button"
-                            onClick={() => onClickManufactureAttach(r)}
-                            disabled={manufactureUploadingId === r.id}
-                            className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-orange-200 bg-orange-50 text-orange-600 font-semibold text-xs hover:shadow-md transition-all disabled:opacity-50"
-                          >
-                            {manufactureUploadingId === r.id ? "첨부중..." : "제작증 첨부"}
-                          </button>
-                        )
+                        <p className={infoValue}>{displayPhone}</p>
                       )}
-                      {r.vehicle_doc_path && (
-                        <button
-                          type="button"
-                          onClick={() => openStorageFile(r.vehicle_doc_path!).catch((e: any) => alert(e?.message || "보기 실패"))}
-                          className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 font-semibold text-xs hover:shadow-md transition-all"
-                        >
-                          차량등록증 보기
-                        </button>
-                      )}
+                    </div>
+                    <div>
+                      <p className={infoLabel}>영업사원</p>
+                      <p className={infoValue}>
+                        {r.sales_rep || "-"}
+                        {r.sales_rep_phone && (
+                          <>
+                            {" / "}
+                            <a href={`tel:${onlyDigits(r.sales_rep_phone)}`} className="font-semibold text-orange-600 hover:underline">
+                              {formatPhoneKR(r.sales_rep_phone)}
+                            </a>
+                          </>
+                        )}
+                      </p>
+                    </div>
+                    <div>
+                      <p className={infoLabel}>접수일시</p>
+                      <p className={infoValue}>{formatCreatedAt(r.created_at)}</p>
+                    </div>
+                    <div>
+                      <p className={infoLabel}>금융구분</p>
+                      <p className={infoValue}>
+                        {r.finance_type || "-"}
+                        {r.finance_type === "할부" && (r.is_lotte_autolease ? " (롯데오토리스 Y)" : " (롯데오토리스 N)")}
+                        {r.finance_type === "리스" && r.lease_company ? ` (${r.lease_company})` : ""}
+                      </p>
+                    </div>
+                    <div>
+                      <p className={infoLabel}>용도</p>
+                      <p className={infoValue}>{r.vehicle_use_type || "-"}{r.business_type ? ` / ${r.business_type}` : ""}</p>
+                    </div>
+                    <div>
+                      <p className={infoLabel}>임시번호판 반납</p>
+                      <p className="mt-1">
+                        {r.temp_plate_returned === true ? (
+                          <span className={`${pillBase} ${pillDone}`}>Y</span>
+                        ) : r.temp_plate_returned === false ? (
+                          <span className={`${pillBase} ${pillProg}`}>N{r.temp_plate_return_due_date ? ` · ${r.temp_plate_return_due_date}` : ""}</span>
+                        ) : (
+                          <span className={`${pillBase} ${pillGray}`}>-</span>
+                        )}
+                      </p>
                     </div>
                   </div>
 
-                  {/* 오른쪽: 우편 발송 + 메모 */}
-                  <div className="space-y-4">
-                    {/* 우편 발송 */}
-                    {r.is_registered && (
-                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <p className={`${infoLabel}`}>우편 발송</p>
-                        </div>
-
-                        {r.postal_mail_sent ? (
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className={`${pillBase} ${pillDone}`}>발송완료</span>
-                              {r.postal_sent_date && <span className="text-xs text-gray-500">{r.postal_sent_date}</span>}
-                            </div>
-                            {r.postal_tracking_no && (
-                              <button
-                                type="button"
-                                onClick={() => openPostalTrackingLookup(r.postal_tracking_no!)}
-                                className="text-xs font-semibold text-orange-500 hover:underline"
-                              >
-                                {r.postal_tracking_no} (조회)
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <span className={`${pillBase} ${pillGray}`}>미발송</span>
-                        )}
-
-                        {postalOpenRowId === r.id && (
-                          <div className="mt-3 space-y-2">
-                            <div>
-                              <label className={labelClass}>등기번호</label>
-                              <input value={postalTrackingNo} onChange={(e) => setPostalTrackingNo(e.target.value)} placeholder="등기번호 입력" className={compactInputClass} />
-                            </div>
-                            <div>
-                              <label className={labelClass}>발송일</label>
-                              <input type="date" value={postalSentDate} onChange={(e) => setPostalSentDate(e.target.value)} className={compactInputClass} />
-                            </div>
-                            <div className="flex justify-end gap-2">
-                              <button type="button" onClick={closePostalForm} className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:shadow-sm transition-all">취소</button>
-                              <button type="button" onClick={() => savePostalInfo(r)} disabled={postalSavingId === r.id} className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-all disabled:opacity-50">
-                                {postalSavingId === r.id ? "저장중..." : "저장"}
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* 메모 */}
+                  {/* 3줄: 진행 단계 */}
+                  {brokeragePending ? (
                     <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <p className={infoLabel}>특이사항 / 메모</p>
-                        {memoChanged && canEditMemoNow && (
+                      <p className={`${infoLabel} mb-2`}>번호판 중개 결과</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select
+                          value={r.brokerage_result ?? ""}
+                          onChange={(e) => saveBrokerageResult(r.id, e.target.value || null)}
+                          disabled={!canChangeStatus}
+                          className={compactInputClass + " !h-[40px] !w-auto"}
+                        >
+                          <option value="">결과 미정</option>
+                          <option value="중개완료">중개완료</option>
+                          <option value="보류">보류</option>
+                          <option value="취소">취소</option>
+                        </select>
+                        {canChangeStatus && (
                           <button
                             type="button"
-                            disabled={memoSavingId === r.id}
-                            onClick={() => saveMemo(r.id)}
-                            className="inline-flex items-center justify-center px-3 py-1 rounded-xl bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 transition-all disabled:opacity-50"
+                            onClick={() => openDispatchModal(r)}
+                            className="inline-flex items-center justify-center px-3 py-2 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-all"
                           >
-                            {memoSavingId === r.id ? "저장중..." : "저장"}
+                            출고
                           </button>
                         )}
                       </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <p className={`${infoLabel} mb-2`}>진행 단계</p>
+                      <div className="flex flex-wrap gap-2">
+                        {/* 보험 */}
+                        <button
+                          type="button"
+                          disabled={isLocked || isHold || !canChangeStatus || r.has_insurance}
+                          onClick={() => handleInsuranceButtonClick(r)}
+                          className={`${btnBase} ${isLocked || isHold || r.has_insurance ? btnDisabled : btnOff}`}
+                        >
+                          보험
+                        </button>
+                        {/* 등록서류 */}
+                        <button
+                          type="button"
+                          disabled={isLocked || isHold || !canChangeStatus}
+                          onClick={() => !isLocked && !isHold && toggleStage(r.id, "docs_ready")}
+                          className={`${btnBase} ${isLocked || isHold ? btnDisabled : r.docs_ready ? btnOn : btnOff}`}
+                        >
+                          등록서류
+                        </button>
+                        {/* 등록완료 */}
+                        <button
+                          type="button"
+                          disabled={isLocked || isHold || !canChangeStatus}
+                          onClick={() => !isLocked && !isHold && toggleStage(r.id, "is_registered")}
+                          className={`${btnBase} ${isLocked || isHold ? btnDisabled : r.is_registered ? btnOn : btnOff}`}
+                        >
+                          등록완료
+                        </button>
+                        {/* 차량등록증 */}
+                        <button
+                          type="button"
+                          disabled={!canDocUp}
+                          onClick={() => onClickVehicleDocUpload(r)}
+                          className={`${btnBase} ${!canDocUp ? btnDisabled : isLocked ? btnOn : btnOff}`}
+                        >
+                          {uploadingId === r.id ? "업로드중" : "차량등록증"}
+                        </button>
+                        {/* 우편발송 — 등록완료 상태이고 canChangeStatus 권한이 있으면 isLocked 여부 관계없이 표시 */}
+                        {r.is_registered && canChangeStatus && (
+                          <button
+                            type="button"
+                            onClick={() => postalOpenRowId === r.id ? closePostalForm() : openPostalForm(r)}
+                            className={`${btnBase} ${r.postal_mail_sent ? btnOn : btnOff}`}
+                            title={r.postal_mail_sent ? "우편발송 정보 조회/수정" : "우편발송 정보 입력"}
+                          >
+                            {r.postal_mail_sent ? "우편조회" : "우편발송"}
+                          </button>
+                        )}
+                        {/* 보류 — 등록완료 전이고 잠금 전일 때만 표시 */}
+                        {!r.is_registered && canChangeStatus && !isLocked && (
+                          <button
+                            type="button"
+                            onClick={() => toggleHold(r)}
+                            className={`${btnBase} ${isHold ? "bg-gray-500 text-white border-gray-500" : btnOff}`}
+                          >
+                            {isHold ? "보류해제" : "보류"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
-                      {canEditMemoNow ? (
-                        <textarea
-                          value={memoValue}
-                          onChange={(e) => setMemoDrafts((prev) => ({ ...prev, [String(r.id)]: e.target.value }))}
-                          placeholder="관리자/보험전담 계정만 메모 입력/수정 가능"
-                          className="w-full h-[88px] text-sm text-gray-700 rounded-xl bg-white border border-gray-200 px-4 py-3 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 resize-none transition-all"
-                        />
+                  {/* 제작증 / 보험증권 / 차량등록증 다운로드 */}
+                  <div className="flex flex-wrap gap-2">
+                    {r.manufacture_doc_path ? (
+                      <button
+                        type="button"
+                        onClick={() => openStorageFile(r.manufacture_doc_path!).catch((e: any) => alert(e?.message || "보기 실패"))}
+                        className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-gray-300 bg-white text-navy-900 font-semibold text-xs hover:shadow-md transition-all"
+                      >
+                        제작증 보기
+                      </button>
+                    ) : (
+                      !isLocked && canCreate && (
+                        <button
+                          type="button"
+                          onClick={() => onClickManufactureAttach(r)}
+                          disabled={manufactureUploadingId === r.id}
+                          className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-orange-200 bg-orange-50 text-orange-600 font-semibold text-xs hover:shadow-md transition-all disabled:opacity-50"
+                        >
+                          {manufactureUploadingId === r.id ? "첨부중..." : "제작증 첨부"}
+                        </button>
+                      )
+                    )}
+                    {r.insurance_doc_path ? (
+                      <button
+                        type="button"
+                        onClick={() => openStorageFile(r.insurance_doc_path!).catch((e: any) => alert(e?.message || "보기 실패"))}
+                        className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-gray-300 bg-white text-navy-900 font-semibold text-xs hover:shadow-md transition-all"
+                      >
+                        보험증권 보기
+                      </button>
+                    ) : (
+                      canCreate && (
+                        <button
+                          type="button"
+                          onClick={() => onClickInsuranceDocAttach(r)}
+                          disabled={insuranceDocUploadingId === r.id}
+                          className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-orange-200 bg-orange-50 text-orange-600 font-semibold text-xs hover:shadow-md transition-all disabled:opacity-50"
+                        >
+                          {insuranceDocUploadingId === r.id ? "첨부중..." : "보험증권 첨부"}
+                        </button>
+                      )
+                    )}
+                    {r.vehicle_doc_path && (
+                      <button
+                        type="button"
+                        onClick={() => openStorageFile(r.vehicle_doc_path!).catch((e: any) => alert(e?.message || "보기 실패"))}
+                        className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 font-semibold text-xs hover:shadow-md transition-all"
+                      >
+                        차량등록증 보기
+                      </button>
+                    )}
+                  </div>
+
+                  {/* 우편 발송 */}
+                  {r.is_registered && (
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className={`${infoLabel}`}>우편 발송</p>
+                      </div>
+
+                      {r.postal_mail_sent ? (
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`${pillBase} ${pillDone}`}>발송완료</span>
+                            {r.postal_sent_date && <span className="text-xs text-gray-500">{r.postal_sent_date}</span>}
+                          </div>
+                          {r.postal_tracking_no && (
+                            <button
+                              type="button"
+                              onClick={() => openPostalTrackingLookup(r.postal_tracking_no!)}
+                              className="text-xs font-semibold text-orange-500 hover:underline"
+                            >
+                              {r.postal_tracking_no} (조회)
+                            </button>
+                          )}
+                        </div>
                       ) : (
-                        <div className="h-[88px] overflow-y-auto text-sm text-gray-700 rounded-xl bg-gray-50 border border-gray-200 px-4 py-3">
-                          {r.special_note?.trim() ? r.special_note : <span className="text-gray-400">-</span>}
+                        <span className={`${pillBase} ${pillGray}`}>미발송</span>
+                      )}
+
+                      {postalOpenRowId === r.id && (
+                        <div className="mt-3 space-y-2">
+                          <div>
+                            <label className={labelClass}>등기번호</label>
+                            <input value={postalTrackingNo} onChange={(e) => setPostalTrackingNo(e.target.value)} placeholder="등기번호 입력" className={compactInputClass} />
+                          </div>
+                          <div>
+                            <label className={labelClass}>발송일</label>
+                            <input type="date" value={postalSentDate} onChange={(e) => setPostalSentDate(e.target.value)} className={compactInputClass} />
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            <button type="button" onClick={closePostalForm} className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:shadow-sm transition-all">취소</button>
+                            <button type="button" onClick={() => savePostalInfo(r)} disabled={postalSavingId === r.id} className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-all disabled:opacity-50">
+                              {postalSavingId === r.id ? "저장중..." : "저장"}
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
+                  )}
+
+                  {/* 맨 아래: 비고(특이사항 / 메모) */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className={infoLabel}>특이사항 / 메모</p>
+                      {memoChanged && canEditMemoNow && (
+                        <button
+                          type="button"
+                          disabled={memoSavingId === r.id}
+                          onClick={() => saveMemo(r.id)}
+                          className="inline-flex items-center justify-center px-3 py-1 rounded-xl bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 transition-all disabled:opacity-50"
+                        >
+                          {memoSavingId === r.id ? "저장중..." : "저장"}
+                        </button>
+                      )}
+                    </div>
+
+                    {canEditMemoNow ? (
+                      <textarea
+                        value={memoValue}
+                        onChange={(e) => setMemoDrafts((prev) => ({ ...prev, [String(r.id)]: e.target.value }))}
+                        placeholder="관리자/보험전담 계정만 메모 입력/수정 가능"
+                        className="w-full h-[64px] text-sm text-gray-700 rounded-xl bg-white border border-gray-200 px-4 py-3 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 resize-none transition-all"
+                      />
+                    ) : (
+                      <div className="h-[64px] overflow-y-auto text-sm text-gray-700 rounded-xl bg-gray-50 border border-gray-200 px-4 py-3">
+                        {r.special_note?.trim() ? r.special_note : <span className="text-gray-400">-</span>}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2813,6 +2913,64 @@ VIN: ${nextVin}`);
               <button type="button" onClick={() => setInsuranceModalRow(null)} className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:shadow-md transition-all">취소</button>
               <button type="button" onClick={completeInsuranceAsN} className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl border border-emerald-600 bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition-all">N</button>
               <button type="button" onClick={moveToCallManagementForInsurance} className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-all">Y</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 제작증 첨부 확인 모달 ── */}
+      {manufactureConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-3.5 shadow-2xl">
+            <p className="text-xs font-medium tracking-[0.12em] uppercase text-orange-500 mb-2">제작증 첨부</p>
+            <h2 className="text-sm font-semibold text-navy-900 mb-3">이 파일을 제작증으로 첨부할까요?</h2>
+            <p className="text-sm leading-6 text-gray-600 break-all">{manufactureConfirm.file.name}</p>
+            <div className="mt-3 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setManufactureConfirm(null)}
+                disabled={manufactureUploadingId === manufactureConfirm.rowId}
+                className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:shadow-md transition-all disabled:opacity-50"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={confirmManufactureUpload}
+                disabled={manufactureUploadingId === manufactureConfirm.rowId}
+                className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-all disabled:opacity-50"
+              >
+                {manufactureUploadingId === manufactureConfirm.rowId ? "첨부중..." : "확인"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 보험증권 첨부 확인 모달 ── */}
+      {insuranceDocConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-3.5 shadow-2xl">
+            <p className="text-xs font-medium tracking-[0.12em] uppercase text-orange-500 mb-2">보험증권 첨부</p>
+            <h2 className="text-sm font-semibold text-navy-900 mb-3">이 파일을 보험증권으로 첨부할까요?</h2>
+            <p className="text-sm leading-6 text-gray-600 break-all">{insuranceDocConfirm.file.name}</p>
+            <div className="mt-3 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setInsuranceDocConfirm(null)}
+                disabled={insuranceDocUploadingId === insuranceDocConfirm.rowId}
+                className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:shadow-md transition-all disabled:opacity-50"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={confirmInsuranceDocUpload}
+                disabled={insuranceDocUploadingId === insuranceDocConfirm.rowId}
+                className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-all disabled:opacity-50"
+              >
+                {insuranceDocUploadingId === insuranceDocConfirm.rowId ? "첨부중..." : "확인"}
+              </button>
             </div>
           </div>
         </div>
