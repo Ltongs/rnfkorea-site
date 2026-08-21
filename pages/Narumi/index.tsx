@@ -409,8 +409,11 @@ export default function NarumiPage() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const manufactureInputRef = useRef<HTMLInputElement | null>(null);
+  const rowManufactureInputRef = useRef<HTMLInputElement | null>(null);
 
   const [pendingUploadRowId, setPendingUploadRowId] = useState<string | number | null>(null);
+  const [pendingManufactureUploadRowId, setPendingManufactureUploadRowId] = useState<string | number | null>(null);
+  const [manufactureUploadingId, setManufactureUploadingId] = useState<string | number | null>(null);
   const [insuranceModalRow, setInsuranceModalRow] = useState<NarumiTask | null>(null);
   const [postalOpenRowId, setPostalOpenRowId] = useState<string | number | null>(null);
   const [postalTrackingNo, setPostalTrackingNo] = useState("");
@@ -1044,7 +1047,13 @@ export default function NarumiPage() {
       if (error) throw error;
 
       if (manufactureImageFile && inserted?.id != null) {
-        await uploadManufactureDocForRow(inserted.id, manufactureImageFile);
+        try {
+          await uploadManufactureDocForRow(inserted.id, manufactureImageFile);
+        } catch (docErr: any) {
+          // 접수 자체는 이미 성공했으므로, 제작증 첨부 실패는 별도로 알리고 흐름은 계속 진행한다.
+          // 목록 카드의 "제작증 첨부" 버튼으로 재시도할 수 있다.
+          alert(`접수는 완료되었지만 제작증 첨부에 실패했습니다: ${docErr?.message || "알 수 없는 오류"}\n목록에서 해당 건의 "제작증 첨부" 버튼으로 다시 첨부해주세요.`);
+        }
       }
 
       // 카카오 알림: narumi_tasks insert 트리거가 서버에서 직접 발송함
@@ -1836,6 +1845,39 @@ VIN: ${nextVin}`);
     setManufactureImageFile(file);
   };
 
+  const onClickManufactureAttach = (r: NarumiTask) => {
+    if (!canCreate) {
+      alert("제작증 첨부 권한이 없습니다.");
+      return;
+    }
+    if (isLockedAfterUpload(r)) return;
+    setPendingManufactureUploadRowId(r.id);
+    rowManufactureInputRef.current?.click();
+  };
+
+  const onRowManufacturePicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    const rowId = pendingManufactureUploadRowId;
+    e.target.value = "";
+    setPendingManufactureUploadRowId(null);
+    if (!file || rowId == null) return;
+
+    if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
+      alert("이미지 또는 PDF 파일만 첨부할 수 있습니다.");
+      return;
+    }
+
+    setManufactureUploadingId(rowId);
+    try {
+      await uploadManufactureDocForRow(rowId, file);
+      await fetchRows();
+    } catch (e: any) {
+      alert(e?.message || "제작증 첨부 실패");
+    } finally {
+      setManufactureUploadingId(null);
+    }
+  };
+
   const loginRoleLabel = useMemo(() => {
     if (isAdmin) return "관리자";
     if (isInsuranceManager) return "보험전담";
@@ -1863,6 +1905,7 @@ VIN: ${nextVin}`);
       {/* ── 숨겨진 파일 인풋 ── */}
       <input ref={fileInputRef} type="file" accept="image/*,.pdf" className="hidden" onChange={onFilePicked} />
       <input ref={manufactureInputRef} type="file" accept="image/*,.pdf" className="hidden" onChange={onManufacturePicked} />
+      <input ref={rowManufactureInputRef} type="file" accept="image/*,.pdf" className="hidden" onChange={onRowManufacturePicked} />
 
       {/* ── 헤더 + 요약 뱃지 (전부 한 덩어리로 고정) ── */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-30 space-y-3 pb-3">
@@ -2073,9 +2116,14 @@ VIN: ${nextVin}`);
                       {manufactureImageFile ? "첨부됨 ✓" : "제작증 첨부"}
                     </button>
                     {manufactureImageFile && (
-                      <button type="button" onClick={() => { setManufactureImageFile(null); if (manufactureInputRef.current) manufactureInputRef.current.value = ""; }} disabled={!canCreate || isPlateBrokerage} className="mt-1 text-[11px] font-medium text-red-500 hover:underline">
-                        첨부 제거
-                      </button>
+                      <div className="mt-1 flex items-center gap-2">
+                        <button type="button" onClick={() => window.open(URL.createObjectURL(manufactureImageFile), "_blank", "noopener,noreferrer")} className="text-[11px] font-medium text-navy-900 hover:underline">
+                          보기
+                        </button>
+                        <button type="button" onClick={() => { setManufactureImageFile(null); if (manufactureInputRef.current) manufactureInputRef.current.value = ""; }} disabled={!canCreate || isPlateBrokerage} className="text-[11px] font-medium text-red-500 hover:underline">
+                          첨부 제거
+                        </button>
+                      </div>
                     )}
                   </div>
                   <div className="flex items-end pb-2.5">
@@ -2468,7 +2516,7 @@ VIN: ${nextVin}`);
 
                     {/* 제작증 / 차량등록증 다운로드 */}
                     <div className="flex flex-wrap gap-2">
-                      {r.manufacture_doc_path && (
+                      {r.manufacture_doc_path ? (
                         <button
                           type="button"
                           onClick={() => openStorageFile(r.manufacture_doc_path!).catch((e: any) => alert(e?.message || "보기 실패"))}
@@ -2476,6 +2524,17 @@ VIN: ${nextVin}`);
                         >
                           제작증 보기
                         </button>
+                      ) : (
+                        !isLocked && canCreate && (
+                          <button
+                            type="button"
+                            onClick={() => onClickManufactureAttach(r)}
+                            disabled={manufactureUploadingId === r.id}
+                            className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-orange-200 bg-orange-50 text-orange-600 font-semibold text-xs hover:shadow-md transition-all disabled:opacity-50"
+                          >
+                            {manufactureUploadingId === r.id ? "첨부중..." : "제작증 첨부"}
+                          </button>
+                        )
                       )}
                       {r.vehicle_doc_path && (
                         <button
