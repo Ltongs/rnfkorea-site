@@ -5,7 +5,7 @@ import html2canvas from "html2canvas";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 import AppTabBar from "../../components/AppTabBar";
-import { TireSection, BatterySection, EtcSection } from "./ItemSections";
+import { TireSection, BatterySection, EtcSection, OverviewSection } from "./ItemSections";
 
 // ─── 정책 ─────────────────────────────────────────────────
 const HIDE_CLOSED_AFTER_DAYS_FOR_NON_ADMIN = 30;
@@ -20,7 +20,7 @@ type FinanceCompany = "NH캐피탈" | "오릭스캐피탈" | "우리금융캐피
 
 // ─── 탭 ─────────────────────────────────────────────────
 type ActiveTab = "할부금융" | "보험" | "수출";
-type ItemTab = "할부" | "타이어" | "배터리" | "기타";
+type ItemTab = "전체" | "할부" | "타이어" | "배터리" | "기타";
 
 // ─── 보험 타입 ────────────────────────────────────────────
 type InsuranceStatus = "접수" | "진행중" | "완료" | "취소";
@@ -2113,7 +2113,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
         {/* ── 품목 탭 (할부/타이어/배터리/기타) ── */}
         <div className="px-4 flex flex-wrap gap-1.5">
-          {(["할부", "타이어", "배터리", "기타"] as ItemTab[]).map((t) => (
+          {(["전체", "할부", "타이어", "배터리", "기타"] as ItemTab[]).map((t) => (
             <button
               key={t}
               onClick={() => setItemTab(t)}
@@ -2201,6 +2201,9 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       </>)}
       </div>
 
+      {itemTab === "전체" && (
+        <OverviewSection onJumpToTab={(t) => setItemTab(t)} />
+      )}
       {itemTab === "타이어" && (
         <TireSection isAdminLevel={isAdminLevel} canCreate={canCreate} canChangeStatus={canChangeStatus} />
       )}

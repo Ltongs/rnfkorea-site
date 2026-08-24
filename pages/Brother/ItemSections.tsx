@@ -161,6 +161,23 @@ function StageButtons({
   );
 }
 
+function EditModalShell({
+  title, onClose, onSave, saving, children,
+}: { title: string; onClose: () => void; onSave: () => void; saving: boolean; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 px-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
+        <p className="text-sm font-bold text-[#0f172a] mb-3">{title}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">{children}</div>
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={onClose} disabled={saving} className={btnSecondary}>취소</button>
+          <button onClick={onSave} disabled={saving} className={btnPrimary}>{saving ? "저장중..." : "저장"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ══════════════════════════════════════════════════════════
 // 타이어
 // ══════════════════════════════════════════════════════════
@@ -194,6 +211,21 @@ export function TireSection({ isAdminLevel, canCreate, canChangeStatus }: Sectio
   const [salesRep, setSalesRep] = useState("");
   const [salesRepPhone, setSalesRepPhone] = useState("");
   const [note, setNote] = useState("");
+
+  const [editRow, setEditRow] = useState<TireRow | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [eCustName, setECustName] = useState("");
+  const [eCustPhone, setECustPhone] = useState("");
+  const [eVehicleInfo, setEVehicleInfo] = useState("");
+  const [eVehicleType, setEVehicleType] = useState("");
+  const [eTireSize, setETireSize] = useState("");
+  const [eFrontQty, setEFrontQty] = useState("");
+  const [eRearQty, setERearQty] = useState("");
+  const [ePriceToCustomer, setEPriceToCustomer] = useState("");
+  const [ePriceFromJinheung, setEPriceFromJinheung] = useState("");
+  const [eSalesRep, setESalesRep] = useState("");
+  const [eSalesRepPhone, setESalesRepPhone] = useState("");
+  const [eNote, setENote] = useState("");
 
   const fetchRows = async () => {
     setLoading(true);
@@ -297,6 +329,72 @@ export function TireSection({ isAdminLevel, canCreate, canChangeStatus }: Sectio
     });
   };
 
+  const openEdit = (row: TireRow) => {
+    setEditRow(row);
+    setECustName(row.customer_name ?? "");
+    setECustPhone(row.phone ? formatPhoneKR(row.phone) : "");
+    setEVehicleInfo(row.tire?.vehicle_info ?? "");
+    setEVehicleType(row.tire?.vehicle_type ?? "");
+    setETireSize(row.tire?.tire_size ?? "");
+    setEFrontQty(row.tire?.front_quantity != null ? String(row.tire.front_quantity) : "");
+    setERearQty(row.tire?.rear_quantity != null ? String(row.tire.rear_quantity) : "");
+    setEPriceToCustomer(row.tire?.price_to_customer != null ? String(row.tire.price_to_customer) : "");
+    setEPriceFromJinheung(row.tire?.price_from_jinheung != null ? String(row.tire.price_from_jinheung) : "");
+    setESalesRep(row.sales_rep ?? "");
+    setESalesRepPhone(row.sales_rep_phone ? formatPhoneKR(row.sales_rep_phone) : "");
+    setENote(row.tire?.note ?? "");
+  };
+
+  const saveEdit = async () => {
+    if (!editRow) return;
+    if (!eCustName.trim()) { alert("고객명을 입력해주세요."); return; }
+    if (!eSalesRep.trim())  { alert("영업사원을 입력해주세요."); return; }
+    setEditSaving(true);
+    try {
+      const front = eFrontQty ? parseInt(eFrontQty, 10) : 0;
+      const rear  = eRearQty  ? parseInt(eRearQty, 10)  : 0;
+      const qty   = (front + rear) || null;
+      const summary = [eTireSize, eVehicleInfo, eVehicleType].filter(Boolean).join(" / ") || "타이어 접수";
+      const priceToCustomer = ePriceToCustomer ? parseInt(onlyDigits(ePriceToCustomer), 10) || null : null;
+      const priceFromJinheung = ePriceFromJinheung ? parseInt(onlyDigits(ePriceFromJinheung), 10) || null : null;
+
+      const { error: caseErr } = await supabase.from("consultation_cases").update({
+        customer_name: eCustName.trim(), phone: onlyDigits(eCustPhone) || null,
+        summary, sales_rep: eSalesRep.trim(), sales_rep_phone: onlyDigits(eSalesRepPhone) || null,
+      }).eq("id", editRow.id);
+      if (caseErr) throw caseErr;
+
+      const { error: detailErr } = await supabase.from("consultation_tire_details").update({
+        tire_size: eTireSize.trim() || null, vehicle_info: eVehicleInfo.trim() || null,
+        vehicle_type: eVehicleType.trim() || null, front_quantity: front || null, rear_quantity: rear || null,
+        quantity: qty, price_to_customer: priceToCustomer, price_from_jinheung: priceFromJinheung,
+        note: eNote.trim() || null,
+      }).eq("consultation_id", editRow.id);
+      if (detailErr) throw detailErr;
+
+      // 진흥주문(tb_orders) 미러도 함께 동기화
+      const { error: orderErr } = await supabase.from("tb_orders").update({
+        customer_name_raw: eCustName.trim(), product_spec: summary, quantity: qty,
+        price_to_customer: priceToCustomer, price_from_jinheung: priceFromJinheung,
+      }).eq("consultation_id", editRow.id);
+      if (orderErr) console.error("[tb_orders 동기화 실패]", orderErr);
+
+      setRows((prev) => prev.map((r) => String(r.id) === String(editRow.id) ? {
+        ...r, customer_name: eCustName.trim(), phone: onlyDigits(eCustPhone) || null,
+        sales_rep: eSalesRep.trim(), sales_rep_phone: onlyDigits(eSalesRepPhone) || null,
+        tire: r.tire ? {
+          ...r.tire, tire_size: eTireSize.trim() || null, vehicle_info: eVehicleInfo.trim() || null,
+          vehicle_type: eVehicleType.trim() || null, front_quantity: front || null, rear_quantity: rear || null,
+          quantity: qty, price_to_customer: priceToCustomer, price_from_jinheung: priceFromJinheung,
+          note: eNote.trim() || null,
+        } : r.tire,
+      } : r));
+      setEditRow(null);
+    } catch (e: any) {
+      alert(e?.message || "수정 실패");
+    } finally { setEditSaving(false); }
+  };
+
   return (
     <div className="px-4 py-3 space-y-3">
       <div className="flex items-center justify-between">
@@ -345,7 +443,10 @@ export function TireSection({ isAdminLevel, canCreate, canChangeStatus }: Sectio
                 <p className="text-sm font-semibold text-[#0f172a]">{r.customer_name}</p>
                 <p className="text-xs text-gray-400 mt-0.5">{formatCreatedAt(r.created_at)} · 영업 {r.sales_rep ?? "-"}</p>
               </div>
-              <StageButtons stage={r.tire?.process_stage ?? "contract"} disabled={!canChangeStatus} onChange={(next) => changeStage(r, next)} />
+              <div className="flex items-center gap-1.5">
+                <StageButtons stage={r.tire?.process_stage ?? "contract"} disabled={!canChangeStatus} onChange={(next) => changeStage(r, next)} />
+                <button onClick={() => openEdit(r)} className="px-2.5 py-1 rounded-xl border border-gray-200 bg-white text-xs font-medium text-gray-500 hover:border-gray-300 transition-all">수정</button>
+              </div>
             </div>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
               <span>차량 <b className="text-gray-800">{r.tire?.vehicle_info ?? "-"}</b></span>
@@ -358,6 +459,25 @@ export function TireSection({ isAdminLevel, canCreate, canChangeStatus }: Sectio
           </div>
         ))}
       </div>
+
+      {editRow && (
+        <EditModalShell title={`타이어 건 수정 — ${editRow.customer_name}`} onClose={() => setEditRow(null)} onSave={saveEdit} saving={editSaving}>
+          <div><label className={labelClass}>고객명 *</label><input value={eCustName} onChange={(e) => setECustName(e.target.value)} className={inputClass} /></div>
+          <div><label className={labelClass}>전화번호</label><input value={eCustPhone} onChange={(e) => setECustPhone(formatPhoneKR(e.target.value))} inputMode="tel" className={inputClass} /></div>
+          <div><label className={labelClass}>차량정보</label><input value={eVehicleInfo} onChange={(e) => setEVehicleInfo(e.target.value)} className={inputClass} /></div>
+          <div><label className={labelClass}>차종</label><input value={eVehicleType} onChange={(e) => setEVehicleType(e.target.value)} className={inputClass} /></div>
+          <div><label className={labelClass}>타이어 규격</label><input value={eTireSize} onChange={(e) => setETireSize(e.target.value)} className={inputClass} /></div>
+          <div><label className={labelClass}>전륜 수량</label><input value={eFrontQty} onChange={(e) => setEFrontQty(onlyDigits(e.target.value))} inputMode="numeric" className={inputClass} /></div>
+          <div><label className={labelClass}>후륜 수량</label><input value={eRearQty} onChange={(e) => setERearQty(onlyDigits(e.target.value))} inputMode="numeric" className={inputClass} /></div>
+          <div><label className={labelClass}>판매단가 (원)</label><input value={ePriceToCustomer} onChange={(e) => setEPriceToCustomer(onlyDigits(e.target.value))} inputMode="numeric" className={inputClass} /></div>
+          <div><label className={labelClass}>진흥 매입가 (원)</label><input value={ePriceFromJinheung} onChange={(e) => setEPriceFromJinheung(onlyDigits(e.target.value))} inputMode="numeric" className={inputClass} /></div>
+          <SalesRepFields salesRep={eSalesRep} setSalesRep={setESalesRep} salesRepPhone={eSalesRepPhone} setSalesRepPhone={setESalesRepPhone} />
+          <div className="sm:col-span-2 md:col-span-3">
+            <label className={labelClass}>특이사항</label>
+            <textarea value={eNote} onChange={(e) => setENote(e.target.value)} rows={2} className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-orange-400" />
+          </div>
+        </EditModalShell>
+      )}
     </div>
   );
 }
@@ -394,11 +514,30 @@ export function BatterySection({ isAdminLevel, canCreate, canChangeStatus }: Sec
   const [salesRepPhone, setSalesRepPhone] = useState("");
   const [note, setNote] = useState("");
 
+  const [editRow, setEditRow] = useState<BatteryRow | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [eCustName, setECustName] = useState("");
+  const [eCustPhone, setECustPhone] = useState("");
+  const [eVehicleType, setEVehicleType] = useState("");
+  const [eVoltage, setEVoltage] = useState("");
+  const [eCapacityAh, setECapacityAh] = useState("");
+  const [eDueDate, setEDueDate] = useState("");
+  const [eUnitPrice, setEUnitPrice] = useState("");
+  const [eQty, setEQty] = useState("1");
+  const [eSalesRep, setESalesRep] = useState("");
+  const [eSalesRepPhone, setESalesRepPhone] = useState("");
+  const [eNote, setENote] = useState("");
+
   const salePrice = useMemo(() => {
     const u = parseInt(onlyDigits(unitPrice) || "0", 10);
     const q = parseInt(qty || "0", 10);
     return u * q;
   }, [unitPrice, qty]);
+  const eSalePrice = useMemo(() => {
+    const u = parseInt(onlyDigits(eUnitPrice) || "0", 10);
+    const q = parseInt(eQty || "0", 10);
+    return u * q;
+  }, [eUnitPrice, eQty]);
 
   const fetchRows = async () => {
     setLoading(true);
@@ -492,6 +631,66 @@ export function BatterySection({ isAdminLevel, canCreate, canChangeStatus }: Sec
     });
   };
 
+  const openEdit = (row: BatteryRow) => {
+    setEditRow(row);
+    setECustName(row.customer_name ?? "");
+    setECustPhone(row.phone ? formatPhoneKR(row.phone) : "");
+    setEVehicleType(row.battery?.battery_vehicle_type ?? "");
+    setEVoltage(row.battery?.battery_voltage != null ? String(row.battery.battery_voltage) : "");
+    setECapacityAh(row.battery?.battery_capacity_ah != null ? String(row.battery.battery_capacity_ah) : "");
+    setEDueDate(row.battery?.battery_due_date ?? "");
+    setEUnitPrice(row.battery?.battery_unit_sale_price != null ? String(row.battery.battery_unit_sale_price) : "");
+    setEQty(row.battery?.battery_quantity != null ? String(row.battery.battery_quantity) : "1");
+    setESalesRep(row.sales_rep ?? "");
+    setESalesRepPhone(row.sales_rep_phone ? formatPhoneKR(row.sales_rep_phone) : "");
+    setENote(row.battery?.note ?? "");
+  };
+
+  const saveEdit = async () => {
+    if (!editRow) return;
+    if (!eCustName.trim()) { alert("고객명을 입력해주세요."); return; }
+    if (!eSalesRep.trim())  { alert("영업사원을 입력해주세요."); return; }
+    setEditSaving(true);
+    try {
+      const summary = [eVehicleType, eVoltage ? `${eVoltage}V` : null, eCapacityAh ? `${eCapacityAh}Ah` : null].filter(Boolean).join(" / ") || "배터리 접수";
+
+      const { error: caseErr } = await supabase.from("consultation_cases").update({
+        customer_name: eCustName.trim(), phone: onlyDigits(eCustPhone) || null,
+        summary, sales_rep: eSalesRep.trim(), sales_rep_phone: onlyDigits(eSalesRepPhone) || null,
+      }).eq("id", editRow.id);
+      if (caseErr) throw caseErr;
+
+      const { error: detailErr } = await supabase.from("consultation_battery_details").update({
+        battery_vehicle_type: eVehicleType.trim() || null,
+        battery_voltage: eVoltage ? parseFloat(eVoltage) || null : null,
+        battery_capacity_ah: eCapacityAh ? parseFloat(eCapacityAh) || null : null,
+        battery_due_date: eDueDate || null,
+        battery_unit_sale_price: eUnitPrice ? parseInt(onlyDigits(eUnitPrice), 10) || null : null,
+        battery_quantity: eQty ? parseInt(eQty, 10) || null : null,
+        battery_sale_price: eSalePrice || null,
+        note: eNote.trim() || null,
+      }).eq("consultation_id", editRow.id);
+      if (detailErr) throw detailErr;
+
+      setRows((prev) => prev.map((r) => String(r.id) === String(editRow.id) ? {
+        ...r, customer_name: eCustName.trim(), phone: onlyDigits(eCustPhone) || null,
+        sales_rep: eSalesRep.trim(), sales_rep_phone: onlyDigits(eSalesRepPhone) || null,
+        battery: r.battery ? {
+          ...r.battery, battery_vehicle_type: eVehicleType.trim() || null,
+          battery_voltage: eVoltage ? parseFloat(eVoltage) || null : null,
+          battery_capacity_ah: eCapacityAh ? parseFloat(eCapacityAh) || null : null,
+          battery_due_date: eDueDate || null,
+          battery_unit_sale_price: eUnitPrice ? parseInt(onlyDigits(eUnitPrice), 10) || null : null,
+          battery_quantity: eQty ? parseInt(eQty, 10) || null : null,
+          battery_sale_price: eSalePrice || null, note: eNote.trim() || null,
+        } : r.battery,
+      } : r));
+      setEditRow(null);
+    } catch (e: any) {
+      alert(e?.message || "수정 실패");
+    } finally { setEditSaving(false); }
+  };
+
   return (
     <div className="px-4 py-3 space-y-3">
       <div className="flex items-center justify-between">
@@ -539,7 +738,10 @@ export function BatterySection({ isAdminLevel, canCreate, canChangeStatus }: Sec
                 <p className="text-sm font-semibold text-[#0f172a]">{r.customer_name}</p>
                 <p className="text-xs text-gray-400 mt-0.5">{formatCreatedAt(r.created_at)} · 영업 {r.sales_rep ?? "-"}</p>
               </div>
-              <StageButtons stage={r.battery?.process_stage ?? "contract"} disabled={!canChangeStatus} onChange={(next) => changeStage(r, next)} />
+              <div className="flex items-center gap-1.5">
+                <StageButtons stage={r.battery?.process_stage ?? "contract"} disabled={!canChangeStatus} onChange={(next) => changeStage(r, next)} />
+                <button onClick={() => openEdit(r)} className="px-2.5 py-1 rounded-xl border border-gray-200 bg-white text-xs font-medium text-gray-500 hover:border-gray-300 transition-all">수정</button>
+              </div>
             </div>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
               <span>차종 <b className="text-gray-800">{r.battery?.battery_vehicle_type ?? "-"}</b></span>
@@ -553,6 +755,25 @@ export function BatterySection({ isAdminLevel, canCreate, canChangeStatus }: Sec
           </div>
         ))}
       </div>
+
+      {editRow && (
+        <EditModalShell title={`배터리 건 수정 — ${editRow.customer_name}`} onClose={() => setEditRow(null)} onSave={saveEdit} saving={editSaving}>
+          <div><label className={labelClass}>고객명 *</label><input value={eCustName} onChange={(e) => setECustName(e.target.value)} className={inputClass} /></div>
+          <div><label className={labelClass}>전화번호</label><input value={eCustPhone} onChange={(e) => setECustPhone(formatPhoneKR(e.target.value))} inputMode="tel" className={inputClass} /></div>
+          <div><label className={labelClass}>차종</label><input value={eVehicleType} onChange={(e) => setEVehicleType(e.target.value)} className={inputClass} /></div>
+          <div><label className={labelClass}>전압 (V)</label><input value={eVoltage} onChange={(e) => setEVoltage(e.target.value)} inputMode="decimal" className={inputClass} /></div>
+          <div><label className={labelClass}>용량 (Ah)</label><input value={eCapacityAh} onChange={(e) => setECapacityAh(e.target.value)} inputMode="decimal" className={inputClass} /></div>
+          <div><label className={labelClass}>납기일</label><input type="date" value={eDueDate} onChange={(e) => setEDueDate(e.target.value)} className={inputClass} /></div>
+          <div><label className={labelClass}>단가 (원)</label><input value={eUnitPrice} onChange={(e) => setEUnitPrice(onlyDigits(e.target.value))} inputMode="numeric" className={inputClass} /></div>
+          <div><label className={labelClass}>수량</label><input value={eQty} onChange={(e) => setEQty(onlyDigits(e.target.value))} inputMode="numeric" className={inputClass} /></div>
+          <div className={labelClass + " flex items-end h-10"}>판매가 {fmtAmt(eSalePrice)}</div>
+          <SalesRepFields salesRep={eSalesRep} setSalesRep={setESalesRep} salesRepPhone={eSalesRepPhone} setSalesRepPhone={setESalesRepPhone} />
+          <div className="sm:col-span-2 md:col-span-3">
+            <label className={labelClass}>특이사항</label>
+            <textarea value={eNote} onChange={(e) => setENote(e.target.value)} rows={2} className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-orange-400" />
+          </div>
+        </EditModalShell>
+      )}
     </div>
   );
 }
@@ -580,6 +801,15 @@ export function EtcSection({ isAdminLevel, canCreate, canChangeStatus }: Section
   const [salesRep, setSalesRep] = useState("");
   const [salesRepPhone, setSalesRepPhone] = useState("");
   const [note, setNote] = useState("");
+
+  const [editRow, setEditRow] = useState<EtcRow | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [eCustName, setECustName] = useState("");
+  const [eCustPhone, setECustPhone] = useState("");
+  const [eSummary, setESummary] = useState("");
+  const [eSalesRep, setESalesRep] = useState("");
+  const [eSalesRepPhone, setESalesRepPhone] = useState("");
+  const [eNote, setENote] = useState("");
 
   const fetchRows = async () => {
     setLoading(true);
@@ -649,6 +879,41 @@ export function EtcSection({ isAdminLevel, canCreate, canChangeStatus }: Section
     });
   };
 
+  const openEdit = (row: EtcRow) => {
+    setEditRow(row);
+    setECustName(row.customer_name ?? "");
+    setECustPhone(row.phone ? formatPhoneKR(row.phone) : "");
+    setESummary(row.summary ?? "");
+    setESalesRep(row.sales_rep ?? "");
+    setESalesRepPhone(row.sales_rep_phone ? formatPhoneKR(row.sales_rep_phone) : "");
+    setENote(row.detail_memo ?? "");
+  };
+
+  const saveEdit = async () => {
+    if (!editRow) return;
+    if (!eCustName.trim()) { alert("고객명을 입력해주세요."); return; }
+    if (!eSummary.trim())  { alert("품목 내역을 입력해주세요."); return; }
+    if (!eSalesRep.trim())  { alert("영업사원을 입력해주세요."); return; }
+    setEditSaving(true);
+    try {
+      const { error } = await supabase.from("consultation_cases").update({
+        customer_name: eCustName.trim(), phone: onlyDigits(eCustPhone) || null,
+        summary: eSummary.trim(), detail_memo: eNote.trim() || null,
+        sales_rep: eSalesRep.trim(), sales_rep_phone: onlyDigits(eSalesRepPhone) || null,
+      }).eq("id", editRow.id);
+      if (error) throw error;
+
+      setRows((prev) => prev.map((r) => String(r.id) === String(editRow.id) ? {
+        ...r, customer_name: eCustName.trim(), phone: onlyDigits(eCustPhone) || null,
+        summary: eSummary.trim(), detail_memo: eNote.trim() || null,
+        sales_rep: eSalesRep.trim(), sales_rep_phone: onlyDigits(eSalesRepPhone) || null,
+      } : r));
+      setEditRow(null);
+    } catch (e: any) {
+      alert(e?.message || "수정 실패");
+    } finally { setEditSaving(false); }
+  };
+
   return (
     <div className="px-4 py-3 space-y-3">
       <div className="flex items-center justify-between">
@@ -686,11 +951,197 @@ export function EtcSection({ isAdminLevel, canCreate, canChangeStatus }: Section
                 <p className="text-sm font-semibold text-[#0f172a]">{r.customer_name}</p>
                 <p className="text-xs text-gray-400 mt-0.5">{formatCreatedAt(r.created_at)} · 영업 {r.sales_rep ?? "-"}</p>
               </div>
-              <StageButtons stage={r.status ?? "contract"} disabled={!canChangeStatus} onChange={(next) => changeStage(r, next)} />
+              <div className="flex items-center gap-1.5">
+                <StageButtons stage={r.status ?? "contract"} disabled={!canChangeStatus} onChange={(next) => changeStage(r, next)} />
+                <button onClick={() => openEdit(r)} className="px-2.5 py-1 rounded-xl border border-gray-200 bg-white text-xs font-medium text-gray-500 hover:border-gray-300 transition-all">수정</button>
+              </div>
             </div>
             <p className="mt-2 text-xs text-gray-600">{r.summary}</p>
             {r.detail_memo && <p className="mt-1 text-xs text-gray-500">메모: {r.detail_memo}</p>}
           </div>
+        ))}
+      </div>
+
+      {editRow && (
+        <EditModalShell title={`기타 건 수정 — ${editRow.customer_name}`} onClose={() => setEditRow(null)} onSave={saveEdit} saving={editSaving}>
+          <div><label className={labelClass}>고객명 *</label><input value={eCustName} onChange={(e) => setECustName(e.target.value)} className={inputClass} /></div>
+          <div><label className={labelClass}>전화번호</label><input value={eCustPhone} onChange={(e) => setECustPhone(formatPhoneKR(e.target.value))} inputMode="tel" className={inputClass} /></div>
+          <div className="sm:col-span-2 md:col-span-1"><label className={labelClass}>품목 내역 *</label><input value={eSummary} onChange={(e) => setESummary(e.target.value)} placeholder="예: 지게차 부품 × 2개 (150,000원)" className={inputClass} /></div>
+          <SalesRepFields salesRep={eSalesRep} setSalesRep={setESalesRep} salesRepPhone={eSalesRepPhone} setSalesRepPhone={setESalesRepPhone} />
+          <div className="sm:col-span-2 md:col-span-3">
+            <label className={labelClass}>특이사항</label>
+            <textarea value={eNote} onChange={(e) => setENote(e.target.value)} rows={2} className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-orange-400" />
+          </div>
+        </EditModalShell>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// 전체 현황 (할부/타이어/배터리/기타 통합 뷰)
+// ══════════════════════════════════════════════════════════
+type JumpTab = "할부" | "타이어" | "배터리" | "기타";
+type OverviewRow = {
+  key: string; source: JumpTab; created_at: string;
+  customer_name: string; sales_rep: string | null;
+  stage_label: string; is_done: boolean; is_cancelled: boolean; amount: number | null;
+};
+
+export function OverviewSection({ onJumpToTab }: { onJumpToTab: (t: JumpTab) => void }) {
+  const [rows, setRows] = useState<OverviewRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [statsMonth, setStatsMonth] = useState<string>(() => {
+    const n = new Date();
+    return n.getFullYear().toString() + String(n.getMonth() + 1).padStart(2, "0");
+  });
+
+  const fetchAll = async () => {
+    setLoading(true);
+    try {
+      const [brotherR, tireCaseR, battCaseR, etcCaseR] = await Promise.all([
+        supabase.from("brother_tasks").select("id, created_at, customer_name, sales_rep, status, loan_limit, installment_principal").order("created_at", { ascending: false }).limit(300),
+        supabase.from("consultation_cases").select("id, created_at, customer_name, sales_rep, status").eq("region", REGION).eq("work_type", "tire_sales").order("created_at", { ascending: false }).limit(300),
+        supabase.from("consultation_cases").select("id, created_at, customer_name, sales_rep, status").eq("region", REGION).eq("work_type", "battery_sales").order("created_at", { ascending: false }).limit(300),
+        supabase.from("consultation_cases").select("id, created_at, customer_name, sales_rep, status, summary").eq("region", REGION).eq("work_type", "brother_etc").order("created_at", { ascending: false }).limit(300),
+      ]);
+
+      const tireIds = (tireCaseR.data ?? []).map((c: any) => c.id);
+      const battIds = (battCaseR.data ?? []).map((c: any) => c.id);
+      const [tireDetailR, battDetailR] = await Promise.all([
+        tireIds.length > 0
+          ? supabase.from("consultation_tire_details").select("consultation_id, process_stage, price_to_customer").in("consultation_id", tireIds)
+          : Promise.resolve({ data: [] as any[] }),
+        battIds.length > 0
+          ? supabase.from("consultation_battery_details").select("consultation_id, process_stage, battery_sale_price").in("consultation_id", battIds)
+          : Promise.resolve({ data: [] as any[] }),
+      ]);
+      const tireDetailMap: Record<number, any> = {};
+      (tireDetailR.data ?? []).forEach((d: any) => { tireDetailMap[d.consultation_id] = d; });
+      const battDetailMap: Record<number, any> = {};
+      (battDetailR.data ?? []).forEach((d: any) => { battDetailMap[d.consultation_id] = d; });
+
+      const out: OverviewRow[] = [];
+      (brotherR.data ?? []).forEach((r: any) => {
+        out.push({
+          key: `hcm-${r.id}`, source: "할부", created_at: r.created_at,
+          customer_name: r.customer_name, sales_rep: r.sales_rep,
+          stage_label: r.status, is_done: r.status === "확정", is_cancelled: r.status === "취소",
+          amount: r.loan_limit ?? r.installment_principal ?? null,
+        });
+      });
+      (tireCaseR.data ?? []).forEach((c: any) => {
+        const d = tireDetailMap[c.id];
+        const stage = (d?.process_stage ?? "contract") as Stage;
+        out.push({
+          key: `tire-${c.id}`, source: "타이어", created_at: c.created_at,
+          customer_name: c.customer_name, sales_rep: c.sales_rep,
+          stage_label: STAGE_LABEL[stage] ?? stage, is_done: stage === "invoiced", is_cancelled: stage === "cancelled",
+          amount: d?.price_to_customer ?? null,
+        });
+      });
+      (battCaseR.data ?? []).forEach((c: any) => {
+        const d = battDetailMap[c.id];
+        const stage = (d?.process_stage ?? "contract") as Stage;
+        out.push({
+          key: `batt-${c.id}`, source: "배터리", created_at: c.created_at,
+          customer_name: c.customer_name, sales_rep: c.sales_rep,
+          stage_label: STAGE_LABEL[stage] ?? stage, is_done: stage === "invoiced", is_cancelled: stage === "cancelled",
+          amount: d?.battery_sale_price ?? null,
+        });
+      });
+      (etcCaseR.data ?? []).forEach((c: any) => {
+        const stage = (c.status ?? "contract") as Stage;
+        const m = (c.summary ?? "").match(/\(([\d,]+)원\)/);
+        out.push({
+          key: `etc-${c.id}`, source: "기타", created_at: c.created_at,
+          customer_name: c.customer_name, sales_rep: c.sales_rep,
+          stage_label: STAGE_LABEL[stage] ?? stage, is_done: stage === "invoiced", is_cancelled: stage === "cancelled",
+          amount: m ? parseInt(m[1].replace(/,/g, ""), 10) : null,
+        });
+      });
+
+      out.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setRows(out);
+    } catch (e: any) {
+      console.error("[overview fetch]", e);
+    } finally { setLoading(false); }
+  };
+  useEffect(() => { void fetchAll(); }, []);
+
+  const availableMonths = useMemo(() => {
+    const set = new Set<string>();
+    const now = new Date();
+    set.add(now.getFullYear().toString() + String(now.getMonth() + 1).padStart(2, "0"));
+    rows.forEach((r) => {
+      const d = new Date(r.created_at);
+      if (Number.isNaN(d.getTime())) return;
+      set.add(d.getFullYear().toString() + String(d.getMonth() + 1).padStart(2, "0"));
+    });
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [rows]);
+
+  const monthRows = useMemo(() => rows.filter((r) => {
+    const d = new Date(r.created_at);
+    return d.getFullYear().toString() + String(d.getMonth() + 1).padStart(2, "0") === statsMonth;
+  }), [rows, statsMonth]);
+
+  const TYPES: JumpTab[] = ["할부", "타이어", "배터리", "기타"];
+  const stats = useMemo(() => {
+    const m: Record<JumpTab, { total: number; done: number; amount: number }> = {
+      "할부": { total: 0, done: 0, amount: 0 }, "타이어": { total: 0, done: 0, amount: 0 },
+      "배터리": { total: 0, done: 0, amount: 0 }, "기타": { total: 0, done: 0, amount: 0 },
+    };
+    monthRows.forEach((r) => {
+      m[r.source].total += 1;
+      if (r.is_done) { m[r.source].done += 1; m[r.source].amount += r.amount ?? 0; }
+    });
+    return m;
+  }, [monthRows]);
+  const grandAmount = TYPES.reduce((sum, t) => sum + stats[t].amount, 0);
+
+  return (
+    <div className="px-4 py-3 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-gray-200 bg-white text-xs font-medium text-gray-600">
+          <select value={statsMonth} onChange={(e) => setStatsMonth(e.target.value)} className="bg-transparent text-xs font-semibold text-[#0f172a] outline-none cursor-pointer pr-1">
+            {availableMonths.map((ym) => (
+              <option key={ym} value={ym}>{ym.slice(0, 4)}년 {parseInt(ym.slice(4), 10)}월</option>
+            ))}
+          </select>
+          <span className="text-gray-300">|</span>
+          <span className="text-gray-400">완료 합계</span>
+          <span className="font-bold text-orange-500">{(grandAmount / 100000000).toFixed(1)}억</span>
+        </div>
+        <button onClick={fetchAll} disabled={loading} className={btnSecondary}>{loading ? "로딩중..." : "새로고침"}</button>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {TYPES.map((t) => (
+          <button key={t} onClick={() => onJumpToTab(t)} className="rounded-xl border border-gray-200 bg-white p-3 text-left hover:border-orange-300 hover:shadow-sm transition-all">
+            <p className="text-xs font-semibold text-gray-500">{t}</p>
+            <p className="mt-1 text-lg font-bold text-[#0f172a]">{stats[t].total}<span className="text-xs font-medium text-gray-400"> 건</span></p>
+            <p className="mt-0.5 text-xs text-gray-500">완료 {stats[t].done}건 · {fmtAmt(stats[t].amount)}</p>
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-1.5">
+        {rows.length === 0 && !loading && <p className="text-sm text-gray-400 py-6 text-center">등록된 건이 없습니다.</p>}
+        {rows.slice(0, 80).map((r) => (
+          <button key={r.key} onClick={() => onJumpToTab(r.source)} className="w-full flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-left hover:border-orange-300 hover:shadow-sm transition-all">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded-lg bg-gray-100 text-gray-600 text-[11px] font-semibold">{r.source}</span>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-[#0f172a] truncate">{r.customer_name}</p>
+                <p className="text-xs text-gray-400">{formatCreatedAt(r.created_at)} · 영업 {r.sales_rep ?? "-"}</p>
+              </div>
+            </div>
+            <div className="shrink-0 flex items-center gap-2">
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-lg border text-[11px] font-semibold ${r.is_cancelled ? "bg-gray-100 text-gray-500 border-gray-200" : r.is_done ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-orange-50 text-orange-600 border-orange-200"}`}>{r.stage_label}</span>
+              <span className="text-xs font-semibold text-gray-600 w-20 text-right">{fmtAmt(r.amount)}</span>
+            </div>
+          </button>
         ))}
       </div>
     </div>
