@@ -8,6 +8,13 @@
 -- 실제로는 존재하지 않아 다운로드 시 "Object not found" 에러가 발생한다.
 -- (태산통운 clear_expired_taesan_* 함수와 동일하게) 스토리지 삭제 + DB 삭제를 하나의
 -- Postgres 함수(SQL DELETE는 대상이 없어도 에러 없이 0건 처리됨) 안에서 실제 실행한다.
+--
+-- 추가로 발견한 버그: storage.objects에는 고아 파일 방지용 protect_delete 트리거가 걸려 있어
+-- storage.allow_delete_query 세션 설정 없이는 직접 DELETE가 항상 예외로 막힌다. 이 마이그레이션의
+-- 함수뿐 아니라 clear_expired_hcm_data/clear_expired_hcm_docs/clear_expired_narumi_data/
+-- clear_expired_taesan_* 등 기존 함수들도 전부 같은 이유로 크론이 돌 때마다 조용히 실패하고
+-- 있었다. 이 파일에서는 새로 만드는 두 함수에 대해, 뒤이은 마이그레이션에서 나머지 기존
+-- 함수들에 대해 set_config('storage.allow_delete_query', 'true', true)를 추가해 해결한다.
 
 create or replace function public.clear_expired_hcm_vehicle_reg_docs()
 returns void
@@ -17,6 +24,10 @@ as $function$
 declare
   rec record;
 begin
+  -- storage.objects는 고아 파일 방지용 protect_delete 트리거가 직접 DELETE를 막고 있어
+  -- 이 세션(트랜잭션 한정)에서만 명시적으로 허용해야 한다.
+  perform set_config('storage.allow_delete_query', 'true', true);
+
   for rec in
     select id, storage_path
     from public.vehicle_reg_doc_uploads
@@ -37,6 +48,8 @@ as $function$
 declare
   rec record;
 begin
+  perform set_config('storage.allow_delete_query', 'true', true);
+
   for rec in
     select id, storage_path
     from public.tax_invoice_uploads
