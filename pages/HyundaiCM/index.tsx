@@ -14,7 +14,7 @@ const PHONE_MASK_AFTER_HOURS = 24;    // 확정 후 24시간 경과 시 전화�
 
 // ─── 타입 ─────────────────────────────────────────────────
 type CustomerType = "개인" | "법인";
-type HCMStatus    = "접수" | "신용조회" | "승인" | "보완" | "거절" | "확정";
+type HCMStatus    = "접수" | "신용조회" | "승인" | "보완" | "거절" | "확정" | "취소";
 
 type FinanceCompany = "NH캐피탈" | "오릭스캐피탈" | "우리금융캐피탈";
 
@@ -196,7 +196,7 @@ function getNhRateByScore(score: number): { rate: number; incentive: number } | 
 }
 
 // ─── 상태 설정 ────────────────────────────────────────────
-const STATUS_ORDER: HCMStatus[] = ["접수", "신용조회", "확정"];
+const STATUS_ORDER: HCMStatus[] = ["접수", "신용조회", "확정", "취소"];
 const CREDIT_STATUSES: HCMStatus[] = ["승인", "보완", "거절"];
 
 // 신용결과(승인/보완/거절)를 포함한 전체 순서 인덱스
@@ -211,6 +211,11 @@ function getStatusIndex(status: HCMStatus): number {
 // 신용결과(승인/보완/거절)는 신용조회 다음에만 선택 가능
 // 서류등록은 신용결과(승인/보완/거절) 다음에만 가능
 function canGoToStatus(current: HCMStatus, next: HCMStatus, isAdmin: boolean): boolean {
+  // 취소: 확정/취소 상태가 아니면 언제든 취소 처리 가능 (딜 클로징)
+  if (next === "취소") return current !== "확정" && current !== "취소";
+  // 취소 상태에서 다른 단계로 되돌리기: admin만 허용
+  if (current === "취소") return isAdmin;
+
   const currentIdx = getStatusIndex(current);
   const nextIdx    = getStatusIndex(next);
 
@@ -247,6 +252,7 @@ function statusStyle(status: HCMStatus) {
     case "보완":     return "bg-yellow-50 text-yellow-700 border-yellow-200";
     case "거절":     return "bg-red-50 text-red-600 border-red-200";
     case "확정":     return "bg-emerald-100 text-emerald-800 border-emerald-300";
+    case "취소":     return "bg-gray-200 text-gray-700 border-gray-300";
     default:         return "bg-gray-50 text-gray-500 border-gray-200";
   }
 }
@@ -322,6 +328,8 @@ export default function HyundaiCMPage() {
 
   // ── 데이터 ──
   const [rows,    setRows]    = useState<HCMTask[]>([]);
+  // 당월 실적(월별 건수/취급금액) 전용 — 30일 경과 종료 건 숨김 필터의 영향을 받지 않는 전체 데이터
+  const [statsRows, setStatsRows] = useState<Pick<HCMTask, "status" | "created_at" | "loan_limit" | "installment_principal">[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving,  setSaving]  = useState(false);
   const [err,     setErr]     = useState("");
@@ -1081,9 +1089,9 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         q = q.eq("finance_company", "NH캐피탈");
       }
       if (!isAdmin) {
-        q = q.or(`status.neq.확정,created_at.gte.${cutoffISO}`);
+        q = q.or(`status.not.in.(확정,취소),created_at.gte.${cutoffISO}`);
       } else if (!showClosed) {
-        q = q.or(`status.neq.확정,created_at.gte.${cutoffISO}`);
+        q = q.or(`status.not.in.(확정,취소),created_at.gte.${cutoffISO}`);
       }
 
       const { data, error } = await q.order("created_at", { ascending: false });
@@ -1141,6 +1149,20 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
   useEffect(() => { fetchRows(); }, [showClosed, isAdmin, isHyundaiCM, isNhCapitalStaff]); // eslint-disable-line
 
+  // 당월 실적 전용 — 종료 건 숨김(30일 경과) 필터를 적용하지 않은 전체 통계 데이터 조회
+  const fetchStatsRows = async () => {
+    try {
+      let q = supabase.from("hyundaicm_tasks").select("status, created_at, loan_limit, installment_principal");
+      if (isNhCapitalStaff) q = q.eq("finance_company", "NH캐피탈");
+      const { data, error } = await q;
+      if (error) throw error;
+      setStatsRows((data ?? []) as any);
+    } catch {
+      // 실적 요약 로드 실패는 목록/업무에 영향 없음 — 조용히 무시
+    }
+  };
+  useEffect(() => { fetchStatsRows(); }, [isAdmin, isHyundaiCM, isNhCapitalStaff]); // eslint-disable-line
+
 
   // ─── 모바일 파일 선택 후 세션 자동 복구 ─────────────────────
   // 모바일에서 파일 picker 사용 시 앱이 백그라운드 전환 후 복귀하면서 세션이 끊기는 현상 방지
@@ -1191,28 +1213,29 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
   , [rows]);
 
   // ─── 당월 실적 ───────────────────────────────────────────
+  // 종료 건 숨김(30일 경과) 필터의 영향을 받지 않도록 statsRows(전체 데이터)를 사용
   const availableStatsMonths = useMemo(() => {
     const set = new Set<string>();
     const now = new Date();
     set.add(now.getFullYear().toString() + String(now.getMonth() + 1).padStart(2, "0"));
-    rows.forEach((r) => {
+    statsRows.forEach((r) => {
       const d = new Date(r.created_at ?? 0);
       if (!r.created_at || isNaN(d.getTime())) return;
       set.add(d.getFullYear().toString() + String(d.getMonth() + 1).padStart(2, "0"));
     });
     return Array.from(set).sort((a, b) => b.localeCompare(a));
-  }, [rows]);
+  }, [statsRows]);
 
   const monthlyStats = useMemo(() => {
     const ym = statsMonth;
-    const thisMonth = rows.filter((r) => {
+    const thisMonth = statsRows.filter((r) => {
       const d = new Date(r.created_at ?? 0);
       return d.getFullYear().toString() + String(d.getMonth() + 1).padStart(2, "0") === ym;
     });
     const confirmed = thisMonth.filter((r) => r.status === "확정");
     const totalAmount = confirmed.reduce((sum, r) => sum + (r.loan_limit ?? r.installment_principal ?? 0), 0);
     return { total: thisMonth.length, confirmed: confirmed.length, amount: totalAmount };
-  }, [rows, statsMonth]);
+  }, [statsRows, statsMonth]);
 
   // 케이스번호 맵 — 신규 건은 접수 시 발급받은 통합 번호(case_no)를 그대로 쓰고,
   // 그 이전에 만들어져 case_no가 없는 과거 건만 기존 방식(연월 내 순번)으로 계산해 보여준다.
@@ -1388,8 +1411,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       setRows((prev) => prev.map((r) => String(r.id) === String(row.id) ? { ...r, status: row.status } : r));
       alert(error.message);
     } else {
-      // 거절 시 구글 할일도 완료 처리 (목록에서 사라짐)
-      if (next === "거절") {
+      // 거절/취소 시 구글 할일도 완료 처리 (목록에서 사라짐)
+      if (next === "거절" || next === "취소") {
         void completeHcmGcalTask(row.id);
       }
       // 카카오 알림 (비동기, 실패해도 업무 영향 없음)
@@ -2325,13 +2348,14 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
             const docExpired   = isDocExpired(r.closed_at);
             const phoneMasked  = shouldMaskPhone(r);
-            const isConfirmed  = r.status === "확정" || r.status === "거절";
+            const isConfirmed  = r.status === "확정" || r.status === "거절" || r.status === "취소";
             const isExpanded   = expandedIds.has(String(r.id));
 
             return (
               <div key={r.id} className={`rounded-xl border bg-white shadow-sm transition-all overflow-hidden ${
                 r.status === "거절" ? "border-red-200" :
                 r.status === "확정" ? "border-emerald-200" :
+                r.status === "취소" ? "border-gray-300" :
                 "border-gray-200 hover:shadow-md"
               }`}>
 
@@ -2350,7 +2374,9 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                         <button
                           onClick={() => toggleExpand(r.id)}
                           className={`inline-flex items-center justify-center px-3 py-1.5 rounded-xl border text-xs font-medium transition-all ${
-                            r.status === "거절" ? "border-red-200 bg-red-50 text-red-600" : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            r.status === "거절" ? "border-red-200 bg-red-50 text-red-600" :
+                            r.status === "취소" ? "border-gray-300 bg-gray-100 text-gray-600" :
+                            "border-emerald-200 bg-emerald-50 text-emerald-700"
                           }`}
                         >{isExpanded ? "접기 ↑" : "펼치기 ↓"}</button>
                       )}
@@ -2380,7 +2406,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-xl border border-gray-200 bg-gray-50 text-xs font-medium text-gray-600">{r.customer_type}</span>
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-xl border text-xs font-semibold ${statusStyle(r.status)}`}>{r.status}</span>
-                    {holdMap[String(r.id)] && r.status !== "확정" && r.status !== "거절" && (() => {
+                    {holdMap[String(r.id)] && r.status !== "확정" && r.status !== "거절" && r.status !== "취소" && (() => {
                       const h = holdMap[String(r.id)];
                       const d = new Date(h.scheduled_at);
                       const fmt = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
@@ -2569,7 +2595,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                         })}
 
                         {/* 보류(재통화 예약) 버튼 */}
-                        {canChangeStatus && r.status !== "확정" && r.status !== "거절" && (
+                        {canChangeStatus && r.status !== "확정" && r.status !== "거절" && r.status !== "취소" && (
                           <button
                             onClick={() => openHoldModal(r)}
                             className={`px-3 py-1 rounded-xl border text-xs font-semibold transition-all
@@ -2581,6 +2607,23 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                             {holdMap[String(r.id)] ? "⏰ 보류중" : "⏰ 보류"}
                           </button>
                         )}
+                        {/* 취소 버튼 — 확정과 함께 딜 클로징의 두 갈래 중 하나 */}
+                        {(canChangeStatus || r.status === "취소") && r.status !== "확정" && (() => {
+                          const canGo = canGoToStatus(r.status, "취소", isAdminLevel);
+                          return (
+                            <button
+                              disabled={!canChangeStatus || r.status === "취소" || !canGo}
+                              onClick={() => { if (window.confirm("이 건을 취소 처리하시겠습니까?")) changeStatus(r, "취소"); }}
+                              className={`px-3 py-1 rounded-xl border text-xs font-semibold transition-all
+                                ${r.status === "취소"
+                                  ? statusStyle("취소") + " ring-2 ring-offset-1 ring-orange-200/60"
+                                  : canGo && canChangeStatus
+                                    ? "bg-white border-gray-200 text-gray-500 hover:border-red-300 hover:text-red-600"
+                                    : "bg-white border-gray-100 text-gray-300 cursor-not-allowed"
+                                }`}
+                            >취소</button>
+                          );
+                        })()}
                         {/* 승인조건 확인 버튼 — 승인 결과가 있는 건만 표시 */}
                         {(r.credit_rate != null || r.loan_limit != null || r.vehicle_amount != null || r.attach_amount != null) && (
                           <button

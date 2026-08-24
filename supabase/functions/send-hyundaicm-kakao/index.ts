@@ -87,11 +87,15 @@ const BROTHER_PAGE_URL = "https://rnfkorea.co.kr/brother";
 const BROTHER_RECIPIENTS_RAW = Deno.env.get("BROTHER_SMS_RECIPIENTS") ?? "01050549006,01090988189,01095250707,01036370928";
 const BROTHER_RECIPIENTS     = [...new Set(BROTHER_RECIPIENTS_RAW.split(",").map((n) => n.replace(/\D/g, "")))];
 
-// 담당 영업사원(김서정) 번호 — 딜에 "영업사원 알림 제외" 체크 시 이 번호만 제외하고 발송
-const BROTHER_SALES_REP_PHONE = (Deno.env.get("BROTHER_SALES_REP_PHONE") ?? "01090988189").replace(/\D/g, "");
+// 담당 영업사원이 딜마다 다르므로(경기북부는 영업사원이 다수), 고정 오피스 수신자에
+// 이번 딜에 등록된 담당자 번호(dealSalesRepPhone)를 추가해서 발송한다.
+// "영업사원 알림 제외" 체크 시에는 오피스 고정번호만 발송하고 담당자 번호는 추가하지 않는다.
 function brotherRecipientsFor(body: Record<string, unknown>): string[] {
-  if (!isTruthyFlag(body.skipSalesRepAlert)) return BROTHER_RECIPIENTS;
-  return BROTHER_RECIPIENTS.filter((n) => n !== BROTHER_SALES_REP_PHONE);
+  const base = [...BROTHER_RECIPIENTS];
+  if (isTruthyFlag(body.skipSalesRepAlert)) return base;
+  const dealPhone = typeof body.dealSalesRepPhone === "string" ? body.dealSalesRepPhone.replace(/\D/g, "") : "";
+  if (dealPhone && !base.includes(dealPhone)) base.push(dealPhone);
+  return base;
 }
 
 // ─── 나르미 카카오 알림톡 설정 ────────────────────────────────

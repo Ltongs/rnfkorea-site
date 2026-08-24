@@ -5,6 +5,7 @@ import html2canvas from "html2canvas";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 import AppTabBar from "../../components/AppTabBar";
+import { TireSection, BatterySection, EtcSection } from "./ItemSections";
 
 // ─── 정책 ─────────────────────────────────────────────────
 const HIDE_CLOSED_AFTER_DAYS_FOR_NON_ADMIN = 30;
@@ -13,12 +14,13 @@ const PHONE_MASK_AFTER_HOURS = 24;    // 확정 후 24시간 경과 시 전화�
 
 // ─── 타입 ─────────────────────────────────────────────────
 type CustomerType = "개인" | "법인";
-type HCMStatus    = "접수" | "신용조회" | "승인" | "보완" | "거절" | "확정";
+type HCMStatus    = "접수" | "신용조회" | "승인" | "보완" | "거절" | "확정" | "취소";
 
 type FinanceCompany = "NH캐피탈" | "오릭스캐피탈" | "우리금융캐피탈";
 
 // ─── 탭 ─────────────────────────────────────────────────
 type ActiveTab = "할부금융" | "보험" | "수출";
+type ItemTab = "할부" | "타이어" | "배터리" | "기타";
 
 // ─── 보험 타입 ────────────────────────────────────────────
 type InsuranceStatus = "접수" | "진행중" | "완료" | "취소";
@@ -114,6 +116,7 @@ type HCMTask = {
   vat_deferred_amount: number | null;  // 부가세 후불 금액
   loan_period: number | null;          // 대출기간 (확정 시)
   sales_rep: string | null;
+  sales_rep_phone: string | null;
   status: HCMStatus;
   special_note: string | null;
   doc_id_card: string | null;
@@ -154,6 +157,36 @@ function formatPhoneKR(raw: string) {
   if (d.length <= 3) return d;
   if (d.length <= 7) return `${d.slice(0, 3)}-${d.slice(3)}`;
   return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
+}
+
+// 담당 영업사원 이름으로 최근 연락처를 찾아준다 (brother_tasks + consultation_cases 이력 통합 조회).
+// 영업사원이 많아 매번 번호를 다시 치는 대신, 이름만 입력하면 최근에 썼던 번호가 자동으로 채워지도록 한다.
+async function lookupSalesRepPhone(name: string): Promise<string | null> {
+  const q = name.trim();
+  if (!q) return null;
+  try {
+    const [a, b] = await Promise.all([
+      supabase.from("brother_tasks")
+        .select("sales_rep_phone, created_at")
+        .eq("sales_rep", q)
+        .not("sales_rep_phone", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1),
+      supabase.from("consultation_cases")
+        .select("sales_rep_phone, created_at")
+        .eq("region", "경기북부")
+        .eq("sales_rep", q)
+        .not("sales_rep_phone", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1),
+    ]);
+    const candidates = [...(a.data ?? []), ...(b.data ?? [])]
+      .filter((r: any) => r.sales_rep_phone)
+      .sort((x: any, y: any) => new Date(y.created_at).getTime() - new Date(x.created_at).getTime());
+    return candidates[0]?.sales_rep_phone ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function formatCreatedAt(s?: string) {
@@ -214,7 +247,7 @@ function getNhRateByScore(score: number): { rate: number; incentive: number } | 
 }
 
 // ─── 상태 설정 ────────────────────────────────────────────
-const STATUS_ORDER: HCMStatus[] = ["접수", "신용조회", "확정"];
+const STATUS_ORDER: HCMStatus[] = ["접수", "신용조회", "확정", "취소"];
 const CREDIT_STATUSES: HCMStatus[] = ["승인", "보완", "거절"];
 
 // 신용결과(승인/보완/거절)를 포함한 전체 순서 인덱스
@@ -229,6 +262,11 @@ function getStatusIndex(status: HCMStatus): number {
 // 신용결과(승인/보완/거절)는 신용조회 다음에만 선택 가능
 // 서류등록은 신용결과(승인/보완/거절) 다음에만 가능
 function canGoToStatus(current: HCMStatus, next: HCMStatus, isAdmin: boolean): boolean {
+  // 취소: 확정/취소 상태가 아니면 언제든 취소 처리 가능 (딜 클로징)
+  if (next === "취소") return current !== "확정" && current !== "취소";
+  // 취소 상태에서 다른 단계로 되돌리기: admin만 허용
+  if (current === "취소") return isAdmin;
+
   const currentIdx = getStatusIndex(current);
   const nextIdx    = getStatusIndex(next);
 
@@ -265,6 +303,7 @@ function statusStyle(status: HCMStatus) {
     case "보완":     return "bg-yellow-50 text-yellow-700 border-yellow-200";
     case "거절":     return "bg-red-50 text-red-600 border-red-200";
     case "확정":     return "bg-emerald-100 text-emerald-800 border-emerald-300";
+    case "취소":     return "bg-gray-200 text-gray-700 border-gray-300";
     default:         return "bg-gray-50 text-gray-500 border-gray-200";
   }
 }
@@ -335,11 +374,14 @@ export default function BrotherPage() {
   const [vatDeferred,           setVatDeferred]           = useState<"Y" | "N">("N");
   const [vatDeferredAmount,     setVatDeferredAmount]     = useState("");
   const [salesRep,              setSalesRep]              = useState("");
+  const [salesRepPhone,         setSalesRepPhone]         = useState("");
   const [specialNote,           setSpecialNote]           = useState("");
   const [skipSalesRepAlert,     setSkipSalesRepAlert]     = useState(false); // admin 전용: 체크 시 영업사원(김서정) 알림 제외
 
   // ── 데이터 ──
   const [rows,    setRows]    = useState<HCMTask[]>([]);
+  // 당월 실적(월별 건수/취급금액) 전용 — 30일 경과 종료 건 숨김 필터의 영향을 받지 않는 전체 데이터
+  const [statsRows, setStatsRows] = useState<Pick<HCMTask, "status" | "created_at" | "loan_limit" | "installment_principal">[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving,  setSaving]  = useState(false);
   const [err,     setErr]     = useState("");
@@ -353,6 +395,8 @@ export default function BrotherPage() {
 
   // ── 탭 ──
   const [activeTab, setActiveTab] = useState<ActiveTab>("할부금융");
+  // ── 품목 탭 (할부/타이어/배터리/기타) ──
+  const [itemTab, setItemTab] = useState<ItemTab>("할부");
 
   // ── 보험 탭 상태 ──
   const [insRows,        setInsRows]        = useState<InsuranceTask[]>([]);
@@ -451,6 +495,7 @@ export default function BrotherPage() {
   const [editVatDeferredAmount,     setEditVatDeferredAmount]     = useState("");
   const [editLoanPeriod,            setEditLoanPeriod]            = useState("");
   const [editSalesRep,              setEditSalesRep]              = useState("");
+  const [editSalesRepPhone,         setEditSalesRepPhone]         = useState("");
   const [editSpecialNote,           setEditSpecialNote]           = useState("");
   const [editSkipSalesRepAlert,     setEditSkipSalesRepAlert]     = useState(false); // admin 전용: 영업사원 알림 제외
 
@@ -566,6 +611,7 @@ export default function BrotherPage() {
         customerType: row.customer_type,
         equipmentTon: row.equipment_ton  ?? "",
         salesRep:     row.sales_rep      ?? "",
+        dealSalesRepPhone: row.sales_rep_phone ?? "",
         scheduledAt,  // ISO 문자열 → Edge Function에서 KST 포맷팅
         holdNote:     holdNote.trim() || "",
         recipientNames: FIXED_RECIPIENT_LABEL,
@@ -948,6 +994,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           equipmentTon:      row.equipment_ton,
           financeCompany:    row.finance_company,
           salesRep:          row.sales_rep,
+          dealSalesRepPhone: row.sales_rep_phone,
           skipSalesRepAlert: row.skip_sales_rep_alert,
         });
       }
@@ -1035,6 +1082,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           equipmentTon:      row.equipment_ton,
           financeCompany:    row.finance_company,
           salesRep:          row.sales_rep,
+          dealSalesRepPhone: row.sales_rep_phone,
           skipSalesRepAlert: row.skip_sales_rep_alert,
         });
       }
@@ -1073,9 +1121,9 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
       let q = supabase.from("brother_tasks").select("*");
       if (!isAdmin) {
-        q = q.or(`status.neq.확정,created_at.gte.${cutoffISO}`);
+        q = q.or(`status.not.in.(확정,취소),created_at.gte.${cutoffISO}`);
       } else if (!showClosed) {
-        q = q.or(`status.neq.확정,created_at.gte.${cutoffISO}`);
+        q = q.or(`status.not.in.(확정,취소),created_at.gte.${cutoffISO}`);
       }
 
       const { data, error } = await q.order("created_at", { ascending: false });
@@ -1129,6 +1177,18 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
   useEffect(() => { fetchRows(); }, [showClosed, isAdmin, isGbn]); // eslint-disable-line
 
+  // 당월 실적 전용 — 종료 건 숨김(30일 경과) 필터를 적용하지 않은 전체 통계 데이터 조회
+  const fetchStatsRows = async () => {
+    try {
+      const { data, error } = await supabase.from("brother_tasks").select("status, created_at, loan_limit, installment_principal");
+      if (error) throw error;
+      setStatsRows((data ?? []) as any);
+    } catch {
+      // 실적 요약 로드 실패는 목록/업무에 영향 없음 — 조용히 무시
+    }
+  };
+  useEffect(() => { fetchStatsRows(); }, [isAdmin, isGbn]); // eslint-disable-line
+
 
   // ─── 모바일 파일 선택 후 세션 자동 복구 ─────────────────────
   // 모바일에서 파일 picker 사용 시 앱이 백그라운드 전환 후 복귀하면서 세션이 끊기는 현상 방지
@@ -1180,28 +1240,29 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
   , [rows]);
 
   // ─── 당월 실적 ───────────────────────────────────────────
+  // 종료 건 숨김(30일 경과) 필터의 영향을 받지 않도록 statsRows(전체 데이터)를 사용
   const availableStatsMonths = useMemo(() => {
     const set = new Set<string>();
     const now = new Date();
     set.add(now.getFullYear().toString() + String(now.getMonth() + 1).padStart(2, "0"));
-    rows.forEach((r) => {
+    statsRows.forEach((r) => {
       const d = new Date(r.created_at ?? 0);
       if (!r.created_at || isNaN(d.getTime())) return;
       set.add(d.getFullYear().toString() + String(d.getMonth() + 1).padStart(2, "0"));
     });
     return Array.from(set).sort((a, b) => b.localeCompare(a));
-  }, [rows]);
+  }, [statsRows]);
 
   const monthlyStats = useMemo(() => {
     const ym = statsMonth;
-    const thisMonth = rows.filter((r) => {
+    const thisMonth = statsRows.filter((r) => {
       const d = new Date(r.created_at ?? 0);
       return d.getFullYear().toString() + String(d.getMonth() + 1).padStart(2, "0") === ym;
     });
     const confirmed = thisMonth.filter((r) => r.status === "확정");
     const totalAmount = confirmed.reduce((sum, r) => sum + (r.loan_limit ?? r.installment_principal ?? 0), 0);
     return { total: thisMonth.length, confirmed: confirmed.length, amount: totalAmount };
-  }, [rows, statsMonth]);
+  }, [statsRows, statsMonth]);
 
   // 케이스번호 맵 — 신규 건은 접수 시 발급받은 통합 번호(case_no)를 그대로 쓰고,
   // 그 이전에 만들어져 case_no가 없는 과거 건만 기존 방식(연월 내 순번)으로 계산해 보여준다.
@@ -1228,7 +1289,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     setInstallmentPrincipal(""); setFinanceCompany("NH캐피탈");
     setInterestRate(""); setIncentive("");
     setVatDeferred("N"); setVatDeferredAmount("");
-    setSalesRep(""); setSpecialNote(""); setSkipSalesRepAlert(false);
+    setSalesRep(""); setSalesRepPhone(""); setSpecialNote(""); setSkipSalesRepAlert(false);
   };
 
   const onAdd = async () => {
@@ -1264,6 +1325,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         vat_deferred_amount:     vatDeferred === "Y" && vatDeferredAmount.trim() ? parseInt(onlyDigits(vatDeferredAmount), 10) || null : null,
         loan_period:             null,
         sales_rep:               salesRep.trim(),
+        sales_rep_phone:         onlyDigits(salesRepPhone) || null,
         special_note:            specialNote.trim() || null,
         skip_sales_rep_alert:    isAdminLevel ? skipSalesRepAlert : false,
         status:                  "접수" as HCMStatus,
@@ -1289,6 +1351,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         equipmentTon:         payload.equipment_ton,
         financeCompany:       payload.finance_company,
         salesRep:             payload.sales_rep,
+        dealSalesRepPhone:    payload.sales_rep_phone,
         installmentPrincipal: payload.installment_principal,
         skipSalesRepAlert:    payload.skip_sales_rep_alert,
       });
@@ -1380,8 +1443,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       setRows((prev) => prev.map((r) => String(r.id) === String(row.id) ? { ...r, status: row.status } : r));
       alert(error.message);
     } else {
-      // 거절 시 구글 할일도 완료 처리 (목록에서 사라짐)
-      if (next === "거절") {
+      // 거절/취소 시 구글 할일도 완료 처리 (목록에서 사라짐)
+      if (next === "거절" || next === "취소") {
         void completeHcmGcalTask(row.id);
       }
       // 카카오 알림 (비동기, 실패해도 업무 영향 없음)
@@ -1395,6 +1458,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         financeCompany:       row.finance_company,       // 금융사 (신용조회 단계에서 표시)
         installmentPrincipal: row.installment_principal ? String(row.installment_principal) : undefined,
         salesRep:             row.sales_rep,
+        dealSalesRepPhone:    row.sales_rep_phone,
         prevStatus:           row.status,
         nextStatus:           next,
         skipSalesRepAlert:    row.skip_sales_rep_alert,
@@ -1433,6 +1497,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         customerType:         confirmModal.customer_type,
         equipmentTon:         confirmModal.equipment_ton,
         salesRep:             confirmModal.sales_rep,
+        dealSalesRepPhone:    confirmModal.sales_rep_phone,
         prevStatus:           confirmModal.status,
         nextStatus:           "확정",
         financeCompany:       confirmModal.finance_company,
@@ -1538,6 +1603,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         customerType:     row.customer_type,
         equipmentTon:     row.equipment_ton,
         salesRep:         row.sales_rep,
+        dealSalesRepPhone: row.sales_rep_phone,
         prevStatus:       row.status,
         nextStatus:       next,
         niceScore:        patch.nice_score,
@@ -1579,6 +1645,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
     setEditVatDeferredAmount(row.vat_deferred_amount != null ? Number(row.vat_deferred_amount).toLocaleString("ko-KR") : "");
     setEditLoanPeriod(row.loan_period != null ? String(row.loan_period) : "");
     setEditSalesRep(row.sales_rep ?? "");
+    setEditSalesRepPhone(row.sales_rep_phone ? formatPhoneKR(row.sales_rep_phone) : "");
     setEditSpecialNote(row.special_note ?? "");
     setEditSkipSalesRepAlert(row.skip_sales_rep_alert ?? false);
   };
@@ -1607,6 +1674,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                                   ? parseInt(editVatDeferredAmount.replace(/,/g, ""), 10) || null : null,
         loan_period:            editLoanPeriod.trim() ? parseInt(editLoanPeriod, 10) || null : null,
         sales_rep:              editSalesRep.trim() || null,
+        sales_rep_phone:        onlyDigits(editSalesRepPhone) || null,
         special_note:           editSpecialNote.trim() || null,
         // admin만 UI에 체크박스가 노출되므로, admin이 아닌 경우 기존 값을 그대로 유지한다.
         ...(isAdminLevel ? { skip_sales_rep_alert: editSkipSalesRepAlert } : {}),
@@ -1672,6 +1740,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           vatDeferredAmount:    patch.vat_deferred_amount ? String(patch.vat_deferred_amount) : "",
           loanPeriod:           patch.loan_period ? String(patch.loan_period) : (editRow.loan_period ? String(editRow.loan_period) : ""),
           salesRep:             patch.sales_rep ?? "-",
+          dealSalesRepPhone:    patch.sales_rep_phone,
           prevStatus:           editRow.status,
           changedSummary,
           skipSalesRepAlert:    editSkipSalesRepAlert,
@@ -2042,6 +2111,22 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           <AppTabBar activeTab="brother" />
         </div>
 
+        {/* ── 품목 탭 (할부/타이어/배터리/기타) ── */}
+        <div className="px-4 flex flex-wrap gap-1.5">
+          {(["할부", "타이어", "배터리", "기타"] as ItemTab[]).map((t) => (
+            <button
+              key={t}
+              onClick={() => setItemTab(t)}
+              className={`px-4 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
+                itemTab === t
+                  ? "bg-[#0f172a] border-[#0f172a] text-white"
+                  : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+              }`}
+            >{t}</button>
+          ))}
+        </div>
+
+      {itemTab === "할부" && (<>
         {/* ── 상태 요약 뱃지 ── */}
         <div className="px-4 flex flex-wrap gap-2">
           {STATUS_ORDER.map((s) => (
@@ -2113,9 +2198,20 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
             </button>
           </div>
         </div>
+      </>)}
       </div>
 
-      {activeTab === "할부금융" && (
+      {itemTab === "타이어" && (
+        <TireSection isAdminLevel={isAdminLevel} canCreate={canCreate} canChangeStatus={canChangeStatus} />
+      )}
+      {itemTab === "배터리" && (
+        <BatterySection isAdminLevel={isAdminLevel} canCreate={canCreate} canChangeStatus={canChangeStatus} />
+      )}
+      {itemTab === "기타" && (
+        <EtcSection isAdminLevel={isAdminLevel} canCreate={canCreate} canChangeStatus={canChangeStatus} />
+      )}
+
+      {activeTab === "할부금융" && itemTab === "할부" && (
       <div className="px-4 py-3 space-y-3">
 
         {/* ── focusId: 특정 딜 단독 뷰 배너 ── */}
@@ -2254,9 +2350,9 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                   <option value="우리금융캐피탈">우리금융캐피탈</option>
                 </select>
               </div>
-              {/* 부가세 후불 + 금액 + 영업사원 — 한 행 */}
+              {/* 부가세 후불 + 금액 + 영업사원 + 연락처 — 한 행 */}
               <div className="col-span-1 sm:col-span-2 md:col-span-3">
-                <div className="grid grid-cols-3 gap-3 items-end">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
                   <div>
                     <label className={labelClass}>부가세 후불</label>
                     <div className="flex gap-1.5">
@@ -2290,7 +2386,23 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                     <input
                       value={salesRep}
                       onChange={(e) => setSalesRep(e.target.value)}
+                      onBlur={async () => {
+                        if (salesRep.trim() && !salesRepPhone.trim()) {
+                          const phone = await lookupSalesRepPhone(salesRep);
+                          if (phone) setSalesRepPhone(formatPhoneKR(phone));
+                        }
+                      }}
                       placeholder="홍길동"
+                      className="h-[38px] w-full px-3 rounded-xl border border-gray-200 bg-white text-xs font-medium text-[#0f172a] placeholder:text-gray-400 focus:outline-none focus:border-orange-400 transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>영업사원 연락처</label>
+                    <input
+                      value={salesRepPhone}
+                      onChange={(e) => setSalesRepPhone(formatPhoneKR(e.target.value))}
+                      placeholder="010-1234-5678 (자동입력)"
+                      inputMode="tel"
                       className="h-[38px] w-full px-3 rounded-xl border border-gray-200 bg-white text-xs font-medium text-[#0f172a] placeholder:text-gray-400 focus:outline-none focus:border-orange-400 transition-all"
                     />
                   </div>
@@ -2351,13 +2463,14 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
             const docExpired   = isDocExpired(r.closed_at);
             const phoneMasked  = shouldMaskPhone(r);
-            const isConfirmed  = r.status === "확정" || r.status === "거절";
+            const isConfirmed  = r.status === "확정" || r.status === "거절" || r.status === "취소";
             const isExpanded   = expandedIds.has(String(r.id));
 
             return (
               <div key={r.id} className={`rounded-xl border bg-white shadow-sm transition-all overflow-hidden ${
                 r.status === "거절" ? "border-red-200" :
                 r.status === "확정" ? "border-emerald-200" :
+                r.status === "취소" ? "border-gray-300" :
                 "border-gray-200 hover:shadow-md"
               }`}>
 
@@ -2376,7 +2489,9 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                         <button
                           onClick={() => toggleExpand(r.id)}
                           className={`inline-flex items-center justify-center px-3 py-1.5 rounded-xl border text-xs font-medium transition-all ${
-                            r.status === "거절" ? "border-red-200 bg-red-50 text-red-600" : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            r.status === "거절" ? "border-red-200 bg-red-50 text-red-600" :
+                            r.status === "취소" ? "border-gray-300 bg-gray-100 text-gray-600" :
+                            "border-emerald-200 bg-emerald-50 text-emerald-700"
                           }`}
                         >{isExpanded ? "접기 ↑" : "펼치기 ↓"}</button>
                       )}
@@ -2406,7 +2521,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-xl border border-gray-200 bg-gray-50 text-xs font-medium text-gray-600">{r.customer_type}</span>
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-xl border text-xs font-semibold ${statusStyle(r.status)}`}>{r.status}</span>
-                    {holdMap[String(r.id)] && r.status !== "확정" && r.status !== "거절" && (() => {
+                    {holdMap[String(r.id)] && r.status !== "확정" && r.status !== "거절" && r.status !== "취소" && (() => {
                       const h = holdMap[String(r.id)];
                       const d = new Date(h.scheduled_at);
                       const fmt = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
@@ -2597,7 +2712,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                         })}
 
                         {/* 보류(재통화 예약) 버튼 */}
-                        {canChangeStatus && r.status !== "확정" && r.status !== "거절" && (
+                        {canChangeStatus && r.status !== "확정" && r.status !== "거절" && r.status !== "취소" && (
                           <button
                             onClick={() => openHoldModal(r)}
                             className={`px-3 py-1 rounded-xl border text-xs font-semibold transition-all
@@ -2609,6 +2724,23 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                             {holdMap[String(r.id)] ? "⏰ 보류중" : "⏰ 보류"}
                           </button>
                         )}
+                        {/* 취소 버튼 — 확정과 함께 딜 클로징의 두 갈래 중 하나 */}
+                        {(canChangeStatus || r.status === "취소") && r.status !== "확정" && (() => {
+                          const canGo = canGoToStatus(r.status, "취소", isAdminLevel);
+                          return (
+                            <button
+                              disabled={!canChangeStatus || r.status === "취소" || !canGo}
+                              onClick={() => { if (window.confirm("이 건을 취소 처리하시겠습니까?")) changeStatus(r, "취소"); }}
+                              className={`px-3 py-1 rounded-xl border text-xs font-semibold transition-all
+                                ${r.status === "취소"
+                                  ? statusStyle("취소") + " ring-2 ring-offset-1 ring-orange-200/60"
+                                  : canGo && canChangeStatus
+                                    ? "bg-white border-gray-200 text-gray-500 hover:border-red-300 hover:text-red-600"
+                                    : "bg-white border-gray-100 text-gray-300 cursor-not-allowed"
+                                }`}
+                            >취소</button>
+                          );
+                        })()}
                         {/* 승인조건 확인 버튼 — 승인 결과가 있는 건만 표시 */}
                         {(r.credit_rate != null || r.loan_limit != null || r.vehicle_amount != null || r.attach_amount != null) && (
                           <button
@@ -2715,6 +2847,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                                   equipmentTon:      r.equipment_ton,
                                   financeCompany:    r.finance_company,
                                   salesRep:          r.sales_rep,
+                                  dealSalesRepPhone: r.sales_rep_phone,
                                   skipSalesRepAlert: r.skip_sales_rep_alert,
                                 });
                                 setIncentivePaidIds((prev) => new Set([...prev, String(r.id)]));

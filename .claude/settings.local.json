@@ -176,7 +176,8 @@
       "Bash(awk 'NR==959,NR==1156' supabase/functions/send-hyundaicm-kakao/index.ts)",
       "Bash(echo \"exit:$?\")",
       "Bash(crontab -l)",
-      "Read(//Users/tongsoolee/Library/LaunchAgents/**)"
+      "Read(//Users/tongsoolee/Library/LaunchAgents/**)",
+      "Bash(netlify status *)"
     ]
   }
 }
