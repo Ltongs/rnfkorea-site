@@ -32,7 +32,14 @@ async function getValidToken(db: any, userId: string) {
     }),
   });
   const tokens = await res.json();
-  if (tokens.error) throw new Error("토큰 갱신 실패: " + tokens.error);
+  if (tokens.error) {
+    // refresh_token이 만료/폐기된 경우 (invalid_grant 등) — 다음 접속 시
+    // 프론트가 "연동됨" 상태로 착각하지 않도록 저장된 토큰을 즉시 정리한다.
+    await db.from("google_calendar_tokens").delete().eq("user_id", userId);
+    const err = new Error("토큰 갱신 실패: " + tokens.error);
+    (err as { reconnectRequired?: boolean }).reconnectRequired = true;
+    throw err;
+  }
 
   await db.from("google_calendar_tokens").update({
     access_token: tokens.access_token,
@@ -243,8 +250,9 @@ serve(async (req) => {
     });
 
   } catch (err) {
-    return new Response(JSON.stringify({ error: (err as Error).message }), {
-      status: 500, headers: { ...CORS, "Content-Type": "application/json" },
+    const reconnectRequired = (err as { reconnectRequired?: boolean }).reconnectRequired === true;
+    return new Response(JSON.stringify({ error: (err as Error).message, reconnect_required: reconnectRequired }), {
+      status: reconnectRequired ? 401 : 500, headers: { ...CORS, "Content-Type": "application/json" },
     });
   }
 });

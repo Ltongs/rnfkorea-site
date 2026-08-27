@@ -3771,6 +3771,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
         body:JSON.stringify({action:"list",user_id:user.id,year:yr,month:mo}),
       });
       const d = await res.json();
+      if(d.reconnect_required){ handleGcalReconnectRequired(); return; }
       if(d.events){
         setGcalEvents(d.events.map((e:any)=>({
           id:e.id,
@@ -3809,6 +3810,15 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
     }
   }
 
+  // 구글 refresh_token 만료/폐기(invalid_grant 등)로 서버가 토큰을 정리했을 때
+  // 프론트도 즉시 "연동 안 됨" 상태로 되돌려 재연동 버튼을 보여준다.
+  function handleGcalReconnectRequired(){
+    setGcalConnected(false);
+    setGcalEmail(null);
+    setGcalEvents([]);
+    showToast("⚠️ 구글 캘린더 연동이 만료되어 해제되었습니다 — 다시 연동해주세요", "err");
+  }
+
   async function disconnectGcal(){
     if(!user) return;
     const {data:{session}} = await supabase.auth.getSession();
@@ -3836,6 +3846,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
         body:JSON.stringify({action:"list",user_id:user.id,year:yr,month:mo}),
       });
       const d = await res.json();
+      if(d.reconnect_required){ handleGcalReconnectRequired(); return; }
       if(!d.events?.length){ showToast("가져올 새 일정이 없습니다"); return; }
 
       // 2. 로컬에 있는 일정 제목+날짜 집합 조회
@@ -3895,9 +3906,13 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
         body:JSON.stringify({action:"create",user_id:user.id,event:{...schedule,schedule_id:schedule.id}}),
       });
       const d = await res.json();
+      if(d.reconnect_required){
+        handleGcalReconnectRequired();
+        throw new Error("GCAL_RECONNECT_REQUIRED");
+      }
       if(d.error){
         console.error("gcal sync error:", d.error, d.raw);
-        showToast("⚠️ 구글 캘린더 동기화 실패: " + d.error + " — 재연동이 필요할 수 있습니다", "err");
+        showToast("⚠️ 구글 캘린더 동기화 실패: " + d.error, "err");
         return;
       }
       // 응답에서 생성된 이벤트를 즉시 gcalEvents 상태에 추가
@@ -3923,7 +3938,10 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
         await new Promise(r=>setTimeout(r,1500));
         void loadGcalEvents(calViewYear, calViewMonth);
       }
-    }catch(e){console.error("gcal sync error",e);}
+    }catch(e){
+      console.error("gcal sync error",e);
+      if((e as Error)?.message === "GCAL_RECONNECT_REQUIRED") throw e;
+    }
   }
 
   // 일정 삭제 시 구글 캘린더에서도 삭제
@@ -3962,9 +3980,10 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
 
       const schedList = scheds ?? [];
       const todoList  = todos  ?? [];
-      let ok = 0, fail = 0;
+      let ok = 0, fail = 0, reconnectRequired = false;
 
       for(const s of schedList){
+        if(reconnectRequired) break;
         try{
           await syncToGcal({
             id: s.id, title: s.title,
@@ -3976,9 +3995,13 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
           });
           ok++;
           await new Promise(r=>setTimeout(r,200)); // API 레이트 리밋 방지
-        }catch{ fail++; }
+        }catch(e){
+          if((e as Error)?.message === "GCAL_RECONNECT_REQUIRED"){ reconnectRequired = true; break; }
+          fail++;
+        }
       }
       for(const t of todoList){
+        if(reconnectRequired) break;
         try{
           await syncToGcal({
             id: t.id, title: `✅ ${t.title}`,
@@ -3988,7 +4011,14 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
           }, true);
           ok++;
           await new Promise(r=>setTimeout(r,200));
-        }catch{ fail++; }
+        }catch(e){
+          if((e as Error)?.message === "GCAL_RECONNECT_REQUIRED"){ reconnectRequired = true; break; }
+          fail++;
+        }
+      }
+      if(reconnectRequired){
+        setGcalBulkResult(`중단됨: 연동이 만료되어 재연동이 필요합니다 (성공 ${ok}건)`);
+        return;
       }
       setGcalBulkResult(`완료: 일정 ${schedList.length}건 + 할일 ${todoList.length}건 → 성공 ${ok}건${fail>0?` / 실패 ${fail}건`:""}`);
       void loadGcalEvents(calViewYear, calViewMonth);
