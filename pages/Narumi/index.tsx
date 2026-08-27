@@ -355,6 +355,7 @@ export default function NarumiPage() {
     user,
     logout,
     isAdmin,
+    isSubAdmin,
     isNarumi,
     isInsAI,
     isLotte,
@@ -370,6 +371,7 @@ export default function NarumiPage() {
   const [searchParams] = useSearchParams();
   const focusId = searchParams.get("id"); // AI비서에서 딜 클릭 시 전달되는 id
   const isPrivilegedManager = isAdmin || isInsuranceManager;
+  const isAdminLevel = isAdmin || isSubAdmin; // admin과 동일 권한 그룹(부관리자 포함)
 
   const [vin, setVin] = useState("");
   const [customerName, setCustomerName] = useState("");
@@ -414,6 +416,7 @@ export default function NarumiPage() {
   const rowInsuranceDocInputRef = useRef<HTMLInputElement | null>(null);
 
   const [pendingUploadRowId, setPendingUploadRowId] = useState<string | number | null>(null);
+  const [forceVehicleDocReplace, setForceVehicleDocReplace] = useState(false);
   const [pendingManufactureUploadRowId, setPendingManufactureUploadRowId] = useState<string | number | null>(null);
   const [manufactureUploadingId, setManufactureUploadingId] = useState<string | number | null>(null);
   const [manufactureConfirm, setManufactureConfirm] = useState<{ rowId: string | number; file: File } | null>(null);
@@ -1561,23 +1564,44 @@ export default function NarumiPage() {
       return;
     }
     if (!isVehicleDocKeyEnabled(r)) return;
+    setForceVehicleDocReplace(false);
     setPendingUploadRowId(r.id);
     fileInputRef.current?.click();
   };
 
-  const uploadVehicleDoc = async (row: NarumiTask, file: File) => {
+  // 관리자 전용: 이미 업로드 완료되어 잠긴 차량등록증을 새 파일로 교체한다.
+  // 잘못된 파일이 첨부된 경우를 바로잡기 위한 예외 경로이며, 일반 사용자는 접근할 수 없다.
+  const onClickVehicleDocReplace = (r: NarumiTask) => {
+    if (!isAdminLevel) return;
+    if (
+      !confirm(
+        `이미 등록완료된 차량등록증을 새 파일로 교체합니다.\n기존 파일은 대체되며 되돌릴 수 없습니다.\n(고객명: ${r.customer_name || "-"})\n\n계속할까요?`
+      )
+    ) {
+      return;
+    }
+    setForceVehicleDocReplace(true);
+    setPendingUploadRowId(r.id);
+    fileInputRef.current?.click();
+  };
+
+  const uploadVehicleDoc = async (row: NarumiTask, file: File, opts?: { force?: boolean }) => {
+    const force = !!opts?.force && isAdminLevel;
+
     if (!canUploadVehicleDoc) {
       alert("차량등록증 업로드 권한이 없습니다.");
       return;
     }
 
-    if (!isAllDone(row)) {
-      alert("등록완료 상태에서만 차량등록증 업로드가 가능합니다.");
-      return;
-    }
-    if (isLockedAfterUpload(row)) {
-      alert("이미 업로드 완료되었습니다. 업로드 후에는 변경할 수 없습니다.");
-      return;
+    if (!force) {
+      if (!isAllDone(row)) {
+        alert("등록완료 상태에서만 차량등록증 업로드가 가능합니다.");
+        return;
+      }
+      if (isLockedAfterUpload(row)) {
+        alert("이미 업로드 완료되었습니다. 업로드 후에는 변경할 수 없습니다.");
+        return;
+      }
     }
 
     setUploadingId(row.id);
@@ -1588,6 +1612,7 @@ export default function NarumiPage() {
       const ext = extFromName(file.name) || "bin";
       const path = `${idText}/vehicle_registration.${ext}`;
       const prevManufactureDocPath = row.manufacture_doc_path ?? null;
+      const prevVehicleDocPath = force ? (row.vehicle_doc_path ?? null) : null;
 
       const { error: upErr } = await supabase.storage
         .from("vehicle_docs")
@@ -1601,6 +1626,12 @@ export default function NarumiPage() {
           .remove([prevManufactureDocPath]);
 
         if (removeErr) throw removeErr;
+      }
+
+      // 관리자 재첨부 시 확장자가 달라 이전 파일과 경로가 다르면 정리를 시도한다.
+      // (동일 경로면 위 upsert가 이미 덮어썼으므로 별도 삭제가 필요 없다)
+      if (prevVehicleDocPath && prevVehicleDocPath !== path) {
+        await supabase.storage.from("vehicle_docs").remove([prevVehicleDocPath]).catch(() => {});
       }
 
       const nextStatus = "completed" as TaskStatus;
@@ -1856,14 +1887,16 @@ VIN: ${nextVin}`);
   const onFilePicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
     const rowId = pendingUploadRowId;
+    const force = forceVehicleDocReplace;
 
     e.target.value = "";
+    setForceVehicleDocReplace(false);
     if (!file || rowId == null) return;
 
     const row = rows.find((rr) => String(rr.id) === String(rowId));
     if (!row) return;
 
-    await uploadVehicleDoc(row, file);
+    await uploadVehicleDoc(row, file, { force });
     setPendingUploadRowId(null);
   };
 
@@ -2601,13 +2634,25 @@ VIN: ${nextVin}`);
                   {/* 제작증 / 보험증권 / 차량등록증 다운로드 */}
                   <div className="flex flex-wrap gap-2">
                     {r.manufacture_doc_path ? (
-                      <button
-                        type="button"
-                        onClick={() => openStorageFile(r.manufacture_doc_path!).catch((e: any) => alert(e?.message || "보기 실패"))}
-                        className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-gray-300 bg-white text-navy-900 font-semibold text-xs hover:shadow-md transition-all"
-                      >
-                        제작증 보기
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => openStorageFile(r.manufacture_doc_path!).catch((e: any) => alert(e?.message || "보기 실패"))}
+                          className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-gray-300 bg-white text-navy-900 font-semibold text-xs hover:shadow-md transition-all"
+                        >
+                          제작증 보기
+                        </button>
+                        {!isLocked && canCreate && (
+                          <button
+                            type="button"
+                            onClick={() => onClickManufactureAttach(r)}
+                            disabled={manufactureUploadingId === r.id}
+                            className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-orange-200 bg-orange-50 text-orange-600 font-semibold text-xs hover:shadow-md transition-all disabled:opacity-50"
+                          >
+                            {manufactureUploadingId === r.id ? "교체중..." : "제작증 교체"}
+                          </button>
+                        )}
+                      </>
                     ) : (
                       !isLocked && canCreate && (
                         <button
@@ -2621,13 +2666,25 @@ VIN: ${nextVin}`);
                       )
                     )}
                     {r.insurance_doc_path ? (
-                      <button
-                        type="button"
-                        onClick={() => openStorageFile(r.insurance_doc_path!).catch((e: any) => alert(e?.message || "보기 실패"))}
-                        className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-gray-300 bg-white text-navy-900 font-semibold text-xs hover:shadow-md transition-all"
-                      >
-                        보험증권 보기
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => openStorageFile(r.insurance_doc_path!).catch((e: any) => alert(e?.message || "보기 실패"))}
+                          className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-gray-300 bg-white text-navy-900 font-semibold text-xs hover:shadow-md transition-all"
+                        >
+                          보험증권 보기
+                        </button>
+                        {canCreate && (
+                          <button
+                            type="button"
+                            onClick={() => onClickInsuranceDocAttach(r)}
+                            disabled={insuranceDocUploadingId === r.id}
+                            className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-orange-200 bg-orange-50 text-orange-600 font-semibold text-xs hover:shadow-md transition-all disabled:opacity-50"
+                          >
+                            {insuranceDocUploadingId === r.id ? "교체중..." : "보험증권 교체"}
+                          </button>
+                        )}
+                      </>
                     ) : (
                       canCreate && (
                         <button
@@ -2641,13 +2698,26 @@ VIN: ${nextVin}`);
                       )
                     )}
                     {r.vehicle_doc_path && (
-                      <button
-                        type="button"
-                        onClick={() => openStorageFile(r.vehicle_doc_path!).catch((e: any) => alert(e?.message || "보기 실패"))}
-                        className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 font-semibold text-xs hover:shadow-md transition-all"
-                      >
-                        차량등록증 보기
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => openStorageFile(r.vehicle_doc_path!).catch((e: any) => alert(e?.message || "보기 실패"))}
+                          className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 font-semibold text-xs hover:shadow-md transition-all"
+                        >
+                          차량등록증 보기
+                        </button>
+                        {isAdminLevel && (
+                          <button
+                            type="button"
+                            onClick={() => onClickVehicleDocReplace(r)}
+                            disabled={uploadingId === r.id}
+                            title="관리자 전용: 이미 완료된 차량등록증을 새 파일로 교체합니다"
+                            className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-red-200 bg-red-50 text-red-600 font-semibold text-xs hover:shadow-md transition-all disabled:opacity-50"
+                          >
+                            {uploadingId === r.id ? "교체중..." : "등록증 교체(관리자)"}
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
 
