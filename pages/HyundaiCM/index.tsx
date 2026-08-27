@@ -1335,28 +1335,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           sales_rep: payload.sales_rep,
         });
 
-        // 접수 시 할일 + 일정 자동 등록 (단 1회)
-        const todayStr = new Date().toISOString().slice(0, 10);
-        const regTitle = `${payload.customer_name} (현대건기(부산경남) - 접수)`;
-        const regDesc  = [
-          `케이스: ${newCaseNo}`,
-          payload.equipment_ton   ? `장비: ${payload.equipment_ton}`    : null,
-          payload.finance_company ? `금융사: ${payload.finance_company}` : null,
-          payload.sales_rep       ? `영업: ${payload.sales_rep}`         : null,
-        ].filter(Boolean).join(" / ");
-        await Promise.all([
-          supabase.from("secretary_todos").insert({
-            title: regTitle, description: regDesc,
-            priority: "normal", category: "finance",
-            due_date: todayStr, is_done: false,
-          }),
-          supabase.from("secretary_schedules").insert({
-            title: regTitle, description: regDesc,
-            schedule_date: todayStr, category: "followup",
-            related_type: "finance", progress_stage: "접수",
-            work_type: "finance_hcm",
-          }),
-        ]);
+        // 접수 시 할일 + 일정 자동 등록은 sendKakaoNotify()가 호출하는
+        // 서버 측 알림톡 함수에서 처리함 (여기서 중복 등록하지 않음)
       }
 
       onReset(); setShowCreatePanel(false); await fetchRows();

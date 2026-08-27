@@ -1086,37 +1086,9 @@ export default function NarumiPage() {
         }
       }
 
-      // 카카오 알림: narumi_tasks insert 트리거가 서버에서 직접 발송함
-      // (브라우저 탭이 닫혀도 확실히 발송되도록 서버 트리거 방식으로 전환됨)
-
-      // 다음 날 할 일 + 일정 자동 등록 (KST 기준)
-      const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
-      const tomorrow = new Date(kstNow);
-      tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-      const tomorrowStr = tomorrow.toISOString().slice(0, 10);
-      const narumiNewTitle = `${nameTrim} (나르미 - 신규접수 확인)`;
-      const narumiNewDesc  = `VIN: ${vinTrim} / 출고: ${dtTrim} / 영업: ${salesRepTrim}`;
-      const [todoRes, schedRes] = await Promise.all([
-        supabase.from("secretary_todos").insert({
-          title:       narumiNewTitle,
-          description: narumiNewDesc,
-          priority:    "normal",
-          category:    "finance",
-          due_date:    tomorrowStr,
-          is_done:     false,
-        }),
-        supabase.from("secretary_schedules").insert({
-          title:          narumiNewTitle,
-          description:    narumiNewDesc,
-          schedule_date:  tomorrowStr,
-          category:       "followup",
-          related_type:   "finance",
-          progress_stage: "신규접수",
-          work_type:      "narumi",
-        }),
-      ]);
-      if (todoRes.error) console.error("[narumi] todo insert 실패:", todoRes.error.message);
-      if (schedRes.error) console.error("[narumi] schedule insert 실패:", schedRes.error.message);
+      // 카카오 알림 + 할일 자동 등록: narumi_tasks insert 트리거가 서버에서 직접 처리함
+      // (브라우저 탭이 닫혀도 확실히 처리되도록 서버 트리거 방식으로 전환됨.
+      //  클라이언트에서 중복으로 등록하지 않도록 여기서는 추가 insert 하지 않음)
 
       onReset();
       await fetchRows();
