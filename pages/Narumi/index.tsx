@@ -1890,7 +1890,6 @@ VIN: ${nextVin}`);
       alert("제작증 첨부 권한이 없습니다.");
       return;
     }
-    if (isLockedAfterUpload(r)) return;
     setPendingManufactureUploadRowId(r.id);
     rowManufactureInputRef.current?.click();
   };
@@ -2614,7 +2613,7 @@ VIN: ${nextVin}`);
                         >
                           제작증 보기
                         </button>
-                        {!isLocked && canCreate && (
+                        {canCreate && (
                           <button
                             type="button"
                             onClick={() => onClickManufactureAttach(r)}
@@ -2626,7 +2625,7 @@ VIN: ${nextVin}`);
                         )}
                       </>
                     ) : (
-                      !isLocked && canCreate && (
+                      canCreate && (
                         <button
                           type="button"
                           onClick={() => onClickManufactureAttach(r)}
