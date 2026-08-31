@@ -1199,6 +1199,44 @@ export default function NarumiPage() {
     }
   };
 
+  // 임시번호판 미반납(N) 건을 반납 완료(Y)로 전환
+  const saveTempPlateReturned = async (id: NarumiTask["id"]) => {
+    if (!canChangeStatus) {
+      alert("상태 변경 권한이 없습니다.");
+      return;
+    }
+
+    const target = rows.find((rr) => String(rr.id) === String(id));
+    if (!target) return;
+    if (target.temp_plate_returned === true) return;
+
+    if (!confirm("임시번호판 반납 완료로 처리하시겠습니까?")) return;
+
+    setRows((prev) =>
+      prev.map((rr) =>
+        String(rr.id) === String(id)
+          ? { ...rr, temp_plate_returned: true, temp_plate_return_due_date: null }
+          : rr
+      )
+    );
+
+    const { error } = await supabase
+      .from("narumi_tasks")
+      .update({ temp_plate_returned: true, temp_plate_return_due_date: null })
+      .eq("id", id as any);
+
+    if (error) {
+      setRows((prev) =>
+        prev.map((rr) =>
+          String(rr.id) === String(id)
+            ? { ...rr, temp_plate_returned: target.temp_plate_returned, temp_plate_return_due_date: target.temp_plate_return_due_date ?? null }
+            : rr
+        )
+      );
+      alert(error.message);
+    }
+  };
+
   const updateInsuranceStage = async (row: NarumiTask, nextVal: boolean) => {
     const nextRow = { ...row, has_insurance: nextVal };
     const nextStatus = deriveStatus(nextRow);
@@ -2502,7 +2540,18 @@ VIN: ${nextVin}`);
                         {r.temp_plate_returned === true ? (
                           <span className={`${pillBase} ${pillDone}`}>Y</span>
                         ) : r.temp_plate_returned === false ? (
-                          <span className={`${pillBase} ${pillProg}`}>N{r.temp_plate_return_due_date ? ` · ${r.temp_plate_return_due_date}` : ""}</span>
+                          canChangeStatus ? (
+                            <button
+                              type="button"
+                              onClick={() => saveTempPlateReturned(r.id)}
+                              className={`${pillBase} ${pillProg} hover:border-orange-400 cursor-pointer`}
+                              title="클릭 시 반납 완료로 전환됩니다"
+                            >
+                              N{r.temp_plate_return_due_date ? ` · ${r.temp_plate_return_due_date}` : ""}
+                            </button>
+                          ) : (
+                            <span className={`${pillBase} ${pillProg}`}>N{r.temp_plate_return_due_date ? ` · ${r.temp_plate_return_due_date}` : ""}</span>
+                          )
                         ) : (
                           <span className={`${pillBase} ${pillGray}`}>-</span>
                         )}

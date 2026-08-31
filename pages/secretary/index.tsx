@@ -3913,7 +3913,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       if(d.error){
         console.error("gcal sync error:", d.error, d.raw);
         showToast("⚠️ 구글 캘린더 동기화 실패: " + d.error, "err");
-        return;
+        return false;
       }
       // 응답에서 생성된 이벤트를 즉시 gcalEvents 상태에 추가
       if(d.event){
@@ -3938,9 +3938,11 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
         await new Promise(r=>setTimeout(r,1500));
         void loadGcalEvents(calViewYear, calViewMonth);
       }
+      return true;
     }catch(e){
       console.error("gcal sync error",e);
       if((e as Error)?.message === "GCAL_RECONNECT_REQUIRED") throw e;
+      return false;
     }
   }
 
@@ -3985,7 +3987,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       for(const s of schedList){
         if(reconnectRequired) break;
         try{
-          await syncToGcal({
+          const success = await syncToGcal({
             id: s.id, title: s.title,
             description: s.description??null,
             schedule_date: s.schedule_date,
@@ -3993,7 +3995,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
             end_time: s.end_time??null,
             location: s.location??null,
           });
-          ok++;
+          if(success) ok++; else fail++;
           await new Promise(r=>setTimeout(r,200)); // API 레이트 리밋 방지
         }catch(e){
           if((e as Error)?.message === "GCAL_RECONNECT_REQUIRED"){ reconnectRequired = true; break; }
@@ -4003,13 +4005,13 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       for(const t of todoList){
         if(reconnectRequired) break;
         try{
-          await syncToGcal({
+          const success = await syncToGcal({
             id: t.id, title: `✅ ${t.title}`,
             description: t.description??null,
             schedule_date: t.due_date,
             start_time: null, end_time: null, location: null,
           }, true);
-          ok++;
+          if(success) ok++; else fail++;
           await new Promise(r=>setTimeout(r,200));
         }catch(e){
           if((e as Error)?.message === "GCAL_RECONNECT_REQUIRED"){ reconnectRequired = true; break; }

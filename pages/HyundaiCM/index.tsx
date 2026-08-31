@@ -1089,9 +1089,9 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
         q = q.eq("finance_company", "NH캐피탈");
       }
       if (!isAdmin) {
-        q = q.or(`status.not.in.(확정,취소),created_at.gte.${cutoffISO}`);
+        q = q.or(`status.not.in.(취소),created_at.gte.${cutoffISO}`);
       } else if (!showClosed) {
-        q = q.or(`status.not.in.(확정,취소),created_at.gte.${cutoffISO}`);
+        q = q.or(`status.not.in.(취소),created_at.gte.${cutoffISO}`);
       }
 
       const { data, error } = await q.order("created_at", { ascending: false });

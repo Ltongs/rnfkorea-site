@@ -10,6 +10,12 @@ const CORS = {
 const CLIENT_ID     = Deno.env.get("GOOGLE_CLIENT_ID")!;
 const CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
 
+// DB의 time 컬럼은 "HH:MM:SS"로 오지만 과거 데이터/입력값 중 "HH:MM"인 경우도 있어
+// 그대로 이어붙이면 "15:00:00:00" 같은 잘못된 RFC3339가 되어 구글이 Bad Request로 거부한다.
+function toTimeWithSeconds(t: string): string {
+  return t.split(":").length >= 3 ? t : `${t}:00`;
+}
+
 // deno-lint-ignore no-explicit-any
 async function getValidToken(db: any, userId: string) {
   const { data } = await db.from("google_calendar_tokens")
@@ -85,12 +91,12 @@ serve(async (req) => {
         summary: event.title,
         description: event.description ?? "",
         start: event.start_time
-          ? { dateTime: `${event.schedule_date}T${event.start_time}:00+09:00`, timeZone: "Asia/Seoul" }
+          ? { dateTime: `${event.schedule_date}T${toTimeWithSeconds(event.start_time)}+09:00`, timeZone: "Asia/Seoul" }
           : { date: event.schedule_date },
         end: event.end_time
-          ? { dateTime: `${event.schedule_date}T${event.end_time}:00+09:00`, timeZone: "Asia/Seoul" }
+          ? { dateTime: `${event.schedule_date}T${toTimeWithSeconds(event.end_time)}+09:00`, timeZone: "Asia/Seoul" }
           : event.start_time
-          ? { dateTime: `${event.schedule_date}T${event.start_time}:00+09:00`, timeZone: "Asia/Seoul" }
+          ? { dateTime: `${event.schedule_date}T${toTimeWithSeconds(event.start_time)}+09:00`, timeZone: "Asia/Seoul" }
           : { date: event.schedule_date },
         location: event.location ?? "",
       };
@@ -120,10 +126,10 @@ serve(async (req) => {
         summary: event.title,
         description: event.description ?? "",
         start: event.start_time
-          ? { dateTime: `${event.schedule_date}T${event.start_time}:00+09:00`, timeZone: "Asia/Seoul" }
+          ? { dateTime: `${event.schedule_date}T${toTimeWithSeconds(event.start_time)}+09:00`, timeZone: "Asia/Seoul" }
           : { date: event.schedule_date },
         end: event.end_time
-          ? { dateTime: `${event.schedule_date}T${event.end_time}:00+09:00`, timeZone: "Asia/Seoul" }
+          ? { dateTime: `${event.schedule_date}T${toTimeWithSeconds(event.end_time)}+09:00`, timeZone: "Asia/Seoul" }
           : { date: event.schedule_date },
       };
       const res = await fetch(`${baseUrl}/${event_id}`, { method: "PUT", headers, body: JSON.stringify(body) });
