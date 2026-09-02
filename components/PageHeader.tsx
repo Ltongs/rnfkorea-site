@@ -36,6 +36,47 @@ const mobileDropBoxBase =
   "shadow-[0_18px_50px_rgba(15,23,42,0.18)] z-[10000] pointer-events-auto " +
   "opacity-100 translate-y-0 transition-all duration-180 ease-out";
 
+function WorkMenuItem({
+  label,
+  onClick,
+  locked,
+  className,
+}: {
+  label: React.ReactNode;
+  onClick: () => void;
+  locked: boolean;
+  className?: string;
+}) {
+  const [showLoginHint, setShowLoginHint] = useState(false);
+
+  return (
+    <div
+      className="relative"
+      onMouseEnter={() => {
+        if (locked) setShowLoginHint(true);
+      }}
+      onMouseLeave={() => setShowLoginHint(false)}
+    >
+      <button
+        type="button"
+        className={className ?? dropItem}
+        onClick={onClick}
+      >
+        {label}
+      </button>
+
+      {locked && showLoginHint && (
+        <div
+          className="absolute left-full top-1/2 -translate-y-1/2 ml-2 z-[10000] rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-normal text-navy-900 shadow-[0_10px_30px_rgba(15,23,42,0.15)] whitespace-nowrap pointer-events-none"
+          role="tooltip"
+        >
+          로그인이 필요한 메뉴입니다
+        </div>
+      )}
+    </div>
+  );
+}
+
 function useDropdownTimers() {
   const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -574,53 +615,43 @@ export default function PageHeader() {
                   onPointerDown={(e) => e.stopPropagation()}
                 >
                   {(isAdminLevel || isNarumi || isLotte || isInsuranceManager || !user) && (
-                    <button
-                      type="button"
-                      className={dropItem}
+                    <WorkMenuItem
+                      label="나르미업무"
+                      locked={!user}
                       onClick={() => goWorkInternalOnly("/narumi")}
-                    >
-                      나르미업무
-                    </button>
+                    />
                   )}
 
                   {(isAdminLevel || isHyundaiCM || isNhCapital || isNhCapitalStaff || isOrixPartner || !user) && (
-                    <button
-                      type="button"
-                      className={dropItem}
+                    <WorkMenuItem
+                      label="현대건기(부산경남)업무"
+                      locked={!user}
                       onClick={() => goWorkInternalOnly("/hyundaicm")}
-                    >
-                      현대건기(부산경남)업무
-                    </button>
+                    />
                   )}
 
                   {(isAdminLevel || isGbn || !user) && (
-                    <button
-                      type="button"
-                      className={dropItem}
+                    <WorkMenuItem
+                      label="현대지게차(경기북부)업무"
+                      locked={!user}
                       onClick={() => goWorkInternalOnly("/brother")}
-                    >
-                      현대지게차(경기북부)업무
-                    </button>
+                    />
                   )}
 
                   {(isAdminLevel || isTaesan || isNhCapital || !user) && (
-                    <button
-                      type="button"
-                      className={dropItem}
+                    <WorkMenuItem
+                      label="태산통운업무"
+                      locked={!user}
                       onClick={() => goWorkInternalOnly("/taesan")}
-                    >
-                      태산통운업무
-                    </button>
+                    />
                   )}
 
                   {(isAdminLevel || isRentalOS || !user) && (
-                    <button
-                      type="button"
-                      className={dropItem}
+                    <WorkMenuItem
+                      label="Rental_O/S업무"
+                      locked={!user}
                       onClick={() => goWorkInternalOnly("/rental-os")}
-                    >
-                      Rental_O/S업무
-                    </button>
+                    />
                   )}
 
                   <button
