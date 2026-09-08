@@ -16,13 +16,21 @@ const RECIPIENTS     = RECIPIENTS_RAW.split(",").map((n) => n.replace(/\D/g, "")
 // 현대건설기계 영업사원(배성구) 번호 — 딜에 "영업사원 알림 제외" 체크 시 이 번호만 제외하고 발송
 const HCM_SALES_REP_PHONE = (Deno.env.get("HCM_SALES_REP_PHONE") ?? "01079310339").replace(/\D/g, "");
 
+// 메리츠캐피탈 건 전용 추가 수신자 (메리츠 담당자) — 기본 RECIPIENTS에 더해 발송
+const MERITZ_EXTRA_RECIPIENT = (Deno.env.get("MERITZ_SMS_RECIPIENT") ?? "01035403136").replace(/\D/g, "");
+
 // skipSalesRepAlert 플래그에 맞는 HCM 수신자 목록 산출 (JSON boolean/string 둘 다 허용)
 function isTruthyFlag(v: unknown): boolean {
   return v === true || v === "true";
 }
 function hcmRecipientsFor(body: Record<string, unknown>): string[] {
-  if (!isTruthyFlag(body.skipSalesRepAlert)) return RECIPIENTS;
-  return RECIPIENTS.filter((n) => n !== HCM_SALES_REP_PHONE);
+  const base = isTruthyFlag(body.skipSalesRepAlert)
+    ? RECIPIENTS.filter((n) => n !== HCM_SALES_REP_PHONE)
+    : [...RECIPIENTS];
+  if (body.financeCompany === "메리츠캐피탈" && !base.includes(MERITZ_EXTRA_RECIPIENT)) {
+    base.push(MERITZ_EXTRA_RECIPIENT);
+  }
+  return base;
 }
 
 // 나르미 전용 수신자
