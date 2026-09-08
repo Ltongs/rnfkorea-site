@@ -16,7 +16,7 @@ const PHONE_MASK_AFTER_HOURS = 24;    // 확정 후 24시간 경과 시 전화�
 type CustomerType = "개인" | "법인";
 type HCMStatus    = "접수" | "신용조회" | "승인" | "보완" | "거절" | "확정" | "취소";
 
-type FinanceCompany = "NH캐피탈" | "오릭스캐피탈" | "우리금융캐피탈";
+type FinanceCompany = "NH캐피탈" | "오릭스캐피탈" | "우리금융캐피탈" | "메리츠캐피탈" | "MG캐피탈";
 
 // ─── 탭 ─────────────────────────────────────────────────
 type ActiveTab = "할부금융" | "보험" | "수출";
@@ -2229,6 +2229,8 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                   <option value="NH캐피탈">NH캐피탈</option>
                   <option value="오릭스캐피탈">오릭스캐피탈</option>
                   <option value="우리금융캐피탈">우리금융캐피탈</option>
+                  <option value="메리츠캐피탈">메리츠캐피탈</option>
+                  <option value="MG캐피탈">MG캐피탈</option>
                 </select>
               </div>
               {/* 부가세 후불 + 금액 + 영업사원 — 한 행 */}
@@ -2961,7 +2963,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               <div><label className={labelClass}>톤수</label><input value={editEquipmentTon} onChange={(e) => setEditEquipmentTon(e.target.value)} className={inputClass} disabled={editSaving} placeholder="예: 20톤" /></div>
               <div><label className={labelClass}>차량가격 (원)</label><input value={editPurchaseAmount} onChange={(e) => setEditPurchaseAmount(onlyDigits(e.target.value))} className={inputClass} disabled={editSaving} inputMode="numeric" /></div>
               <div><label className={labelClass}>할부원금 (원)</label><input value={editInstallmentPrincipal} onChange={(e) => setEditInstallmentPrincipal(onlyDigits(e.target.value))} className={inputClass} disabled={editSaving} inputMode="numeric" /></div>
-              <div><label className={labelClass}>할부금융사</label><select value={editFinanceCompany} onChange={(e) => setEditFinanceCompany(e.target.value)} className={inputClass} disabled={editSaving}><option value="NH캐피탈">NH캐피탈</option><option value="오릭스캐피탈">오릭스캐피탈</option><option value="우리금융캐피탈">우리금융캐피탈</option></select></div>
+              <div><label className={labelClass}>할부금융사</label><select value={editFinanceCompany} onChange={(e) => setEditFinanceCompany(e.target.value)} className={inputClass} disabled={editSaving}><option value="NH캐피탈">NH캐피탈</option><option value="오릭스캐피탈">오릭스캐피탈</option><option value="우리금융캐피탈">우리금융캐피탈</option><option value="메리츠캐피탈">메리츠캐피탈</option><option value="MG캐피탈">MG캐피탈</option></select></div>
               {/* 부가세 후불 + 금액 + 대출기간 + 영업사원 */}
               <div className="col-span-1 sm:col-span-2 md:col-span-3">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">

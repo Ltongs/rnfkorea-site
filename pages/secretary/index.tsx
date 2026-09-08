@@ -7193,7 +7193,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                               <label className={LBL}>금융사</label>
                               <select className={CTRL} value={cnsHcmFinanceCompany} onChange={e=>setCnsHcmFinanceCompany(e.target.value)}>
                                 <option value="">선택</option>
-                                {["KB캐피탈","NH캐피탈","오릭스","HCI","BNK캐피탈","메리츠캐피탈","롯데오토리스","농협","우리금융","BSON"].map(c=><option key={c} value={c}>{c}</option>)}
+                                {["KB캐피탈","NH캐피탈","오릭스","HCI","BNK캐피탈","메리츠캐피탈","MG캐피탈","롯데오토리스","농협","우리금융","BSON"].map(c=><option key={c} value={c}>{c}</option>)}
                               </select>
                             </div>
                             <div>
@@ -7283,7 +7283,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                                   else setCnsFinanceCompany(e.target.value);
                                 }}>
                                   <option value="">선택</option>
-                                  {["KB캐피탈","NH캐피탈","오릭스","HCI","BNK캐피탈","메리츠캐피탈","롯데오토리스","농협","우리금융","BSON"].map(c=><option key={c} value={c}>{c}</option>)}
+                                  {["KB캐피탈","NH캐피탈","오릭스","HCI","BNK캐피탈","메리츠캐피탈","MG캐피탈","롯데오토리스","농협","우리금융","BSON"].map(c=><option key={c} value={c}>{c}</option>)}
                                   <option value="__custom__">직접입력</option>
                                 </select>
                               )}

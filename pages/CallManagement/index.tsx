@@ -194,7 +194,7 @@ type InsuranceExpiryRow = {
 const SALES_CATEGORIES = ["타이어", "지게차렌탈", "건설기계수출", "배터리(LFP)", "배터리(납산)", "렌탈사업", "기타"];
 const SALES_TRADE_TYPES = ["내수", "수출"] as const;
 
-const FINANCE_COMPANY_PRESETS = ["KB캐피탈", "NH캐피탈", "오릭스", "HCI", "BNK캐피탈", "메리츠캐피탈", "롯데오토리스", "농협", "우리금융", "BSON"];
+const FINANCE_COMPANY_PRESETS = ["KB캐피탈", "NH캐피탈", "오릭스", "HCI", "BNK캐피탈", "메리츠캐피탈", "MG캐피탈", "롯데오토리스", "농협", "우리금융", "BSON"];
 
 type InvoiceRegForm = {
   invoice_no: string;

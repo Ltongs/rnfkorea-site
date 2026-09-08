@@ -36,47 +36,6 @@ const mobileDropBoxBase =
   "shadow-[0_18px_50px_rgba(15,23,42,0.18)] z-[10000] pointer-events-auto " +
   "opacity-100 translate-y-0 transition-all duration-180 ease-out";
 
-function WorkMenuItem({
-  label,
-  onClick,
-  locked,
-  className,
-}: {
-  label: React.ReactNode;
-  onClick: () => void;
-  locked: boolean;
-  className?: string;
-}) {
-  const [showLoginHint, setShowLoginHint] = useState(false);
-
-  return (
-    <div
-      className="relative"
-      onMouseEnter={() => {
-        if (locked) setShowLoginHint(true);
-      }}
-      onMouseLeave={() => setShowLoginHint(false)}
-    >
-      <button
-        type="button"
-        className={className ?? dropItem}
-        onClick={onClick}
-      >
-        {label}
-      </button>
-
-      {locked && showLoginHint && (
-        <div
-          className="absolute left-full top-1/2 -translate-y-1/2 ml-2 z-[10000] rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-normal text-navy-900 shadow-[0_10px_30px_rgba(15,23,42,0.15)] whitespace-nowrap pointer-events-none"
-          role="tooltip"
-        >
-          로그인이 필요한 메뉴입니다
-        </div>
-      )}
-    </div>
-  );
-}
-
 function useDropdownTimers() {
   const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -614,44 +573,67 @@ export default function PageHeader() {
                   onMouseLeave={() => hoverClose(setOpenWork)}
                   onPointerDown={(e) => e.stopPropagation()}
                 >
-                  {(isAdminLevel || isNarumi || isLotte || isInsuranceManager || !user) && (
-                    <WorkMenuItem
-                      label="나르미업무"
-                      locked={!user}
+                  {!user && (
+                    <button
+                      type="button"
+                      className={`${dropItem} text-gray-400 cursor-not-allowed`}
+                      onClick={() => {
+                        handleMenuNavigate();
+                        nav("/login");
+                      }}
+                    >
+                      로그인이 필요한 메뉴입니다
+                    </button>
+                  )}
+
+                  {(isAdminLevel || isNarumi || isLotte || isInsuranceManager) && (
+                    <button
+                      type="button"
+                      className={dropItem}
                       onClick={() => goWorkInternalOnly("/narumi")}
-                    />
+                    >
+                      나르미업무
+                    </button>
                   )}
 
-                  {(isAdminLevel || isHyundaiCM || isNhCapital || isNhCapitalStaff || isOrixPartner || !user) && (
-                    <WorkMenuItem
-                      label="현대건기(부산경남)업무"
-                      locked={!user}
+                  {(isAdminLevel || isHyundaiCM || isNhCapital || isNhCapitalStaff || isOrixPartner) && (
+                    <button
+                      type="button"
+                      className={dropItem}
                       onClick={() => goWorkInternalOnly("/hyundaicm")}
-                    />
+                    >
+                      현대건기(부산경남)업무
+                    </button>
                   )}
 
-                  {(isAdminLevel || isGbn || !user) && (
-                    <WorkMenuItem
-                      label="현대지게차(경기북부)업무"
-                      locked={!user}
+                  {(isAdminLevel || isGbn) && (
+                    <button
+                      type="button"
+                      className={dropItem}
                       onClick={() => goWorkInternalOnly("/brother")}
-                    />
+                    >
+                      현대지게차(경기북부)업무
+                    </button>
                   )}
 
-                  {(isAdminLevel || isTaesan || isNhCapital || !user) && (
-                    <WorkMenuItem
-                      label="태산통운업무"
-                      locked={!user}
+                  {(isAdminLevel || isTaesan || isNhCapital) && (
+                    <button
+                      type="button"
+                      className={dropItem}
                       onClick={() => goWorkInternalOnly("/taesan")}
-                    />
+                    >
+                      태산통운업무
+                    </button>
                   )}
 
-                  {(isAdminLevel || isRentalOS || !user) && (
-                    <WorkMenuItem
-                      label="Rental_O/S업무"
-                      locked={!user}
+                  {(isAdminLevel || isRentalOS) && (
+                    <button
+                      type="button"
+                      className={dropItem}
                       onClick={() => goWorkInternalOnly("/rental-os")}
-                    />
+                    >
+                      Rental_O/S업무
+                    </button>
                   )}
 
                   <button

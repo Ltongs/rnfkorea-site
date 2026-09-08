@@ -2000,7 +2000,7 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
               <div><Label>할부원금(원) *</Label><NumInput value={iff.principal} onChange={v=>setIff(f=>({...f,principal:v}))}/></div>
               <div><Label>할부금융사</Label>
                 <select value={iff.financeCompany} onChange={e=>setIff(f=>({...f,financeCompany:e.target.value}))} className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400">
-                  {['NH캐피탈','현대캐피탈','KB캐피탈','하나캐피탈','우리금융캐피탈','BNK캐피탈','ORIX캐피탈','기타'].map(v=><option key={v}>{v}</option>)}
+                  {['NH캐피탈','현대캐피탈','KB캐피탈','하나캐피탈','우리금융캐피탈','BNK캐피탈','ORIX캐피탈','메리츠캐피탈','MG캐피탈','기타'].map(v=><option key={v}>{v}</option>)}
                 </select>
               </div>
               <div><Label>연이율(%)</Label><Input type="number" step="0.1" value={iff.annualRate} onChange={e=>setIff(f=>({...f,annualRate:e.target.value}))}/></div>
