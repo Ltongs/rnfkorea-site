@@ -6,6 +6,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
 
 // ─── 타입 ───────────────────────────────────────────────────
@@ -608,7 +609,10 @@ async function htmlDocToPdfBytes(html: string): Promise<ArrayBuffer> {
   const styleEl = document.createElement('style');
   styleEl.textContent = styleMatch ? styleMatch[1] : '';
   const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'position:absolute;left:-9999px;top:0;width:794px;background:#fff;';
+  // letter-spacing: 0.01px — 크롬이 같은 줄의 공백·하이픈을 폭 0인 상자로 합쳐버려
+  // html2canvas가 그 글자를 놓치거나 옆 글자와 겹쳐 그리는 버그(Malgun Gothic 등 특정
+  // 폰트에서 재현됨)를 막기 위한 값. 육안으로는 자간 변화가 보이지 않는다.
+  wrapper.style.cssText = 'position:absolute;left:-9999px;top:0;width:794px;background:#fff;letter-spacing:0.01px;';
   wrapper.innerHTML = bodyHTML;
   document.head.appendChild(styleEl);
   document.body.appendChild(wrapper);
@@ -749,6 +753,46 @@ ${(type==='battery'||type==='tire')?`<div style="background:#f1f5f9;border-radiu
 </div>
 </div>
 </body></html>`;
+}
+
+// ─── 엑셀(수기 수정 가능) 다운로드: 배터리 견적서 ────────────
+// PDF는 이미지로 굳어진 캡처본이라 오탈자·품목을 고칠 수 없으므로,
+// 받는 사람이 직접 열어 값을 고쳐 쓸 수 있는 원본 데이터 형태로도 내려받게 한다.
+function downloadBatteryExcel(bf: BatteryForm) {
+  const total = calcTotal(bf.items);
+  const vat   = Math.round(total*.1);
+  const grand = total+vat;
+  const typeLabel = bf.docTitle?.trim() || '배터리';
+
+  const rows: (string|number)[][] = [
+    [`${typeLabel} 견적서 (초안 — 정식 견적번호는 발송 시 부여됨)`],
+    [],
+    ['수신', `${bf.recipient} 귀중`, '', '견적일자', bf.quoteDate],
+    ['발신', '주식회사 알앤에프코리아', '', '유효기간', bf.validPeriod],
+    ['대표', bf.ceoName, '', '사업자번호', '316-88-02901'],
+    [],
+    ['인도장소', bf.deliveryPlace, '', '거래조건', bf.paymentTerms],
+    [],
+    ['No.', '품명', '규격', '수량', '단가', '금액'],
+    ...bf.items.map((it, i) => {
+      const inc = it.price === '포함';
+      const amt = !inc ? n0(it.price)*(n0(it.qty)||1) : 0;
+      return [i+1, it.name, it.spec, it.qty || '', inc ? '포함' : (it.price===''?'':n0(it.price)), inc ? '' : (amt || '')];
+    }),
+    [],
+    ['', '', '', '', '공급가액', total],
+    ['', '', '', '', '부가세', vat],
+    ['', '', '', '', '총액', grand],
+    [],
+    ['특기사항'],
+    ...bf.notes.map(n => [n]),
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{wch:10},{wch:28},{wch:16},{wch:8},{wch:14},{wch:14}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '배터리견적서');
+  XLSX.writeFile(wb, `RNF_배터리견적서_${bf.recipient||'고객'}_초안.xlsx`);
 }
 
 // ─── PDF HTML: 발주서 ───────────────────────────────────────
@@ -1704,6 +1748,11 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
               <button onClick={handlePrint} disabled={loading} className="bg-white text-[#0a192f] hover:bg-gray-100 px-4 py-2 rounded text-sm font-medium disabled:opacity-50">
                 {loading?'생성 중...':'📥 PDF 다운로드'}
               </button>
+              {tab==='battery' && (
+                <button onClick={()=>downloadBatteryExcel(bf)} className="bg-white/10 hover:bg-white/20 text-white border border-white/20 px-4 py-2 rounded text-sm font-medium">
+                  📊 엑셀 다운로드 (수기 수정용)
+                </button>
+              )}
               <button onClick={handleEmail} disabled={emailLoading} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded text-sm font-medium disabled:opacity-50">
                 {emailLoading?'발송 중...':'📧 이메일 발송'}
               </button>

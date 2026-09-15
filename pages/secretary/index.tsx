@@ -109,6 +109,14 @@ type Memo = {
   consultation_id: number | null;
   created_at: string;
 };
+// 진행 중인 딜을 형식 없이 한 줄씩 적어두는 용도 (메모 탭 상단에 노출)
+type Deal = {
+  id: number;
+  content: string;
+  is_active: boolean;
+  created_at: string;
+  closed_at: string | null;
+};
 
 type ChatMsg = {
   role:"user"|"assistant"; content:string;
@@ -233,6 +241,8 @@ const fmtDT = (d:string) => new Date(d).toLocaleDateString("ko-KR",{month:"short
 const monthsAgoStr = (n:number) => { const d=new Date(); d.setMonth(d.getMonth()-n); const p=(x:number)=>String(x).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
 const DORMANT_CACHE_KEY = "sec_dormant_remind_v1";
 const fmtTime = (t:string|null) => t?t.slice(0,5):"";
+// 진행 중인 딜 목록에서 첫 줄을 제목처럼 보여주기 위한 헬퍼
+const dealTitle = (content:string) => content.split("\n")[0].trim() || "(내용 없음)";
 const md2html = (s:string) => s.replace(/\*\*(.*?)\*\*/g,"<strong>$1</strong>").replace(/\[(.*?)\]/g,'<span style="color:#f97316;font-weight:600">[$1]</span>').replace(/\n/g,"<br/>");
 
 // ─── 스타일 ───────────────────────────────────────────────────────────────────
@@ -3541,6 +3551,17 @@ const SecretaryPage:React.FC = () => {
   const [memoDetail,setMemoDetail]   = useState<Memo|null>(null);
   const [newMemo,setNewMemo]         = useState({title:"",content:"",category:"meeting" as Memo["category"],related_name:"",memo_date:new Date().toISOString().slice(0,10),consultation_id:""});
   const [cLoading,setCLoading]       = useState(false);
+
+  // 진행 중인 딜 (형식 없는 자유 메모, 메모 탭 상단 섹션)
+  const [deals,setDeals]             = useState<Deal[]>([]);
+  const [dealsLoading,setDealsLoading] = useState(false);
+  const [newDealText,setNewDealText] = useState("");
+  const [showClosedDeals,setShowClosedDeals] = useState(false);
+  const [closedDeals,setClosedDeals] = useState<Deal[]>([]);
+  const [closedDealsLoading,setClosedDealsLoading] = useState(false);
+  const [editingDealId,setEditingDealId] = useState<number|null>(null);
+  const [editDealText,setEditDealText] = useState("");
+  const [dealDetail,setDealDetail] = useState<Deal|null>(null);
   // Apple Notes 가져오기
   const [showNotesImport,setShowNotesImport]     = useState(false);
   const [notesRawText,setNotesRawText]           = useState("");
@@ -3641,6 +3662,71 @@ const SecretaryPage:React.FC = () => {
     setMemos(prev=>prev.filter(m=>m.id!==id));
     if(memoDetail?.id===id) setMemoDetail(null);
   },[memoDetail]);
+
+  // ── 진행 중인 딜 ─────────────────────────────────────────────────────────
+  const loadDeals = useCallback(async()=>{
+    setDealsLoading(true);
+    const {data} = await supabase
+      .from("secretary_deals")
+      .select("*")
+      .eq("is_active",true)
+      .order("created_at",{ascending:false});
+    setDeals(data??[]);
+    setDealsLoading(false);
+  },[]);
+
+  const loadClosedDeals = useCallback(async()=>{
+    setClosedDealsLoading(true);
+    const {data} = await supabase
+      .from("secretary_deals")
+      .select("*")
+      .eq("is_active",false)
+      .order("closed_at",{ascending:false})
+      .limit(20);
+    setClosedDeals(data??[]);
+    setClosedDealsLoading(false);
+  },[]);
+
+  const addDeal = useCallback(async(text:string)=>{
+    const content = text.trim();
+    if(!content) return;
+    const {error} = await supabase.from("secretary_deals").insert({content});
+    if(!error){ setNewDealText(""); void loadDeals(); }
+  },[loadDeals]);
+
+  const updateDeal = useCallback(async(id:number,text:string)=>{
+    const content = text.trim();
+    if(!content) return;
+    const {error} = await supabase.from("secretary_deals").update({content}).eq("id",id);
+    if(!error){
+      setDeals(prev=>prev.map(d=>d.id===id?{...d,content}:d));
+      setClosedDeals(prev=>prev.map(d=>d.id===id?{...d,content}:d));
+      setDealDetail(prev=>prev&&prev.id===id?{...prev,content}:prev);
+      setEditingDealId(null);
+    }
+  },[]);
+
+  const closeDeal = useCallback(async(id:number)=>{
+    const closedAt = new Date().toISOString();
+    setDeals(prev=>prev.filter(d=>d.id!==id));
+    setDealDetail(prev=>prev&&prev.id===id?{...prev,is_active:false,closed_at:closedAt}:prev);
+    await supabase.from("secretary_deals").update({is_active:false,closed_at:closedAt}).eq("id",id);
+    if(showClosedDeals) void loadClosedDeals();
+  },[showClosedDeals,loadClosedDeals]);
+
+  const reopenDeal = useCallback(async(id:number)=>{
+    setClosedDeals(prev=>prev.filter(d=>d.id!==id));
+    setDealDetail(prev=>prev&&prev.id===id?{...prev,is_active:true,closed_at:null}:prev);
+    await supabase.from("secretary_deals").update({is_active:true,closed_at:null}).eq("id",id);
+    void loadDeals();
+  },[loadDeals]);
+
+  const deleteDeal = useCallback(async(id:number)=>{
+    await supabase.from("secretary_deals").delete().eq("id",id);
+    setDeals(prev=>prev.filter(d=>d.id!==id));
+    setClosedDeals(prev=>prev.filter(d=>d.id!==id));
+    setDealDetail(prev=>prev&&prev.id===id?null:prev);
+  },[]);
 
   // ── Apple Notes 붙여넣기 → AI 요약 → secretary_memos 저장 ──────────────────
   const importNotesText = useCallback(async(rawText:string)=>{
@@ -4665,7 +4751,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
     });
   },[tab,jYear,jMonth]);
   useEffect(()=>{if(tab==="email"){void loadEmailReports();}},[tab,loadEmailReports]);
-  useEffect(()=>{if(tab==="memo"){void loadMemos();}},[tab,loadMemos]);
+  useEffect(()=>{if(tab==="memo"){void loadMemos();void loadDeals();}},[tab,loadMemos,loadDeals]);
   useEffect(()=>{if(tab==="cns"){ void fetchCnsRows(); }},[tab]);
   useEffect(()=>{if(tab==="performance"){ void loadPerfData(); }},[tab]);
   useEffect(()=>{
@@ -6593,6 +6679,127 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                   )}
                 </div>
               )}
+
+              {/* 진행 중인 딜 — 목록은 제목만, 클릭하면 상세 */}
+              <div className={`${CARD} p-4`}>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-semibold text-[#0f172a]">🔥 진행 중인 딜</p>
+                  {!dealDetail&&(closedDeals.length>0 || !showClosedDeals) ? (
+                    <button className="text-xs text-gray-400 hover:text-gray-600 transition-all"
+                      onClick={()=>{const next=!showClosedDeals;setShowClosedDeals(next);if(next) void loadClosedDeals();}}>
+                      {showClosedDeals?"닫기":"완료 보기"}
+                    </button>
+                  ) : null}
+                </div>
+
+                {dealDetail ? (
+                  /* 상세 뷰 */
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <button className={BTG} onClick={()=>{setDealDetail(null);setEditingDealId(null);}}>← 목록으로</button>
+                      <button className="text-xs text-red-400 hover:text-red-600 transition-all" onClick={()=>void deleteDeal(dealDetail.id)}>삭제</button>
+                    </div>
+
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${dealDetail.is_active?"bg-orange-50 text-orange-600":"bg-emerald-50 text-emerald-600"}`}>
+                        {dealDetail.is_active?"진행중":"완료"}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {dealDetail.is_active
+                          ? `등록 ${dealDetail.created_at.slice(0,10)}`
+                          : `완료 ${(dealDetail.closed_at??dealDetail.created_at).slice(0,10)}`}
+                      </span>
+                    </div>
+
+                    {editingDealId===dealDetail.id ? (
+                      <div>
+                        <textarea rows={6} autoFocus
+                          className="w-full rounded-xl border border-orange-300 px-3 py-2 text-xs text-gray-700 resize-none focus:outline-none"
+                          value={editDealText}
+                          onChange={e=>setEditDealText(e.target.value)}
+                          onKeyDown={e=>{if((e.metaKey||e.ctrlKey)&&e.key==="Enter"){e.preventDefault();void updateDeal(dealDetail.id,editDealText);}}}/>
+                        <div className="flex gap-2 mt-1.5 justify-end">
+                          <button className={BTG} onClick={()=>setEditingDealId(null)}>취소</button>
+                          <button className={`${BTO} disabled:opacity-40`}
+                            disabled={!editDealText.trim()}
+                            onClick={()=>void updateDeal(dealDetail.id,editDealText)}>저장</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p className={`text-sm text-gray-700 whitespace-pre-wrap leading-relaxed border-t border-gray-100 pt-3 ${!dealDetail.is_active?"text-gray-400 line-through":""}`}>
+                          {dealDetail.content}
+                        </p>
+                        <div className="flex gap-2 justify-end mt-3">
+                          <button className={BTG} onClick={()=>{setEditingDealId(dealDetail.id);setEditDealText(dealDetail.content);}}>편집</button>
+                          {dealDetail.is_active ? (
+                            <button className={BTO} onClick={()=>void closeDeal(dealDetail.id)}>완료 처리</button>
+                          ) : (
+                            <button className={BTO} onClick={()=>void reopenDeal(dealDetail.id)}>다시 진행중으로</button>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  /* 목록 뷰 */
+                  <>
+                    <div className="mb-3">
+                      <textarea rows={3} placeholder={"예: OO중공업 지게차 3대 상담중\n- 견적 9/10 발송, 담당자 김이사\n- 다음 액션: 9/17 유선 확인"}
+                        className="w-full rounded-xl border border-gray-200 px-3 py-2 text-xs text-gray-700 resize-none focus:outline-none focus:border-orange-400"
+                        value={newDealText}
+                        onChange={e=>setNewDealText(e.target.value)}
+                        onKeyDown={e=>{if((e.metaKey||e.ctrlKey)&&e.key==="Enter"){e.preventDefault();void addDeal(newDealText);}}}/>
+                      <div className="flex items-center justify-between mt-1.5">
+                        <p className="text-xs text-gray-400">고객·진행상황·다음 액션 등 아는 만큼 자유롭게 (⌘/Ctrl+Enter로 추가)</p>
+                        <button className={`${BTO} disabled:opacity-40 whitespace-nowrap`}
+                          disabled={!newDealText.trim()}
+                          onClick={()=>void addDeal(newDealText)}>+ 추가</button>
+                      </div>
+                    </div>
+
+                    {dealsLoading&&<p className="text-xs text-gray-400 py-2">불러오는 중...</p>}
+                    {!dealsLoading&&deals.length===0&&(
+                      <p className="text-xs text-gray-400 py-2">진행 중인 딜이 없습니다. 위에 적어두면 여기 쌓입니다.</p>
+                    )}
+                    <div className="space-y-1">
+                      {deals.map(d=>{
+                        const lines = d.content.split("\n").filter(l=>l.trim());
+                        return (
+                          <div key={d.id}
+                            className="flex items-center gap-2 group rounded-lg hover:bg-gray-50 px-1 -mx-1 cursor-pointer transition-all"
+                            onClick={()=>setDealDetail(d)}>
+                            <span className="w-2 h-2 rounded-full bg-orange-400 flex-shrink-0"/>
+                            <p className="text-xs font-medium text-[#0f172a] truncate flex-1 py-1.5">{dealTitle(d.content)}</p>
+                            {lines.length>1&&<span className="text-xs text-gray-300 flex-shrink-0">+{lines.length-1}줄</span>}
+                            <button className="text-xs text-gray-300 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100 flex-shrink-0"
+                              onClick={e=>{e.stopPropagation();void deleteDeal(d.id);}}>삭제</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {showClosedDeals&&(
+                      <div className="mt-3 pt-3 border-t border-gray-100 space-y-1">
+                        {closedDealsLoading&&<p className="text-xs text-gray-400 py-1">불러오는 중...</p>}
+                        {!closedDealsLoading&&closedDeals.length===0&&(
+                          <p className="text-xs text-gray-400 py-1">완료된 딜이 없습니다.</p>
+                        )}
+                        {closedDeals.map(d=>(
+                          <div key={d.id}
+                            className="flex items-center gap-2 group rounded-lg hover:bg-gray-50 px-1 -mx-1 cursor-pointer transition-all"
+                            onClick={()=>setDealDetail(d)}>
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0"/>
+                            <p className="text-xs text-gray-400 line-through truncate flex-1 py-1.5">{dealTitle(d.content)}</p>
+                            <button className="text-xs text-gray-300 hover:text-[#0f172a] transition-all opacity-0 group-hover:opacity-100 flex-shrink-0"
+                              onClick={e=>{e.stopPropagation();void reopenDeal(d.id);}}>재개</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
 
               {/* 필터 + 검색 */}
               <div className="flex flex-wrap gap-2 items-center">

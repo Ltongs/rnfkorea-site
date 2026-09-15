@@ -2411,7 +2411,7 @@ VIN: ${nextVin}`);
               ← 전체 목록
             </button>
             <p className="text-sm text-blue-700 font-medium">
-              AI비서에서 선택한 건만 표시 중입니다
+              선택한 건만 표시 중입니다
             </p>
           </div>
         )}
@@ -2441,7 +2441,11 @@ VIN: ${nextVin}`);
 
                 {/* 카드 헤더 */}
                 <div className="flex items-start justify-between gap-3 px-4 md:px-3.5 pt-5 pb-4 border-b border-gray-100">
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div
+                    className={`flex flex-wrap items-center gap-2 ${!focusId ? "cursor-pointer" : ""}`}
+                    onClick={!focusId ? () => navigate(`/narumi?id=${r.id}`) : undefined}
+                    title={!focusId ? "클릭하면 이 건만 보기" : undefined}
+                  >
                     {/* 상태 뱃지 */}
                     <span className={`${pillBase} ${
                       brokeragePending ? "bg-purple-50 text-purple-700 border border-purple-200" :
