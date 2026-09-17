@@ -81,6 +81,7 @@ import DashboardPage from "./pages/Dashboard";
 import WorkManualPage from "./pages/WorkManual";
 import BatteryPage from "./pages/Battery/index";
 import RenthanaPage from "./pages/Renthana/index";
+import GolfCartLfpPopup from "./components/GolfCartLfpPopup";
 import GolfCartLfpPage from "./pages/Battery/GolfCartLfp";
 import HomePage from "./pages/Home";
 import FinancePage from "./pages/Finance/index";
@@ -131,15 +132,12 @@ interface RouteSeoMeta {
 }
 
 const ROUTE_SEO: Record<string, RouteSeoMeta> = {
-  // 🚧 TEMP: 골프카트 LFP 배터리 프로모션 기간 동안 "/" 메타를 골프카트 랜딩페이지 기준으로 임시 교체.
-  // 원래 홈페이지 메타는 "/home"에 그대로 유지. 프로모션 종료 후 아래 두 항목을 원상복구할 것.
   "/": {
-    title: "골프카트용 LFP 배터리 SPIDERWAY | 51.2V 150Ah | RNF KOREA",
+    title: "RNF KOREA | 산업용 배터리·타이어·금융솔루션 전문기업",
     description:
-      "골프카트 전용 SPIDERWAY LFP 배터리. 51.2V 150Ah, 5년 무상보증, 월 88,000원 렌탈. 타미우스CC 20대 1년 운영 검증. 상담 1551-1873.",
+      "(주)알앤에프코리아는 물류기기용 LFP배터리, 산업용·화물용 타이어, 렌탈 및 금융 서비스를 제공하는 산업재 전문기업입니다. 장비의 구입부터 유지·보수·매각까지 전 LifeCycle을 지원합니다.",
     canonical: `${SITE_URL}/`,
-    keywords: "골프카트배터리,골프카트LFP배터리,SPIDERWAY,리튬인산철배터리,골프장배터리,골프카트배터리렌탈",
-    ogImage: `${SITE_URL}/battery/golfcart-lfp/hero.webp`,
+    keywords: "LFP배터리,산업용타이어,화물타이어,지게차배터리,렌탈,금융솔루션,알앤에프코리아",
   },
   "/home": {
     title: "RNF KOREA | 산업용 배터리·타이어·금융솔루션 전문기업",
@@ -1228,7 +1226,11 @@ const PartnerLogos: React.FC<{ logos: string[]; label?: string }> = ({ logos, la
 
 const Footer: React.FC = () => {
   const nav = useNavigate();
+  const { pathname } = useLocation();
   const { user, canViewAll } = useAuth() as any;
+  // 렌타나 계산기(/renthana)는 로그인 없이 URL로 누구나 접근하는 독립 페이지이므로,
+  // 내부 관리자용 링크(Etc: AI비서/나르미/현대건기/현대지게차 로그인)와 그 아래 법적고지 블록은 노출하지 않는다.
+  const isRenthana = pathname === "/renthana";
 
   const goNarumi = () => {
     if (user && canViewAll) nav("/narumi");
@@ -1265,15 +1267,15 @@ const Footer: React.FC = () => {
       itemScope
       itemType="https://schema.org/LocalBusiness"
     >
-      <div className="container mx-auto px-4 grid grid-cols-1 md:grid-cols-4 gap-12 text-sm">
+      <div className="container mx-auto px-4 text-sm">
         {/* 회사 정보 */}
-        <div className="col-span-1 md:col-span-2">
+        <div className="mb-12">
           <div className="mb-6">
             <div className="font-extrabold text-lg" itemProp="name">RNF KOREA</div>
             <meta itemProp="legalName" content="(주)알앤에프코리아" />
             <meta itemProp="url" content={SITE_URL} />
           </div>
-          <p className="text-gray-500 max-w-sm leading-relaxed mb-6" itemProp="description">
+          <p className="text-gray-500 max-w-sm leading-relaxed" itemProp="description">
             (주)알앤에프코리아는 장비의 구입부터 유지/보수/매각까지
             장비의 모든 LifeCycle을 함께하는 산업재 전문 기업입니다.
             <br />
@@ -1281,54 +1283,57 @@ const Footer: React.FC = () => {
           </p>
         </div>
 
-        {/* 연락처 */}
-        <div>
-          <h4 className="font-bold text-base mb-6">Contact Info</h4>
-          <address
-            className="not-italic"
-            itemProp="address"
-            itemScope
-            itemType="https://schema.org/PostalAddress"
-          >
-            <ul className="space-y-4 text-gray-600">
-              <li className="flex items-start gap-3">
-                <Phone size={16} className="shrink-0 mt-0.5" aria-hidden="true" />
-                <a
-                  href="tel:1551-1873"
-                  className="font-bold hover:text-orange-500 transition-colors"
-                  itemProp="telephone"
-                >
-                  1551-1873
-                </a>
-              </li>
-              <li className="flex items-start gap-3">
-                <User size={16} className="shrink-0 mt-0.5" aria-hidden="true" />
-                <span>사이트관리자: 이동수</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <Mail size={16} className="shrink-0 mt-0.5" aria-hidden="true" />
-                <a
-                  href="mailto:admin@rnfkorea.co.kr"
-                  className="hover:text-orange-500 transition-colors break-all"
-                  itemProp="email"
-                >
-                  admin@rnfkorea.co.kr
-                </a>
-              </li>
-              <li className="flex items-start gap-3">
-                <MapPin size={16} className="shrink-0 mt-0.5" aria-hidden="true" />
-                <span className="leading-relaxed" itemProp="streetAddress">
-                  경기도 안산시 단원구 산단로 325
-                  <br />
-                  제에프동 1167호 (신길동)
-                </span>
-              </li>
-            </ul>
-          </address>
-        </div>
+        {/* Contact Info / Business / Shop / Etc — 한 행에 나란히 배열 */}
+        <nav
+          aria-label="푸터 메뉴"
+          className={`grid grid-cols-2 ${isRenthana ? "md:grid-cols-3" : "md:grid-cols-4"} gap-8`}
+        >
+          {/* 연락처 */}
+          <div>
+            <h4 className="font-bold text-base mb-6">Contact Info</h4>
+            <address
+              className="not-italic"
+              itemProp="address"
+              itemScope
+              itemType="https://schema.org/PostalAddress"
+            >
+              <ul className="space-y-4 text-gray-600">
+                <li className="flex items-start gap-3">
+                  <Phone size={16} className="shrink-0 mt-0.5" aria-hidden="true" />
+                  <a
+                    href="tel:1551-1873"
+                    className="font-bold hover:text-orange-500 transition-colors"
+                    itemProp="telephone"
+                  >
+                    1551-1873
+                  </a>
+                </li>
+                <li className="flex items-start gap-3">
+                  <User size={16} className="shrink-0 mt-0.5" aria-hidden="true" />
+                  <span>사이트관리자: 이동수</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Mail size={16} className="shrink-0 mt-0.5" aria-hidden="true" />
+                  <a
+                    href="mailto:admin@rnfkorea.co.kr"
+                    className="hover:text-orange-500 transition-colors break-all"
+                    itemProp="email"
+                  >
+                    admin@rnfkorea.co.kr
+                  </a>
+                </li>
+                <li className="flex items-start gap-3">
+                  <MapPin size={16} className="shrink-0 mt-0.5" aria-hidden="true" />
+                  <span className="leading-relaxed" itemProp="streetAddress">
+                    경기도 안산시 단원구 산단로 325
+                    <br />
+                    제에프동 1167호 (신길동)
+                  </span>
+                </li>
+              </ul>
+            </address>
+          </div>
 
-        {/* 메뉴 */}
-        <nav aria-label="푸터 메뉴" className="space-y-8">
           <div>
             <h4 className="font-bold text-base mb-4">Business</h4>
             <ul className="space-y-2 text-sm text-gray-600">
@@ -1350,52 +1355,56 @@ const Footer: React.FC = () => {
             </ul>
           </div>
 
-          <div>
-            <h4 className="font-bold text-base mb-4">Etc</h4>
-            <ul className="space-y-2 text-sm text-gray-600">
-              <li><Link to="/sitemap" className="hover:text-orange-500 transition-colors">- 사이트맵</Link></li>
-              <li><Link to="/work/secretary" className="hover:text-orange-500 transition-colors">- AI 비서</Link></li>
-              <li>
-                <button type="button" onClick={goNarumi} className="hover:text-orange-500 transition-colors text-left">
-                  - 나르미업무
-                </button>
-              </li>
-              <li>
-                <Link to="/hyundaicm/login" className="hover:text-orange-500 transition-colors">
-                  - 현대건기(부산경남)업무
-                </Link>
-              </li>
-              <li>
-                <Link to="/brother" className="hover:text-orange-500 transition-colors">
-                  - 현대지게차(경기북부)업무
-                </Link>
-              </li>
-            </ul>
-          </div>
+          {!isRenthana && (
+            <div>
+              <h4 className="font-bold text-base mb-4">Etc</h4>
+              <ul className="space-y-2 text-sm text-gray-600">
+                <li><Link to="/sitemap" className="hover:text-orange-500 transition-colors">- 사이트맵</Link></li>
+                <li><Link to="/work/secretary" className="hover:text-orange-500 transition-colors">- AI 비서</Link></li>
+                <li>
+                  <button type="button" onClick={goNarumi} className="hover:text-orange-500 transition-colors text-left">
+                    - 나르미업무
+                  </button>
+                </li>
+                <li>
+                  <Link to="/hyundaicm/login" className="hover:text-orange-500 transition-colors">
+                    - 현대건기(부산경남)업무
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/brother" className="hover:text-orange-500 transition-colors">
+                    - 현대지게차(경기북부)업무
+                  </Link>
+                </li>
+              </ul>
+            </div>
+          )}
         </nav>
       </div>
 
       {/* ✅ 법적 고지 — 전자상거래법 필수 표시 항목 */}
-      <div className="container mx-auto px-4 mt-16 pt-8 border-t border-gray-100 text-center text-gray-400 text-xs space-y-2">
-        <p className="leading-relaxed">
-          <span className="font-semibold text-gray-500">(주)알앤에프코리아</span>
-          &nbsp;|&nbsp; 대표: 이동수
-          &nbsp;|&nbsp; 사업자등록번호: 316-88-02901
-          &nbsp;|&nbsp; 통신판매업 신고번호: 신고 준비중
-        </p>
-        <p className="leading-relaxed">
-          경기도 안산시 단원구 산단로 325 제에프동 1167호 (신길동)
-          &nbsp;|&nbsp;
-          <a href="tel:1551-1873" className="hover:text-orange-400 transition-colors">
-            1551-1873
-          </a>
-          &nbsp;|&nbsp;
-          <a href="mailto:admin@rnfkorea.co.kr" className="hover:text-orange-400 transition-colors">
-            admin@rnfkorea.co.kr
-          </a>
-        </p>
-        <p>&copy; {new Date().getFullYear()} (주)알앤에프코리아. All rights reserved.</p>
-      </div>
+      {!isRenthana && (
+        <div className="container mx-auto px-4 mt-16 pt-8 border-t border-gray-100 text-center text-gray-400 text-xs space-y-2">
+          <p className="leading-relaxed">
+            <span className="font-semibold text-gray-500">(주)알앤에프코리아</span>
+            &nbsp;|&nbsp; 대표: 이동수
+            &nbsp;|&nbsp; 사업자등록번호: 316-88-02901
+            &nbsp;|&nbsp; 통신판매업 신고번호: 신고 준비중
+          </p>
+          <p className="leading-relaxed">
+            경기도 안산시 단원구 산단로 325 제에프동 1167호 (신길동)
+            &nbsp;|&nbsp;
+            <a href="tel:1551-1873" className="hover:text-orange-400 transition-colors">
+              1551-1873
+            </a>
+            &nbsp;|&nbsp;
+            <a href="mailto:admin@rnfkorea.co.kr" className="hover:text-orange-400 transition-colors">
+              admin@rnfkorea.co.kr
+            </a>
+          </p>
+          <p>&copy; {new Date().getFullYear()} (주)알앤에프코리아. All rights reserved.</p>
+        </div>
+      )}
     </footer>
   );
 };
@@ -1443,18 +1452,15 @@ const AppRoutes = () => {
   // PWA 앱은 manifest.json의 start_url(/work/secretary, /work/secretary-ins 등)로
   // 곧바로 진입하므로 "/"로 들어올 일이 거의 없고, 들어오더라도 홈페이지를 보여주는 것이 맞음.
   // 즉 "/"에서 계정 기준 강제 리다이렉트는 하지 않는다 — 브라우저에서 admin이 전체 사이트를 볼 수 있어야 함.
-  // 🚧 TEMP: 골프카트 LFP 배터리 프로모션 기간 동안 "/"를 골프카트 랜딩페이지로 임시 교체.
-  // 단, 로그인된 사용자(직원)는 광고성 랜딩페이지 대신 기존 홈페이지를 보도록 함.
-  // 기존 홈페이지는 /home 에서 계속 볼 수 있음. 프로모션 종료 후 아래 줄을 <HomePage />로 되돌릴 것.
-  const rootElement = user ? <HomePage /> : <GolfCartLfpPage />;
+  // 골프카트 LFP 배터리 프로모션은 "/"를 통째로 대체하지 않고, 홈페이지 위에 작은 팝업(GolfCartLfpPopup)으로 노출한다.
+  const rootElement = <HomePage />;
 
-  // 🚧 TEMP: 골프카트 랜딩페이지는 전역 헤더/푸터 없이 독립된 광고성 페이지로 노출.
-  // 로그인된 사용자는 "/"에서 HomePage를 보므로 일반 헤더/푸터를 유지한다.
-  // 프로모션 종료 후 "/"를 HomePage로 되돌릴 때 아래 "/" 조건도 함께 제거할 것.
-  const isGolfCartLanding = pathname === "/golfcart-battery" || (pathname === "/" && !user);
+  // "/golfcart-battery"는 전역 헤더/푸터 없이 독립된 광고성 랜딩페이지로 노출.
+  const isGolfCartLanding = pathname === "/golfcart-battery";
 
   const hideHeader =
     isGolfCartLanding
+    || pathname === "/renthana"
     || pathname.startsWith("/work/secretary")
     || pathname.startsWith("/work/narumi")
     || pathname.startsWith("/work/manual")
@@ -1481,6 +1487,9 @@ const AppRoutes = () => {
     <div className="min-h-screen bg-white">
       <ScrollToTop />
       <ScrollToTopButton />
+
+      {/* 골프카트 LFP 배터리 프로모션 — 홈페이지 방문 고객에게만 작은 팝업으로 노출 */}
+      {pathname === "/" && !user && <GolfCartLfpPopup />}
 
       {/* ✅ 라우트별 SEO 메타 자동 주입 */}
       <AutoSeoHead />

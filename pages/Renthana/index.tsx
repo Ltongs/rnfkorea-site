@@ -64,7 +64,7 @@ export default function RenthanaPage() {
         <div className="max-w-xl mx-auto space-y-4">
           {/* 입력 영역 (PDF 캡처 대상 아님) */}
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-            <label className="block text-xs font-medium text-gray-500 mb-1.5">장비/배터리 가격 (원)</label>
+            <label className="block text-xs font-medium text-gray-500 mb-1.5">배터리 가격(원, VAT제외)</label>
             <input
               type="text"
               inputMode="numeric"
@@ -95,18 +95,19 @@ export default function RenthanaPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="rounded-xl border border-gray-200 p-5 text-center">
                 <p className="text-xs text-gray-400 mb-1">12개월 렌탈료</p>
-                <p className="text-xl font-bold text-[#C1462B]">{formatWon(fee12)}원</p>
-                <p className="text-[11px] text-gray-300 mt-1">월 {formatWon(fee12 / 12)}원 환산</p>
+                <p className="text-xl font-bold text-[#C1462B]">{formatWon(fee12 / 12)}원/월</p>
               </div>
               <div className="rounded-xl border border-gray-200 p-5 text-center">
                 <p className="text-xs text-gray-400 mb-1">36개월 렌탈료</p>
-                <p className="text-xl font-bold text-[#C1462B]">{formatWon(fee36)}원</p>
-                <p className="text-[11px] text-gray-300 mt-1">월 {formatWon(fee36 / 36)}원 환산</p>
+                <p className="text-xl font-bold text-[#C1462B]">{formatWon(fee36 / 36)}원/월</p>
               </div>
             </div>
 
-            <p className="text-[11px] text-gray-300 mt-6 leading-relaxed">
-              ※ 본 금액은 참고용 자동 계산 결과이며(가격×103%×111.7%/135%), 실제 계약 조건에 따라 달라질 수 있습니다. VAT 별도.
+            <p className="text-xs text-gray-400 mt-6 text-center leading-relaxed">
+              자세한 내용은 상담원을 통해 확인해주세요{" "}
+              <a href="tel:1551-1873" className="font-semibold text-orange-600 hover:underline">
+                1551-1873
+              </a>
             </p>
           </div>
 
