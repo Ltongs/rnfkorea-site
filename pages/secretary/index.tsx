@@ -6538,7 +6538,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                               {n.sales_rep&&<span className="text-[11px] text-gray-400">담당: {n.sales_rep}</span>}
                             </div>
                           </div>
-                          <button onClick={()=>navigate("/work/narumi")}
+                          <button onClick={()=>navigate(`/work/narumi?id=${n.id}`)}
                             className="px-2 py-1 rounded-xl text-[11px] border border-gray-200 text-gray-500 hover:border-orange-300 hover:text-orange-600 transition-all flex-shrink-0">
                             열기
                           </button>

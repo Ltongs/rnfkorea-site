@@ -80,6 +80,7 @@ import KakaoConnectPage from "./pages/HyundaiCM/KakaoConnect";
 import DashboardPage from "./pages/Dashboard";
 import WorkManualPage from "./pages/WorkManual";
 import BatteryPage from "./pages/Battery/index";
+import RenthanaPage from "./pages/Renthana/index";
 import GolfCartLfpPage from "./pages/Battery/GolfCartLfp";
 import HomePage from "./pages/Home";
 import FinancePage from "./pages/Finance/index";
@@ -1500,6 +1501,7 @@ const AppRoutes = () => {
           <Route path="/home" element={<HomePage />} />
           <Route path="/tires" element={<TiresPage />} />
           <Route path="/battery" element={<BatteryPage />} />
+          <Route path="/renthana" element={<RenthanaPage />} />
           <Route path="/golfcart-battery" element={<GolfCartLfpPage />} />
           <Route path="/export" element={<ExportPage />} />
           <Route path="/export-shop" element={<ExportShopPage />} />
