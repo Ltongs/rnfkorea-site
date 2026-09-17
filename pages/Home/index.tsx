@@ -775,6 +775,33 @@ const HomePage: React.FC = () => (
   </div>
 </Link>
 
+{/* 배터리 렌탈 (by 렌타나) */}
+<Link
+  to="/renthana"
+  className="relative p-0 border rounded-lg overflow-hidden bg-white hover:shadow-lg transition-shadow
+             focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50"
+  aria-label="배터리 렌탈 (by 렌타나) 페이지로 이동"
+>
+  <div className="relative z-10 p-6 md:p-7 pr-24 md:pr-40">
+    <h3 className="text-xl font-semibold mb-2 hover:text-orange-600 transition-colors">
+      배터리 렌탈 (by 렌타나)
+    </h3>
+    <p className="text-gray-600">
+      구매가 기준 12·36개월 렌탈료 즉시 계산
+    </p>
+  </div>
+
+  <div className="absolute top-0 right-0 h-full w-[48%] bg-white">
+    <img
+      src="/battery/golfcart-lfp/product-studio.webp"
+      alt="SPIDERWAY 배터리"
+      className="h-full w-full object-cover hover:scale-[1.03] transition-transform duration-500"
+      loading="lazy"
+    />
+    <div className="absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-white via-white/70 to-transparent" />
+  </div>
+</Link>
+
     </div>
   </div>
 </section>

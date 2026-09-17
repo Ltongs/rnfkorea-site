@@ -437,6 +437,14 @@ export default function PageHeader() {
                   >
                     개인(개별)협회 전용 금융상품
                   </Link>
+
+                  <Link
+                    to="/renthana"
+                    className={dropItem}
+                    onClick={handleMenuNavigate}
+                  >
+                    배터리 렌탈 (by 렌타나)
+                  </Link>
                 </div>
               </>
             )}
@@ -524,7 +532,8 @@ export default function PageHeader() {
             )}
           </div>
 
-          {/* 업무용 */}
+          {/* 업무용 — 로그인하지 않은 방문자에게는 메뉴 자체를 노출하지 않는다 */}
+          {user && (
           <div
             className="relative overflow-visible"
             onMouseEnter={() => hoverOpen("work")}
@@ -573,19 +582,6 @@ export default function PageHeader() {
                   onMouseLeave={() => hoverClose(setOpenWork)}
                   onPointerDown={(e) => e.stopPropagation()}
                 >
-                  {!user && (
-                    <button
-                      type="button"
-                      className={`${dropItem} text-gray-400 cursor-not-allowed`}
-                      onClick={() => {
-                        handleMenuNavigate();
-                        nav("/login");
-                      }}
-                    >
-                      로그인이 필요한 메뉴입니다
-                    </button>
-                  )}
-
                   {(isAdminLevel || isNarumi || isLotte || isInsuranceManager) && (
                     <button
                       type="button"
@@ -737,6 +733,7 @@ export default function PageHeader() {
               </>
             )}
           </div>
+          )}
 
           <a
             href="tel:1551-1873"
