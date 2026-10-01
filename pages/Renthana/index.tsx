@@ -1,12 +1,14 @@
 // pages/Renthana/index.tsx
 // 렌타나(renthana.com) 제휴 배터리 렌탈료 계산기 — 로그인 없이 URL로 누구나 접근 가능
-// 렌탈료 = 가격 × 103% × 111.7%(12개월) / 135%(36개월)
+// 렌탈료 = (공급가격 × 1.1 부가세 포함) × 103% × 111.7%(12개월) / 135%(36개월)
 
 import React, { useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
+const VAT_RATE = 1.1;          // 부가세 10% 포함
 const RATE_12 = 1.03 * 1.117; // 103% × 111.7%
 const RATE_36 = 1.03 * 1.35;  // 103% × 135%
 
@@ -31,8 +33,9 @@ export default function RenthanaPage() {
   const quoteRef = useRef<HTMLDivElement>(null);
 
   const price = Number(priceInput.replace(/[^0-9]/g, "")) || 0;
-  const fee12 = useMemo(() => price * RATE_12, [price]);
-  const fee36 = useMemo(() => price * RATE_36, [price]);
+  const priceWithVat = useMemo(() => price * VAT_RATE, [price]);
+  const fee12 = useMemo(() => priceWithVat * RATE_12, [priceWithVat]);
+  const fee36 = useMemo(() => priceWithVat * RATE_36, [priceWithVat]);
 
   const onPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const digits = e.target.value.replace(/[^0-9]/g, "");
@@ -78,6 +81,13 @@ export default function RenthanaPage() {
         <meta name="robots" content="noindex,nofollow" />
       </Helmet>
 
+      <Link
+        to="/"
+        className="fixed top-4 right-4 z-10 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-gray-200 text-xs font-semibold text-gray-600 shadow-sm hover:border-gray-300 hover:text-gray-800 transition-all"
+      >
+        ← 메인으로
+      </Link>
+
       <div className="min-h-screen bg-gray-50 py-10 px-4">
         <div className="max-w-xl mx-auto space-y-4">
           <div className="flex items-center justify-center gap-4">
@@ -118,6 +128,7 @@ export default function RenthanaPage() {
             <div className="mb-6">
               <p className="text-xs text-gray-400 mb-1">공급가격</p>
               <p className="text-2xl font-bold text-[#1A1612]">{formatWon(price)}원</p>
+              <p className="text-xs text-gray-400 mt-1">부가세 포함 {formatWon(priceWithVat)}원</p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">

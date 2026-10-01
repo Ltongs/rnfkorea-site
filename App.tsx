@@ -1475,6 +1475,7 @@ const AppRoutes = () => {
 
   const hideFooter =
     isGolfCartLanding
+    || pathname === "/renthana"
     || pathname.startsWith("/work/")
     || pathname.startsWith("/orix")
     || pathname.startsWith("/hyundaicm")
