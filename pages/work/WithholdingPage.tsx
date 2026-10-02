@@ -103,7 +103,20 @@ interface LotteIncentive {
   collateral_set: boolean;
   incentive_amount: number;
   note: string | null;
+  created_at: string;
+  updated_at: string;
 }
+
+// 롯데 고객명("디딤상사(이병훈)", "주식회사 애플리")과 나르미 고객명("이병훈", "(주)애플리")을
+// 맞추기 위한 비교 키: 괄호 밖/안 이름 각각에서 법인 표기·공백을 제거한다.
+const lotteNameKeys = (name?: string | null): string[] => {
+  const s = (name ?? '').replace(/주식회사|\(주\)|㈜/g, '');
+  const outer = s.replace(/\(.*$/, '');
+  const inner = s.match(/\(([^()]*)/)?.[1] ?? '';
+  return [outer, inner]
+    .map(v => v.replace(/\s/g, ''))
+    .filter(v => v.length >= 2);
+};
 
 // ─── 유틸 ──────────────────────────────────────────────────
 const fmt = (n: number) => n?.toLocaleString('ko-KR') ?? '0';
@@ -187,11 +200,45 @@ export default function WithholdingPage() {
   }, []);
 
   const loadLotteIncentives = useCallback(async () => {
-    const { data } = await supabase
-      .from('tb_lotte_lease_incentives')
-      .select('*')
-      .order('contract_date', { ascending: false });
-    setLotteIncentives(data ?? []);
+    const [{ data }, { data: narumi }] = await Promise.all([
+      supabase
+        .from('tb_lotte_lease_incentives')
+        .select('*')
+        .order('contract_date', { ascending: false }),
+      supabase
+        .from('narumi_tasks')
+        .select('customer_name, registered_at, vehicle_doc_uploaded_at, created_at')
+        .eq('is_registered', true),
+    ]);
+    const rows: LotteIncentive[] = data ?? [];
+
+    // 나르미에서 등록완료된 고객과 이름이 일치하는 미설정 건은 자동으로 '설정' 처리.
+    // 한 번도 수정되지 않았거나, 마지막 수정 이후에 등록완료된 건만 대상 —
+    // 사용자가 수동으로 미설정으로 되돌린 건은 다시 덮어쓰지 않는다.
+    const registeredAt = new Map<string, number>();
+    for (const t of narumi ?? []) {
+      const ts = Date.parse(t.registered_at ?? t.vehicle_doc_uploaded_at ?? t.created_at ?? '') || 0;
+      for (const k of lotteNameKeys(t.customer_name)) {
+        registeredAt.set(k, Math.max(registeredAt.get(k) ?? 0, ts));
+      }
+    }
+    const toSet = rows.filter(r => {
+      if (r.collateral_set) return false;
+      const matched = lotteNameKeys(r.customer_name).filter(k => registeredAt.has(k));
+      if (matched.length === 0) return false;
+      const ts = Math.max(...matched.map(k => registeredAt.get(k)!));
+      return r.updated_at === r.created_at || ts > Date.parse(r.updated_at);
+    });
+    if (toSet.length > 0) {
+      await supabase
+        .from('tb_lotte_lease_incentives')
+        .update({ collateral_set: true })
+        .in('id', toSet.map(r => r.id));
+      const ids = new Set(toSet.map(r => r.id));
+      setLotteIncentives(rows.map(r => ids.has(r.id) ? { ...r, collateral_set: true } : r));
+      return;
+    }
+    setLotteIncentives(rows);
   }, []);
 
   const loadOrixRecipients = useCallback(async () => {
