@@ -1,22 +1,26 @@
 // pages/secretary/DiaryTab.tsx
-// AI비서 "📔 다이어리" 탭 — 날짜별로 오늘 한 일 / 내일 할 일을 정리한다.
-// 테이블: secretary_diary_items, secretary_diary_notes (supabase/migrations/20261007120000_secretary_diary.sql)
+// AI비서 "📔 다이어리" 탭 — 하루를 자유형식으로 돌아보고, 넘길 것들을 내일/다음 일정으로 정리하는 화면.
+// 테이블: secretary_diary_items, secretary_diary_notes
+//   (supabase/migrations/20261007120000_secretary_diary.sql, 20261007150000_secretary_diary_forward.sql)
+//
+// 화면 흐름
+//   1) "오늘 돌아보기"에 한 일을 노트처럼 한 줄씩 입력 (Enter = 다음 줄, 빈 줄에서 Backspace = 줄 삭제,
+//      여러 줄 붙여넣기 = 줄마다 분리 저장)
+//   2) 각 줄의 "→ 내일" 클릭 → 내일 할 일로 등록 (다시 누르면 취소)
+//      각 줄의 "📅 일정" 클릭 → 날짜/시간을 골라 secretary_schedules 일정으로 등록 (구글 캘린더 연동 시 동기화)
+//   3) 메모·회고는 하루 단위 자유 메모
 //
 // 데이터 계약
-//   - kind="done" : 그날 한 일 (entry_date = 한 날짜)
-//   - kind="plan" : 할 일 (entry_date = 실행할 날짜). D일 화면의 "내일 할 일"은 entry_date=D+1 인 plan.
-//                   D+1일이 되면 같은 항목이 "오늘 할 일"로 보이고, 체크하면 "오늘 한 일"에 함께 집계된다.
-//
-// 할 일 → 일정 등록 (두 가지 방법)
-//   1) 각 할 일 옆 📅 버튼 → 날짜/시간/구분 선택 후 등록
-//   2) 입력할 때 시간으로 시작하면 자동 등록: "14:00 OO상사 미팅", "오후 3시 견적 전화", "10시반 현장방문"
-//   등록된 일정은 secretary_schedules에 저장되고, 구글 캘린더 연동 시 부모(onScheduleCreated)가 동기화한다.
+//   - kind="done" : 오늘 돌아보기 한 줄 (entry_date = 그날). forwarded_item_id = "→ 내일"로 만든 plan 항목
+//   - kind="plan" : 할 일 (entry_date = 실행할 날짜). D일의 "내일로 넘긴 일"은 entry_date=D+1 인 plan이며,
+//                   D+1일 화면에서는 "오늘 예정이었던 일" 체크리스트로 보인다.
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
 type DiaryItem = {
   id: number; entry_date: string; kind: "done" | "plan"; content: string;
-  is_checked: boolean; schedule_id: number | null; sort_order: number; created_at: string;
+  is_checked: boolean; schedule_id: number | null; forwarded_item_id: number | null;
+  sort_order: number; created_at: string;
 };
 type LinkedSchedule = { id: number; schedule_date: string; start_time: string | null; is_done: boolean };
 type SchedCategory = "meeting" | "call" | "task" | "followup";
@@ -29,6 +33,7 @@ const CARD = "border border-gray-200 rounded-2xl bg-white shadow-sm";
 const CTRL = "w-full h-10 rounded-xl border border-gray-200 px-3 text-sm text-[#0f172a] bg-white focus:outline-none focus:border-orange-400 transition-all";
 const BTO = "px-3 py-1.5 rounded-xl bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 transition-all disabled:opacity-50";
 const BTG = "px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-600 hover:border-gray-300 transition-all disabled:opacity-50";
+const CHIP = "flex-shrink-0 text-[11px] px-2 py-0.5 rounded-md border transition-all whitespace-nowrap";
 const CAT_LABEL: Record<SchedCategory, string> = { meeting: "미팅", call: "통화", task: "업무", followup: "팔로업" };
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
@@ -39,7 +44,7 @@ const addDays = (s: string, n: number) => { const [y, m, d] = s.split("-").map(N
 const labelDate = (s: string) => { const [y, m, d] = s.split("-").map(Number); return `${m}/${d}(${WEEKDAYS[new Date(y, m - 1, d).getDay()]})`; };
 
 // "14:00 …", "14시 …", "오후 3시 …", "10시반 …", "9시 30분 …" 처럼 시간으로 시작하면 시간과 나머지 내용을 분리한다.
-// 오전/오후 표기 없이 1~7시는 업무시간 기준 오후로 본다.
+// 일정 등록 창의 시간/제목 기본값을 채우는 데만 쓴다. 오전/오후 표기 없이 1~7시는 업무시간 기준 오후로 본다.
 export function parseLeadingTime(text: string): { time: string; rest: string } | null {
   const m = text.match(/^\s*(오전|오후)?\s*(\d{1,2})(?::(\d{2})|\s*시(?:\s*(\d{1,2})\s*분|\s*(반))?)\s+(.+)$/);
   if (!m) return null;
@@ -58,6 +63,41 @@ function guessCategory(text: string): SchedCategory {
   return "task";
 }
 
+// 오늘 돌아보기 한 줄 — 입력 중 텍스트는 로컬로 들고 있다가 포커스를 벗어나거나 Enter 시 저장한다.
+function ReviewRow({
+  item, index, inputRef, onSave, onEnter, onRemoveEmpty, onArrow, actions,
+}: {
+  item: DiaryItem; index: number;
+  inputRef: (el: HTMLInputElement | null) => void;
+  onSave: (text: string) => void;
+  onEnter: () => void;
+  onRemoveEmpty: () => void;
+  onArrow: (dir: -1 | 1) => void;
+  actions: React.ReactNode;
+}) {
+  const [text, setText] = useState(item.content);
+  useEffect(() => { setText(item.content); }, [item.content]);
+  const commit = () => { const t = text.trim(); if (t && t !== item.content) onSave(t); else if (!t) setText(item.content); };
+  return (
+    <li className="group flex items-center gap-2 py-1 border-b border-gray-50 last:border-b-0">
+      <span className="w-5 text-right text-[11px] text-gray-300 flex-shrink-0 tabular-nums">{index + 1}</span>
+      <input ref={inputRef}
+        className="flex-1 min-w-0 h-8 text-sm text-[#0f172a] bg-transparent focus:outline-none focus:bg-orange-50/40 rounded-md px-1"
+        value={text}
+        onChange={e => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => {
+          if (e.nativeEvent.isComposing) return;
+          if (e.key === "Enter") { e.preventDefault(); commit(); onEnter(); }
+          else if (e.key === "Backspace" && text === "") { e.preventDefault(); onRemoveEmpty(); }
+          else if (e.key === "ArrowUp") { e.preventDefault(); onArrow(-1); }
+          else if (e.key === "ArrowDown") { e.preventDefault(); onArrow(1); }
+        }} />
+      <div className="flex items-center gap-1 flex-shrink-0">{actions}</div>
+    </li>
+  );
+}
+
 export default function DiaryTab({
   showToast, onScheduleCreated,
 }: {
@@ -67,6 +107,7 @@ export default function DiaryTab({
   // 부모의 showToast는 렌더마다 새로 만들어지므로 ref로 고정해 load 재생성을 막는다
   const toastRef = useRef(showToast);
   toastRef.current = showToast;
+
   const [date, setDate] = useState(todayStr);
   const tomorrow = addDays(date, 1);
   const isToday = date === todayStr();
@@ -77,11 +118,14 @@ export default function DiaryTab({
   const [note, setNote] = useState("");
   const [savedNote, setSavedNote] = useState("");
   const [loading, setLoading] = useState(false);
-  const [doneInput, setDoneInput] = useState("");
+  const [newRow, setNewRow] = useState("");
   const [planInput, setPlanInput] = useState("");
-  const [editing, setEditing] = useState<{ id: number; text: string } | null>(null);
-  const [schedForm, setSchedForm] = useState<{ item: DiaryItem; date: string; time: string; category: SchedCategory } | null>(null);
+  const [editingPlan, setEditingPlan] = useState<{ id: number; text: string } | null>(null);
+  const [schedForm, setSchedForm] = useState<{ item: DiaryItem; title: string; date: string; time: string; category: SchedCategory } | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const rowRefs = useRef<Record<number, HTMLInputElement | null>>({});
+  const newRowRef = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -98,12 +142,13 @@ export default function DiaryTab({
     ]);
     setLoading(false);
     if (itemsRes.error) { toastRef.current("다이어리 불러오기 실패: " + itemsRes.error.message, "err"); return; }
-    const all = [...((itemsRes.data ?? []) as DiaryItem[]), ...((overdueRes.data ?? []) as DiaryItem[])];
-    setItems((itemsRes.data ?? []) as DiaryItem[]);
-    setOverdue((overdueRes.data ?? []) as DiaryItem[]);
+    const loaded = (itemsRes.data ?? []) as DiaryItem[];
+    const late = (overdueRes.data ?? []) as DiaryItem[];
+    setItems(loaded);
+    setOverdue(late);
     const n = (noteRes.data as { note: string } | null)?.note ?? "";
     setNote(n); setSavedNote(n);
-    const sIds = all.map(i => i.schedule_id).filter((x): x is number => x != null);
+    const sIds = [...loaded, ...late].map(i => i.schedule_id).filter((x): x is number => x != null);
     if (sIds.length) {
       const { data } = await supabase.from("secretary_schedules").select("id,schedule_date,start_time,is_done").in("id", sIds);
       setSchedMap(Object.fromEntries(((data ?? []) as LinkedSchedule[]).map(s => [s.id, s])));
@@ -112,90 +157,127 @@ export default function DiaryTab({
 
   useEffect(() => { void load(); }, [load]);
 
+  const rows = items.filter(i => i.kind === "done" && i.entry_date === date);
   const todayPlans = items.filter(i => i.kind === "plan" && i.entry_date === date);
-  const doneItems = items.filter(i => i.kind === "done" && i.entry_date === date);
-  const checkedPlans = todayPlans.filter(i => i.is_checked);
   const tomorrowPlans = items.filter(i => i.kind === "plan" && i.entry_date === tomorrow);
+  const forwardedFrom = new Set(rows.map(r => r.forwarded_item_id).filter((x): x is number => x != null));
+  const scheduled = [...rows, ...todayPlans, ...overdue, ...tomorrowPlans].filter(i => i.schedule_id && schedMap[i.schedule_id]);
+
+  const patchLocal = (id: number, patch: Partial<DiaryItem>) => {
+    setItems(p => p.map(i => i.id === id ? { ...i, ...patch } : i));
+    setOverdue(p => p.map(i => i.id === id ? { ...i, ...patch } : i));
+  };
+  const nextSort = (list: DiaryItem[]) => list.length ? Math.max(...list.map(i => i.sort_order)) + 1 : 0;
+
+  // ─── 오늘 돌아보기 행 ────────────────────────────────────────────────────────
+  async function addRows(texts: string[]) {
+    const clean = texts.map(t => t.trim()).filter(Boolean);
+    if (!clean.length) return;
+    const base = nextSort(rows);
+    const { data, error } = await supabase.from("secretary_diary_items").insert(
+      clean.map((content, idx) => ({ entry_date: date, kind: "done", content, is_checked: true, sort_order: base + idx })),
+    ).select("*");
+    if (error) { showToast("저장 실패: " + error.message, "err"); return; }
+    setItems(p => [...p, ...((data ?? []) as DiaryItem[])]);
+  }
+
+  async function saveRow(item: DiaryItem, text: string) {
+    patchLocal(item.id, { content: text });
+    const { error } = await supabase.from("secretary_diary_items").update({ content: text }).eq("id", item.id);
+    if (error) showToast("저장 실패: " + error.message, "err");
+  }
+
+  async function removeItem(item: DiaryItem, ask = true) {
+    if (ask) {
+      const linked = item.schedule_id || item.forwarded_item_id;
+      if (!confirm(linked ? "삭제하시겠습니까?\n(이미 넘긴 내일 할 일·일정은 그대로 남습니다)" : "삭제하시겠습니까?")) return;
+    }
+    setItems(p => p.filter(i => i.id !== item.id));
+    setOverdue(p => p.filter(i => i.id !== item.id));
+    const { error } = await supabase.from("secretary_diary_items").delete().eq("id", item.id);
+    if (error) { showToast("삭제 실패: " + error.message, "err"); void load(); }
+  }
+
+  const focusRow = (idx: number) => {
+    if (idx >= rows.length) { newRowRef.current?.focus(); return; }
+    if (idx >= 0) rowRefs.current[rows[idx].id]?.focus();
+  };
+
+  // "→ 내일" 토글: 내일 할 일을 만들거나, 이미 넘겼으면 그 내일 할 일을 지운다
+  async function toggleForward(row: DiaryItem) {
+    if (row.forwarded_item_id) {
+      const planId = row.forwarded_item_id;
+      setItems(p => p.filter(i => i.id !== planId).map(i => i.id === row.id ? { ...i, forwarded_item_id: null } : i));
+      await supabase.from("secretary_diary_items").delete().eq("id", planId);   // FK on delete set null로 링크도 해제
+      return;
+    }
+    const { data, error } = await supabase.from("secretary_diary_items").insert({
+      entry_date: tomorrow, kind: "plan", content: row.content, is_checked: false, sort_order: nextSort(tomorrowPlans),
+    }).select("*").single();
+    if (error || !data) { showToast("내일 할 일 등록 실패: " + (error?.message ?? ""), "err"); return; }
+    await supabase.from("secretary_diary_items").update({ forwarded_item_id: data.id }).eq("id", row.id);
+    setItems(p => [...p.map(i => i.id === row.id ? { ...i, forwarded_item_id: data.id } : i), data as DiaryItem]);
+  }
 
   // ─── 일정 등록 ───────────────────────────────────────────────────────────────
-  async function createSchedule(item: DiaryItem, schedDate: string, time: string | null, category: SchedCategory) {
-    const { data, error } = await supabase.from("secretary_schedules").insert({
-      title: item.content, description: "다이어리에서 등록", schedule_date: schedDate,
-      start_time: time || null, end_time: null, category,
-    }).select("id").single();
-    if (error || !data) { showToast("일정 등록 실패: " + (error?.message ?? ""), "err"); return false; }
-    await supabase.from("secretary_diary_items").update({ schedule_id: data.id }).eq("id", item.id);
-    onScheduleCreated?.({
-      id: data.id, title: item.content, description: "다이어리에서 등록", schedule_date: schedDate,
-      start_time: time || null, end_time: null, location: null,
-    });
-    showToast(`📅 ${labelDate(schedDate)}${time ? " " + time : ""} 일정 등록 완료`);
-    return true;
+  function openSchedForm(item: DiaryItem) {
+    const p = parseLeadingTime(item.content);
+    // 오늘 한 일/오늘 예정 → 기본 내일, 내일 할 일 → 그 날짜
+    const defDate = item.kind === "plan" && item.entry_date > date ? item.entry_date : tomorrow;
+    setSchedForm({ item, title: p ? p.rest : item.content, date: defDate, time: p?.time ?? "", category: guessCategory(item.content) });
   }
 
   async function submitSchedForm() {
-    if (!schedForm) return;
+    if (!schedForm || !schedForm.title.trim()) return;
+    const { item, date: sDate, time, category } = schedForm;
+    const title = schedForm.title.trim();
     setBusy(true);
-    const ok = await createSchedule(schedForm.item, schedForm.date, schedForm.time || null, schedForm.category);
+    const { data, error } = await supabase.from("secretary_schedules").insert({
+      title, description: "다이어리에서 등록", schedule_date: sDate, start_time: time || null, end_time: null, category,
+    }).select("id,schedule_date,start_time,is_done").single();
+    if (error || !data) { setBusy(false); showToast("일정 등록 실패: " + (error?.message ?? ""), "err"); return; }
+    await supabase.from("secretary_diary_items").update({ schedule_id: data.id }).eq("id", item.id);
     setBusy(false);
-    if (ok) { setSchedForm(null); void load(); }
+    patchLocal(item.id, { schedule_id: data.id });
+    setSchedMap(m => ({ ...m, [data.id]: data as LinkedSchedule }));
+    setSchedForm(null);
+    onScheduleCreated?.({ id: data.id, title, description: "다이어리에서 등록", schedule_date: sDate, start_time: time || null, end_time: null, location: null });
+    showToast(`📅 ${labelDate(sDate)}${time ? " " + time : ""} 일정 등록 완료`);
   }
 
-  // ─── 항목 CRUD ───────────────────────────────────────────────────────────────
-  async function addItem(kind: "done" | "plan") {
-    const raw = (kind === "done" ? doneInput : planInput).trim();
-    if (!raw) return;
-    const entryDate = kind === "done" ? date : tomorrow;
-    const parsed = kind === "plan" ? parseLeadingTime(raw) : null;
-    const content = parsed ? `${parsed.time} ${parsed.rest}` : raw;
-    const sameKind = items.filter(i => i.kind === kind && i.entry_date === entryDate);
-    setBusy(true);
+  // ─── 내일 할 일 / 오늘 예정 ──────────────────────────────────────────────────
+  async function addPlan() {
+    const content = planInput.trim();
+    if (!content) return;
     const { data, error } = await supabase.from("secretary_diary_items").insert({
-      entry_date: entryDate, kind, content, is_checked: false,
-      sort_order: sameKind.length ? Math.max(...sameKind.map(i => i.sort_order)) + 1 : 0,
+      entry_date: tomorrow, kind: "plan", content, is_checked: false, sort_order: nextSort(tomorrowPlans),
     }).select("*").single();
-    if (error || !data) { setBusy(false); showToast("저장 실패: " + (error?.message ?? ""), "err"); return; }
-    if (parsed) await createSchedule({ ...(data as DiaryItem), content: parsed.rest }, entryDate, parsed.time, guessCategory(parsed.rest));
-    setBusy(false);
-    if (kind === "done") setDoneInput(""); else setPlanInput("");
-    void load();
+    if (error || !data) { showToast("저장 실패: " + (error?.message ?? ""), "err"); return; }
+    setItems(p => [...p, data as DiaryItem]);
+    setPlanInput("");
+  }
+
+  async function savePlanEdit() {
+    if (!editingPlan) return;
+    const { id, text } = editingPlan;
+    setEditingPlan(null);
+    if (!text.trim()) return;
+    patchLocal(id, { content: text.trim() });
+    await supabase.from("secretary_diary_items").update({ content: text.trim() }).eq("id", id);
   }
 
   async function toggleCheck(item: DiaryItem) {
     const next = !item.is_checked;
-    setItems(p => p.map(i => i.id === item.id ? { ...i, is_checked: next } : i));
-    setOverdue(p => p.map(i => i.id === item.id ? { ...i, is_checked: next } : i));
+    patchLocal(item.id, { is_checked: next });
     const { error } = await supabase.from("secretary_diary_items").update({ is_checked: next }).eq("id", item.id);
     if (error) { showToast("변경 실패: " + error.message, "err"); void load(); return; }
-    // 연결된 일정도 완료/미완료를 함께 맞춘다
     if (item.schedule_id) await supabase.from("secretary_schedules").update({ is_done: next }).eq("id", item.schedule_id);
-    // 밀린 할 일을 체크하면 오늘 한 일로 집계되도록 오늘 날짜로 옮긴다
-    if (next && item.entry_date < date) {
-      await supabase.from("secretary_diary_items").update({ entry_date: date }).eq("id", item.id);
-      void load();
-    }
   }
 
   async function moveTo(item: DiaryItem, target: string) {
     const { error } = await supabase.from("secretary_diary_items").update({ entry_date: target }).eq("id", item.id);
     if (error) { showToast("이동 실패: " + error.message, "err"); return; }
     showToast(`${labelDate(target)}로 옮겼습니다`);
-    void load();
-  }
-
-  async function saveEdit() {
-    if (!editing) return;
-    const text = editing.text.trim();
-    setEditing(null);
-    if (!text) return;
-    await supabase.from("secretary_diary_items").update({ content: text }).eq("id", editing.id);
-    void load();
-  }
-
-  async function removeItem(item: DiaryItem) {
-    const msg = item.schedule_id ? "삭제하시겠습니까?\n(등록된 일정은 일정 탭에 그대로 남습니다)" : "삭제하시겠습니까?";
-    if (!confirm(msg)) return;
-    await supabase.from("secretary_diary_items").delete().eq("id", item.id);
     void load();
   }
 
@@ -207,7 +289,7 @@ export default function DiaryTab({
     setSavedNote(note);
   }
 
-  // 그날 완료 처리된 일정·할일을 "한 일"로 불러온다 (이미 있는 내용은 건너뜀)
+  // 그날 완료 처리된 일정·할일을 돌아보기 행으로 불러온다 (이미 있는 내용은 건너뜀)
   async function importCompleted() {
     setBusy(true);
     const [s, t] = await Promise.all([
@@ -215,33 +297,33 @@ export default function DiaryTab({
       supabase.from("secretary_todos").select("title,done_at").eq("is_done", true)
         .gte("done_at", `${date}T00:00:00`).lt("done_at", `${tomorrow}T00:00:00`),
     ]);
-    const existing = new Set([...doneItems, ...checkedPlans].map(i => i.content.replace(/^\d{2}:\d{2}\s+/, "").trim().toLowerCase()));
+    const existing = new Set(rows.map(i => i.content.trim().toLowerCase()));
     const titles = [
-      ...((s.data ?? []) as { title: string }[]).map(x => x.title),
-      ...((t.data ?? []) as { title: string }[]).map(x => x.title),
-    ].map(x => x.trim()).filter(x => x && !existing.has(x.toLowerCase()));
+      ...((s.data ?? []) as { title: string; start_time: string | null }[]).map(x => (x.start_time ? x.start_time.slice(0, 5) + " " : "") + x.title.trim()),
+      ...((t.data ?? []) as { title: string }[]).map(x => x.title.trim()),
+    ].filter(x => x && !existing.has(x.toLowerCase()));
     const uniq = Array.from(new Set(titles));
     if (!uniq.length) { setBusy(false); showToast("가져올 완료 일정·할일이 없습니다"); return; }
-    const base = doneItems.length ? Math.max(...doneItems.map(i => i.sort_order)) + 1 : 0;
-    const { error } = await supabase.from("secretary_diary_items").insert(
-      uniq.map((content, idx) => ({ entry_date: date, kind: "done", content, is_checked: true, sort_order: base + idx })),
-    );
+    await addRows(uniq);
     setBusy(false);
-    if (error) { showToast("불러오기 실패: " + error.message, "err"); return; }
     showToast(`완료된 일정·할일 ${uniq.length}건을 불러왔습니다`);
-    void load();
   }
 
   async function copySummary() {
+    const sched = (i: DiaryItem) => {
+      const s = i.schedule_id ? schedMap[i.schedule_id] : null;
+      return s ? ` → 📅 ${labelDate(s.schedule_date)}${s.start_time ? " " + s.start_time.slice(0, 5) : ""}` : "";
+    };
     const lines = [
       `[${labelDate(date)} 업무일지]`,
       "",
       "■ 한 일",
-      ...[...checkedPlans, ...doneItems].map(i => `- ${i.content}`),
+      ...rows.map(i => `- ${i.content}${sched(i)}`),
+      ...todayPlans.filter(i => i.is_checked).map(i => `- ${i.content}`),
       ...(todayPlans.some(i => !i.is_checked) ? ["", "■ 미완료", ...todayPlans.filter(i => !i.is_checked).map(i => `- ${i.content}`)] : []),
       "",
       `■ 내일 할 일 (${labelDate(tomorrow)})`,
-      ...tomorrowPlans.map(i => `- ${i.content}`),
+      ...tomorrowPlans.map(i => `- ${i.content}${sched(i)}`),
       ...(note.trim() ? ["", "■ 메모", note.trim()] : []),
     ];
     try { await navigator.clipboard.writeText(lines.join("\n")); showToast("업무일지를 복사했습니다"); }
@@ -249,57 +331,44 @@ export default function DiaryTab({
   }
 
   // ─── 렌더링 ─────────────────────────────────────────────────────────────────
-  const scheduleBadge = (item: DiaryItem) => {
-    if (!item.schedule_id) return null;
-    const s = schedMap[item.schedule_id];
-    return (
-      <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-600 border border-blue-100">
-        📅 {s ? `${labelDate(s.schedule_date)}${s.start_time ? " " + s.start_time.slice(0, 5) : ""}` : "일정"}
+  const schedChip = (item: DiaryItem) => {
+    const s = item.schedule_id ? schedMap[item.schedule_id] : null;
+    if (s) return (
+      <span className={`${CHIP} bg-blue-50 text-blue-600 border-blue-100`} title="일정 등록됨">
+        📅 {labelDate(s.schedule_date)}{s.start_time ? " " + s.start_time.slice(0, 5) : ""}
       </span>
+    );
+    return (
+      <button className={`${CHIP} border-gray-200 text-gray-500 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50`}
+        title="다음 일정으로 등록" onClick={() => openSchedForm(item)}>📅 일정</button>
     );
   };
 
-  const row = (item: DiaryItem, opts: { checkable: boolean; actions?: React.ReactNode; tag?: string }) => (
-    <li key={item.id} className="group flex items-start gap-2 py-1.5">
+  const delBtn = (item: DiaryItem) => (
+    <button className="text-xs text-gray-300 hover:text-red-500 px-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity" title="삭제"
+      onClick={() => void removeItem(item)}>✕</button>
+  );
+
+  const planRow = (item: DiaryItem, opts: { checkable: boolean; tag?: string; actions?: React.ReactNode }) => (
+    <li key={item.id} className="group flex items-center gap-2 py-1.5">
       {opts.checkable
-        ? <input type="checkbox" className="mt-1 w-4 h-4 accent-orange-500 flex-shrink-0 cursor-pointer" checked={item.is_checked} onChange={() => void toggleCheck(item)} />
-        : <span className="mt-1 w-4 text-center text-gray-300 flex-shrink-0">•</span>}
-      <div className="flex-1 min-w-0 flex items-start gap-1.5 flex-wrap">
-        {opts.tag && <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-600 border border-amber-100">{opts.tag}</span>}
-        {editing?.id === item.id
-          ? <input autoFocus className="flex-1 min-w-0 text-sm border-b border-orange-300 focus:outline-none" value={editing.text}
-            onChange={e => setEditing({ id: item.id, text: e.target.value })}
-            onBlur={() => void saveEdit()}
-            onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) void saveEdit(); if (e.key === "Escape") setEditing(null); }} />
+        ? <input type="checkbox" className="w-4 h-4 accent-orange-500 flex-shrink-0 cursor-pointer" checked={item.is_checked} onChange={() => void toggleCheck(item)} />
+        : <span className="w-4 text-center text-gray-300 flex-shrink-0">•</span>}
+      <div className="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap">
+        {opts.tag && <span className={`${CHIP} bg-amber-50 text-amber-600 border-amber-100`}>{opts.tag}</span>}
+        {editingPlan?.id === item.id
+          ? <input autoFocus className="flex-1 min-w-0 text-sm border-b border-orange-300 focus:outline-none" value={editingPlan.text}
+            onChange={e => setEditingPlan({ id: item.id, text: e.target.value })}
+            onBlur={() => void savePlanEdit()}
+            onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) void savePlanEdit(); if (e.key === "Escape") setEditingPlan(null); }} />
           : <span className={`text-sm break-all cursor-text ${opts.checkable && item.is_checked ? "line-through text-gray-400" : "text-[#0f172a]"}`}
-            onDoubleClick={() => setEditing({ id: item.id, text: item.content })}>{item.content}</span>}
-        {scheduleBadge(item)}
+            onClick={() => setEditingPlan({ id: item.id, text: item.content })}>{item.content}</span>}
       </div>
-      <div className="flex items-center gap-1 flex-shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+      <div className="flex items-center gap-1 flex-shrink-0">
         {opts.actions}
-        <button className="text-xs text-gray-400 hover:text-gray-600 px-1" title="수정" onClick={() => setEditing({ id: item.id, text: item.content })}>✏️</button>
-        <button className="text-xs text-gray-400 hover:text-red-500 px-1" title="삭제" onClick={() => void removeItem(item)}>🗑</button>
+        {delBtn(item)}
       </div>
     </li>
-  );
-
-  const schedButton = (item: DiaryItem) => !item.schedule_id && (
-    <button className="text-xs px-1.5 py-0.5 rounded-md border border-blue-200 text-blue-600 hover:bg-blue-50" title="일정으로 등록"
-      onClick={() => {
-        const p = parseLeadingTime(item.content);
-        setSchedForm({ item: p ? { ...item, content: p.rest } : item, date: item.entry_date, time: p?.time ?? "", category: guessCategory(item.content) });
-      }}>📅 일정</button>
-  );
-
-  const addBox = (kind: "done" | "plan") => (
-    <div className="flex gap-2 mt-2">
-      <input className={CTRL} disabled={busy}
-        placeholder={kind === "done" ? "오늘 한 일을 입력 후 Enter" : "예) 14:00 OO상사 미팅 → 일정 자동 등록"}
-        value={kind === "done" ? doneInput : planInput}
-        onChange={e => kind === "done" ? setDoneInput(e.target.value) : setPlanInput(e.target.value)}
-        onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) void addItem(kind); }} />
-      <button className={BTO} disabled={busy} onClick={() => void addItem(kind)}>추가</button>
-    </div>
   );
 
   return (
@@ -308,7 +377,7 @@ export default function DiaryTab({
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <p className="text-sm font-semibold text-[#0f172a]">📔 업무 다이어리</p>
-          <p className="text-xs text-gray-400 mt-0.5">오늘 한 일과 내일 할 일을 정리하고, 할 일은 바로 일정으로 등록합니다</p>
+          <p className="text-xs text-gray-400 mt-0.5">하루를 돌아보며 한 줄씩 적고, 넘길 것은 내일 할 일·다음 일정으로 보냅니다</p>
         </div>
         <div className="flex items-center gap-1.5">
           <button className={BTG} onClick={() => setDate(d => addDays(d, -1))}>◀</button>
@@ -320,27 +389,25 @@ export default function DiaryTab({
         </div>
       </div>
 
-      {loading && items.length === 0 && <p className="text-xs text-gray-400">불러오는 중…</p>}
-
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* 왼쪽: 오늘 */}
-        <div className="space-y-4">
+      <div className="grid gap-4 md:grid-cols-5">
+        {/* 왼쪽: 돌아보기 + 메모 */}
+        <div className="md:col-span-3 space-y-4">
           {(todayPlans.length > 0 || overdue.length > 0) && (
-            <div className={`${CARD} p-4`}>
+            <div className={`${CARD} px-4 py-3`}>
               <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-[#0f172a]">📌 {isToday ? "오늘" : labelDate(date)} 할 일</p>
-                <span className="text-xs text-gray-400">{checkedPlans.length}/{todayPlans.length} 완료</span>
+                <p className="text-xs font-semibold text-gray-500">📌 {isToday ? "오늘" : labelDate(date)} 예정이었던 일</p>
+                <span className="text-[11px] text-gray-400">{todayPlans.filter(i => i.is_checked).length}/{todayPlans.length} 완료</span>
               </div>
-              <ul className="mt-2 divide-y divide-gray-50">
-                {overdue.map(i => row(i, {
+              <ul className="mt-1">
+                {overdue.map(i => planRow(i, {
                   checkable: true, tag: `${labelDate(i.entry_date)} 밀림`,
-                  actions: <button className="text-xs px-1.5 py-0.5 rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50" onClick={() => void moveTo(i, date)}>오늘로</button>,
+                  actions: <button className={`${CHIP} border-gray-200 text-gray-500 hover:bg-gray-50`} onClick={() => void moveTo(i, date)}>오늘로</button>,
                 }))}
-                {todayPlans.map(i => row(i, {
+                {todayPlans.map(i => planRow(i, {
                   checkable: true,
-                  actions: <>
-                    {!i.is_checked && schedButton(i)}
-                    {!i.is_checked && <button className="text-xs px-1.5 py-0.5 rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50" onClick={() => void moveTo(i, tomorrow)}>내일로 →</button>}
+                  actions: !i.is_checked && <>
+                    {schedChip(i)}
+                    <button className={`${CHIP} border-gray-200 text-gray-500 hover:border-orange-300 hover:text-orange-600 hover:bg-orange-50`} onClick={() => void moveTo(i, tomorrow)}>→ 내일</button>
                   </>,
                 }))}
               </ul>
@@ -349,37 +416,105 @@ export default function DiaryTab({
 
           <div className={`${CARD} p-4`}>
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-[#0f172a]">✅ {isToday ? "오늘" : labelDate(date)} 한 일</p>
-              <button className={BTG} disabled={busy} onClick={() => void importCompleted()} title="그날 완료 처리한 일정·할일을 가져옵니다">↻ 완료 일정 불러오기</button>
+              <p className="text-sm font-semibold text-[#0f172a]">✍️ {isToday ? "오늘" : labelDate(date)} 돌아보기</p>
+              <button className={BTG} disabled={busy} onClick={() => void importCompleted()} title="그날 완료 처리한 일정·할일을 줄로 불러옵니다">↻ 완료 일정 불러오기</button>
             </div>
-            <ul className="mt-2 divide-y divide-gray-50">
-              {checkedPlans.map(i => row(i, { checkable: true, tag: "계획" }))}
-              {doneItems.map(i => row(i, { checkable: false }))}
-              {checkedPlans.length + doneItems.length === 0 && <li className="py-3 text-xs text-gray-400">아직 기록이 없습니다</li>}
+            <p className="text-[11px] text-gray-400 mt-1">한 일을 한 줄씩 자유롭게 적으세요 · Enter 다음 줄 · 빈 줄에서 ⌫ 삭제 · 여러 줄 붙여넣기 가능</p>
+            {loading && rows.length === 0 && <p className="text-xs text-gray-400 mt-2">불러오는 중…</p>}
+            <ul className="mt-2">
+              {rows.map((r, idx) => (
+                <ReviewRow key={r.id} item={r} index={idx}
+                  inputRef={el => { rowRefs.current[r.id] = el; }}
+                  onSave={t => void saveRow(r, t)}
+                  onEnter={() => focusRow(idx + 1)}
+                  onRemoveEmpty={() => { focusRow(idx - 1 >= 0 ? idx - 1 : rows.length); void removeItem(r, !!(r.schedule_id || r.forwarded_item_id)); }}
+                  onArrow={d => focusRow(idx + d)}
+                  actions={<>
+                    <button
+                      className={`${CHIP} ${r.forwarded_item_id
+                        ? "bg-orange-50 text-orange-600 border-orange-200"
+                        : "border-gray-200 text-gray-500 hover:border-orange-300 hover:text-orange-600 hover:bg-orange-50"}`}
+                      title={r.forwarded_item_id ? "내일 할 일에서 빼기" : "내일 할 일로 등록"}
+                      onClick={() => void toggleForward(r)}>
+                      {r.forwarded_item_id ? "✓ 내일" : "→ 내일"}
+                    </button>
+                    {schedChip(r)}
+                    {delBtn(r)}
+                  </>} />
+              ))}
+              <li className="flex items-center gap-2 py-1">
+                <span className="w-5 text-right text-[11px] text-gray-300 flex-shrink-0">+</span>
+                <input ref={newRowRef}
+                  className="flex-1 min-w-0 h-8 text-sm text-[#0f172a] bg-transparent focus:outline-none focus:bg-orange-50/40 rounded-md px-1 placeholder:text-gray-300"
+                  placeholder={rows.length ? "이어서 적기…" : "예) OO상사 지게차 견적 발송, 담당자 통화 — 다음주 재연락"}
+                  value={newRow}
+                  onChange={e => setNewRow(e.target.value)}
+                  onPaste={e => {
+                    const pasted = e.clipboardData.getData("text");
+                    if (!pasted.includes("\n")) return;
+                    e.preventDefault();
+                    const lines = (newRow + pasted).split(/\r?\n/).map(l => l.replace(/^\s*(?:[-•*·]|\d+[.)])\s*/, ""));
+                    setNewRow("");
+                    void addRows(lines);
+                  }}
+                  onKeyDown={e => {
+                    if (e.nativeEvent.isComposing) return;
+                    if (e.key === "Enter" && newRow.trim()) { e.preventDefault(); const t = newRow; setNewRow(""); void addRows([t]); }
+                    else if ((e.key === "Backspace" && newRow === "") || e.key === "ArrowUp") { if (rows.length) { e.preventDefault(); focusRow(rows.length - 1); } }
+                  }} />
+              </li>
             </ul>
-            {addBox("done")}
-          </div>
-        </div>
-
-        {/* 오른쪽: 내일 + 메모 */}
-        <div className="space-y-4">
-          <div className={`${CARD} p-4`}>
-            <p className="text-sm font-semibold text-[#0f172a]">🗓 내일 할 일 <span className="text-xs font-normal text-gray-400">{labelDate(tomorrow)}</span></p>
-            <ul className="mt-2 divide-y divide-gray-50">
-              {tomorrowPlans.map(i => row(i, { checkable: false, actions: schedButton(i) }))}
-              {tomorrowPlans.length === 0 && <li className="py-3 text-xs text-gray-400">내일 할 일을 적어두면 내일 이 화면의 "오늘 할 일"로 올라옵니다</li>}
-            </ul>
-            {addBox("plan")}
-            <p className="text-[11px] text-gray-400 mt-2">💡 시간으로 시작하면 일정에도 자동 등록됩니다 — "14:00 …", "오후 3시 …", "10시반 …"</p>
           </div>
 
           <div className={`${CARD} p-4`}>
             <p className="text-sm font-semibold text-[#0f172a]">📝 메모 · 회고</p>
             <textarea rows={5}
-              className="mt-2 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-700 resize-none focus:outline-none focus:border-orange-400 transition-all"
-              placeholder="특이사항, 배운 점, 내일 챙길 것…"
+              className="mt-2 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-700 resize-y focus:outline-none focus:border-orange-400 transition-all"
+              placeholder="오늘 하루 소감, 특이사항, 배운 점, 놓치지 말아야 할 것…"
               value={note} onChange={e => setNote(e.target.value)} onBlur={() => void saveNote()} />
             <p className="text-[11px] text-gray-400 text-right">{note === savedNote ? "저장됨" : "입력창을 벗어나면 저장됩니다"}</p>
+          </div>
+        </div>
+
+        {/* 오른쪽: 넘긴 것들 */}
+        <div className="md:col-span-2 space-y-4">
+          <div className={`${CARD} p-4`}>
+            <p className="text-sm font-semibold text-[#0f172a]">🗓 내일 할 일 <span className="text-xs font-normal text-gray-400">{labelDate(tomorrow)}</span></p>
+            <ul className="mt-2">
+              {tomorrowPlans.map(i => planRow(i, {
+                checkable: false, tag: forwardedFrom.has(i.id) ? "돌아보기" : undefined, actions: schedChip(i),
+              }))}
+              {tomorrowPlans.length === 0 && <li className="py-2 text-xs text-gray-400">돌아보기 줄의 "→ 내일"을 누르면 여기로 넘어옵니다</li>}
+            </ul>
+            <div className="flex gap-2 mt-2">
+              <input className={CTRL} placeholder="내일 할 일 직접 추가" value={planInput}
+                onChange={e => setPlanInput(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) void addPlan(); }} />
+              <button className={BTO} onClick={() => void addPlan()}>추가</button>
+            </div>
+          </div>
+
+          <div className={`${CARD} p-4`}>
+            <p className="text-sm font-semibold text-[#0f172a]">📅 다음 일정으로 넘긴 것</p>
+            <ul className="mt-2 space-y-1.5">
+              {scheduled
+                .sort((a, b) => {
+                  const sa = schedMap[a.schedule_id!], sb = schedMap[b.schedule_id!];
+                  return (sa.schedule_date + (sa.start_time ?? "")).localeCompare(sb.schedule_date + (sb.start_time ?? ""));
+                })
+                .map(i => {
+                  const s = schedMap[i.schedule_id!];
+                  return (
+                    <li key={i.id} className="flex items-start gap-2 text-sm">
+                      <span className="flex-shrink-0 text-xs text-blue-600 font-medium tabular-nums w-24">
+                        {labelDate(s.schedule_date)}{s.start_time ? " " + s.start_time.slice(0, 5) : ""}
+                      </span>
+                      <span className={`break-all ${s.is_done ? "line-through text-gray-400" : "text-[#0f172a]"}`}>{i.content}</span>
+                    </li>
+                  );
+                })}
+              {scheduled.length === 0 && <li className="text-xs text-gray-400">각 줄의 "📅 일정"으로 등록한 일정이 여기에 모입니다 (일정 탭·구글 캘린더에도 반영)</li>}
+            </ul>
           </div>
         </div>
       </div>
@@ -388,23 +523,29 @@ export default function DiaryTab({
       {schedForm && (
         <div className="fixed inset-0 z-50 bg-black/30 flex items-end sm:items-center justify-center p-4" onClick={() => !busy && setSchedForm(null)}>
           <div className={`${CARD} w-full max-w-sm p-5 space-y-3`} onClick={e => e.stopPropagation()}>
-            <p className="text-sm font-semibold text-[#0f172a]">📅 일정으로 등록</p>
-            <p className="text-sm text-gray-600 break-all">{schedForm.item.content}</p>
+            <p className="text-sm font-semibold text-[#0f172a]">📅 다음 일정으로 등록</p>
+            <input className={CTRL} value={schedForm.title} placeholder="일정 제목"
+              onChange={e => setSchedForm(f => f && { ...f, title: e.target.value })} />
             <div className="grid grid-cols-2 gap-2">
               <input type="date" className={CTRL} value={schedForm.date} onChange={e => setSchedForm(f => f && { ...f, date: e.target.value })} />
               <input type="time" className={CTRL} value={schedForm.time} onChange={e => setSchedForm(f => f && { ...f, time: e.target.value })} />
             </div>
             <div className="flex gap-1.5 flex-wrap">
+              {[["내일", 1], ["모레", 2], ["다음주", 7]].map(([lbl, n]) => (
+                <button key={lbl} className={`${CHIP} border-gray-200 text-gray-500 hover:bg-gray-50`}
+                  onClick={() => setSchedForm(f => f && { ...f, date: addDays(date, n as number) })}>{lbl}</button>
+              ))}
+              <span className="w-px bg-gray-200 mx-1" />
               {(Object.keys(CAT_LABEL) as SchedCategory[]).map(c => (
                 <button key={c} onClick={() => setSchedForm(f => f && { ...f, category: c })}
-                  className={`px-3 py-1 rounded-lg text-xs border ${schedForm.category === c ? "bg-[#0f172a] text-white border-[#0f172a]" : "border-gray-200 text-gray-500"}`}>
+                  className={`${CHIP} ${schedForm.category === c ? "bg-[#0f172a] text-white border-[#0f172a]" : "border-gray-200 text-gray-500"}`}>
                   {CAT_LABEL[c]}
                 </button>
               ))}
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <button className={BTG} disabled={busy} onClick={() => setSchedForm(null)}>취소</button>
-              <button className={BTO} disabled={busy || !schedForm.date} onClick={() => void submitSchedForm()}>{busy ? "등록 중…" : "등록"}</button>
+              <button className={BTO} disabled={busy || !schedForm.date || !schedForm.title.trim()} onClick={() => void submitSchedForm()}>{busy ? "등록 중…" : "등록"}</button>
             </div>
           </div>
         </div>
