@@ -17,6 +17,10 @@ const TAB_ORDER: TabKey[] = ["chat","schedule","diary","status","cns","orders","
 // 별도 로그인/RouteGuard를 쓰는 독립 페이지로 즉시 이동만 하는 탭(내용을 이 안에서 렌더링하지 않음).
 // tab 상태를 sessionStorage에 남기면, 이동 후 "AI비서" 페이지가 새로 마운트될 때 저장된 tab 값을
 // 다시 읽어 useEffect가 곧바로 재이동시켜 "뒤로가기가 안 먹히는" 문제가 생기므로 setTabAndSave를 타지 않는다.
+// 자주 쓰지 않는 탭 — 탭바에 펼쳐두지 않고 오른쪽 "기타 ▾" 드롭다운 안에 묶는다.
+// (components/AppTabBar.tsx의 APP_MORE_TABS와 항상 같은 구성으로 맞춘다.)
+const MORE_TABS: TabKey[] = ["chat","status","cns","orders","performance","exportshop","financehub"];
+const TAB_LABELS: Record<TabKey,string> = {email:"📧 이메일",...{chat:"💬 채팅",schedule:"📅 일정",diary:"📔 다이어리",status:"📊 업무현황",orders:"📦 주문·상담",jinheung:"🔧 진흥주문",narumi:"🚛 나르미",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비",quotation:"📋 견적서",cns:"🗂 통합상담",performance:"📈 실적관리",rentalos:"🚐 Rental_O/S",hyundaicm:"🏗 현대건기(부산경남)",numbersearch:"🔍 번호검색",taesan:"🚚 태산통운",callmanagement:"📞 상담관리",faxcampaign:"📠 팩스발송",orix:"💰 ORIX인센티브",brother:"🚜 현대지게차 경기북부"}};
 const EXTERNAL_TAB_LINKS: Partial<Record<TabKey,string>> = { hyundaicm:"/hyundaicm", brother:"/brother", rentalos:"/rental-os", taesan:"/taesan", callmanagement:"/work/call-management", faxcampaign:"/work/fax-campaign", orix:"/orix" };
 // 통합상담 탭 서브필터
 type CnsActiveTab = "통합상담" | "할부금융" | "보험" | "지게차" | "배터리" | "타이어" | "나르미" | "Rental_O/S";
@@ -3580,6 +3584,15 @@ const SecretaryPage:React.FC = () => {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const headerBarRef = useRef<HTMLDivElement>(null);
   const tabScrollRef = useRef<HTMLDivElement>(null);
+  const moreTabRef = useRef<HTMLDivElement>(null);
+  const [moreTabOpen,setMoreTabOpen] = useState(false);
+  // "기타" 드롭다운 바깥을 누르면 닫는다
+  useEffect(()=>{
+    if(!moreTabOpen) return;
+    const close = (e:MouseEvent|TouchEvent)=>{ if(!moreTabRef.current?.contains(e.target as Node)) setMoreTabOpen(false); };
+    document.addEventListener("mousedown",close); document.addEventListener("touchstart",close);
+    return ()=>{ document.removeEventListener("mousedown",close); document.removeEventListener("touchstart",close); };
+  },[moreTabOpen]);
   const [headerBarHeight, setHeaderBarHeight] = useState(128);
 
   // 활성 탭이 항상 화면(가로 스크롤 영역) 안에 보이도록 자동 스크롤 (3벌 복사 중 가장 가까운 사본 기준)
@@ -5434,10 +5447,10 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
           .hcm-tab-scroll{-ms-overflow-style:none;scrollbar-width:none;}
           .hcm-tab-scroll::-webkit-scrollbar{display:none;}
         `}</style>
-        <div className="max-w-6xl w-full mx-auto px-6 py-2" style={{minWidth:0}}>
+        <div className="max-w-6xl w-full mx-auto px-6 py-2 flex items-center gap-1.5" style={{minWidth:0}}>
           <div
             ref={tabScrollRef}
-            className="hcm-tab-scroll flex items-center gap-1.5"
+            className="hcm-tab-scroll flex items-center gap-1.5 flex-1"
             style={{overflowX:"scroll",overflowY:"hidden",minWidth:0}}
             onScroll={()=>{
               const el = tabScrollRef.current;
@@ -5459,7 +5472,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
             {(()=>{
               // "orix" 탭은 isOrixAdmin(admin@rnfkorea.co.kr/ltongs7@gmail.com)에게만 노출한다.
               // everyasset.fc@gmail.com 등 다른 AI비서 접근 계정에는 렌더링 자체를 하지 않는다.
-              const visibleTabs = TAB_ORDER.filter(t=>t!=="orix"||isOrixAdmin);
+              const visibleTabs = TAB_ORDER.filter(t=>(t!=="orix"||isOrixAdmin)&&!MORE_TABS.includes(t));
               return [...visibleTabs,...visibleTabs,...visibleTabs];
             })().map((t,i)=>(
               <button key={`${t}-${i}`} data-tab-key={t} className={`${TB} ${tab===t?TA:TI}`} style={{flexShrink:0,whiteSpace:"nowrap"}} onClick={()=>{
@@ -5469,10 +5482,26 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               }}>
                 {t==="email"
                   ? <span className="flex items-center gap-1">📧 이메일{emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}</span>
-                  : {chat:"💬 채팅",schedule:"📅 일정",diary:"📔 다이어리",status:"📊 업무현황",orders:"📦 주문·상담",jinheung:"🔧 진흥주문",narumi:"🚛 나르미",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비",quotation:"📋 견적서",cns:"🗂 통합상담",performance:"📈 실적관리",rentalos:"🚐 Rental_O/S",hyundaicm:"🏗 현대건기(부산경남)",numbersearch:"🔍 번호검색",taesan:"🚚 태산통운",callmanagement:"📞 상담관리",faxcampaign:"📠 팩스발송",orix:"💰 ORIX인센티브",brother:"🚜 현대지게차 경기북부"}[t as string]
+                  : TAB_LABELS[t]
                 }
               </button>
             ))}
+          </div>
+          {/* 기타 — 자주 쓰지 않는 탭 묶음 (스크롤 영역 밖에 두어야 드롭다운이 잘리지 않음) */}
+          <div ref={moreTabRef} className="relative flex-shrink-0">
+            <button className={`${TB} ${MORE_TABS.includes(tab)?TA:TI}`} style={{whiteSpace:"nowrap"}} onClick={()=>setMoreTabOpen(o=>!o)}>
+              {MORE_TABS.includes(tab)?`${TAB_LABELS[tab]} ▾`:"기타 ▾"}
+            </button>
+            {moreTabOpen&&(
+              <div className="absolute right-0 top-full mt-1 z-50 w-44 rounded-xl border border-gray-200 bg-white shadow-lg py-1">
+                {MORE_TABS.map(t=>(
+                  <button key={t} className={`w-full text-left px-3 py-2 text-sm transition-all ${tab===t?"bg-gray-100 font-semibold text-[#0f172a]":"text-gray-600 hover:bg-gray-50"}`}
+                    onClick={()=>{setMoreTabOpen(false);setTabAndSave(t);}}>
+                    {TAB_LABELS[t]}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -7940,7 +7969,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
             </div>
           )}
 
-          {/* ══ 입력창 (항상 하단 고정) ══ */}
+          {/* ══ 입력창 — 채팅 탭에서만 표시 (다른 탭에서는 거의 쓰지 않아 숨김) ══ */}
+          {tab==="chat"&&(
           <div className="flex-shrink-0 pt-2">
             <div className="flex flex-wrap gap-1.5 mb-2">
               {["오늘 현황 요약","긴급 업무","오늘 사후관리","방금 통화 저장","미팅 메모 정리"].map(c=>(
@@ -7968,6 +7998,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               </div>
             </div>
           </div>
+          )}
 
         </main>
       </div>

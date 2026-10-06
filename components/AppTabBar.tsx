@@ -4,7 +4,7 @@
 // 내부 상태와 얽혀있어 그대로 공유하기 어려워, 라벨/이동 로직만 동일하게 맞춘 경량 버전이다.
 // 내부(chat/schedule/...) 탭 클릭 시 sessionStorage("sec_tab")를 미리 심어두고 /work/secretary로
 // 이동하면 AI비서가 그 탭을 그대로 열어서 보여준다(AI비서의 tab state 초기화 로직과 동일한 계약).
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/auth";
@@ -19,6 +19,9 @@ export const APP_TAB_ORDER: AppTabKey[] = [
   "taesan", "quotation", "performance", "rentalos", "exportshop", "financehub",
   "callmanagement", "faxcampaign", "orix", "numbersearch", "email", "memo",
 ];
+
+// 자주 쓰지 않는 탭 — 오른쪽 "기타 ▾" 드롭다운 안에 묶는다 (pages/secretary/index.tsx의 MORE_TABS와 동일).
+export const APP_MORE_TABS: AppTabKey[] = ["chat", "status", "cns", "orders", "performance", "exportshop", "financehub"];
 
 // 클릭 시 이 페이지 안에서 렌더링하지 않고 곧바로 다른 라우트로 이동하는 탭
 export const APP_EXTERNAL_TAB_LINKS: Partial<Record<AppTabKey, string>> = {
@@ -73,6 +76,22 @@ export default function AppTabBar({ activeTab }: { activeTab: AppTabKey }) {
     callmanagement: isAdminLevel || isInsuranceManager, // CallManagement/index.tsx의 canAccessConsulting과 동일 조건
   };
   const visibleTabOrder = APP_TAB_ORDER.filter((t) => tabVisible[t] ?? isAdminLevel);
+  const mainTabs = visibleTabOrder.filter((t) => !APP_MORE_TABS.includes(t));
+  const moreTabs = visibleTabOrder.filter((t) => APP_MORE_TABS.includes(t));
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!moreOpen) return;
+    const close = (e: MouseEvent | TouchEvent) => {
+      if (!moreRef.current?.contains(e.target as Node)) setMoreOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("touchstart", close);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("touchstart", close);
+    };
+  }, [moreOpen]);
 
   useEffect(() => {
     supabase
@@ -110,12 +129,13 @@ export default function AppTabBar({ activeTab }: { activeTab: AppTabKey }) {
   }, [activeTab, visibleTabOrder]);
 
   return (
+    <div className="flex items-center gap-1.5 min-w-0">
     <div
-      className="app-tab-scroll flex items-center gap-1.5 overflow-x-auto"
+      className="app-tab-scroll flex items-center gap-1.5 overflow-x-auto flex-1 min-w-0"
       style={{ scrollbarWidth: "none" }}
     >
       <style>{`.app-tab-scroll::-webkit-scrollbar{display:none;}`}</style>
-      {visibleTabOrder.map((t) => (
+      {mainTabs.map((t) => (
         <button
           key={t}
           type="button"
@@ -136,6 +156,26 @@ export default function AppTabBar({ activeTab }: { activeTab: AppTabKey }) {
           )}
         </button>
       ))}
+    </div>
+    {/* 기타 — 스크롤 영역 밖에 두어야 드롭다운이 잘리지 않는다 */}
+    {moreTabs.length > 0 && (
+      <div ref={moreRef} className="relative flex-shrink-0">
+        <button type="button" onClick={() => setMoreOpen((o) => !o)}
+          className={`${TB} ${moreTabs.includes(activeTab) ? TA : TI} whitespace-nowrap`}>
+          {moreTabs.includes(activeTab) ? `${APP_TAB_LABELS[activeTab]} ▾` : "기타 ▾"}
+        </button>
+        {moreOpen && (
+          <div className="absolute right-0 top-full mt-1 z-50 w-44 rounded-xl border border-gray-200 bg-white shadow-lg py-1">
+            {moreTabs.map((t) => (
+              <button key={t} type="button" onClick={() => { setMoreOpen(false); goTab(t); }}
+                className={`w-full text-left px-3 py-2 text-sm transition-all ${activeTab === t ? "bg-gray-100 font-semibold text-[#0f172a]" : "text-gray-600 hover:bg-gray-50"}`}>
+                {APP_TAB_LABELS[t]}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    )}
     </div>
   );
 }
