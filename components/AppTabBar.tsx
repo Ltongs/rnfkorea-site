@@ -10,12 +10,12 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/auth";
 
 export type AppTabKey =
-  | "chat" | "schedule" | "status" | "orders" | "jinheung" | "narumi" | "email" | "memo"
+  | "chat" | "schedule" | "diary" | "status" | "orders" | "jinheung" | "narumi" | "email" | "memo"
   | "financehub" | "exportshop" | "quotation" | "cns" | "performance" | "rentalos"
   | "hyundaicm" | "numbersearch" | "taesan" | "callmanagement" | "faxcampaign" | "orix" | "brother";
 
 export const APP_TAB_ORDER: AppTabKey[] = [
-  "chat", "schedule", "status", "cns", "orders", "hyundaicm", "brother", "jinheung", "narumi",
+  "chat", "schedule", "diary", "status", "cns", "orders", "hyundaicm", "brother", "jinheung", "narumi",
   "taesan", "quotation", "performance", "rentalos", "exportshop", "financehub",
   "callmanagement", "faxcampaign", "orix", "numbersearch", "email", "memo",
 ];
@@ -32,7 +32,7 @@ export const APP_EXTERNAL_TAB_LINKS: Partial<Record<AppTabKey, string>> = {
 };
 
 const APP_TAB_LABELS: Record<AppTabKey, string> = {
-  chat: "💬 채팅", schedule: "📅 일정", status: "📊 업무현황", orders: "📦 주문·상담",
+  chat: "💬 채팅", schedule: "📅 일정", diary: "📔 다이어리", status: "📊 업무현황", orders: "📦 주문·상담",
   jinheung: "🔧 진흥주문", narumi: "🚛 나르미", memo: "📝 메모", financehub: "💵 매출/매입",
   exportshop: "🌏 수출장비", quotation: "📋 견적서", cns: "🗂 통합상담", performance: "📈 실적관리",
   rentalos: "🚐 Rental_O/S", hyundaicm: "🏗 현대건기(부산경남)", numbersearch: "🔍 번호검색",
@@ -58,7 +58,7 @@ export default function AppTabBar({ activeTab }: { activeTab: AppTabKey }) {
   // 공유되므로, 각 탭은 해당 페이지의 RouteGuard와 동일한 조건으로만 노출해야 한다.
   // (그렇지 않으면 예: 현대CM 전용 파트너 계정이 이 탭바를 통해 나르미/상담관리 등
   //  자신에게 권한 없는 업무 화면 존재 자체를 알 수 있게 된다.)
-  // 매핑에 없는 나머지 탭(chat/schedule/status/cns/orders/jinheung/quotation/performance/
+  // 매핑에 없는 나머지 탭(chat/schedule/diary/status/cns/orders/jinheung/quotation/performance/
   // exportshop/financehub/faxcampaign/numbersearch/email/memo)은 모두 /work/secretary
   // 내부 탭이며 그 라우트 자체가 isAdminLevel 전용이므로 기본값 isAdminLevel을 따른다.
   // ORIX 조용백(isOrixPartner)은 ORIX 인센티브 페이지 + 현대CM 페이지만 접근 가능하고
