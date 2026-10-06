@@ -60,6 +60,13 @@ const inputClass =
 const readonlyClass =
   "h-[42px] w-full px-3 rounded-xl border border-gray-100 bg-gray-50 text-sm font-medium text-gray-500 flex items-center";
 const labelClass = "block text-xs font-medium text-gray-500 mb-1.5";
+// 목록 행 펼침 "항목 수정" 패널 전용 — 한 화면에 들어오도록 축소한 입력 스타일
+const editInputClass =
+  "h-8 w-full px-2 rounded-lg border border-gray-200 bg-white text-xs font-medium text-navy-900 " +
+  "placeholder:text-gray-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-200/50 focus:border-orange-400 transition-all";
+const editReadonlyClass =
+  "h-8 w-full px-2 rounded-lg border border-gray-100 bg-gray-50 text-xs font-medium text-gray-500 flex items-center";
+const editLabelClass = "block text-[11px] font-medium text-gray-500 mb-0.5 truncate";
 
 function formatMoney(v: number | null | undefined) {
   if (v === null || v === undefined) return "-";
@@ -675,46 +682,46 @@ export default function OrixIncentivePage() {
                         </tr>
                         {expandedId === row.id && (
                           <tr className="bg-gray-50">
-                            <td colSpan={14} className="p-4">
-                              <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
+                            <td colSpan={14} className="p-2">
+                              <div className="sticky left-2 max-w-5xl rounded-xl border border-gray-200 bg-white p-3 space-y-2.5">
                                 <div className="flex items-center justify-between">
                                   <h3 className="text-sm font-semibold text-navy-900">항목 수정</h3>
                                   <button onClick={() => setExpandedId(null)} className="text-gray-400 hover:text-gray-600">
                                     <X className="w-4 h-4" />
                                   </button>
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-2 md:grid-cols-6 gap-x-2 gap-y-2">
                                   <div>
-                                    <label className={labelClass}>확정일자</label>
-                                    <input type="date" className={inputClass} value={editSales.confirmed_date ?? ""}
+                                    <label className={editLabelClass}>확정일자</label>
+                                    <input type="date" className={editInputClass} value={editSales.confirmed_date ?? ""}
                                       onChange={(e) => setEditSales((p) => ({ ...p, confirmed_date: e.target.value }))} />
                                   </div>
                                   <div>
-                                    <label className={labelClass}>고객명</label>
-                                    <input className={inputClass} value={editSales.customer_name}
+                                    <label className={editLabelClass}>고객명</label>
+                                    <input className={editInputClass} value={editSales.customer_name}
                                       onChange={(e) => setEditSales((p) => ({ ...p, customer_name: e.target.value }))} />
                                   </div>
                                   <div>
-                                    <label className={labelClass}>대출원금</label>
-                                    <input type="number" className={inputClass} value={editSales.loan_principal ?? ""}
+                                    <label className={editLabelClass}>대출원금</label>
+                                    <input type="number" className={editInputClass} value={editSales.loan_principal ?? ""}
                                       onChange={(e) => setEditSales((p) => ({ ...p, loan_principal: e.target.value === "" ? null : Number(e.target.value) }))} />
                                   </div>
                                   <div>
-                                    <label className={labelClass}>상품구분</label>
-                                    <select className={inputClass} value={editSales.product_type ?? ""}
+                                    <label className={editLabelClass}>상품구분</label>
+                                    <select className={editInputClass} value={editSales.product_type ?? ""}
                                       onChange={(e) => setEditSales((p) => ({ ...p, product_type: e.target.value }))}>
                                       <option value="">선택</option>
                                       {PRODUCT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                                     </select>
                                   </div>
                                   <div>
-                                    <label className={labelClass}>차종</label>
-                                    <input className={inputClass} value={editSales.vehicle_type ?? ""}
+                                    <label className={editLabelClass}>차종</label>
+                                    <input className={editInputClass} value={editSales.vehicle_type ?? ""}
                                       onChange={(e) => setEditSales((p) => ({ ...p, vehicle_type: e.target.value }))} />
                                   </div>
                                   <div>
-                                    <label className={labelClass}>수익자 구분</label>
-                                    <select className={inputClass} value={editSales.beneficiary ?? ""}
+                                    <label className={editLabelClass}>수익자 구분</label>
+                                    <select className={editInputClass} value={editSales.beneficiary ?? ""}
                                       onChange={(e) => {
                                         const b = e.target.value || null;
                                         setEditSales((p) => {
@@ -732,9 +739,9 @@ export default function OrixIncentivePage() {
                                       {BENEFICIARIES.map((b) => <option key={b} value={b}>{b}</option>)}
                                     </select>
                                   </div>
-                                  <div>
-                                    <label className={labelClass}>지급대상 (수탁인)</label>
-                                    <select className={inputClass}
+                                  <div className="col-span-2">
+                                    <label className={editLabelClass}>지급대상 (수탁인)</label>
+                                    <select className={editInputClass}
                                       value={editSales.incentive_recipient_pending ? RECIPIENT_PENDING_VALUE : (editSales.incentive_recipient_contractor_id ?? "")}
                                       onChange={(e) => {
                                         const v = e.target.value;
@@ -749,35 +756,34 @@ export default function OrixIncentivePage() {
                                       {contractorsForBeneficiary(contractors, editSales.beneficiary).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                                     </select>
                                     {recipientAgentMismatch(contractors, editSales) && (
-                                      <p className="mt-1 text-xs font-medium text-orange-600">
+                                      <p className="mt-0.5 text-[11px] leading-snug font-medium text-orange-600">
                                         ⚠ 이 수탁인의 원천징수자가 수Company가 아니어서, 지급완료 처리 시 지급내역이 원천징수관리&gt;수Company 탭이 아닌 다른 탭에 등록됩니다.
                                       </p>
                                     )}
                                   </div>
                                   <div>
-                                    <label className={labelClass}>인센티브율 (%)</label>
-                                    <input type="number" step="0.01" className={inputClass} value={editSales.incentive_rate ?? ""}
+                                    <label className={editLabelClass}>인센티브율(%)</label>
+                                    <input type="number" step="0.01" className={editInputClass} value={editSales.incentive_rate ?? ""}
                                       onChange={(e) => setEditSales((p) => ({ ...p, incentive_rate: e.target.value === "" ? null : Number(e.target.value) }))} />
                                   </div>
                                   <div>
-                                    <label className={labelClass}>인센티브 총액 (자동계산)</label>
-                                    <div className={readonlyClass}>{formatMoney(editTotalPreview)}</div>
+                                    <label className={editLabelClass}>인센티브 총액</label>
+                                    <div className={editReadonlyClass}>{formatMoney(editTotalPreview)}</div>
                                   </div>
-                                  <div />
                                   <div>
-                                    <label className={labelClass}>CM인센티브율 (%)</label>
-                                    <input type="number" step="0.01" className={inputClass} value={editSales.cm_incentive_rate ?? ""}
+                                    <label className={editLabelClass}>CM인센티브율(%)</label>
+                                    <input type="number" step="0.01" className={editInputClass} value={editSales.cm_incentive_rate ?? ""}
                                       onChange={(e) => setEditSales((p) => ({ ...p, cm_incentive_rate: e.target.value === "" ? null : Number(e.target.value) }))} />
                                   </div>
                                   <div>
-                                    <label className={labelClass}>CM지급 인센티브 (자동계산)</label>
-                                    <div className={readonlyClass}>{formatMoney(editCmPreview)}</div>
+                                    <label className={editLabelClass}>CM지급 인센티브</label>
+                                    <div className={editReadonlyClass}>{formatMoney(editCmPreview)}</div>
                                   </div>
                                 </div>
                                 <div>
-                                  <label className={labelClass}>비고</label>
+                                  <label className={editLabelClass}>비고</label>
                                   <textarea
-                                    className="w-full min-h-[70px] px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm font-medium text-navy-900 placeholder:text-gray-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 transition-all"
+                                    rows={1} className="w-full min-h-[32px] px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-medium text-navy-900 placeholder:text-gray-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 transition-all"
                                     value={editSales.note ?? ""}
                                     onChange={(e) => setEditSales((p) => ({ ...p, note: e.target.value }))}
                                     placeholder="특이사항이 있으면 입력해주세요."
@@ -786,30 +792,30 @@ export default function OrixIncentivePage() {
 
                                 {isOrixAdmin && (
                                   <div className="pt-2 border-t border-gray-100">
-                                    <p className="text-xs font-medium tracking-[0.12em] uppercase text-orange-500 mb-3">관리자 전용</p>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <p className="text-xs font-medium tracking-[0.12em] uppercase text-orange-500 mb-1.5">관리자 전용</p>
+                                    <div className="grid grid-cols-2 md:grid-cols-6 gap-x-2 gap-y-2">
                                       <div>
-                                        <label className={labelClass}>지급일자</label>
-                                        <input type="date" className={inputClass} value={editAdmin.paid_at ?? ""}
+                                        <label className={editLabelClass}>지급일자</label>
+                                        <input type="date" className={editInputClass} value={editAdmin.paid_at ?? ""}
                                           onChange={(e) => setEditAdmin((p) => ({ ...p, paid_at: e.target.value }))} />
                                       </div>
-                                      <div>
-                                        <label className={labelClass}>지급처 (수탁인)</label>
-                                        <select className={inputClass} value={editAdmin.paid_to_contractor_id ?? ""}
+                                      <div className="col-span-2">
+                                        <label className={editLabelClass}>지급처 (수탁인)</label>
+                                        <select className={editInputClass} value={editAdmin.paid_to_contractor_id ?? ""}
                                           onChange={(e) => setEditAdmin((p) => ({ ...p, paid_to_contractor_id: e.target.value || null }))}>
                                           <option value="">선택 (원천징수관리-수탁인관리에 등록 필요)</option>
                                           {contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                                         </select>
                                       </div>
                                       <div>
-                                        <label className={labelClass}>실지급금액</label>
-                                        <input type="number" className={inputClass} value={editAdmin.actual_paid_amount ?? ""}
+                                        <label className={editLabelClass}>실지급금액</label>
+                                        <input type="number" className={editInputClass} value={editAdmin.actual_paid_amount ?? ""}
                                           onChange={(e) => setEditAdmin((p) => ({ ...p, actual_paid_amount: e.target.value === "" ? null : Number(e.target.value) }))} />
                                       </div>
-                                      <div>
-                                        <label className={labelClass}>송금증</label>
+                                      <div className="col-span-2">
+                                        <label className={editLabelClass}>송금증</label>
                                         <div className="flex items-center gap-2">
-                                          <label className="flex-1 flex items-center justify-center gap-1.5 h-[42px] rounded-xl border border-dashed border-gray-300 text-xs font-medium text-gray-500 hover:border-orange-400 hover:text-orange-500 cursor-pointer transition-all">
+                                          <label className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg border border-dashed border-gray-300 text-xs font-medium text-gray-500 hover:border-orange-400 hover:text-orange-500 cursor-pointer transition-all">
                                             {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
                                             {editAdmin.wire_receipt_path ? "재업로드" : "업로드"}
                                             <input type="file" className="hidden" onChange={onUploadReceipt} disabled={uploading} />
@@ -824,15 +830,15 @@ export default function OrixIncentivePage() {
                                     </div>
 
                                     {editAmountMismatch && (
-                                      <div className="mt-3 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2.5 text-xs text-orange-700 flex items-start gap-2">
+                                      <div className="mt-2 rounded-lg border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-xs text-orange-700 flex items-start gap-2">
                                         <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                                         <span>실지급금액이 CM지급 인센티브({formatMoney(editCmPreview)})와 다릅니다. 아래 비고란에 사유를 기재해주세요.</span>
                                       </div>
                                     )}
-                                    <div className="mt-3">
-                                      <label className={labelClass}>비고 (실지급금액이 CM지급 인센티브와 다른 경우 사유)</label>
+                                    <div className="mt-2">
+                                      <label className={editLabelClass}>지급 비고 (실지급금액이 CM지급 인센티브와 다른 경우 사유)</label>
                                       <textarea
-                                        className="w-full min-h-[70px] px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm font-medium text-navy-900 placeholder:text-gray-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 transition-all"
+                                        rows={1} className="w-full min-h-[32px] px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-medium text-navy-900 placeholder:text-gray-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50 focus:border-orange-400 transition-all"
                                         value={editAdmin.payment_diff_note ?? ""}
                                         onChange={(e) => setEditAdmin((p) => ({ ...p, payment_diff_note: e.target.value }))}
                                         placeholder="예: 수탁인 요청으로 일부 금액 익월 이월"
@@ -843,54 +849,54 @@ export default function OrixIncentivePage() {
 
                                 {isOrixPartner && (
                                   <div className="pt-2 border-t border-gray-100">
-                                    <p className="text-xs font-medium tracking-[0.12em] uppercase text-orange-500 mb-3">관리자 처리 현황 (읽기전용)</p>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <p className="text-xs font-medium tracking-[0.12em] uppercase text-orange-500 mb-1.5">관리자 처리 현황 (읽기전용)</p>
+                                    <div className="grid grid-cols-2 md:grid-cols-6 gap-x-2 gap-y-2">
                                       <div>
-                                        <label className={labelClass}>지급일자</label>
-                                        <div className={readonlyClass}>{row.paid_at ?? "-"}</div>
+                                        <label className={editLabelClass}>지급일자</label>
+                                        <div className={editReadonlyClass}>{row.paid_at ?? "-"}</div>
+                                      </div>
+                                      <div className="col-span-2">
+                                        <label className={editLabelClass}>지급처 (수탁인)</label>
+                                        <div className={editReadonlyClass}>{row.paid_to_contractor_name ?? "-"}</div>
                                       </div>
                                       <div>
-                                        <label className={labelClass}>지급처 (수탁인)</label>
-                                        <div className={readonlyClass}>{row.paid_to_contractor_name ?? "-"}</div>
+                                        <label className={editLabelClass}>실지급금액</label>
+                                        <div className={editReadonlyClass}>{formatMoney(row.actual_paid_amount)}</div>
                                       </div>
-                                      <div>
-                                        <label className={labelClass}>실지급금액</label>
-                                        <div className={readonlyClass}>{formatMoney(row.actual_paid_amount)}</div>
+                                      <div className="col-span-2">
+                                        <label className={editLabelClass}>비고</label>
+                                        <div className={editReadonlyClass}>{row.payment_diff_note ?? "-"}</div>
                                       </div>
-                                      <div className="md:col-span-2">
-                                        <label className={labelClass}>비고</label>
-                                        <div className={readonlyClass}>{row.payment_diff_note ?? "-"}</div>
-                                      </div>
-                                      <div>
-                                        <label className={labelClass}>송금증</label>
+                                      <div className="col-span-2">
+                                        <label className={editLabelClass}>송금증</label>
                                         {row.wire_receipt_path ? (
-                                          <button onClick={() => downloadReceipt(row.wire_receipt_path!)} className="inline-flex items-center gap-1 h-[42px] px-3 rounded-xl border border-gray-200 hover:border-orange-400 hover:text-orange-500 transition-all text-xs font-medium text-gray-600">
+                                          <button onClick={() => downloadReceipt(row.wire_receipt_path!)} className="inline-flex items-center gap-1 h-8 px-3 rounded-xl border border-gray-200 hover:border-orange-400 hover:text-orange-500 transition-all text-xs font-medium text-gray-600">
                                             <Download className="w-3.5 h-3.5" /> 미리보기
                                           </button>
                                         ) : (
-                                          <div className={readonlyClass}>-</div>
+                                          <div className={editReadonlyClass}>-</div>
                                         )}
                                       </div>
                                     </div>
                                   </div>
                                 )}
 
-                                {!!rowMsg && <div className="text-sm font-medium text-orange-600">{rowMsg}</div>}
+                                {!!rowMsg && <div className="text-xs font-medium text-orange-600">{rowMsg}</div>}
 
-                                <div className="flex items-center gap-2 pt-2">
+                                <div className="flex items-center gap-2 pt-1">
                                   <button
                                     onClick={saveRow}
                                     disabled={saving}
-                                    className="inline-flex items-center px-5 py-2.5 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-all disabled:opacity-50"
+                                    className="inline-flex items-center px-4 py-1.5 rounded-lg bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 transition-all disabled:opacity-50"
                                   >
                                     {saving ? "저장 중..." : "저장"}
                                   </button>
                                   {isOrixAdmin && (
                                     <button
                                       onClick={() => deleteRow(row.id)}
-                                      className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50 transition-all"
+                                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-red-200 text-red-600 text-xs font-semibold hover:bg-red-50 transition-all"
                                     >
-                                      <Trash2 className="w-4 h-4" /> 삭제
+                                      <Trash2 className="w-3.5 h-3.5" /> 삭제
                                     </button>
                                   )}
                                 </div>

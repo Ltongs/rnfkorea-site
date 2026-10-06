@@ -2342,14 +2342,29 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               }`}>
 
                 {/* 카드 헤더 */}
-                <div className="px-4 md:px-3.5 pt-4 pb-3 border-b border-gray-100">
-                  {/* 1행: 케이스번호+이름 / 버튼 */}
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 min-w-0">
+                <div className="px-4 md:px-3.5 py-3 border-b border-gray-100">
+                  {/* 한 줄: 케이스번호+이름+배지 / 버튼 */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 min-w-0">
                       <span className="text-xs font-semibold text-gray-400 font-mono shrink-0">{caseNoMap[String(r.id)] ?? "-"}</span>
                       <span className="text-base font-semibold text-[#0f172a] break-all">
                         {r.company_name ? `${r.company_name}${r.customer_name !== r.company_name ? ` (${r.customer_name})` : ""}` : r.customer_name}
                       </span>
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-xl border border-gray-200 bg-gray-50 text-xs font-medium text-gray-600">{r.customer_type}</span>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-xl border text-xs font-semibold ${statusStyle(r.status)}`}>{r.status}</span>
+                      {holdMap[String(r.id)] && r.status !== "확정" && r.status !== "거절" && r.status !== "취소" && (() => {
+                        const h = holdMap[String(r.id)];
+                        const d = new Date(h.scheduled_at);
+                        const fmt = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+                        return (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 text-xs font-semibold">
+                            ⏰ 보류 {fmt}
+                          </span>
+                        );
+                      })()}
+                      {shouldMaskPhone(r) && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-xl bg-gray-100 border border-gray-200 text-gray-400 text-[10px] font-medium">개인정보 마스킹</span>
+                      )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       {isConfirmed && (
@@ -2383,24 +2398,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                         <button onClick={() => setDeleteConfirmId(r.id)} className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-red-100 bg-white text-xs font-medium text-red-500 hover:bg-red-50 transition-all">삭제</button>
                       )}
                     </div>
-                  </div>
-                  {/* 2행: 배지들 */}
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-xl border border-gray-200 bg-gray-50 text-xs font-medium text-gray-600">{r.customer_type}</span>
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-xl border text-xs font-semibold ${statusStyle(r.status)}`}>{r.status}</span>
-                    {holdMap[String(r.id)] && r.status !== "확정" && r.status !== "거절" && r.status !== "취소" && (() => {
-                      const h = holdMap[String(r.id)];
-                      const d = new Date(h.scheduled_at);
-                      const fmt = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
-                      return (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 text-xs font-semibold">
-                          ⏰ 보류 {fmt}
-                        </span>
-                      );
-                    })()}
-                    {shouldMaskPhone(r) && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-xl bg-gray-100 border border-gray-200 text-gray-400 text-[10px] font-medium">개인정보 마스킹</span>
-                    )}
                   </div>
                 </div>
 
