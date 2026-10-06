@@ -390,8 +390,8 @@ export default function DiaryTab({
       </div>
 
       <div className="grid gap-4 md:grid-cols-5">
-        {/* 왼쪽: 돌아보기 + 메모 */}
-        <div className="md:col-span-3 space-y-4">
+        {/* 왼쪽: 돌아보기 — 화면 아래까지 채운다 */}
+        <div className="md:col-span-3 flex flex-col gap-4">
           {(todayPlans.length > 0 || overdue.length > 0) && (
             <div className={`${CARD} px-4 py-3`}>
               <div className="flex items-center justify-between">
@@ -414,14 +414,14 @@ export default function DiaryTab({
             </div>
           )}
 
-          <div className={`${CARD} p-4`}>
+          <div className={`${CARD} p-4 flex flex-col flex-1 min-h-[420px] md:min-h-[calc(100vh-230px)]`}>
             <div className="flex items-center justify-between gap-2">
               <p className="text-sm font-semibold text-[#0f172a]">✍️ {isToday ? "오늘" : labelDate(date)} 돌아보기</p>
               <button className={BTG} disabled={busy} onClick={() => void importCompleted()} title="그날 완료 처리한 일정·할일을 줄로 불러옵니다">↻ 완료 일정 불러오기</button>
             </div>
             <p className="text-[11px] text-gray-400 mt-1">한 일을 한 줄씩 자유롭게 적으세요 · Enter 다음 줄 · 빈 줄에서 ⌫ 삭제 · 여러 줄 붙여넣기 가능</p>
             {loading && rows.length === 0 && <p className="text-xs text-gray-400 mt-2">불러오는 중…</p>}
-            <ul className="mt-2">
+            <ul className="mt-2 flex-1 cursor-text" onClick={e => { if (e.target === e.currentTarget) newRowRef.current?.focus(); }}>
               {rows.map((r, idx) => (
                 <ReviewRow key={r.id} item={r} index={idx}
                   inputRef={el => { rowRefs.current[r.id] = el; }}
@@ -466,17 +466,9 @@ export default function DiaryTab({
             </ul>
           </div>
 
-          <div className={`${CARD} p-4`}>
-            <p className="text-sm font-semibold text-[#0f172a]">📝 메모 · 회고</p>
-            <textarea rows={5}
-              className="mt-2 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-700 resize-y focus:outline-none focus:border-orange-400 transition-all"
-              placeholder="오늘 하루 소감, 특이사항, 배운 점, 놓치지 말아야 할 것…"
-              value={note} onChange={e => setNote(e.target.value)} onBlur={() => void saveNote()} />
-            <p className="text-[11px] text-gray-400 text-right">{note === savedNote ? "저장됨" : "입력창을 벗어나면 저장됩니다"}</p>
-          </div>
         </div>
 
-        {/* 오른쪽: 넘긴 것들 */}
+        {/* 오른쪽: 넘긴 것들 + 메모 */}
         <div className="md:col-span-2 space-y-4">
           <div className={`${CARD} p-4`}>
             <p className="text-sm font-semibold text-[#0f172a]">🗓 내일 할 일 <span className="text-xs font-normal text-gray-400">{labelDate(tomorrow)}</span></p>
@@ -490,7 +482,7 @@ export default function DiaryTab({
               <input className={CTRL} placeholder="내일 할 일 직접 추가" value={planInput}
                 onChange={e => setPlanInput(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) void addPlan(); }} />
-              <button className={BTO} onClick={() => void addPlan()}>추가</button>
+              <button className={`${BTO} whitespace-nowrap flex-shrink-0`} onClick={() => void addPlan()}>추가</button>
             </div>
           </div>
 
@@ -515,6 +507,15 @@ export default function DiaryTab({
                 })}
               {scheduled.length === 0 && <li className="text-xs text-gray-400">각 줄의 "📅 일정"으로 등록한 일정이 여기에 모입니다 (일정 탭·구글 캘린더에도 반영)</li>}
             </ul>
+          </div>
+
+          <div className={`${CARD} p-4`}>
+            <p className="text-sm font-semibold text-[#0f172a]">📝 메모 · 회고</p>
+            <textarea rows={5}
+              className="mt-2 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-700 resize-y focus:outline-none focus:border-orange-400 transition-all"
+              placeholder="오늘 하루 소감, 특이사항, 배운 점, 놓치지 말아야 할 것…"
+              value={note} onChange={e => setNote(e.target.value)} onBlur={() => void saveNote()} />
+            <p className="text-[11px] text-gray-400 text-right">{note === savedNote ? "저장됨" : "입력창을 벗어나면 저장됩니다"}</p>
           </div>
         </div>
       </div>
