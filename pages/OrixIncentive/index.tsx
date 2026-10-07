@@ -389,6 +389,7 @@ export default function OrixIncentivePage() {
   });
 
   const totalIncentive = filteredRows.reduce((sum, r) => sum + (r.incentive_total ?? 0), 0);
+  const totalPrincipal = filteredRows.reduce((sum, r) => sum + (r.loan_principal ?? 0), 0); // 취급액(대출원금) 합계
   const newTotalPreview = calcIncentiveTotal(newSales.loan_principal, newSales.incentive_rate);
   const newCmPreview = calcCmPaidIncentive(newSales.loan_principal, newSales.cm_incentive_rate);
   const editTotalPreview = calcIncentiveTotal(editSales.loan_principal, editSales.incentive_rate);
@@ -605,8 +606,9 @@ export default function OrixIncentivePage() {
                     인센티브 목록 ({filteredRows.length}건{filteredRows.length !== rows.length ? ` / 전체 ${rows.length}건` : ""})
                   </h2>
                 </div>
-                <div className="text-sm text-gray-500">
-                  인센티브 총액 합계: <span className="font-semibold text-navy-900">{formatMoney(totalIncentive)}</span>
+                <div className="text-sm text-gray-500 text-right space-y-0.5">
+                  <div>인센티브 총액 합계: <span className="font-semibold text-navy-900">{formatMoney(totalIncentive)}</span></div>
+                  <div>취급액(대출금액) 합계: <span className="font-semibold text-navy-900">{formatMoney(totalPrincipal)}</span></div>
                 </div>
               </div>
 
