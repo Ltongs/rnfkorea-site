@@ -9,6 +9,12 @@ import { Loader2, Plus, Upload, Download, Trash2, X, AlertTriangle, ChevronDown,
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 import AppTabBar from "../../components/AppTabBar";
+import LotteLeaseTab, { fetchLotteIncentives, type LotteIncentive } from "../work/LotteLeaseIncentives";
+
+// 인센티브 구분 — 롯데오토리스는 원천징수관리의 "롯데오토리스 인센티브 관리" 목록과 같은 데이터/화면.
+// 롯데 테이블은 RLS상 관리자만 읽을 수 있으므로 구분 선택 자체를 관리자(isOrixAdmin)에게만 보여준다.
+type IncentiveSource = "orix" | "lotte";
+const SOURCE_LABELS: Record<IncentiveSource, string> = { orix: "ORIX", lotte: "롯데오토리스" };
 
 const PRODUCT_TYPES = ["할부", "리스", "기타"] as const;
 const BENEFICIARIES = ["수Company", "이동수"] as const;
@@ -140,6 +146,21 @@ export default function OrixIncentivePage() {
   // 직접 수정은 못 하도록, 조회용(전체 컬럼)과 입력용(영업 항목만) 뷰를 분리해서 쓴다.
   const readTable = isOrixAdmin ? "orix_incentives" : "orix_incentives_partner_view";
   const writeTable = isOrixAdmin ? "orix_incentives" : "orix_incentives_partner_edit_view";
+
+  const [source, setSource] = useState<IncentiveSource>(() => {
+    try { return sessionStorage.getItem("incentive_source") === "lotte" ? "lotte" : "orix"; } catch { return "orix"; }
+  });
+  const activeSource: IncentiveSource = isOrixAdmin ? source : "orix";
+  const [lotteRows, setLotteRows] = useState<LotteIncentive[]>([]);
+  const [lotteLoading, setLotteLoading] = useState(false);
+  const [lotteMsg, setLotteMsg] = useState("");
+  const loadLotte = async () => { setLotteLoading(true); setLotteRows(await fetchLotteIncentives()); setLotteLoading(false); };
+  const flashLotte = (m: string) => { setLotteMsg(m); setTimeout(() => setLotteMsg(""), 3000); };
+  useEffect(() => { if (activeSource === "lotte") void loadLotte(); }, [activeSource]);
+  const changeSource = (v: IncentiveSource) => {
+    try { sessionStorage.setItem("incentive_source", v); } catch {}
+    setSource(v);
+  };
 
   const [rows, setRows] = useState<Row[]>([]);
   const [contractors, setContractors] = useState<Contractor[]>([]);
@@ -392,7 +413,7 @@ export default function OrixIncentivePage() {
                 ← AI비서
               </button>
             )}
-            <span className="text-sm font-semibold text-[#0f172a]">💰 ORIX 인센티브 관리</span>
+            <span className="text-sm font-semibold text-[#0f172a]">💰 인센티브 관리</span>
             <span className="text-xs text-gray-400">
               {isOrixAdmin ? "관리자 화면 — 전체 항목 조회/입력" : "ORIX 파트너 화면 — 확정 내역 조회/입력"}
             </span>
@@ -412,7 +433,36 @@ export default function OrixIncentivePage() {
       </div>
 
       <div className="max-w-6xl mx-auto px-4 md:px-6 lg:px-8 py-8 space-y-6">
-        {loading ? (
+        {isOrixAdmin && (
+          <div className="flex items-center gap-2">
+            <div className="inline-flex p-1 rounded-xl bg-gray-100 border border-gray-200">
+              {(Object.keys(SOURCE_LABELS) as IncentiveSource[]).map((v) => (
+                <button key={v} onClick={() => changeSource(v)}
+                  className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${activeSource === v ? "bg-white text-[#0f172a] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+                  {SOURCE_LABELS[v]}
+                </button>
+              ))}
+            </div>
+            {activeSource === "lotte" && (
+              <span className="text-xs text-gray-400">원천징수관리 &gt; 롯데오토리스 인센티브 관리와 같은 목록입니다</span>
+            )}
+          </div>
+        )}
+
+        {activeSource === "lotte" ? (
+          <>
+            {lotteMsg && (
+              <div className="bg-green-50 border border-green-200 text-green-700 text-sm px-4 py-2 rounded-xl">{lotteMsg}</div>
+            )}
+            <LotteLeaseTab
+              entries={lotteRows}
+              loading={lotteLoading}
+              setLoading={setLotteLoading}
+              onSaved={() => { void loadLotte(); flashLotte("저장되었습니다."); }}
+              flash={flashLotte}
+            />
+          </>
+        ) : loading ? (
           <div className="rounded-2xl border border-gray-200 bg-white flex items-center justify-center gap-3 py-16 text-gray-400 shadow-sm">
             <Loader2 className="w-5 h-5 animate-spin text-orange-500" />
             <span className="text-sm font-medium">데이터를 불러오는 중입니다.</span>

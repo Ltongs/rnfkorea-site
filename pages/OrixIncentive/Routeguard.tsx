@@ -35,7 +35,7 @@ export default function OrixIncentiveRouteGuard({
     return (
       <div className="container mx-auto px-4 py-16">
         <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm font-semibold">
-          이 계정은 ORIX 인센티브 관리 페이지 접근 권한이 없습니다.
+          이 계정은 인센티브 관리 페이지 접근 권한이 없습니다.
         </div>
       </div>
     );
