@@ -109,8 +109,17 @@ export default function DiaryTab({
   toastRef.current = showToast;
 
   const [date, setDate] = useState(todayStr);
+  // 비동기 저장/조회가 끝났을 때 그 사이 날짜가 바뀌었는지 확인하는 용도
+  const dateRef = useRef(date);
+  dateRef.current = date;
   const tomorrow = addDays(date, 1);
   const isToday = date === todayStr();
+  // 어제 것을 정리할 때도 헷갈리지 않도록 오늘 기준 상대 표현을 쓴다 (어제/오늘/내일, 그 밖은 M/D(요일))
+  const dayWord = (s: string) => {
+    const t = todayStr();
+    return s === t ? "오늘" : s === addDays(t, -1) ? "어제" : s === addDays(t, 1) ? "내일" : labelDate(s);
+  };
+  const nextWord = dayWord(tomorrow);
 
   const [items, setItems] = useState<DiaryItem[]>([]);           // date의 done/plan + tomorrow의 plan
   const [overdue, setOverdue] = useState<DiaryItem[]>([]);       // date 이전 미완료 plan (오늘 화면에서만)
@@ -128,6 +137,7 @@ export default function DiaryTab({
   const newRowRef = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
+    const reqDate = date;
     setLoading(true);
     const [itemsRes, noteRes, overdueRes] = await Promise.all([
       supabase.from("secretary_diary_items").select("*")
@@ -140,6 +150,7 @@ export default function DiaryTab({
           .order("entry_date").order("created_at")
         : Promise.resolve({ data: [], error: null }),
     ]);
+    if (dateRef.current !== reqDate) return;   // 조회 중에 날짜를 바꿨으면 이전 날짜 결과는 버린다
     setLoading(false);
     if (itemsRes.error) { toastRef.current("다이어리 불러오기 실패: " + itemsRes.error.message, "err"); return; }
     const loaded = (itemsRes.data ?? []) as DiaryItem[];
@@ -173,12 +184,13 @@ export default function DiaryTab({
   async function addRows(texts: string[]) {
     const clean = texts.map(t => t.trim()).filter(Boolean);
     if (!clean.length) return;
+    const forDate = date;
     const base = nextSort(rows);
     const { data, error } = await supabase.from("secretary_diary_items").insert(
-      clean.map((content, idx) => ({ entry_date: date, kind: "done", content, is_checked: true, sort_order: base + idx })),
+      clean.map((content, idx) => ({ entry_date: forDate, kind: "done", content, is_checked: true, sort_order: base + idx })),
     ).select("*");
     if (error) { showToast("저장 실패: " + error.message, "err"); return; }
-    setItems(p => [...p, ...((data ?? []) as DiaryItem[])]);
+    if (dateRef.current === forDate) setItems(p => [...p, ...((data ?? []) as DiaryItem[])]);
   }
 
   async function saveRow(item: DiaryItem, text: string) {
@@ -249,12 +261,24 @@ export default function DiaryTab({
   async function addPlan() {
     const content = planInput.trim();
     if (!content) return;
+    const forDate = date;
+    setPlanInput("");
     const { data, error } = await supabase.from("secretary_diary_items").insert({
       entry_date: tomorrow, kind: "plan", content, is_checked: false, sort_order: nextSort(tomorrowPlans),
     }).select("*").single();
-    if (error || !data) { showToast("저장 실패: " + (error?.message ?? ""), "err"); return; }
-    setItems(p => [...p, data as DiaryItem]);
-    setPlanInput("");
+    if (error || !data) { setPlanInput(content); showToast("저장 실패: " + (error?.message ?? ""), "err"); return; }
+    if (dateRef.current === forDate) setItems(p => [...p, data as DiaryItem]);
+  }
+
+  // 날짜를 바꾸기 전에 입력칸에 적어둔(아직 Enter 안 누른) 글은 지금 보고 있는 날짜에 저장하고 비운다.
+  // (비우지 않으면 글자가 다른 날짜 화면으로 따라가서, 그 날짜에 잘못 저장될 수 있다)
+  function changeDate(next: string) {
+    if (next === date) return;
+    if (newRow.trim()) { const t = newRow; setNewRow(""); void addRows([t]); }
+    if (planInput.trim()) void addPlan();
+    setEditingPlan(null);
+    setSchedForm(null);
+    setDate(next);
   }
 
   async function savePlanEdit() {
@@ -322,7 +346,7 @@ export default function DiaryTab({
       ...todayPlans.filter(i => i.is_checked).map(i => `- ${i.content}`),
       ...(todayPlans.some(i => !i.is_checked) ? ["", "■ 미완료", ...todayPlans.filter(i => !i.is_checked).map(i => `- ${i.content}`)] : []),
       "",
-      `■ 내일 할 일 (${labelDate(tomorrow)})`,
+      `■ 다음날 할 일 (${labelDate(tomorrow)})`,
       ...tomorrowPlans.map(i => `- ${i.content}${sched(i)}`),
       ...(note.trim() ? ["", "■ 메모", note.trim()] : []),
     ];
@@ -377,14 +401,9 @@ export default function DiaryTab({
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <p className="text-sm font-semibold text-[#0f172a]">📔 업무 다이어리</p>
-          <p className="text-xs text-gray-400 mt-0.5">하루를 돌아보며 한 줄씩 적고, 넘길 것은 내일 할 일·다음 일정으로 보냅니다</p>
+          <p className="text-xs text-gray-400 mt-0.5">날짜별로 하루를 돌아보며 한 줄씩 적고, 넘길 것은 다음날 할 일·다음 일정으로 보냅니다</p>
         </div>
         <div className="flex items-center gap-1.5">
-          <button className={BTG} onClick={() => setDate(d => addDays(d, -1))}>◀</button>
-          <input type="date" className="h-8 rounded-xl border border-gray-200 px-2 text-sm text-[#0f172a]" value={date}
-            onChange={e => e.target.value && setDate(e.target.value)} />
-          <button className={BTG} onClick={() => setDate(d => addDays(d, 1))}>▶</button>
-          {!isToday && <button className={BTG} onClick={() => setDate(todayStr())}>오늘</button>}
           <button className={BTG} onClick={() => void copySummary()} title="보고용 텍스트로 복사">📋 복사</button>
         </div>
       </div>
@@ -395,7 +414,7 @@ export default function DiaryTab({
           {(todayPlans.length > 0 || overdue.length > 0) && (
             <div className={`${CARD} px-4 py-3`}>
               <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-gray-500">📌 {isToday ? "오늘" : labelDate(date)} 예정이었던 일</p>
+                <p className="text-xs font-semibold text-gray-500">📌 {dayWord(date)} 예정이었던 일</p>
                 <span className="text-[11px] text-gray-400">{todayPlans.filter(i => i.is_checked).length}/{todayPlans.length} 완료</span>
               </div>
               <ul className="mt-1">
@@ -407,7 +426,7 @@ export default function DiaryTab({
                   checkable: true,
                   actions: !i.is_checked && <>
                     {schedChip(i)}
-                    <button className={`${CHIP} border-gray-200 text-gray-500 hover:border-orange-300 hover:text-orange-600 hover:bg-orange-50`} onClick={() => void moveTo(i, tomorrow)}>→ 내일</button>
+                    <button className={`${CHIP} border-gray-200 text-gray-500 hover:border-orange-300 hover:text-orange-600 hover:bg-orange-50`} onClick={() => void moveTo(i, tomorrow)}>→ {nextWord}</button>
                   </>,
                 }))}
               </ul>
@@ -415,9 +434,25 @@ export default function DiaryTab({
           )}
 
           <div className={`${CARD} p-4 flex flex-col flex-1 min-h-[420px] md:min-h-[calc(100vh-230px)]`}>
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-[#0f172a]">✍️ {isToday ? "오늘" : labelDate(date)} 돌아보기</p>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-sm font-semibold text-[#0f172a]">
+                ✍️ {dayWord(date)} 돌아보기
+                {!isToday && <span className={`${CHIP} ml-2 align-middle font-normal bg-amber-50 text-amber-600 border-amber-100`}>{labelDate(date)} 정리 중</span>}
+              </p>
               <button className={BTG} disabled={busy} onClick={() => void importCompleted()} title="그날 완료 처리한 일정·할일을 줄로 불러옵니다">↻ 완료 일정 불러오기</button>
+            </div>
+            {/* 날짜 선택 — 날짜별로 관리, 지난 날짜도 정리 가능 */}
+            <div className="flex items-center gap-1.5 flex-wrap mt-2">
+              <button className={BTG} onClick={() => changeDate(addDays(date, -1))} title="전날">◀</button>
+              <input type="date" className="h-8 rounded-xl border border-gray-200 px-2 text-sm text-[#0f172a] focus:outline-none focus:border-orange-400" value={date}
+                onChange={e => e.target.value && changeDate(e.target.value)} />
+              <button className={BTG} onClick={() => changeDate(addDays(date, 1))} title="다음날">▶</button>
+              {[["어제", addDays(todayStr(), -1)], ["오늘", todayStr()]].map(([lbl, d]) => (
+                <button key={lbl} onClick={() => changeDate(d)}
+                  className={`px-3 py-1.5 rounded-xl border text-xs transition-all ${date === d ? "bg-[#0f172a] text-white border-[#0f172a]" : "border-gray-200 text-gray-600 hover:border-gray-300"}`}>
+                  {lbl}
+                </button>
+              ))}
             </div>
             <p className="text-[11px] text-gray-400 mt-1">한 일을 한 줄씩 자유롭게 적으세요 · Enter 다음 줄 · 빈 줄에서 ⌫ 삭제 · 여러 줄 붙여넣기 가능</p>
             {loading && rows.length === 0 && <p className="text-xs text-gray-400 mt-2">불러오는 중…</p>}
@@ -434,9 +469,9 @@ export default function DiaryTab({
                       className={`${CHIP} ${r.forwarded_item_id
                         ? "bg-orange-50 text-orange-600 border-orange-200"
                         : "border-gray-200 text-gray-500 hover:border-orange-300 hover:text-orange-600 hover:bg-orange-50"}`}
-                      title={r.forwarded_item_id ? "내일 할 일에서 빼기" : "내일 할 일로 등록"}
+                      title={r.forwarded_item_id ? `${nextWord} 할 일에서 빼기` : `${nextWord} 할 일로 등록 (${labelDate(tomorrow)})`}
                       onClick={() => void toggleForward(r)}>
-                      {r.forwarded_item_id ? "✓ 내일" : "→ 내일"}
+                      {r.forwarded_item_id ? `✓ ${nextWord}` : `→ ${nextWord}`}
                     </button>
                     {schedChip(r)}
                     {delBtn(r)}
@@ -449,6 +484,7 @@ export default function DiaryTab({
                   placeholder={rows.length ? "이어서 적기…" : "예) OO상사 지게차 견적 발송, 담당자 통화 — 다음주 재연락"}
                   value={newRow}
                   onChange={e => setNewRow(e.target.value)}
+                  onBlur={() => { if (newRow.trim()) { const t = newRow; setNewRow(""); void addRows([t]); } }}
                   onPaste={e => {
                     const pasted = e.clipboardData.getData("text");
                     if (!pasted.includes("\n")) return;
@@ -471,15 +507,15 @@ export default function DiaryTab({
         {/* 오른쪽: 넘긴 것들 + 메모 */}
         <div className="md:col-span-2 space-y-4">
           <div className={`${CARD} p-4`}>
-            <p className="text-sm font-semibold text-[#0f172a]">🗓 내일 할 일 <span className="text-xs font-normal text-gray-400">{labelDate(tomorrow)}</span></p>
+            <p className="text-sm font-semibold text-[#0f172a]">🗓 {nextWord} 할 일 <span className="text-xs font-normal text-gray-400">{labelDate(tomorrow)}</span></p>
             <ul className="mt-2">
               {tomorrowPlans.map(i => planRow(i, {
                 checkable: false, tag: forwardedFrom.has(i.id) ? "돌아보기" : undefined, actions: schedChip(i),
               }))}
-              {tomorrowPlans.length === 0 && <li className="py-2 text-xs text-gray-400">돌아보기 줄의 "→ 내일"을 누르면 여기로 넘어옵니다</li>}
+              {tomorrowPlans.length === 0 && <li className="py-2 text-xs text-gray-400">돌아보기 줄의 "→ {nextWord}"을 누르면 여기로 넘어옵니다</li>}
             </ul>
             <div className="flex gap-2 mt-2">
-              <input className={CTRL} placeholder="내일 할 일 직접 추가" value={planInput}
+              <input className={CTRL} placeholder={`${nextWord} 할 일 직접 추가`} value={planInput}
                 onChange={e => setPlanInput(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) void addPlan(); }} />
               <button className={`${BTO} whitespace-nowrap flex-shrink-0`} onClick={() => void addPlan()}>추가</button>
