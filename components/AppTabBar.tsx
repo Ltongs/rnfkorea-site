@@ -21,7 +21,10 @@ export const APP_TAB_ORDER: AppTabKey[] = [
 ];
 
 // 자주 쓰지 않는 탭 — 오른쪽 "기타 ▾" 드롭다운 안에 묶는다 (pages/secretary/index.tsx의 MORE_TABS와 동일).
-export const APP_MORE_TABS: AppTabKey[] = ["chat", "status", "cns", "orders", "performance", "exportshop", "financehub"];
+export const APP_MORE_TABS: AppTabKey[] = [
+  "chat", "status", "cns", "orders", "performance", "exportshop", "financehub",
+  "rentalos", "email", "callmanagement", "faxcampaign", "numbersearch",
+];
 
 // 클릭 시 이 페이지 안에서 렌더링하지 않고 곧바로 다른 라우트로 이동하는 탭
 export const APP_EXTERNAL_TAB_LINKS: Partial<Record<AppTabKey, string>> = {
@@ -39,7 +42,7 @@ const APP_TAB_LABELS: Record<AppTabKey, string> = {
   jinheung: "🔧 진흥주문", narumi: "🚛 나르미", memo: "📝 메모", financehub: "💵 매출/매입",
   exportshop: "🌏 수출장비", quotation: "📋 견적서", cns: "🗂 통합상담", performance: "📈 실적관리",
   rentalos: "🚐 Rental_O/S", hyundaicm: "🏗 현대건기(부산경남)", numbersearch: "🔍 번호검색",
-  taesan: "🚚 태산통운", callmanagement: "📞 상담관리", faxcampaign: "📠 팩스발송", orix: "💰 ORIX인센티브", email: "📧 이메일",
+  taesan: "🚚 태산통운", callmanagement: "📞 상담관리", faxcampaign: "📠 팩스발송", orix: "💰 인센티브", email: "📧 이메일",
   brother: "🚜 현대지게차 경기북부",
 };
 
@@ -162,14 +165,24 @@ export default function AppTabBar({ activeTab }: { activeTab: AppTabKey }) {
       <div ref={moreRef} className="relative flex-shrink-0">
         <button type="button" onClick={() => setMoreOpen((o) => !o)}
           className={`${TB} ${moreTabs.includes(activeTab) ? TA : TI} whitespace-nowrap`}>
-          {moreTabs.includes(activeTab) ? `${APP_TAB_LABELS[activeTab]} ▾` : "기타 ▾"}
+          <span className="inline-flex items-center gap-1">
+            {moreTabs.includes(activeTab) ? `${APP_TAB_LABELS[activeTab]} ▾` : "기타 ▾"}
+            {moreTabs.includes("email") && unreadEmail > 0 && (
+              <span className="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">{unreadEmail}</span>
+            )}
+          </span>
         </button>
         {moreOpen && (
           <div className="absolute right-0 top-full mt-1 z-50 w-44 rounded-xl border border-gray-200 bg-white shadow-lg py-1">
             {moreTabs.map((t) => (
               <button key={t} type="button" onClick={() => { setMoreOpen(false); goTab(t); }}
                 className={`w-full text-left px-3 py-2 text-sm transition-all ${activeTab === t ? "bg-gray-100 font-semibold text-[#0f172a]" : "text-gray-600 hover:bg-gray-50"}`}>
-                {APP_TAB_LABELS[t]}
+                <span className="inline-flex items-center gap-1">
+                  {APP_TAB_LABELS[t]}
+                  {t === "email" && unreadEmail > 0 && (
+                    <span className="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">{unreadEmail}</span>
+                  )}
+                </span>
               </button>
             ))}
           </div>

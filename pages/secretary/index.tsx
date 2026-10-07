@@ -19,8 +19,8 @@ const TAB_ORDER: TabKey[] = ["chat","schedule","diary","status","cns","orders","
 // 다시 읽어 useEffect가 곧바로 재이동시켜 "뒤로가기가 안 먹히는" 문제가 생기므로 setTabAndSave를 타지 않는다.
 // 자주 쓰지 않는 탭 — 탭바에 펼쳐두지 않고 오른쪽 "기타 ▾" 드롭다운 안에 묶는다.
 // (components/AppTabBar.tsx의 APP_MORE_TABS와 항상 같은 구성으로 맞춘다.)
-const MORE_TABS: TabKey[] = ["chat","status","cns","orders","performance","exportshop","financehub"];
-const TAB_LABELS: Record<TabKey,string> = {email:"📧 이메일",...{chat:"💬 채팅",schedule:"📅 일정",diary:"📔 다이어리",status:"📊 업무현황",orders:"📦 주문·상담",jinheung:"🔧 진흥주문",narumi:"🚛 나르미",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비",quotation:"📋 견적서",cns:"🗂 통합상담",performance:"📈 실적관리",rentalos:"🚐 Rental_O/S",hyundaicm:"🏗 현대건기(부산경남)",numbersearch:"🔍 번호검색",taesan:"🚚 태산통운",callmanagement:"📞 상담관리",faxcampaign:"📠 팩스발송",orix:"💰 ORIX인센티브",brother:"🚜 현대지게차 경기북부"}};
+const MORE_TABS: TabKey[] = ["chat","status","cns","orders","performance","exportshop","financehub","rentalos","email","callmanagement","faxcampaign","numbersearch"];
+const TAB_LABELS: Record<TabKey,string> = {email:"📧 이메일",...{chat:"💬 채팅",schedule:"📅 일정",diary:"📔 다이어리",status:"📊 업무현황",orders:"📦 주문·상담",jinheung:"🔧 진흥주문",narumi:"🚛 나르미",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비",quotation:"📋 견적서",cns:"🗂 통합상담",performance:"📈 실적관리",rentalos:"🚐 Rental_O/S",hyundaicm:"🏗 현대건기(부산경남)",numbersearch:"🔍 번호검색",taesan:"🚚 태산통운",callmanagement:"📞 상담관리",faxcampaign:"📠 팩스발송",orix:"💰 인센티브",brother:"🚜 현대지게차 경기북부"}};
 const EXTERNAL_TAB_LINKS: Partial<Record<TabKey,string>> = { hyundaicm:"/hyundaicm", brother:"/brother", rentalos:"/rental-os", taesan:"/taesan", callmanagement:"/work/call-management", faxcampaign:"/work/fax-campaign", orix:"/orix" };
 // 통합상담 탭 서브필터
 type CnsActiveTab = "통합상담" | "할부금융" | "보험" | "지게차" | "배터리" | "타이어" | "나르미" | "Rental_O/S";
@@ -5490,14 +5490,25 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
           {/* 기타 — 자주 쓰지 않는 탭 묶음 (스크롤 영역 밖에 두어야 드롭다운이 잘리지 않음) */}
           <div ref={moreTabRef} className="relative flex-shrink-0">
             <button className={`${TB} ${MORE_TABS.includes(tab)?TA:TI}`} style={{whiteSpace:"nowrap"}} onClick={()=>setMoreTabOpen(o=>!o)}>
-              {MORE_TABS.includes(tab)?`${TAB_LABELS[tab]} ▾`:"기타 ▾"}
+              <span className="inline-flex items-center gap-1">
+                {MORE_TABS.includes(tab)?`${TAB_LABELS[tab]} ▾`:"기타 ▾"}
+                {emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}
+              </span>
             </button>
             {moreTabOpen&&(
               <div className="absolute right-0 top-full mt-1 z-50 w-44 rounded-xl border border-gray-200 bg-white shadow-lg py-1">
                 {MORE_TABS.map(t=>(
                   <button key={t} className={`w-full text-left px-3 py-2 text-sm transition-all ${tab===t?"bg-gray-100 font-semibold text-[#0f172a]":"text-gray-600 hover:bg-gray-50"}`}
-                    onClick={()=>{setMoreTabOpen(false);setTabAndSave(t);}}>
-                    {TAB_LABELS[t]}
+                    onClick={()=>{
+                      setMoreTabOpen(false);
+                      const link = EXTERNAL_TAB_LINKS[t];
+                      if(link){ navigate(link); return; }
+                      setTabAndSave(t);
+                    }}>
+                    <span className="inline-flex items-center gap-1">
+                      {TAB_LABELS[t]}
+                      {t==="email"&&emailReports.filter(r=>!r.is_read).length>0&&<span className="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">{emailReports.filter(r=>!r.is_read).length}</span>}
+                    </span>
                   </button>
                 ))}
               </div>
