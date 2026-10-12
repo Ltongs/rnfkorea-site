@@ -20,6 +20,7 @@ import { supabase } from "../../lib/supabase";
 type DiaryItem = {
   id: number; entry_date: string; kind: "done" | "plan"; content: string;
   is_checked: boolean; schedule_id: number | null; forwarded_item_id: number | null;
+  completed_at: string | null;   // 돌아보기 줄 완료 표시 (null = 미완료)
   sort_order: number; created_at: string;
 };
 type LinkedSchedule = { id: number; schedule_date: string; start_time: string | null; is_done: boolean };
@@ -77,12 +78,13 @@ function ReviewRow({
 }) {
   const [text, setText] = useState(item.content);
   useEffect(() => { setText(item.content); }, [item.content]);
+  const done = !!item.completed_at;
   const commit = () => { const t = text.trim(); if (t && t !== item.content) onSave(t); else if (!t) setText(item.content); };
   return (
-    <li className="group flex items-center gap-2 py-1 border-b border-gray-50 last:border-b-0">
-      <span className="w-5 text-right text-[11px] text-gray-300 flex-shrink-0 tabular-nums">{index + 1}</span>
+    <li className={`group flex items-center gap-2 py-1 border-b border-gray-50 last:border-b-0 ${done ? "bg-gray-50/70" : ""}`}>
+      <span className={`w-5 text-right text-[11px] text-gray-300 flex-shrink-0 tabular-nums ${done ? "line-through" : ""}`}>{index + 1}</span>
       <input ref={inputRef}
-        className="flex-1 min-w-0 h-8 text-sm text-[#0f172a] bg-transparent focus:outline-none focus:bg-orange-50/40 rounded-md px-1"
+        className={`flex-1 min-w-0 h-8 text-sm bg-transparent focus:outline-none focus:bg-orange-50/40 rounded-md px-1 ${done ? "line-through decoration-gray-400 text-gray-400" : "text-[#0f172a]"}`}
         value={text}
         onChange={e => setText(e.target.value)}
         onBlur={commit}
@@ -93,7 +95,7 @@ function ReviewRow({
           else if (e.key === "ArrowUp") { e.preventDefault(); onArrow(-1); }
           else if (e.key === "ArrowDown") { e.preventDefault(); onArrow(1); }
         }} />
-      <div className="flex items-center gap-1 flex-shrink-0">{actions}</div>
+      <div className={`flex items-center gap-1 flex-shrink-0 ${done ? "opacity-60" : ""}`}>{actions}</div>
     </li>
   );
 }
@@ -214,6 +216,14 @@ export default function DiaryTab({
     if (idx >= rows.length) { newRowRef.current?.focus(); return; }
     if (idx >= 0) rowRefs.current[rows[idx].id]?.focus();
   };
+
+  // 완료 토글 — 완료하면 줄 전체에 삭선
+  async function toggleComplete(row: DiaryItem) {
+    const next = row.completed_at ? null : new Date().toISOString();
+    patchLocal(row.id, { completed_at: next });
+    const { error } = await supabase.from("secretary_diary_items").update({ completed_at: next }).eq("id", row.id);
+    if (error) { showToast("완료 처리 실패: " + error.message, "err"); patchLocal(row.id, { completed_at: row.completed_at }); }
+  }
 
   // "→ 내일" 토글: 내일 할 일을 만들거나, 이미 넘겼으면 그 내일 할 일을 지운다
   async function toggleForward(row: DiaryItem) {
@@ -342,7 +352,7 @@ export default function DiaryTab({
       `[${labelDate(date)} 업무일지]`,
       "",
       "■ 한 일",
-      ...rows.map(i => `- ${i.content}${sched(i)}`),
+      ...rows.map(i => `- ${i.content}${i.completed_at ? " (완료)" : ""}${sched(i)}`),
       ...todayPlans.filter(i => i.is_checked).map(i => `- ${i.content}`),
       ...(todayPlans.some(i => !i.is_checked) ? ["", "■ 미완료", ...todayPlans.filter(i => !i.is_checked).map(i => `- ${i.content}`)] : []),
       "",
@@ -408,9 +418,8 @@ export default function DiaryTab({
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-5">
-        {/* 왼쪽: 돌아보기 — 화면 아래까지 채운다 */}
-        <div className="md:col-span-3 flex flex-col gap-4">
+      {/* 위: 돌아보기 — 가로 전체 사용 */}
+      <div className="flex flex-col gap-4">
           {(todayPlans.length > 0 || overdue.length > 0) && (
             <div className={`${CARD} px-4 py-3`}>
               <div className="flex items-center justify-between">
@@ -433,7 +442,7 @@ export default function DiaryTab({
             </div>
           )}
 
-          <div className={`${CARD} p-4 flex flex-col flex-1 min-h-[420px] md:min-h-[calc(100vh-230px)]`}>
+          <div className={`${CARD} p-4 flex flex-col min-h-[360px]`}>
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <p className="text-sm font-semibold text-[#0f172a]">
                 ✍️ {dayWord(date)} 돌아보기
@@ -475,6 +484,14 @@ export default function DiaryTab({
                     </button>
                     {schedChip(r)}
                     {delBtn(r)}
+                    <button
+                      className={`${CHIP} min-w-[52px] ${r.completed_at
+                        ? "bg-emerald-500 text-white border-emerald-500 hover:bg-emerald-600"
+                        : "border-gray-200 text-gray-500 hover:border-emerald-300 hover:text-emerald-600 hover:bg-emerald-50"}`}
+                      title={r.completed_at ? "완료 취소" : "완료 처리"}
+                      onClick={() => void toggleComplete(r)}>
+                      {r.completed_at ? "✓ 완료" : "완료"}
+                    </button>
                   </>} />
               ))}
               <li className="flex items-center gap-2 py-1">
@@ -501,11 +518,10 @@ export default function DiaryTab({
               </li>
             </ul>
           </div>
+      </div>
 
-        </div>
-
-        {/* 오른쪽: 넘긴 것들 + 메모 */}
-        <div className="md:col-span-2 space-y-4">
+      {/* 아래: 넘긴 것들 + 메모 — 3열 */}
+      <div className="grid gap-4 md:grid-cols-3 items-start">
           <div className={`${CARD} p-4`}>
             <p className="text-sm font-semibold text-[#0f172a]">🗓 {nextWord} 할 일 <span className="text-xs font-normal text-gray-400">{labelDate(tomorrow)}</span></p>
             <ul className="mt-2">
@@ -553,7 +569,6 @@ export default function DiaryTab({
               value={note} onChange={e => setNote(e.target.value)} onBlur={() => void saveNote()} />
             <p className="text-[11px] text-gray-400 text-right">{note === savedNote ? "저장됨" : "입력창을 벗어나면 저장됩니다"}</p>
           </div>
-        </div>
       </div>
 
       {/* 일정 등록 모달 */}
