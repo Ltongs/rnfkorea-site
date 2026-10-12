@@ -1252,6 +1252,11 @@ export default function QuotationPage() {
 
   useEffect(() => { if(tab==='history') loadHistory(); }, [tab, loadHistory]);
 
+  // ── 렌타나 렌탈료 견적 — 계산기(/renthana) 화면에서 저장된 값 그대로 열어 보고 PDF를 다시 받는다
+  const openRenthanaQuote = (row: HistoryRow) => {
+    window.open(`/renthana?quote=${encodeURIComponent(row.quote_no)}`, '_blank', 'noopener');
+  };
+
   // ── 히스토리 삭제
   const deleteHistory = async (row: HistoryRow) => {
     if(!window.confirm(`'${row.recipient}' (${row.quote_no}) 이력을 삭제하시겠습니까?`)) return;
@@ -2146,9 +2151,10 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
                           row.quote_type==='hyundai_forklift'?'bg-sky-100 text-sky-700':
                           row.quote_type==='installment'?'bg-purple-100 text-purple-700':
                           row.quote_type==='tire'?'bg-orange-100 text-orange-700':
+                          row.quote_type==='renthana'?'bg-rose-100 text-rose-700':
                           'bg-gray-100 text-gray-700'
                         }`}>
-                          {row.quote_type==='battery'?'배터리':row.quote_type==='forklift'?'지게차':row.quote_type==='hyundai_forklift'?'지게차(현대판매)':row.quote_type==='installment'?'할부':row.quote_type==='tire'?'타이어':'발주서'}
+                          {row.quote_type==='battery'?'배터리':row.quote_type==='forklift'?'지게차':row.quote_type==='hyundai_forklift'?'지게차(현대판매)':row.quote_type==='installment'?'할부':row.quote_type==='tire'?'타이어':row.quote_type==='renthana'?`렌타나 렌탈(${(row.items?.[0] as any)?.product ?? ''})`:'발주서'}
                         </span>
                       </td>
                       <td className="px-3 py-2 font-mono text-xs text-gray-600">{row.quote_no}</td>
@@ -2160,7 +2166,7 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
                       </td>
                       <td className="px-3 py-2">
                         <button
-                          onClick={()=>loadFromHistory(row)}
+                          onClick={()=>row.quote_type==='renthana' ? openRenthanaQuote(row) : loadFromHistory(row)}
                           className="text-xs bg-orange-500 text-white px-2.5 py-1 rounded hover:bg-orange-600 transition-colors font-medium"
                         >불러오기</button>
                       </td>
@@ -2169,6 +2175,7 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
                           disabled={loading}
                           onClick={async ()=>{
                             const type=row.quote_type as any;
+                            if(type==='renthana'){ openRenthanaQuote(row); return; }
                             let html: string | null = null;
                             if(type==='battery'||type==='forklift'||type==='tire'){
                               const base = type==='battery'?BF0:type==='forklift'?FF0:TF0;
