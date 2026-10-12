@@ -1,9 +1,10 @@
 // pages/Renthana/index.tsx
-// 렌타나(renthana.com) 제휴 배터리 렌탈료 계산기 — 로그인 없이 URL로 누구나 접근 가능
+// 렌타나(renthana.com) 제휴 배터리·타이어 렌탈료 계산기 — 로그인 없이 URL로 누구나 접근 가능
 // 렌탈료 = (공급가격 × 1.1 부가세 포함) × 103% × 111.7%(12개월) / 135%(36개월)
+// 품목은 상단 버튼 또는 URL(?item=tire)로 선택. 품목별 요율이 달라지면 PRODUCTS의 rate12/rate36만 바꾸면 된다.
 
 import React, { useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -11,6 +12,12 @@ import jsPDF from "jspdf";
 const VAT_RATE = 1.1;          // 부가세 10% 포함
 const RATE_12 = 1.03 * 1.117; // 103% × 111.7%
 const RATE_36 = 1.03 * 1.35;  // 103% × 135%
+
+type ProductKey = "battery" | "tire";
+const PRODUCTS: Record<ProductKey, { label: string; rate12: number; rate36: number }> = {
+  battery: { label: "배터리", rate12: RATE_12, rate36: RATE_36 },
+  tire:    { label: "타이어", rate12: RATE_12, rate36: RATE_36 },  // 현재 배터리와 동일 요율
+};
 
 const RENTHANA_STATS = [
   { n: "5,000+", l: "자산 풀" },
@@ -28,14 +35,19 @@ const todayStr = () => {
 };
 
 export default function RenthanaPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const productKey: ProductKey = searchParams.get("item") === "tire" ? "tire" : "battery";
+  const product = PRODUCTS[productKey];
+  const selectProduct = (k: ProductKey) =>
+    setSearchParams(k === "battery" ? {} : { item: k }, { replace: true });
   const [priceInput, setPriceInput] = useState("1,000,000");
   const [downloading, setDownloading] = useState(false);
   const quoteRef = useRef<HTMLDivElement>(null);
 
   const price = Number(priceInput.replace(/[^0-9]/g, "")) || 0;
   const priceWithVat = useMemo(() => price * VAT_RATE, [price]);
-  const fee12 = useMemo(() => priceWithVat * RATE_12, [priceWithVat]);
-  const fee36 = useMemo(() => priceWithVat * RATE_36, [priceWithVat]);
+  const fee12 = useMemo(() => priceWithVat * product.rate12, [priceWithVat, product]);
+  const fee36 = useMemo(() => priceWithVat * product.rate36, [priceWithVat, product]);
 
   const onPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const digits = e.target.value.replace(/[^0-9]/g, "");
@@ -68,7 +80,7 @@ export default function RenthanaPage() {
       const pageHeight = pdf.internal.pageSize.getHeight();
       const imgHeight = Math.min(pageHeight, (canvas.height * pageWidth) / canvas.width);
       pdf.addImage(imgData, "JPEG", 0, 0, pageWidth, imgHeight);
-      pdf.save(`렌타나_렌탈료견적_${todayStr().replace(/\./g, "")}.pdf`);
+      pdf.save(`렌타나_${product.label}_렌탈료견적_${todayStr().replace(/\./g, "")}.pdf`);
     } finally {
       setDownloading(false);
     }
@@ -98,11 +110,29 @@ export default function RenthanaPage() {
             <img src="/logo/RNF_LOGO.png" alt="RNF KOREA" className="h-[94px] w-auto object-contain" />
           </div>
 
-          <h1 className="text-xl font-bold text-[#1A1612] text-center">배터리 렌탈료 간편 계산기</h1>
+          <h1 className="text-xl font-bold text-[#1A1612] text-center">{product.label} 렌탈료 간편 계산기</h1>
+
+          {/* 품목 선택 */}
+          <div className="flex justify-center">
+            <div className="inline-flex p-1 rounded-xl bg-white border border-gray-200 shadow-sm">
+              {(Object.keys(PRODUCTS) as ProductKey[]).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => selectProduct(k)}
+                  className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all ${
+                    productKey === k ? "bg-orange-500 text-white shadow-sm" : "text-gray-500 hover:text-gray-800"
+                  }`}
+                >
+                  {PRODUCTS[k].label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* 입력 영역 (PDF 캡처 대상 아님) */}
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-            <label className="block text-xs font-medium text-gray-500 mb-1.5">배터리 가격을 입력하세요 (원, VAT제외)</label>
+            <label className="block text-xs font-medium text-gray-500 mb-1.5">{product.label} 가격을 입력하세요 (원, VAT제외)</label>
             <input
               type="text"
               inputMode="numeric"
@@ -126,7 +156,7 @@ export default function RenthanaPage() {
             </div>
 
             <div className="mb-6">
-              <p className="text-xs text-gray-400 mb-1">공급가격</p>
+              <p className="text-xs text-gray-400 mb-1">{product.label} 공급가격</p>
               <p className="text-2xl font-bold text-[#1A1612]">{formatWon(price)}원</p>
               <p className="text-xs text-gray-400 mt-1">부가세 포함 {formatWon(priceWithVat)}원</p>
             </div>
