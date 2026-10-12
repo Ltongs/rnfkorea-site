@@ -1,6 +1,6 @@
 // pages/secretary/DiaryTab.tsx
 // AI비서 "📔 다이어리" 탭 — 하루를 자유형식으로 돌아보고, 넘길 것들을 내일/다음 일정으로 정리하는 화면.
-// 테이블: secretary_diary_items, secretary_diary_notes
+// 테이블: secretary_diary_items (secretary_diary_notes는 메모·회고 카드 제거로 현재 미사용)
 //   (supabase/migrations/20261007120000_secretary_diary.sql, 20261007150000_secretary_diary_forward.sql)
 //
 // 화면 흐름
@@ -124,13 +124,10 @@ export default function DiaryTab({
   const nextWord = dayWord(tomorrow);
 
   const [items, setItems] = useState<DiaryItem[]>([]);           // date의 done/plan + tomorrow의 plan
-  const [overdue, setOverdue] = useState<DiaryItem[]>([]);       // date 이전 미완료 plan (오늘 화면에서만)
+  const [pending, setPending] = useState<DiaryItem[]>([]);       // 날짜와 무관한 전체 미완료 업무 (상시 표시)
   const [schedMap, setSchedMap] = useState<Record<number, LinkedSchedule>>({});
-  const [note, setNote] = useState("");
-  const [savedNote, setSavedNote] = useState("");
   const [loading, setLoading] = useState(false);
   const [newRow, setNewRow] = useState("");
-  const [planInput, setPlanInput] = useState("");
   const [editingPlan, setEditingPlan] = useState<{ id: number; text: string } | null>(null);
   const [schedForm, setSchedForm] = useState<{ item: DiaryItem; title: string; date: string; time: string; category: SchedCategory } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -141,44 +138,49 @@ export default function DiaryTab({
   const load = useCallback(async () => {
     const reqDate = date;
     setLoading(true);
-    const [itemsRes, noteRes, overdueRes] = await Promise.all([
-      supabase.from("secretary_diary_items").select("*")
-        .or(`entry_date.eq.${date},and(entry_date.eq.${tomorrow},kind.eq.plan)`)
-        .order("sort_order").order("created_at"),
-      supabase.from("secretary_diary_notes").select("note").eq("entry_date", date).maybeSingle(),
-      isToday
-        ? supabase.from("secretary_diary_items").select("*")
-          .eq("kind", "plan").eq("is_checked", false).lt("entry_date", date).gte("entry_date", addDays(date, -14))
-          .order("entry_date").order("created_at")
-        : Promise.resolve({ data: [], error: null }),
-    ]);
+    const itemsRes = await supabase.from("secretary_diary_items").select("*")
+      .or(`entry_date.eq.${date},and(entry_date.eq.${tomorrow},kind.eq.plan)`)
+      .order("sort_order").order("created_at");
     if (dateRef.current !== reqDate) return;   // 조회 중에 날짜를 바꿨으면 이전 날짜 결과는 버린다
     setLoading(false);
     if (itemsRes.error) { toastRef.current("다이어리 불러오기 실패: " + itemsRes.error.message, "err"); return; }
     const loaded = (itemsRes.data ?? []) as DiaryItem[];
-    const late = (overdueRes.data ?? []) as DiaryItem[];
     setItems(loaded);
-    setOverdue(late);
-    const n = (noteRes.data as { note: string } | null)?.note ?? "";
-    setNote(n); setSavedNote(n);
-    const sIds = [...loaded, ...late].map(i => i.schedule_id).filter((x): x is number => x != null);
-    if (sIds.length) {
-      const { data } = await supabase.from("secretary_schedules").select("id,schedule_date,start_time,is_done").in("id", sIds);
-      setSchedMap(Object.fromEntries(((data ?? []) as LinkedSchedule[]).map(s => [s.id, s])));
-    } else setSchedMap({});
-  }, [date, tomorrow, isToday]);
+    await loadSchedules(loaded);
+  }, [date, tomorrow]);
+
+  // 연결된 일정(날짜·시간·완료여부)을 schedMap에 합친다
+  const loadSchedules = async (list: DiaryItem[]) => {
+    const sIds = list.map(i => i.schedule_id).filter((x): x is number => x != null);
+    if (!sIds.length) return;
+    const { data } = await supabase.from("secretary_schedules").select("id,schedule_date,start_time,is_done").in("id", sIds);
+    setSchedMap(m => ({ ...m, ...Object.fromEntries(((data ?? []) as LinkedSchedule[]).map(s => [s.id, s])) }));
+  };
+
+  // 날짜와 무관한 전체 미완료 업무
+  //   - 할 일(plan) 중 체크 안 된 것
+  //   - 돌아보기 줄(done) 중 완료 안 된 것 (단, "→ 내일"로 넘긴 줄은 넘겨받은 할 일 쪽으로 한 번만 표시)
+  const loadPending = useCallback(async () => {
+    const { data, error } = await supabase.from("secretary_diary_items").select("*")
+      .or("and(kind.eq.plan,is_checked.eq.false),and(kind.eq.done,completed_at.is.null,forwarded_item_id.is.null)")
+      .order("entry_date").order("sort_order").order("created_at");
+    if (error) { toastRef.current("미완료 업무 불러오기 실패: " + error.message, "err"); return; }
+    const list = (data ?? []) as DiaryItem[];
+    setPending(list);
+    await loadSchedules(list);
+  }, []);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void loadPending(); }, [loadPending]);
 
   const rows = items.filter(i => i.kind === "done" && i.entry_date === date);
   const todayPlans = items.filter(i => i.kind === "plan" && i.entry_date === date);
   const tomorrowPlans = items.filter(i => i.kind === "plan" && i.entry_date === tomorrow);
-  const forwardedFrom = new Set(rows.map(r => r.forwarded_item_id).filter((x): x is number => x != null));
-  const scheduled = [...rows, ...todayPlans, ...overdue, ...tomorrowPlans].filter(i => i.schedule_id && schedMap[i.schedule_id]);
+  const scheduled = [...new Map([...rows, ...todayPlans, ...pending, ...tomorrowPlans].map(i => [i.id, i])).values()].filter(i => i.schedule_id && schedMap[i.schedule_id]);
 
   const patchLocal = (id: number, patch: Partial<DiaryItem>) => {
     setItems(p => p.map(i => i.id === id ? { ...i, ...patch } : i));
-    setOverdue(p => p.map(i => i.id === id ? { ...i, ...patch } : i));
+    setPending(p => p.map(i => i.id === id ? { ...i, ...patch } : i));
   };
   const nextSort = (list: DiaryItem[]) => list.length ? Math.max(...list.map(i => i.sort_order)) + 1 : 0;
 
@@ -193,6 +195,7 @@ export default function DiaryTab({
     ).select("*");
     if (error) { showToast("저장 실패: " + error.message, "err"); return; }
     if (dateRef.current === forDate) setItems(p => [...p, ...((data ?? []) as DiaryItem[])]);
+    void loadPending();
   }
 
   async function saveRow(item: DiaryItem, text: string) {
@@ -207,9 +210,10 @@ export default function DiaryTab({
       if (!confirm(linked ? "삭제하시겠습니까?\n(이미 넘긴 내일 할 일·일정은 그대로 남습니다)" : "삭제하시겠습니까?")) return;
     }
     setItems(p => p.filter(i => i.id !== item.id));
-    setOverdue(p => p.filter(i => i.id !== item.id));
+    setPending(p => p.filter(i => i.id !== item.id));
     const { error } = await supabase.from("secretary_diary_items").delete().eq("id", item.id);
     if (error) { showToast("삭제 실패: " + error.message, "err"); void load(); }
+    void loadPending();   // 넘겨받은 할 일을 지우면 원래 돌아보기 줄이 다시 미완료로 잡힌다
   }
 
   const focusRow = (idx: number) => {
@@ -222,7 +226,33 @@ export default function DiaryTab({
     const next = row.completed_at ? null : new Date().toISOString();
     patchLocal(row.id, { completed_at: next });
     const { error } = await supabase.from("secretary_diary_items").update({ completed_at: next }).eq("id", row.id);
-    if (error) { showToast("완료 처리 실패: " + error.message, "err"); patchLocal(row.id, { completed_at: row.completed_at }); }
+    if (error) { showToast("완료 처리 실패: " + error.message, "err"); patchLocal(row.id, { completed_at: row.completed_at }); return; }
+    // "→ 내일"로 넘긴 할 일도 같이 완료/미완료
+    if (row.forwarded_item_id) {
+      patchLocal(row.forwarded_item_id, { is_checked: !!next });
+      await supabase.from("secretary_diary_items").update({ is_checked: !!next }).eq("id", row.forwarded_item_id);
+    }
+    void loadPending();
+  }
+
+  // 미완료 업무 목록에서 완료 처리 — 할 일은 체크, 돌아보기 줄은 완료(삭선). 짝이 되는 항목·일정도 함께 완료.
+  async function completePending(item: DiaryItem) {
+    setPending(p => p.filter(i => i.id !== item.id));
+    const now = new Date().toISOString();
+    const res = item.kind === "plan"
+      ? await supabase.from("secretary_diary_items").update({ is_checked: true }).eq("id", item.id)
+      : await supabase.from("secretary_diary_items").update({ completed_at: now }).eq("id", item.id);
+    if (res.error) { showToast("완료 처리 실패: " + res.error.message, "err"); void loadPending(); return; }
+    if (item.kind === "plan") {
+      patchLocal(item.id, { is_checked: true });
+      // 이 할 일을 만든 돌아보기 줄도 완료 표시
+      await supabase.from("secretary_diary_items").update({ completed_at: now }).eq("forwarded_item_id", item.id).is("completed_at", null);
+      setItems(p => p.map(i => i.forwarded_item_id === item.id && !i.completed_at ? { ...i, completed_at: now } : i));
+    } else {
+      patchLocal(item.id, { completed_at: now });
+    }
+    if (item.schedule_id) await supabase.from("secretary_schedules").update({ is_done: true }).eq("id", item.schedule_id);
+    showToast("완료 처리했습니다");
   }
 
   // "→ 내일" 토글: 내일 할 일을 만들거나, 이미 넘겼으면 그 내일 할 일을 지운다
@@ -231,6 +261,7 @@ export default function DiaryTab({
       const planId = row.forwarded_item_id;
       setItems(p => p.filter(i => i.id !== planId).map(i => i.id === row.id ? { ...i, forwarded_item_id: null } : i));
       await supabase.from("secretary_diary_items").delete().eq("id", planId);   // FK on delete set null로 링크도 해제
+      void loadPending();
       return;
     }
     const { data, error } = await supabase.from("secretary_diary_items").insert({
@@ -239,6 +270,7 @@ export default function DiaryTab({
     if (error || !data) { showToast("내일 할 일 등록 실패: " + (error?.message ?? ""), "err"); return; }
     await supabase.from("secretary_diary_items").update({ forwarded_item_id: data.id }).eq("id", row.id);
     setItems(p => [...p.map(i => i.id === row.id ? { ...i, forwarded_item_id: data.id } : i), data as DiaryItem]);
+    void loadPending();
   }
 
   // ─── 일정 등록 ───────────────────────────────────────────────────────────────
@@ -268,24 +300,11 @@ export default function DiaryTab({
   }
 
   // ─── 내일 할 일 / 오늘 예정 ──────────────────────────────────────────────────
-  async function addPlan() {
-    const content = planInput.trim();
-    if (!content) return;
-    const forDate = date;
-    setPlanInput("");
-    const { data, error } = await supabase.from("secretary_diary_items").insert({
-      entry_date: tomorrow, kind: "plan", content, is_checked: false, sort_order: nextSort(tomorrowPlans),
-    }).select("*").single();
-    if (error || !data) { setPlanInput(content); showToast("저장 실패: " + (error?.message ?? ""), "err"); return; }
-    if (dateRef.current === forDate) setItems(p => [...p, data as DiaryItem]);
-  }
-
   // 날짜를 바꾸기 전에 입력칸에 적어둔(아직 Enter 안 누른) 글은 지금 보고 있는 날짜에 저장하고 비운다.
   // (비우지 않으면 글자가 다른 날짜 화면으로 따라가서, 그 날짜에 잘못 저장될 수 있다)
   function changeDate(next: string) {
     if (next === date) return;
     if (newRow.trim()) { const t = newRow; setNewRow(""); void addRows([t]); }
-    if (planInput.trim()) void addPlan();
     setEditingPlan(null);
     setSchedForm(null);
     setDate(next);
@@ -298,29 +317,6 @@ export default function DiaryTab({
     if (!text.trim()) return;
     patchLocal(id, { content: text.trim() });
     await supabase.from("secretary_diary_items").update({ content: text.trim() }).eq("id", id);
-  }
-
-  async function toggleCheck(item: DiaryItem) {
-    const next = !item.is_checked;
-    patchLocal(item.id, { is_checked: next });
-    const { error } = await supabase.from("secretary_diary_items").update({ is_checked: next }).eq("id", item.id);
-    if (error) { showToast("변경 실패: " + error.message, "err"); void load(); return; }
-    if (item.schedule_id) await supabase.from("secretary_schedules").update({ is_done: next }).eq("id", item.schedule_id);
-  }
-
-  async function moveTo(item: DiaryItem, target: string) {
-    const { error } = await supabase.from("secretary_diary_items").update({ entry_date: target }).eq("id", item.id);
-    if (error) { showToast("이동 실패: " + error.message, "err"); return; }
-    showToast(`${labelDate(target)}로 옮겼습니다`);
-    void load();
-  }
-
-  async function saveNote() {
-    if (note === savedNote) return;
-    const { error } = await supabase.from("secretary_diary_notes")
-      .upsert({ entry_date: date, note, updated_at: new Date().toISOString() }, { onConflict: "user_id,entry_date" });
-    if (error) { showToast("메모 저장 실패: " + error.message, "err"); return; }
-    setSavedNote(note);
   }
 
   // 그날 완료 처리된 일정·할일을 돌아보기 행으로 불러온다 (이미 있는 내용은 건너뜀)
@@ -358,7 +354,6 @@ export default function DiaryTab({
       "",
       `■ 다음날 할 일 (${labelDate(tomorrow)})`,
       ...tomorrowPlans.map(i => `- ${i.content}${sched(i)}`),
-      ...(note.trim() ? ["", "■ 메모", note.trim()] : []),
     ];
     try { await navigator.clipboard.writeText(lines.join("\n")); showToast("업무일지를 복사했습니다"); }
     catch { showToast("복사 실패 — 브라우저 권한을 확인해 주세요", "err"); }
@@ -383,28 +378,6 @@ export default function DiaryTab({
       onClick={() => void removeItem(item)}>✕</button>
   );
 
-  const planRow = (item: DiaryItem, opts: { checkable: boolean; tag?: string; actions?: React.ReactNode }) => (
-    <li key={item.id} className="group flex items-center gap-2 py-1.5">
-      {opts.checkable
-        ? <input type="checkbox" className="w-4 h-4 accent-orange-500 flex-shrink-0 cursor-pointer" checked={item.is_checked} onChange={() => void toggleCheck(item)} />
-        : <span className="w-4 text-center text-gray-300 flex-shrink-0">•</span>}
-      <div className="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap">
-        {opts.tag && <span className={`${CHIP} bg-amber-50 text-amber-600 border-amber-100`}>{opts.tag}</span>}
-        {editingPlan?.id === item.id
-          ? <input autoFocus className="flex-1 min-w-0 text-sm border-b border-orange-300 focus:outline-none" value={editingPlan.text}
-            onChange={e => setEditingPlan({ id: item.id, text: e.target.value })}
-            onBlur={() => void savePlanEdit()}
-            onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) void savePlanEdit(); if (e.key === "Escape") setEditingPlan(null); }} />
-          : <span className={`text-sm break-all cursor-text ${opts.checkable && item.is_checked ? "line-through text-gray-400" : "text-[#0f172a]"}`}
-            onClick={() => setEditingPlan({ id: item.id, text: item.content })}>{item.content}</span>}
-      </div>
-      <div className="flex items-center gap-1 flex-shrink-0">
-        {opts.actions}
-        {delBtn(item)}
-      </div>
-    </li>
-  );
-
   return (
     <div className="space-y-4 pb-4">
       {/* 헤더 · 날짜 이동 */}
@@ -420,27 +393,38 @@ export default function DiaryTab({
 
       {/* 위: 돌아보기 — 가로 전체 사용 */}
       <div className="flex flex-col gap-4">
-          {(todayPlans.length > 0 || overdue.length > 0) && (
-            <div className={`${CARD} px-4 py-3`}>
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-gray-500">📌 {dayWord(date)} 예정이었던 일</p>
-                <span className="text-[11px] text-gray-400">{todayPlans.filter(i => i.is_checked).length}/{todayPlans.length} 완료</span>
-              </div>
-              <ul className="mt-1">
-                {overdue.map(i => planRow(i, {
-                  checkable: true, tag: `${labelDate(i.entry_date)} 밀림`,
-                  actions: <button className={`${CHIP} border-gray-200 text-gray-500 hover:bg-gray-50`} onClick={() => void moveTo(i, date)}>오늘로</button>,
-                }))}
-                {todayPlans.map(i => planRow(i, {
-                  checkable: true,
-                  actions: !i.is_checked && <>
-                    {schedChip(i)}
-                    <button className={`${CHIP} border-gray-200 text-gray-500 hover:border-orange-300 hover:text-orange-600 hover:bg-orange-50`} onClick={() => void moveTo(i, tomorrow)}>→ {nextWord}</button>
-                  </>,
-                }))}
-              </ul>
+          {/* 미완료 업무 — 선택한 날짜와 무관하게 전체 미완료 건을 상시 표시 */}
+          <div className={`${CARD} px-4 py-3`}>
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-gray-500">📌 미완료 업무 <span className="text-orange-500">{pending.length}</span></p>
+              <span className="text-[11px] text-gray-400">날짜를 누르면 그날 다이어리로 이동</span>
             </div>
-          )}
+            <ul className="mt-1 max-h-72 overflow-y-auto">
+              {pending.map(item => (
+                <li key={item.id} className="group flex items-center gap-2 py-1.5">
+                  <input type="checkbox" className="w-4 h-4 accent-orange-500 flex-shrink-0 cursor-pointer" checked={false}
+                    title="완료 처리" onChange={() => void completePending(item)} />
+                  <button className={`${CHIP} ${item.entry_date > todayStr() ? "bg-blue-50 text-blue-600 border-blue-100" : item.entry_date < todayStr() ? "bg-amber-50 text-amber-600 border-amber-100" : "bg-orange-50 text-orange-600 border-orange-200"}`}
+                    title={`${labelDate(item.kind === "plan" ? addDays(item.entry_date, -1) : item.entry_date)} 다이어리 열기`} onClick={() => changeDate(item.kind === "plan" ? addDays(item.entry_date, -1) : item.entry_date)}>
+                    {item.kind === "plan" ? `${dayWord(item.entry_date)} 할 일` : labelDate(item.entry_date)}
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    {editingPlan?.id === item.id
+                      ? <input autoFocus className="w-full text-sm border-b border-orange-300 focus:outline-none" value={editingPlan.text}
+                        onChange={e => setEditingPlan({ id: item.id, text: e.target.value })}
+                        onBlur={() => void savePlanEdit()}
+                        onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) void savePlanEdit(); if (e.key === "Escape") setEditingPlan(null); }} />
+                      : <span className="text-sm break-all cursor-text text-[#0f172a]" onClick={() => setEditingPlan({ id: item.id, text: item.content })}>{item.content}</span>}
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    {schedChip(item)}
+                    {delBtn(item)}
+                  </div>
+                </li>
+              ))}
+              {pending.length === 0 && <li className="py-2 text-xs text-gray-400">미완료 업무가 없습니다 👍</li>}
+            </ul>
+          </div>
 
           <div className={`${CARD} p-4 flex flex-col min-h-[360px]`}>
             <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -520,55 +504,28 @@ export default function DiaryTab({
           </div>
       </div>
 
-      {/* 아래: 넘긴 것들 + 메모 — 3열 */}
-      <div className="grid gap-4 md:grid-cols-3 items-start">
-          <div className={`${CARD} p-4`}>
-            <p className="text-sm font-semibold text-[#0f172a]">🗓 {nextWord} 할 일 <span className="text-xs font-normal text-gray-400">{labelDate(tomorrow)}</span></p>
-            <ul className="mt-2">
-              {tomorrowPlans.map(i => planRow(i, {
-                checkable: false, tag: forwardedFrom.has(i.id) ? "돌아보기" : undefined, actions: schedChip(i),
-              }))}
-              {tomorrowPlans.length === 0 && <li className="py-2 text-xs text-gray-400">돌아보기 줄의 "→ {nextWord}"을 누르면 여기로 넘어옵니다</li>}
-            </ul>
-            <div className="flex gap-2 mt-2">
-              <input className={CTRL} placeholder={`${nextWord} 할 일 직접 추가`} value={planInput}
-                onChange={e => setPlanInput(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) void addPlan(); }} />
-              <button className={`${BTO} whitespace-nowrap flex-shrink-0`} onClick={() => void addPlan()}>추가</button>
-            </div>
-          </div>
-
-          <div className={`${CARD} p-4`}>
-            <p className="text-sm font-semibold text-[#0f172a]">📅 다음 일정으로 넘긴 것</p>
-            <ul className="mt-2 space-y-1.5">
-              {scheduled
-                .sort((a, b) => {
-                  const sa = schedMap[a.schedule_id!], sb = schedMap[b.schedule_id!];
-                  return (sa.schedule_date + (sa.start_time ?? "")).localeCompare(sb.schedule_date + (sb.start_time ?? ""));
-                })
-                .map(i => {
-                  const s = schedMap[i.schedule_id!];
-                  return (
-                    <li key={i.id} className="flex items-start gap-2 text-sm">
-                      <span className="flex-shrink-0 text-xs text-blue-600 font-medium tabular-nums w-24">
-                        {labelDate(s.schedule_date)}{s.start_time ? " " + s.start_time.slice(0, 5) : ""}
-                      </span>
-                      <span className={`break-all ${s.is_done ? "line-through text-gray-400" : "text-[#0f172a]"}`}>{i.content}</span>
-                    </li>
-                  );
-                })}
-              {scheduled.length === 0 && <li className="text-xs text-gray-400">각 줄의 "📅 일정"으로 등록한 일정이 여기에 모입니다 (일정 탭·구글 캘린더에도 반영)</li>}
-            </ul>
-          </div>
-
-          <div className={`${CARD} p-4`}>
-            <p className="text-sm font-semibold text-[#0f172a]">📝 메모 · 회고</p>
-            <textarea rows={5}
-              className="mt-2 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-700 resize-y focus:outline-none focus:border-orange-400 transition-all"
-              placeholder="오늘 하루 소감, 특이사항, 배운 점, 놓치지 말아야 할 것…"
-              value={note} onChange={e => setNote(e.target.value)} onBlur={() => void saveNote()} />
-            <p className="text-[11px] text-gray-400 text-right">{note === savedNote ? "저장됨" : "입력창을 벗어나면 저장됩니다"}</p>
-          </div>
+      {/* 아래: 다음 일정으로 넘긴 것 — 가로 전체 */}
+      <div className={`${CARD} p-4`}>
+        <p className="text-sm font-semibold text-[#0f172a]">📅 다음 일정으로 넘긴 것</p>
+        <ul className="mt-2 space-y-1.5">
+          {scheduled
+            .sort((a, b) => {
+              const sa = schedMap[a.schedule_id!], sb = schedMap[b.schedule_id!];
+              return (sa.schedule_date + (sa.start_time ?? "")).localeCompare(sb.schedule_date + (sb.start_time ?? ""));
+            })
+            .map(i => {
+              const s = schedMap[i.schedule_id!];
+              return (
+                <li key={i.id} className="flex items-start gap-2 text-sm">
+                  <span className="flex-shrink-0 text-xs text-blue-600 font-medium tabular-nums w-24">
+                    {labelDate(s.schedule_date)}{s.start_time ? " " + s.start_time.slice(0, 5) : ""}
+                  </span>
+                  <span className={`break-all ${s.is_done ? "line-through text-gray-400" : "text-[#0f172a]"}`}>{i.content}</span>
+                </li>
+              );
+            })}
+          {scheduled.length === 0 && <li className="text-xs text-gray-400">각 줄의 "📅 일정"으로 등록한 일정이 여기에 모입니다 (일정 탭·구글 캘린더에도 반영)</li>}
+        </ul>
       </div>
 
       {/* 일정 등록 모달 */}
