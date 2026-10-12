@@ -30,6 +30,9 @@ export default defineConfig(({ mode }) => {
           '/cargo-finance',
           '/tire-rental',
           '/sitemap',
+          // 렌타나 렌탈료 계산기 — 프리렌더가 없으면 /* → /index.html(메인 프리렌더)이 먼저 보여서
+          // 앱 JS를 다 받을 때까지 메인 화면이 떠 있다가 계산기로 바뀌는 문제가 생긴다.
+          '/renthana',
           // CSV/DB fetch로 인한 빈 콘텐츠 방지 — 쇼핑몰류 페이지는 prerender 제외
           // '/tires-shop',
           // '/battery-shop',

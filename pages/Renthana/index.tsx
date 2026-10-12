@@ -3,7 +3,7 @@
 // 렌탈료 = (공급가격 × 1.1 부가세 포함) × 103% × 111.7%(12개월) / 135%(36개월)
 // 품목은 상단 버튼 또는 URL(?item=tire)로 선택. 품목별 요율이 달라지면 PRODUCTS의 rate12/rate36만 바꾸면 된다.
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import html2canvas from "html2canvas";
@@ -28,6 +28,20 @@ const RENTHANA_STATS = [
   { n: "30%", l: "절감" },
 ];
 
+// 로고를 PNG data URL로 미리 변환한다. SVG 원본은 Safari 등에서 html2canvas가 PDF에 그리지 못하고 빠뜨리는 경우가 있어,
+// 견적 카드(PDF 캡처 영역)에는 변환된 PNG를 쓴다. 변환 실패 시 원본 경로를 그대로 쓴다.
+async function rasterize(src: string, height: number): Promise<string> {
+  const img = new Image();
+  img.src = src;
+  await img.decode();
+  const ratio = (img.naturalWidth || img.width) / (img.naturalHeight || img.height || 1);
+  const canvas = document.createElement("canvas");
+  canvas.height = height;
+  canvas.width = Math.round(height * ratio);
+  canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/png");
+}
+
 const formatWon = (n: number) => Math.round(n).toLocaleString("ko-KR");
 const todayStr = () => {
   const d = new Date();
@@ -45,6 +59,12 @@ export default function RenthanaPage() {
   const [showPrice, setShowPrice] = useState(true);      // 견적서에 공급가격 표시 여부
   const [downloading, setDownloading] = useState(false);
   const quoteRef = useRef<HTMLDivElement>(null);
+  const [logoSrc, setLogoSrc] = useState({ renthana: "/logo/renthana.svg", rnf: "/logo/RNF_LOGO.png" });
+
+  useEffect(() => {
+    rasterize("/logo/renthana.svg", 112).then((renthana) => setLogoSrc((l) => ({ ...l, renthana }))).catch(() => {});
+    rasterize("/logo/RNF_LOGO.png", 300).then((rnf) => setLogoSrc((l) => ({ ...l, rnf }))).catch(() => {});
+  }, []);
 
   const price = Number(priceInput.replace(/[^0-9]/g, "")) || 0;
   const priceWithVat = useMemo(() => price * VAT_RATE, [price]);
@@ -177,9 +197,13 @@ export default function RenthanaPage() {
           {/* 견적 카드 — 이 영역만 PDF로 캡처됩니다 */}
           <div ref={quoteRef} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
             <div className="flex items-center justify-between mb-6 pb-5 border-b border-gray-100">
-              <a href="https://www.renthana.com" target="_blank" rel="noopener noreferrer">
-                <img src="/logo/renthana.svg" alt="RENTHANA" className="h-7 w-auto" />
-              </a>
+              <div className="flex items-center gap-3">
+                <a href="https://www.renthana.com" target="_blank" rel="noopener noreferrer">
+                  <img src={logoSrc.renthana} alt="RENTHANA" className="h-7 w-auto" />
+                </a>
+                <span className="text-gray-300 text-sm">×</span>
+                <img src={logoSrc.rnf} alt="RNF KOREA" className="h-16 w-auto object-contain" />
+              </div>
               <div className="text-right">
                 <p className="text-sm font-semibold text-gray-800">렌탈 견적 기준일자</p>
                 <p className="text-xs text-gray-400">{todayStr()}</p>
