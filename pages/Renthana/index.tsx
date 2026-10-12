@@ -41,6 +41,8 @@ export default function RenthanaPage() {
   const selectProduct = (k: ProductKey) =>
     setSearchParams(k === "battery" ? {} : { item: k }, { replace: true });
   const [priceInput, setPriceInput] = useState("1,000,000");
+  const [itemName, setItemName] = useState("");          // 견적서에 표시할 품목명 (선택)
+  const [showPrice, setShowPrice] = useState(true);      // 견적서에 공급가격 표시 여부
   const [downloading, setDownloading] = useState(false);
   const quoteRef = useRef<HTMLDivElement>(null);
 
@@ -131,7 +133,18 @@ export default function RenthanaPage() {
           </div>
 
           {/* 입력 영역 (PDF 캡처 대상 아님) */}
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1.5">품목명 (선택 — 견적서에 표시됩니다)</label>
+              <input
+                type="text"
+                value={itemName}
+                onChange={(e) => setItemName(e.target.value)}
+                placeholder={productKey === "tire" ? "예: 11R22.5 16PR 후륜 타이어 × 6본" : "예: 48V 400Ah 리튬이온 배터리"}
+                className="w-full h-12 rounded-xl border border-gray-200 px-4 text-base text-gray-800 focus:outline-none focus:border-orange-400 transition-all"
+              />
+            </div>
+            <div>
             <label className="block text-xs font-medium text-gray-500 mb-1.5">{product.label} 가격을 입력하세요 (원, VAT제외)</label>
             <input
               type="text"
@@ -141,6 +154,24 @@ export default function RenthanaPage() {
               placeholder="예: 1,000,000"
               className="w-full h-12 rounded-xl border border-gray-200 px-4 text-lg font-semibold text-gray-800 focus:outline-none focus:border-orange-400 transition-all"
             />
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-500">견적서에 공급가격 표시</span>
+              <div className="inline-flex p-0.5 rounded-lg bg-gray-100 border border-gray-200">
+                {[{ v: true, l: "보이기" }, { v: false, l: "가리기" }].map((o) => (
+                  <button
+                    key={o.l}
+                    type="button"
+                    onClick={() => setShowPrice(o.v)}
+                    className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${
+                      showPrice === o.v ? "bg-white text-gray-800 shadow-sm" : "text-gray-400 hover:text-gray-600"
+                    }`}
+                  >
+                    {o.l}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* 견적 카드 — 이 영역만 PDF로 캡처됩니다 */}
@@ -155,11 +186,20 @@ export default function RenthanaPage() {
               </div>
             </div>
 
-            <div className="mb-6">
-              <p className="text-xs text-gray-400 mb-1">{product.label} 공급가격</p>
-              <p className="text-2xl font-bold text-[#1A1612]">{formatWon(price)}원</p>
-              <p className="text-xs text-gray-400 mt-1">부가세 포함 {formatWon(priceWithVat)}원</p>
-            </div>
+            {itemName.trim() && (
+              <div className="mb-5">
+                <p className="text-xs text-gray-400 mb-1">품목명</p>
+                <p className="text-lg font-bold text-[#1A1612] break-keep">{itemName.trim()}</p>
+              </div>
+            )}
+
+            {showPrice && (
+              <div className="mb-6">
+                <p className="text-xs text-gray-400 mb-1">{product.label} 공급가격</p>
+                <p className="text-2xl font-bold text-[#1A1612]">{formatWon(price)}원</p>
+                <p className="text-xs text-gray-400 mt-1">부가세 포함 {formatWon(priceWithVat)}원</p>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="rounded-xl border border-gray-200 p-5 text-center">
