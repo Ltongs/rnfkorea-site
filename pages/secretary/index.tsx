@@ -3554,6 +3554,9 @@ const SecretaryPage:React.FC = () => {
   const [memoSearch,setMemoSearch]   = useState("");
   const [showMemoForm,setShowMemoForm] = useState(false);
   const [memoDetail,setMemoDetail]   = useState<Memo|null>(null);
+  // 메모 상세 화면 편집 중인 값 (null = 보기 모드)
+  const [memoEdit,setMemoEdit]       = useState<{title:string;content:string;category:Memo["category"];related_name:string;memo_date:string}|null>(null);
+  const [memoSaving,setMemoSaving]   = useState(false);
   const [newMemo,setNewMemo]         = useState({title:"",content:"",category:"meeting" as Memo["category"],related_name:"",memo_date:new Date().toISOString().slice(0,10),consultation_id:""});
   const [cLoading,setCLoading]       = useState(false);
 
@@ -3670,6 +3673,27 @@ const SecretaryPage:React.FC = () => {
     if(!error){ void loadMemos(); return true; }
     return false;
   },[loadMemos]);
+
+  const updateMemo = async()=>{
+    if(!memoDetail||!memoEdit) return;
+    if(!memoEdit.content.trim()){ showToast("내용을 입력해 주세요","err"); return; }
+    setMemoSaving(true);
+    const patch = {
+      title: memoEdit.title.trim()||null,
+      content: memoEdit.content,
+      category: memoEdit.category,
+      related_name: memoEdit.related_name.trim()||null,
+      memo_date: memoEdit.memo_date,
+    };
+    const {error} = await supabase.from("secretary_memos").update(patch).eq("id",memoDetail.id);
+    setMemoSaving(false);
+    if(error){ showToast("메모 저장 실패: "+error.message,"err"); return; }
+    const updated = {...memoDetail, ...patch} as Memo;
+    setMemoDetail(updated);
+    setMemos(prev=>prev.map(m=>m.id===updated.id?updated:m));
+    setMemoEdit(null);
+    showToast("메모를 수정했습니다");
+  };
 
   const deleteMemo = useCallback(async(id:number)=>{
     await supabase.from("secretary_memos").delete().eq("id",id);
@@ -6924,9 +6948,40 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               {memoDetail&&(
                 <div className={`${CARD} p-4`}>
                   <div className="flex items-center justify-between mb-3">
-                    <button className={BTG} onClick={()=>setMemoDetail(null)}>← 목록으로</button>
-                    <button className="text-xs text-red-400 hover:text-red-600 transition-all" onClick={()=>void deleteMemo(memoDetail.id)}>삭제</button>
+                    <button className={BTG} onClick={()=>{setMemoDetail(null);setMemoEdit(null);}}>← 목록으로</button>
+                    {!memoEdit&&(
+                      <div className="flex items-center gap-3">
+                        <button className="text-xs text-blue-500 hover:text-blue-700 font-semibold transition-all"
+                          onClick={()=>setMemoEdit({title:memoDetail.title??"",content:memoDetail.content,category:memoDetail.category,related_name:memoDetail.related_name??"",memo_date:memoDetail.memo_date})}>✏️ 편집</button>
+                        <button className="text-xs text-red-400 hover:text-red-600 transition-all" onClick={()=>void deleteMemo(memoDetail.id)}>삭제</button>
+                      </div>
+                    )}
                   </div>
+                  {memoEdit ? (
+                    <div className="space-y-2.5">
+                      <div className="flex gap-2 flex-wrap">
+                        {(["meeting","call","visit","note"] as const).map(c=>(
+                          <button key={c} onClick={()=>setMemoEdit(f=>f&&{...f,category:c})}
+                            className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${memoEdit.category===c?"bg-[#0f172a] text-white border-[#0f172a]":"border-gray-200 text-gray-500 hover:border-gray-300"}`}>
+                            {c==="meeting"?"미팅":c==="call"?"통화":c==="visit"?"방문":"기타"}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <input className={CTRL} placeholder="관련 고객/거래처" value={memoEdit.related_name} onChange={e=>setMemoEdit(f=>f&&{...f,related_name:e.target.value})}/>
+                        <input type="date" className={CTRL} value={memoEdit.memo_date} onChange={e=>setMemoEdit(f=>f&&{...f,memo_date:e.target.value})}/>
+                      </div>
+                      <input className={CTRL} placeholder="제목" value={memoEdit.title} onChange={e=>setMemoEdit(f=>f&&{...f,title:e.target.value})}/>
+                      <textarea className={`${TA2} resize-y`} rows={12} placeholder="내용" value={memoEdit.content}
+                        onChange={e=>setMemoEdit(f=>f&&{...f,content:e.target.value})}
+                        onKeyDown={e=>{ if((e.metaKey||e.ctrlKey)&&e.key==="Enter"){ e.preventDefault(); void updateMemo(); } }}/>
+                      <div className="flex items-center justify-end gap-2">
+                        <span className="text-[11px] text-gray-400 mr-auto">⌘/Ctrl+Enter로 저장</span>
+                        <button className={BTG} disabled={memoSaving} onClick={()=>setMemoEdit(null)}>취소</button>
+                        <button className={BTP} disabled={memoSaving} onClick={()=>void updateMemo()}>{memoSaving?"저장 중…":"저장"}</button>
+                      </div>
+                    </div>
+                  ) : (<>
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 font-medium">
                       {memoDetail.category==="meeting"?"미팅":memoDetail.category==="call"?"통화":memoDetail.category==="visit"?"방문":"기타"}
@@ -6936,6 +6991,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                   </div>
                   {memoDetail.title&&<p className="text-base font-bold text-[#0f172a] mb-2">{memoDetail.title}</p>}
                   <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed border-t border-gray-100 pt-3">{memoDetail.content}</p>
+                  </>)}
                 </div>
               )}
 
@@ -6971,7 +7027,7 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                     }).map(m=>(
                       <div key={m.id}
                         className={`${CARD} p-4 cursor-pointer hover:shadow-md transition-all`}
-                        onClick={()=>setMemoDetail(m)}>
+                        onClick={()=>{setMemoDetail(m);setMemoEdit(null);}}>
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap mb-1">
