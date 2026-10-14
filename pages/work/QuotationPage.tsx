@@ -634,6 +634,17 @@ async function htmlDocToPdfBytes(html: string): Promise<ArrayBuffer> {
   }
 }
 
+// 이메일 첨부파일 이름 — 짧은 영문만 쓴다. 한글·공백이 섞인 긴 이름은 메일 전송 시 여러 조각으로 인코딩되면서
+// 일부 메일앱(Apple Mail+Gmail 등)에서 "RNF_?????_…"처럼 깨지고 첨부파일을 내려받지 못하는 문제가 있었다.
+// (수신인·문서 종류는 메일 제목/본문에 이미 들어가고, PC에 직접 저장하는 PDF 이름은 기존 한글 이름 그대로)
+const MAIL_DOC_NAME: Record<string,string> = {
+  battery:'Battery_Quote', forklift:'Forklift_Quote', hyundai_forklift:'Forklift_Purchase_Quote',
+  tire:'Tire_Quote', purchase:'Purchase_Order', installment:'Installment_Quote',
+};
+function mailAttachmentName(no: string, quoteType: string) {
+  return `${no}_${MAIL_DOC_NAME[quoteType] ?? 'Quote'}.pdf`;
+}
+
 // 생성된 PDF를 파일로 다운로드한다.
 function downloadPdfBytes(bytes: ArrayBuffer, fileName: string) {
   const blob = new Blob([bytes], { type: 'application/pdf' });
@@ -1441,7 +1452,7 @@ export default function QuotationPage() {
       if(tab==='tire')     html=buildQuoteHTML('tire',    tf, no);
       if(tab==='purchase') html=buildPurchaseHTML(pf, no);
       const pdfBytes = html ? await htmlDocToPdfBytes(html) : null;
-      const fileName = `RNF_${typeLabelOf(tab)}견적서_${s.recipient||'고객'}_${no}.pdf`;
+      const fileName = mailAttachmentName(no, currentQuoteType());
 
       // 수신 목록
       const toList  = [s.email1, s.email2].filter(Boolean);
@@ -1738,7 +1749,7 @@ table.sc{border-collapse:collapse;width:100%;}
           ...(pdfBytes ? {} : {installmentInfo:{itemName:iff.itemName,itemSpec:iff.itemSpec||'',financeCompany:iff.financeCompany,
             principal:p,annualRate:r,gracePeriod:gp,installmentMonths:im,totalMonths:months,payment}}),
           pdfBase64: pdfBytes ? bytesToBase64(pdfBytes) : '',
-          fileName: `RNF_할부견적서_${iff.recipient||'고객'}_${no}.pdf`},
+          fileName: mailAttachmentName(no, 'installment')},
       });
       if(error) throw error;
 

@@ -491,7 +491,8 @@ export default function TransactionStatementPage() {
         body: {
           docNo, recipient: sf.customerName, email: sf.customerEmail,
           supplyAmount: supply, taxAmount: tax, grandTotal: grand,
-          pdfBase64: b64, fileName: `RNF_거래명세서_${sf.customerName}.pdf`,
+          // 메일 첨부파일 이름은 짧은 영문만 (한글 긴 이름은 일부 메일앱에서 깨지고 내려받지 못함)
+          pdfBase64: b64, fileName: `${docNo}_Statement.pdf`,
           extraMessage: sf.extraMessage.trim(),
         },
       });
