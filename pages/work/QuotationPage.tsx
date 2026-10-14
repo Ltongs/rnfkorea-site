@@ -883,112 +883,158 @@ ${form.note?`<div style="background:#f8fafc;border-radius:6px;padding:10px;margi
 
 // ─── PDF HTML: 현대건설기계 경기북부판매 지게차 구입 견적서 ────
 // (RNF 자체 발신 견적서와 달리, 딜러사 명의로 발행하는 별도 양식)
+// 현대건설기계 경기북부판매㈜ 명의 "지게차 구입 견적서" — 딜러사 엑셀 양식과 같은 배치로 출력한다.
+//   로고: public/logo/hd_xitesolution.png (HD현대사이트솔루션 홈페이지 로고, 흰 글자를 흰 바탕용으로 진하게 바꿈)
+//   직인: public/logo/hyundai_gbn_seal.png (딜러 견적서 원본에서 직인만 추출, 배경 투명)
+const HF_LOGO = '/logo/hd_xitesolution.png';
+const HF_SEAL = '/logo/hyundai_gbn_seal.png';
+const HF_MIN_OPTION_ROWS = 9; // 옵션 칸 최소 행수 (엑셀 양식처럼 빈 줄을 채워 표 높이를 맞춘다)
+
 function buildHyundaiForkliftHTML(hf: HyundaiForkliftForm, quoteNo: string) {
-  const optSum        = calcHyundaiOptionSum(hf.options);
+  const esc = (v: string) => v.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const optSum         = calcHyundaiOptionSum(hf.options);
   const beforeDiscount = n0(hf.vehiclePrice) + optSum;
-  const finalPrice     = calcHyundaiFinal(hf);       // 최종판매가 (부가세 별도)
+  const finalPrice     = calcHyundaiFinal(hf);       // 판매가격 (부가세 별도)
   const vat            = Math.round(finalPrice * .1);
   const totalWithVat   = finalPrice + vat;            // 총판매가격 (부가세포함)
   const downPayment    = n0(hf.downPayment);
-  const deliveryAmount = totalWithVat - downPayment;   // 인도금
+  const deliveryAmount = totalWithVat - downPayment;  // 인도금
   const rate           = n0(hf.installmentRate);
-  const principal       = n0(hf.installmentPrincipal) || (finalPrice - downPayment);
+  const principal      = n0(hf.installmentPrincipal) || (finalPrice - downPayment);
   const validUntil     = addDays(hf.quoteDate, 30);
-  const rows           = hf.options.length ? hf.options : [{name:'',price:''}];
-  const rowspan        = rows.length;
 
-  const optionRows = rows.map((o,i)=>`
-    <tr>
-      ${i===0?`
-      <td rowspan="${rowspan}" style="border:1px solid #333;padding:8px;text-align:center;white-space:pre-line;font-weight:700">${(hf.modelName||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')}</td>
-      <td rowspan="${rowspan}" style="border:1px solid #333;padding:8px;text-align:center">${hf.tonnage||''}</td>
-      <td rowspan="${rowspan}" style="border:1px solid #333;padding:8px;text-align:center">${hf.qty||''}</td>
-      <td rowspan="${rowspan}" style="border:1px solid #333;padding:8px;text-align:right">${fmt(n0(hf.vehiclePrice))}</td>`:''}
-      <td style="border:1px solid #333;padding:6px 8px">${o.name?`${i+1}. ${o.name}`:''}</td>
-      <td style="border:1px solid #333;padding:6px 8px;text-align:right">${o.price==='기본옵션'?'기본옵션':o.price?fmt(n0(o.price)):''}</td>
-    </tr>`).join('');
+  // 옵션 행: 입력한 옵션 + 빈 줄(최소 행수까지) + 강조 문구 줄
+  const opts = hf.options.filter(o => o.name || o.price);
+  const blank = Math.max(0, HF_MIN_OPTION_ROWS - opts.length - (hf.freeNote ? 1 : 0));
+  type Row = { kind:'opt'; name:string; price:any } | { kind:'blank' } | { kind:'note' };
+  const rows: Row[] = [
+    ...opts.map(o => ({ kind:'opt' as const, name:o.name, price:o.price })),
+    ...Array.from({ length: blank }, () => ({ kind:'blank' as const })),
+    ...(hf.freeNote ? [{ kind:'note' as const }] : []),
+  ];
+  const leftSpan = rows.length + 1; // 모델명~차량가격 칸은 옵션 행 + 옵션합계 행까지 세로로 합친다
+  // 연속된 '기본옵션'은 가격 칸을 하나로 합친다 (엑셀 양식과 동일)
+  const priceSpan: number[] = rows.map(() => 1);
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (priceSpan[i] === 0) continue; // 이미 위 칸에 합쳐진 행
+    if (r.kind === 'opt' && r.price === '기본옵션') {
+      let j = i + 1;
+      while (j < rows.length && rows[j].kind === 'opt' && (rows[j] as any).price === '기본옵션') { priceSpan[j] = 0; j++; }
+      priceSpan[i] = j - i;
+    }
+  }
+  const B = 'border:1px solid #555';
+  const optionRows = rows.map((r, i) => {
+    const left = i === 0 ? `
+      <td rowspan="${leftSpan}" class="c" style="${B};border-left:2px solid #111;white-space:pre-line">${esc(hf.modelName || '')}</td>
+      <td rowspan="${leftSpan}" class="c" style="${B}">${esc(hf.tonnage || '')}</td>
+      <td rowspan="${leftSpan}" class="c" style="${B}">${hf.qty || ''}</td>
+      <td rowspan="${leftSpan}" class="r" style="${B};border-right:2px solid #111">${fmt(n0(hf.vehiclePrice))}</td>` : '';
+    if (r.kind === 'note') return `<tr style="height:28px">${left}<td colspan="2" class="c" style="${B};border-right:2px solid #111;color:#1d4ed8;font-weight:700">${esc(hf.freeNote)}</td></tr>`;
+    const name = r.kind === 'opt' ? esc(r.name || '') : '';
+    const priceCell = priceSpan[i] === 0 ? '' :
+      `<td${priceSpan[i] > 1 ? ` rowspan="${priceSpan[i]}"` : ''} class="r" style="${B};border-right:2px solid #111">${
+        r.kind === 'opt' ? (r.price === '기본옵션' ? '기본옵션' : r.price ? fmt(n0(r.price)) : '') : ''}</td>`;
+    return `<tr style="height:28px">${left}<td class="o" style="${B}">${name}</td>${priceCell}</tr>`;
+  }).join('');
 
-  const brotherGrid = BROTHER_OPTIONS_GRID.map(row => row.map(opt=>{
-    if(opt===null) return `<div></div>`;
+  const brotherGrid = BROTHER_OPTIONS_GRID.map(row => row.map(opt => {
+    if (opt === null) return `<div></div>`;
     const checked = hf.brotherOptions.includes(opt);
-    const label = opt==='덧발' ? `덧발(${hf.attachmentNote?hf.attachmentNote:'　　'})` : opt;
-    return `<div style="font-size:10.5px;padding:3px 0">${checked?'●':'○'} ${label}</div>`;
+    const label = opt === '덧발' ? `덧발(${hf.attachmentNote ? esc(hf.attachmentNote) : '　　　　　　　　'})` : opt;
+    return `<div style="padding:3px 4px">${checked ? '●' : '○'} ${label}</div>`;
   }).join('')).join('');
 
+  const L = 'background:#d9d9d9;font-weight:700;text-align:center'; // 회색 제목 칸
   return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
 <title>지게차 구입 견적서 ${quoteNo}</title>
 <style>
-  @page{size:A4;margin:15mm 14mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}
-  *{box-sizing:border-box;}
-  body{font-family:'맑은 고딕','Malgun Gothic',sans-serif;font-size:12px;color:#1a1a1a;margin:0;background:#e5e7eb;}
+  @page{size:A4;margin:0;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;box-sizing:border-box;}
+  body{font-family:'맑은 고딕','Malgun Gothic','Apple SD Gothic Neo',sans-serif;font-size:12px;color:#111;margin:0;background:#fff;}
   table{border-collapse:collapse;width:100%;}
-  .doc{max-width:794px;margin:0 auto;background:#fff;padding:24px 28px;}
+  .doc{width:794px;margin:0 auto;background:#fff;padding:26px 36px 22px;}
+  td,th{vertical-align:middle;}
+  .c{text-align:center;padding:5px 6px;} .r{text-align:right;padding:5px 8px;} .o{padding:4px 6px;font-size:11.5px;}
+  .sec{font-weight:700;font-size:13.5px;margin:10px 0 4px;}
+  .box{border:2px solid #111;}
+  .pdf-a4 .doc{min-height:1123px;}
 </style></head><body>
 <div class="doc">
-  <div style="text-align:center;font-size:24px;font-weight:800;letter-spacing:2px;margin-bottom:14px">지게차 구입 견적서</div>
+  <!-- 머리글: 로고 + 제목 -->
+  <div style="position:relative;height:66px;margin-bottom:4px">
+    <img src="${HF_LOGO}" alt="HD현대사이트솔루션" onerror="this.style.display='none'" style="position:absolute;left:0;top:21px;height:24px;width:auto">
+    <div style="text-align:center;font-size:30px;font-weight:800;letter-spacing:4px;line-height:66px">지게차 구입 견적서</div>
+  </div>
 
-  <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
-    <div style="text-align:right;font-size:11px;line-height:1.6">
-      <div style="font-size:13px;font-weight:700">현대건설기계 경기북부판매㈜</div>
-      <div style="font-weight:700">${hf.dealerRepName} ${hf.dealerRepTitle}(${hf.dealerPhone})</div>
-      <div>T:${hf.dealerTel}, F:${hf.dealerFax}</div>
-      <div>견적제출일자 : ${formatKoDate(hf.quoteDate)}</div>
-      <div>견적유효일자 : ${formatKoDate(validUntil)}</div>
+  <!-- 발신(딜러) 정보 + 수신 -->
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;position:relative">
+    <div style="flex:1;padding-right:24px">
+      <div style="font-size:18px;font-weight:800;text-align:center;border-bottom:2px solid #111;padding-bottom:4px;margin:0 0 2px;width:88%">${esc(hf.recipient || 'VIP')} 대표님 귀중</div>
+    </div>
+    <div style="text-align:right;font-size:13px;line-height:1.75;position:relative">
+      <div>현대건설기계 경기북부판매㈜</div>
+      <div style="font-weight:800">${esc(hf.dealerRepName)} ${esc(hf.dealerRepTitle)}(${esc(hf.dealerPhone)})</div>
+      <div>T:${esc(hf.dealerTel)}, F:${esc(hf.dealerFax)}</div>
     </div>
   </div>
-
-  <div style="border-bottom:2px solid #1a1a1a;padding-bottom:8px;margin-bottom:6px;font-size:17px;font-weight:800">
-    ${hf.recipient || 'VIP'} 대표님 귀중
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-top:6px;position:relative">
+    <div style="font-size:13px;line-height:1.9;padding-top:22px">
+      <div>귀사의 무궁한 발전을 기원합니다.</div>
+      <div>요청하신 <strong>${esc((hf.modelName || '').replace(/\n/g, ' '))}</strong> 구입 견적서를 아래와 같이 제출합니다.</div>
+    </div>
+    <div style="font-size:13px;line-height:1.9;text-align:left;position:relative;white-space:nowrap">
+      <div>견적제출일자 &nbsp;: ${formatKoDate(hf.quoteDate)}</div>
+      <div>견적유효일자 &nbsp;: ${formatKoDate(validUntil)}</div>
+      <img src="${HF_SEAL}" alt="" onerror="this.style.display='none'" style="position:absolute;right:-10px;top:-16px;width:68px;height:68px;opacity:.92">
+    </div>
   </div>
-  <div style="font-size:11px;color:#333;margin-bottom:4px">귀사의 무궁한 발전을 기원합니다.</div>
-  <div style="font-size:11px;color:#333;margin-bottom:10px">요청하신 <strong>${(hf.modelName||'').replace(/\n/g,' ')}</strong> 구입 견적서를 아래와 같이 제출합니다.</div>
-  <div style="text-align:center;font-weight:700;margin-bottom:14px">- 아 래 -</div>
+  <div style="text-align:center;font-size:13px;margin:4px 0 2px;letter-spacing:6px">- 아 래 -</div>
 
-  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
-    <div style="font-weight:700;font-size:13px">1. 가격조건</div>
-    <div style="font-size:10px;color:#555">[단위:원]</div>
+  <!-- 1. 가격조건 -->
+  <div style="display:flex;justify-content:space-between;align-items:baseline">
+    <div class="sec">1. 가격조건</div><div style="font-size:12px">[단위/원]</div>
   </div>
-  <table style="margin-bottom:16px;font-size:11px">
-    <thead><tr style="background:#f1f5f9">
-      ${['모델명','톤수','수량','차량가격','옵션','옵션가격'].map(h=>`<th style="border:1px solid #333;padding:6px;font-weight:700">${h}</th>`).join('')}
+  <table class="box" style="font-size:12.5px">
+    <thead><tr style="height:30px">
+      ${['모델명','톤수','수량','차량가격','옵션','옵션가격'].map((h,i)=>`<th style="${L};${B};border-bottom:2px solid #111;width:${['18%','7.5%','6.5%','14%','27.5%','26.5%'][i]}">${h}</th>`).join('')}
     </tr></thead>
     <tbody>
       ${optionRows}
-      ${hf.freeNote?`<tr><td colspan="6" style="border:1px solid #333;padding:6px 8px;text-align:center;color:#1d4ed8;font-weight:700">${hf.freeNote}</td></tr>`:''}
-      <tr><td colspan="4" style="border:1px solid #333"></td><td style="border:1px solid #333;padding:6px 8px;font-weight:700;background:#f8fafc">옵션합계</td><td style="border:1px solid #333;padding:6px 8px;text-align:right;font-weight:700;background:#f8fafc">${fmt(optSum)}</td></tr>
-      <tr><td colspan="4" rowspan="3" style="border:1px solid #333"></td><td style="border:1px solid #333;padding:8px;text-align:center;font-weight:700">총　합　계</td><td style="border:1px solid #333;padding:8px;text-align:right;font-weight:700">${fmt(beforeDiscount)}</td></tr>
-      <tr><td style="border:1px solid #333;padding:8px;text-align:center;font-weight:700">할　인　금　액</td><td style="border:1px solid #333;padding:8px;text-align:right;font-weight:700">${fmt(n0(hf.discountAmount))}</td></tr>
-      <tr style="background:#fde047"><td style="border:1px solid #333;padding:9px;text-align:center;font-weight:800">최종 판매가(부가세 별도)</td><td style="border:1px solid #333;padding:9px;text-align:right;font-weight:800;font-size:13px">${fmt(finalPrice)}</td></tr>
+      <tr style="height:30px"><td class="c" style="${B};border-top:3px double #111;font-size:13px">옵션합계</td><td class="r" style="${B};border-top:3px double #111;border-right:2px solid #111">${fmt(optSum)}</td></tr>
+      <tr style="height:32px"><td colspan="5" class="c" style="${B};border-top:2px solid #111;letter-spacing:14px;font-size:14px">총합계</td><td class="r" style="${B};border-top:2px solid #111;font-size:14px">${fmt(beforeDiscount)}</td></tr>
+      <tr style="height:32px"><td colspan="5" class="c" style="${B};letter-spacing:14px;font-size:14px">할인금액</td><td class="r" style="${B};font-size:14px">${fmt(n0(hf.discountAmount))}</td></tr>
+      <tr style="height:34px;background:#ffff00"><td colspan="5" class="c" style="${B};font-weight:800;letter-spacing:14px;font-size:14px">판매가격</td><td class="r" style="${B};font-weight:800;font-size:14.5px">${fmt(finalPrice)}</td></tr>
     </tbody>
   </table>
 
-  <div style="font-weight:700;font-size:13px;margin-bottom:6px">2. 결제조건</div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;margin-bottom:16px;font-size:11px">
-    <table>
-      <tbody>
-        <tr><td style="border:1px solid #333;padding:6px 8px;background:#f8fafc;font-weight:700;width:45%">판매가</td><td style="border:1px solid #333;padding:6px 8px;text-align:right">${fmt(finalPrice)}</td></tr>
-        <tr><td style="border:1px solid #333;padding:6px 8px;background:#f8fafc;font-weight:700">부가세</td><td style="border:1px solid #333;padding:6px 8px;text-align:right">${fmt(vat)}</td></tr>
-        <tr><td style="border:1px solid #333;padding:6px 8px;background:#f8fafc;font-weight:700">총판매가격(부가세포함)</td><td style="border:1px solid #333;padding:6px 8px;text-align:right">${fmt(totalWithVat)}</td></tr>
-        <tr><td style="border:1px solid #333;padding:6px 8px;background:#f8fafc;font-weight:700">계약금</td><td style="border:1px solid #333;padding:6px 8px;text-align:right">${downPayment?fmt(downPayment):'-'}</td></tr>
-        <tr><td style="border:1px solid #333;padding:6px 8px;background:#f8fafc;font-weight:700">인도금</td><td style="border:1px solid #333;padding:6px 8px;text-align:right">${downPayment?fmt(deliveryAmount):'-'}</td></tr>
-      </tbody>
-    </table>
-    <table>
-      <tbody>
-        <tr><td colspan="2" style="border:1px solid #333;padding:6px 8px;background:#f8fafc;font-weight:700;text-align:center">할부원금${rate?` (연 ${rate}%)`:''}</td></tr>
-        ${[36,48,60].map(m=>`<tr><td style="border:1px solid #333;padding:6px 8px">${m}개월</td><td style="border:1px solid #333;padding:6px 8px;text-align:right">${rate&&principal?fmt(pmt(principal,rate,m)):''}</td></tr>`).join('')}
-        <tr><td style="border:1px solid #333;padding:6px 8px;background:#f8fafc;font-weight:700">등록 예상 비용</td><td style="border:1px solid #333;padding:6px 8px;text-align:right">${hf.registrationFeeEstimate?fmt(n0(hf.registrationFeeEstimate)):'-'}</td></tr>
-      </tbody>
-    </table>
+  <!-- 2. 결제조건 -->
+  <div class="sec">2. 결제조건</div>
+  <table class="box" style="font-size:13px">
+    <colgroup><col style="width:25.5%"><col style="width:20.5%"><col style="width:12.5%"><col style="width:14.5%"><col style="width:27%"></colgroup>
+    <tbody>
+      <tr style="height:30px"><td style="${L};${B}">판매가</td><td class="r" style="${B};border-right:2px solid #111">${fmt(finalPrice)}</td>
+        <td colspan="2" style="${L};${B}">할부원금${rate ? ` (연 ${rate}%)` : ''}</td><td class="r" style="${B}">${rate && principal ? fmt(principal) : ''}</td></tr>
+      <tr style="height:30px"><td style="${L};${B}">부가세</td><td class="r" style="${B};border-right:2px solid #111">${fmt(vat)}</td>
+        <td rowspan="3" class="c" style="${B}">월 납입금</td><td style="${L};${B};font-weight:400">36개월</td><td class="r" style="${B}">${rate && principal ? fmt(pmt(principal, rate, 36)) : ''}</td></tr>
+      <tr style="height:30px"><td style="${L};${B}">총판매가격(부가세포함)</td><td class="r" style="${B};border-right:2px solid #111">${fmt(totalWithVat)}</td>
+        <td style="${L};${B};font-weight:400">48개월</td><td class="r" style="${B}">${rate && principal ? fmt(pmt(principal, rate, 48)) : ''}</td></tr>
+      <tr style="height:30px"><td style="${L};${B}">계약금</td><td class="r" style="${B};border-right:2px solid #111">${downPayment ? fmt(downPayment) : '-'}</td>
+        <td style="${L};${B};font-weight:400">60개월</td><td class="r" style="${B}">${rate && principal ? fmt(pmt(principal, rate, 60)) : ''}</td></tr>
+      <tr style="height:30px"><td style="${L};${B}">인도금</td><td class="r" style="${B};border-right:2px solid #111">${downPayment ? fmt(deliveryAmount) : fmt(totalWithVat)}</td>
+        <td colspan="2" style="${L};${B};border-top:2px solid #111">등록비용</td><td class="r" style="${B};border-top:2px solid #111;background:#ececec">${hf.registrationFeeEstimate ? fmt(n0(hf.registrationFeeEstimate)) : '-'}</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 3. 납기 및 특약 사항 -->
+  <div class="sec">3. 납기 및 특약 사항</div>
+  <div class="box" style="font-size:12.5px;line-height:1.85;padding:2px 6px">
+    ${hf.deliveryNotes.map((n, i) => `<div>${i + 1}. ${esc(n)}</div>`).join('')}
   </div>
 
-  <div style="font-weight:700;font-size:13px;margin-bottom:6px">3. 납기 및 특약사항</div>
-  <div style="margin-bottom:16px;font-size:11px;line-height:1.7">
-    ${hf.deliveryNotes.map((n,i)=>`<div>${i+1}. ${n}</div>`).join('')}
-  </div>
-
-  <div style="font-weight:700;font-size:13px;margin-bottom:6px">4. 형제옵션(선택사항)</div>
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:2px 8px;border:1px solid #cbd5e1;border-radius:4px;padding:8px 12px">
+  <!-- 4. 형제옵션(선택사항) -->
+  <div class="sec">4. 형제옵션(선택사항)</div>
+  <div class="box" style="display:grid;grid-template-columns:26% 20.5% 27.5% 26%;font-size:12.5px;line-height:1.6;padding:2px 2px">
     ${brotherGrid}
   </div>
 </div>
