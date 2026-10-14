@@ -690,6 +690,29 @@ export default function NarumiPage() {
     if (manufactureInputRef.current) manufactureInputRef.current.value = "";
   };
 
+  // 항목 삭제 — admin@rnfkorea.co.kr 전용 (DB RLS narumi_tasks_delete_admin_only로도 막혀 있음).
+  // 첨부 서류(차량등록증·제작증·보험증권)도 vehicle_docs 버킷에서 함께 지운다.
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const deleteTask = async (row: NarumiTask) => {
+    if (!isAdmin) return;
+    const label = `${row.case_no ?? `#${row.id}`} · VIN ${row.vin_last6 ?? row.vin?.slice(-6) ?? "-"} · ${row.customer_name ?? "고객명 없음"}`;
+    if (!window.confirm(`이 항목을 삭제하시겠습니까?\n\n${label}\n\n첨부된 서류도 함께 삭제되며 되돌릴 수 없습니다.`)) return;
+    setDeletingId(String(row.id));
+    try {
+      const { data, error } = await supabase.from("narumi_tasks").delete().eq("id", row.id).select("id");
+      if (error) throw error;
+      if (!data?.length) throw new Error("삭제 권한이 없거나 이미 삭제된 항목입니다.");
+      const paths = [row.vehicle_doc_path, row.manufacture_doc_path, row.insurance_doc_path].filter((p): p is string => !!p);
+      if (paths.length) await supabase.storage.from("vehicle_docs").remove(paths).catch(() => {});
+      setRows((prev) => prev.filter((x) => String(x.id) !== String(row.id)));
+      if (focusId && String(focusId) === String(row.id)) navigate("/narumi");
+    } catch (e: any) {
+      alert(`삭제 실패: ${e?.message || e}`);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const openEditModal = (row: NarumiTask) => {
     if (!canEditExisting) {
       alert("기존 데이터 수정 권한이 없습니다.");
@@ -2476,6 +2499,17 @@ VIN: ${nextVin}`);
                     {canEditExisting && (
                       <button type="button" onClick={() => openEditModal(r)} className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:border-gray-300 hover:shadow-sm transition-all">
                         수정
+                      </button>
+                    )}
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => void deleteTask(r)}
+                        disabled={deletingId === String(r.id)}
+                        title="관리자 전용: 이 항목과 첨부 서류를 삭제합니다"
+                        className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl border border-red-200 bg-white text-sm font-medium text-red-500 hover:bg-red-50 hover:shadow-sm transition-all disabled:opacity-50"
+                      >
+                        {deletingId === String(r.id) ? "삭제중..." : "삭제"}
                       </button>
                     )}
                   </div>
