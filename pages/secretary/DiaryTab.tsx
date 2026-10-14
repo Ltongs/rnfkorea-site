@@ -125,6 +125,7 @@ export default function DiaryTab({
 
   const [items, setItems] = useState<DiaryItem[]>([]);           // date의 done/plan + tomorrow의 plan
   const [pending, setPending] = useState<DiaryItem[]>([]);       // 날짜와 무관한 전체 미완료 업무 (상시 표시)
+  const [completingIds, setCompletingIds] = useState<Set<number>>(new Set()); // 완료 버튼 누른 직후 삭선으로 잠깐 보여줄 항목
   const [schedMap, setSchedMap] = useState<Record<number, LinkedSchedule>>({});
   const [loading, setLoading] = useState(false);
   const [newRow, setNewRow] = useState("");
@@ -401,9 +402,7 @@ export default function DiaryTab({
             </div>
             <ul className="mt-1 max-h-72 overflow-y-auto">
               {pending.map(item => (
-                <li key={item.id} className="group flex items-center gap-2 py-1.5">
-                  <input type="checkbox" className="w-4 h-4 accent-orange-500 flex-shrink-0 cursor-pointer" checked={false}
-                    title="완료 처리" onChange={() => void completePending(item)} />
+                <li key={item.id} className={`group flex items-center gap-2 py-1.5 transition-opacity ${completingIds.has(item.id) ? "opacity-50" : ""}`}>
                   <button className={`${CHIP} ${item.entry_date > todayStr() ? "bg-blue-50 text-blue-600 border-blue-100" : item.entry_date < todayStr() ? "bg-amber-50 text-amber-600 border-amber-100" : "bg-orange-50 text-orange-600 border-orange-200"}`}
                     title={`${labelDate(item.kind === "plan" ? addDays(item.entry_date, -1) : item.entry_date)} 다이어리 열기`} onClick={() => changeDate(item.kind === "plan" ? addDays(item.entry_date, -1) : item.entry_date)}>
                     {item.kind === "plan" ? `${dayWord(item.entry_date)} 할 일` : labelDate(item.entry_date)}
@@ -414,11 +413,26 @@ export default function DiaryTab({
                         onChange={e => setEditingPlan({ id: item.id, text: e.target.value })}
                         onBlur={() => void savePlanEdit()}
                         onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) void savePlanEdit(); if (e.key === "Escape") setEditingPlan(null); }} />
-                      : <span className="text-sm break-all cursor-text text-[#0f172a]" onClick={() => setEditingPlan({ id: item.id, text: item.content })}>{item.content}</span>}
+                      : <span className={`text-sm break-all cursor-text ${completingIds.has(item.id) ? "line-through text-gray-400" : "text-[#0f172a]"}`} onClick={() => setEditingPlan({ id: item.id, text: item.content })}>{item.content}</span>}
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     {schedChip(item)}
                     {delBtn(item)}
+                    <button
+                      className={`${CHIP} min-w-[52px] ${completingIds.has(item.id)
+                        ? "bg-emerald-500 text-white border-emerald-500"
+                        : "border-gray-200 text-gray-500 hover:border-emerald-300 hover:text-emerald-600 hover:bg-emerald-50"}`}
+                      title="완료 처리" disabled={completingIds.has(item.id)}
+                      onClick={() => {
+                        // 삭선으로 잠깐 보여준 뒤 목록에서 빠진다
+                        setCompletingIds(p => new Set(p).add(item.id));
+                        setTimeout(() => {
+                          void completePending(item);
+                          setCompletingIds(p => { const n = new Set(p); n.delete(item.id); return n; });
+                        }, 600);
+                      }}>
+                      {completingIds.has(item.id) ? "✓ 완료" : "완료"}
+                    </button>
                   </div>
                 </li>
               ))}
