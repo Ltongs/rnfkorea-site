@@ -614,6 +614,7 @@ async function htmlDocToPdfBytes(html: string): Promise<ArrayBuffer> {
   // html2canvas가 그 글자를 놓치거나 옆 글자와 겹쳐 그리는 버그(Malgun Gothic 등 특정
   // 폰트에서 재현됨)를 막기 위한 값. 육안으로는 자간 변화가 보이지 않는다.
   wrapper.style.cssText = 'position:absolute;left:-9999px;top:0;width:794px;background:#fff;letter-spacing:0.01px;';
+  wrapper.className = 'pdf-a4'; // 양식의 .pdf-a4 규칙(꼬리말 A4 하단 고정)은 PDF 변환 때만 적용
   wrapper.innerHTML = bodyHTML;
   document.head.appendChild(styleEl);
   document.body.appendChild(wrapper);
@@ -685,6 +686,8 @@ function buildQuoteHTML(type:'battery'|'forklift'|'tire', form:BatteryForm|Forkl
   body{font-family:'맑은 고딕','Malgun Gothic',sans-serif;font-size:12px;color:#1e293b;margin:0;background:#e5e7eb;}
   table{border-collapse:collapse;width:100%;}
   .doc{max-width:794px;margin:0 auto;background:#fff;padding:16px;}
+  /* PDF(A4)로 만들 때만 꼬리말을 페이지 맨 아래로 — 문자 이미지·미리보기는 내용 높이 그대로 */
+  .pdf-a4 .doc{min-height:1123px;display:flex;flex-direction:column;}.pdf-a4 .doc-foot{margin-top:auto!important;}
 </style></head><body>
 <div class="doc">
 <div style="background:#0a192f;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;border-radius:6px;margin-bottom:14px">
@@ -706,6 +709,7 @@ function buildQuoteHTML(type:'battery'|'forklift'|'tire', form:BatteryForm|Forkl
     <div style="font-size:10px;color:#374151">경기도 안산시 단원구 산단로 325</div>
   </div>
 </div>
+<p style="font-size:11.5px;color:#374151;margin:0 2px 12px;line-height:1.6">안녕하세요. 주식회사 알앤에프코리아입니다.<br>요청하신 ${typeLabel} 견적서를 아래와 같이 제출합니다.</p>
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px">
   ${[['납품일자','deliveryDate' in form?ff.deliveryDate:'계약 시 협의'],['인도장소','deliveryPlace' in form?(form as BatteryForm).deliveryPlace:'현지 운송도'],['거래조건','paymentTerms' in form?form.paymentTerms:'현금']].map(([k,v])=>`
   <div style="background:#0a192f;border-radius:4px;padding:7px 10px;display:flex;justify-content:space-between">
@@ -744,7 +748,7 @@ ${(type==='battery'||type==='tire')?`<div style="background:#f1f5f9;border-radiu
   <div style="font-size:10px;font-weight:700;color:#0a192f;margin-bottom:5px">특기사항</div>
   ${form.notes.map(n=>`<div style="font-size:10px;color:#374151;padding:2px 0">${n}</div>`).join('')}
 </div>`:''}
-<div style="background:#0a192f;padding:12px;text-align:center;border-radius:6px;margin-top:8px">
+<div class="doc-foot" style="background:#0a192f;padding:12px;text-align:center;border-radius:6px;margin-top:8px">
   <div style="color:#fff;font-size:11px;font-weight:700;margin-bottom:4px">상기와 같이 견적을 제출합니다.</div>
   <div style="color:#94a3b8;font-size:9px">TEL: 1551-1873 | 주식회사 알앤에프코리아 | rnfkorea.co.kr</div>
 </div>
@@ -810,7 +814,7 @@ function buildPurchaseHTML(form:PurchaseForm, poNo:string) {
     </tr>`;
   }).join('');
   return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>발주서 ${poNo}</title>
-<style>@page{size:A4;margin:15mm 14mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}*{box-sizing:border-box;}body{font-family:'맑은 고딕','Malgun Gothic',sans-serif;font-size:12px;color:#1e293b;margin:0;background:#e5e7eb;}table{border-collapse:collapse;width:100%;}.doc{max-width:794px;margin:0 auto;background:#fff;padding:16px;}</style>
+<style>@page{size:A4;margin:15mm 14mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}*{box-sizing:border-box;}body{font-family:'맑은 고딕','Malgun Gothic',sans-serif;font-size:12px;color:#1e293b;margin:0;background:#e5e7eb;}table{border-collapse:collapse;width:100%;}.doc{max-width:794px;margin:0 auto;background:#fff;padding:16px;}.pdf-a4 .doc{min-height:1123px;display:flex;flex-direction:column;}.pdf-a4 .doc-foot{margin-top:auto!important;}</style>
 </head><body>
 <div class="doc">
 <div style="background:#0a192f;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;border-radius:6px;margin-bottom:14px">
@@ -832,6 +836,7 @@ function buildPurchaseHTML(form:PurchaseForm, poNo:string) {
     <div style="font-size:10px;color:#374151">경기도 안산시 단원구 산단로 325 | 1551-1873</div>
   </div>
 </div>
+<p style="font-size:11.5px;color:#374151;margin:0 2px 12px;line-height:1.6">안녕하세요. 주식회사 알앤에프코리아입니다.<br>아래 품목을 발주하오니 확인 부탁드립니다.</p>
 <div style="background:#f1f5f9;border-radius:6px;padding:10px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
   <div style="font-size:11px;color:#374151">합계금액 (세액포함)</div>
   <div style="font-size:16px;font-weight:700;color:#0a192f">${fmt(grand)} 원정</div>
@@ -850,7 +855,7 @@ function buildPurchaseHTML(form:PurchaseForm, poNo:string) {
   </tfoot>
 </table>
 ${form.note?`<div style="background:#f8fafc;border-radius:6px;padding:10px;margin-bottom:12px;font-size:11px;color:#374151">${form.note}</div>`:''}
-<div style="background:#0a192f;padding:12px;text-align:center;border-radius:6px">
+<div class="doc-foot" style="background:#0a192f;padding:12px;text-align:center;border-radius:6px">
   <div style="color:#fff;font-size:11px;font-weight:700;margin-bottom:4px">아래와 같이 발주합니다.</div>
   <div style="color:#94a3b8;font-size:9px">TEL: 1551-1873 | 주식회사 알앤에프코리아 | rnfkorea.co.kr</div>
 </div>
