@@ -38,7 +38,8 @@ const RepaymentScheduleCapture = forwardRef<HTMLDivElement, Props>(function Repa
   const totalInterest = rows.reduce((s, r) => s + r.interest, 0);
   const totalPayment = rows.reduce((s, r) => s + r.payment, 0);
 
-  const td: React.CSSProperties = { padding: "3px 6px", fontSize: "10.5px", borderBottom: "1px solid #eef2f7", textAlign: "right" };
+  // 표 글자는 좌우·상하 가운데, 줄 높이 px 고정 (캡처 시 글자가 칸 아래로 처지지 않게)
+  const td: React.CSSProperties = { height: "20px", padding: "0 6px", lineHeight: "20px", fontSize: "10.5px", borderBottom: "1px solid #eef2f7", textAlign: "center", verticalAlign: "middle" };
   const info: [string, string][] = [
     ["고객명", customer || "-"],
     ["할부원금", `${fmt(principal)}원`],
@@ -49,7 +50,7 @@ const RepaymentScheduleCapture = forwardRef<HTMLDivElement, Props>(function Repa
   ];
 
   return (
-    <div ref={ref} style={{ fontFamily: "'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-serif", background: "#fff", color: "#1e293b", width: "560px" }}>
+    <div ref={ref} style={{ fontFamily: "'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-serif", background: "#fff", color: "#1e293b", width: "560px", lineHeight: 1.4 }}>
       {/* 머리글 */}
       <div style={{ background: NAVY, padding: "18px 22px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ color: "#fff", fontSize: "18px", fontWeight: 800 }}>RNF KOREA</div>
@@ -91,21 +92,21 @@ const RepaymentScheduleCapture = forwardRef<HTMLDivElement, Props>(function Repa
           <thead>
             <tr>
               {["회차", "납입일", "월납입액", "원금", "이자", "잔액"].map((h) => (
-                <th key={h} style={{ background: NAVY, color: "#fff", padding: "5px 6px", fontSize: "10px", fontWeight: 600, textAlign: h === "회차" || h === "납입일" ? "center" : "right" }}>{h}</th>
+                <th key={h} style={{ background: NAVY, color: "#fff", height: "24px", padding: "0 6px", lineHeight: "24px", fontSize: "10px", fontWeight: 600, textAlign: "center", verticalAlign: "middle" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {shown.map((row, i) => row === null ? (
               <tr key="skip">
-                <td colSpan={6} style={{ padding: "6px", textAlign: "center", fontSize: "10.5px", color: "#94a3b8" }}>
+                <td colSpan={6} style={{ ...td, color: "#94a3b8", borderBottom: "none" }}>
                   ⋮ {rows[EDGE].no}회차 ~ {rows[rows.length - EDGE - 1].no}회차 ({rows.length - EDGE * 2}개월) 생략 ⋮
                 </td>
               </tr>
             ) : (
               <tr key={row.no} style={{ background: i % 2 ? "#f8fafc" : "#fff", color: row.principalPmt === 0 ? "#94a3b8" : undefined }}>
-                <td style={{ ...td, textAlign: "center" }}>{row.no}</td>
-                <td style={{ ...td, textAlign: "center", color: "#64748b" }}>{row.date}</td>
+                <td style={td}>{row.no}</td>
+                <td style={{ ...td, color: "#64748b" }}>{row.date}</td>
                 <td style={{ ...td, fontWeight: 600 }}>{fmt(row.payment)}</td>
                 <td style={td}>{fmt(row.principalPmt)}</td>
                 <td style={{ ...td, color: "#64748b" }}>{fmt(row.interest)}</td>
@@ -115,7 +116,7 @@ const RepaymentScheduleCapture = forwardRef<HTMLDivElement, Props>(function Repa
           </tbody>
           <tfoot>
             <tr style={{ background: "#e2e8f0", fontWeight: 700 }}>
-              <td colSpan={2} style={{ ...td, textAlign: "center", borderTop: "2px solid #94a3b8" }}>합계</td>
+              <td colSpan={2} style={{ ...td, borderTop: "2px solid #94a3b8" }}>합계</td>
               <td style={{ ...td, borderTop: "2px solid #94a3b8" }}>{fmt(totalPayment)}</td>
               <td style={{ ...td, borderTop: "2px solid #94a3b8" }}>{fmt(principal)}</td>
               <td style={{ ...td, borderTop: "2px solid #94a3b8" }}>{fmt(totalInterest)}</td>

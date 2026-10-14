@@ -1613,15 +1613,15 @@ export default function QuotationPage() {
     const fmtN=(n:number)=>(()=>{ const a=Math.abs(Math.round(n)); return (n<0?'-':'')+a.toString().replace(/\B(?=(\d{3})+(?!\d))/g,','); })();
     const periodLabel=gp>0?`${months}개월 (거치 ${gp}+할부 ${im})`:`${months}개월`;
     const rowHTML=(row:any)=>`<tr class="${row.principalPmt===0?'grace':''}">
-      <td style="text-align:center">${row.no}</td><td style="text-align:center">${row.date}</td>
-      <td style="text-align:right">${fmtN(row.payment)}</td><td style="text-align:right">${fmtN(row.principalPmt)}</td>
-      <td style="text-align:right">${fmtN(row.interest)}</td><td style="text-align:right">${fmtN(row.balance)}</td>
+      <td>${row.no}</td><td>${row.date}</td>
+      <td>${fmtN(row.payment)}</td><td>${fmtN(row.principalPmt)}</td>
+      <td>${fmtN(row.interest)}</td><td>${fmtN(row.balance)}</td>
     </tr>`;
     // 기간이 길면 A4 한 장에 글씨가 찌그러지지 않도록 첫 12개월·마지막 12개월만 보여주고 중간은 생략 (합계는 전체 기준)
     const EDGE=12;
     const tRows=rows.length>EDGE*2+1
       ? rows.slice(0,EDGE).map(rowHTML).join('')
-        +`<tr class="skip"><td colspan="6" style="text-align:center;color:#94a3b8;padding:7px 4px;background:#fff">⋮ ${rows[EDGE].no}회차 ~ ${rows[rows.length-EDGE-1].no}회차 (${rows.length-EDGE*2}개월) 생략 ⋮</td></tr>`
+        +`<tr class="skip"><td colspan="6" style="color:#94a3b8;background:#fff">⋮ ${rows[EDGE].no}회차 ~ ${rows[rows.length-EDGE-1].no}회차 (${rows.length-EDGE*2}개월) 생략 ⋮</td></tr>`
         +rows.slice(-EDGE).map(rowHTML).join('')
       : rows.map(rowHTML).join('');
     const item=`${iff.itemName}${iff.itemSpec?' '+iff.itemSpec:''}`;
@@ -1629,7 +1629,7 @@ export default function QuotationPage() {
     const infoRow=(l:string,v:string)=>`<tr><td class="il">${l}</td><td class="iv">${v}</td></tr>`;
     const html=`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>할부견적서</title>
 <style>@page{size:A4;margin:0;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;box-sizing:border-box;}
-body{margin:0;font-family:'Apple SD Gothic Neo','맑은 고딕','Malgun Gothic',sans-serif;color:#1e293b;background:#fff;}
+body{margin:0;font-family:'Apple SD Gothic Neo','맑은 고딕','Malgun Gothic',sans-serif;color:#1e293b;background:#fff;line-height:1.4;}
 .doc{width:794px;min-height:1123px;margin:0 auto;background:#fff;display:flex;flex-direction:column;}
 .hd{background:#0a192f;padding:26px 40px;display:flex;justify-content:space-between;align-items:center;}
 .bd{padding:22px 40px 14px;flex:1;}
@@ -1639,11 +1639,13 @@ body{margin:0;font-family:'Apple SD Gothic Neo','맑은 고딕','Malgun Gothic',
 .pay{width:230px;background:#0a192f;border-radius:8px;padding:14px 18px;display:flex;flex-direction:column;justify-content:center;text-align:right;}
 .st{font-size:13px;font-weight:700;color:#0a192f;margin:0 0 6px;display:flex;justify-content:space-between;align-items:baseline;}
 table.sc{border-collapse:collapse;width:100%;}
-.sc th{background:#0a192f;color:#fff;padding:5px 6px;font-size:11px;font-weight:600;}
-.sc td{padding:3px 8px;font-size:11.5px;border-bottom:1px solid #eef2f7;line-height:1.35;}
+/* 표 글자는 좌우·상하 가운데. 줄 높이를 px로 고정해 PDF 변환(html2canvas) 때 글자가 칸 아래로 처지지 않게 한다 */
+.sc th,.sc td{text-align:center;vertical-align:middle;}
+.sc th{background:#0a192f;color:#fff;height:24px;padding:0 6px;line-height:24px;font-size:11px;font-weight:600;}
+.sc td{height:20px;padding:0 8px;line-height:20px;font-size:11.5px;border-bottom:1px solid #eef2f7;}
 .sc tbody tr:nth-child(even) td{background:#f8fafc;}
 .sc tr.grace td{color:#94a3b8;font-style:italic;}
-.sc tfoot td{background:#e2e8f0;font-weight:700;border-top:2px solid #94a3b8;padding:5px 8px;}
+.sc tfoot td{background:#e2e8f0;font-weight:700;border-top:2px solid #94a3b8;height:24px;line-height:24px;}
 .ft{background:#0a192f;padding:12px 40px;text-align:center;}</style></head><body>
 <div class="doc">
 <div class="hd">
@@ -1676,11 +1678,11 @@ table.sc{border-collapse:collapse;width:100%;}
     <thead><tr><th>회차</th><th>납입일</th><th>월납입액</th><th>원금</th><th>이자</th><th>잔액</th></tr></thead>
     <tbody>${tRows}</tbody>
     <tfoot><tr>
-      <td colspan="2" style="text-align:center">합계</td>
-      <td style="text-align:right">${fmtN(totalPayment)}</td>
-      <td style="text-align:right">${fmtN(p)}</td>
-      <td style="text-align:right">${fmtN(Math.round(totalInterest))}</td>
-      <td style="text-align:right">0</td>
+      <td colspan="2">합계</td>
+      <td>${fmtN(totalPayment)}</td>
+      <td>${fmtN(p)}</td>
+      <td>${fmtN(Math.round(totalInterest))}</td>
+      <td>0</td>
     </tr></tfoot>
   </table>
   <p style="margin:10px 0 0;font-size:11px;color:#64748b">※ 실제 납입액은 금융사 기준일·계산방식에 따라 일부 다를 수 있습니다.</p>
