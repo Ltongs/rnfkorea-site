@@ -34,6 +34,9 @@ type Payload = {
   extraMessage?: string;
 };
 
+// 메일 본문에 넣는 사용자 입력값 이스케이프
+const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
 function jsonError(message: string, status = 400) {
   return new Response(JSON.stringify({ error: message }), {
     status,
@@ -59,7 +62,6 @@ Deno.serve(async (req) => {
   if (!pdfBase64?.trim())    return jsonError("첨부할 PDF 데이터(pdfBase64)가 없습니다.");
   if (!RESEND_API_KEY)       return jsonError("RESEND_API_KEY가 설정되어 있지 않습니다.", 500);
 
-  const today = new Date().toISOString().slice(0, 10);
 
   const resendRes = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -71,15 +73,16 @@ Deno.serve(async (req) => {
       from: `주식회사 알앤에프코리아 <${FROM_EMAIL}>`,
       to: [email],
       cc: ["admin@rnfkorea.co.kr"],
-      subject: `[알앤에프코리아] 거래명세서 - ${recipient} (${today})`,
+      // 견적서 메일(send-quotation)과 같은 짧은 안내 본문 — 내용은 첨부 PDF로 보여준다
+      subject: `[RNF KOREA] 거래명세서 ${docNo} — ${recipient} 귀중`,
       html:
-        `<p>${recipient} 담당자님,</p>` +
-        `<p>거래명세서를 첨부해드립니다. 확인 부탁드립니다.</p>` +
-        (extraMessage?.trim() ? `<p style="white-space:pre-wrap;">${extraMessage.trim()}</p>` : '') +
-        `<p>공급가액: ${supplyAmount.toLocaleString()}원 / 세액: ${taxAmount.toLocaleString()}원 / ` +
-        `청구 합계: ${grandTotal.toLocaleString()}원</p>` +
-        `<p>문서번호: ${docNo}</p>` +
-        `<p>감사합니다.<br/>주식회사 알앤에프코리아</p>`,
+        `<html><body style="font-family:Arial;max-width:600px;margin:auto;padding:20px;">` +
+        `<h2 style="color:#0a192f">거래명세서 — ${esc(docNo)}</h2>` +
+        `<p><strong>${esc(recipient)}</strong> 귀중</p>` +
+        `<p>거래명세서를 첨부파일로 보내드립니다. 확인 부탁드립니다.</p>` +
+        (extraMessage?.trim() ? `<p style="white-space:pre-wrap;">${esc(extraMessage.trim())}</p>` : "") +
+        `<p style="color:#94a3b8;font-size:11px">주식회사 알앤에프코리아 | 1551-1873</p>` +
+        `</body></html>`,
       attachments: [{ filename: fileName || `거래명세서_${recipient}.pdf`, content: pdfBase64 }],
     }),
   });

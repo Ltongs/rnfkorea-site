@@ -5,6 +5,7 @@ import html2canvas from "html2canvas";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 import AppTabBar from "../../components/AppTabBar";
+import RepaymentScheduleCapture from "../../components/RepaymentScheduleCapture";
 import { TireSection, BatterySection, EtcSection, OverviewSection } from "./ItemSections";
 
 // ─── 정책 ─────────────────────────────────────────────────
@@ -3465,63 +3466,21 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               </div>
             </div>
 
-            {/* 발송용 캡처 전용 숨김 DOM — 전체 상환표를 깔끔하게 렌더링 */}
+            {/* 발송용 캡처 전용 숨김 DOM — 할부견적서와 같은 양식 (components/RepaymentScheduleCapture.tsx) */}
             <div style={{ position: "absolute", left: "-9999px", top: 0, width: "560px" }}>
-              <div ref={scheduleTableRef} style={{ fontFamily: "'Malgun Gothic','맑은 고딕',sans-serif", background: "#fff", padding: "24px", color: "#1e293b" }}>
-                <h1 style={{ fontSize: "18px", fontWeight: 700, margin: "0 0 4px", color: "#0a192f" }}>원리금균등분납 상환스케줄</h1>
-                <p style={{ fontSize: "12px", color: "#64748b", marginBottom: "16px" }}>현대지게차 경기북부판매 할부금융</p>
-                {scheduleRecipient && (
-                  <p style={{ fontSize: "13px", marginBottom: "12px" }}>수신: <strong style={{ color: "#0a192f" }}>{scheduleRecipient}</strong> 귀중</p>
-                )}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", marginBottom: "16px", background: "#f8fafc", borderRadius: "8px", padding: "14px" }}>
-                  <div><div style={{ fontSize: "10px", color: "#94a3b8" }}>고객명</div><div style={{ fontWeight: 600, color: "#0a192f", fontSize: "13px" }}>{r.company_name ? `${r.company_name}${r.customer_name !== r.company_name ? ` (${r.customer_name})` : ''}` : r.customer_name}</div></div>
-                  <div><div style={{ fontSize: "10px", color: "#94a3b8" }}>할부원금</div><div style={{ fontWeight: 600, color: "#0a192f", fontSize: "13px" }}>{fmt(principal)}원</div></div>
-                  <div><div style={{ fontSize: "10px", color: "#94a3b8" }}>금리 (연)</div><div style={{ fontWeight: 600, color: "#0a192f", fontSize: "13px" }}>{annualRate}%</div></div>
-                  <div><div style={{ fontSize: "10px", color: "#94a3b8" }}>대출기간</div><div style={{ fontWeight: 600, color: "#0a192f", fontSize: "13px" }}>{months}개월{(r.grace_period ?? 0) > 0 ? ` (거치 ${r.grace_period}+할부 ${months - (r.grace_period ?? 0)})` : ""}</div></div>
-                  <div><div style={{ fontSize: "10px", color: "#94a3b8" }}>{(r.grace_period ?? 0) > 0 ? "거치 후 월 납입액" : "월 납입액"}</div><div style={{ fontWeight: 600, color: "#0a192f", fontSize: "13px" }}>{fmt(payment)}원</div></div>
-                  <div><div style={{ fontSize: "10px", color: "#94a3b8" }}>금융사</div><div style={{ fontWeight: 600, color: "#0a192f", fontSize: "13px" }}>{r.finance_company ?? "-"}</div></div>
-                </div>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr>
-                      {['회차','납입일','월납입액','원금','이자','잔액'].map(h=>(
-                        <th key={h} style={{ background: "#0a192f", color: "#fff", padding: "7px 6px", textAlign: h === "회차" || h === "납입일" ? "center" : "right", fontSize: "10px" }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(rows.length > 12 ? rows.slice(0, 6) : rows).map(row=>(
-                      <tr key={row.no} style={{ background: row.no % 2 === 0 ? "#f8fafc" : "#fff" }}>
-                        <td style={{ padding: "5px 6px", textAlign: "center", fontSize: "10.5px", borderBottom: "1px solid #f1f5f9" }}>{row.no}</td>
-                        <td style={{ padding: "5px 6px", textAlign: "center", fontSize: "10.5px", borderBottom: "1px solid #f1f5f9", color: "#64748b" }}>{row.date}</td>
-                        <td style={{ padding: "5px 6px", textAlign: "right", fontSize: "10.5px", borderBottom: "1px solid #f1f5f9", fontWeight: 600 }}>{fmt(row.payment)}</td>
-                        <td style={{ padding: "5px 6px", textAlign: "right", fontSize: "10.5px", borderBottom: "1px solid #f1f5f9" }}>{fmt(row.principalPmt)}</td>
-                        <td style={{ padding: "5px 6px", textAlign: "right", fontSize: "10.5px", borderBottom: "1px solid #f1f5f9", color: "#64748b" }}>{fmt(row.interest)}</td>
-                        <td style={{ padding: "5px 6px", textAlign: "right", fontSize: "10.5px", borderBottom: "1px solid #f1f5f9" }}>{fmt(row.balance)}</td>
-                      </tr>
-                    ))}
-                    {rows.length > 12 && (
-                      <tr>
-                        <td colSpan={6} style={{ padding: "8px 6px", textAlign: "center", fontSize: "11px", color: "#94a3b8", letterSpacing: "2px" }}>⋮ 중간 {rows.length - 12}회차 생략 ⋮</td>
-                      </tr>
-                    )}
-                    {rows.length > 12 && rows.slice(-6).map(row=>(
-                      <tr key={row.no} style={{ background: row.no % 2 === 0 ? "#f8fafc" : "#fff" }}>
-                        <td style={{ padding: "5px 6px", textAlign: "center", fontSize: "10.5px", borderBottom: "1px solid #f1f5f9" }}>{row.no}</td>
-                        <td style={{ padding: "5px 6px", textAlign: "center", fontSize: "10.5px", borderBottom: "1px solid #f1f5f9", color: "#64748b" }}>{row.date}</td>
-                        <td style={{ padding: "5px 6px", textAlign: "right", fontSize: "10.5px", borderBottom: "1px solid #f1f5f9", fontWeight: 600 }}>{fmt(row.payment)}</td>
-                        <td style={{ padding: "5px 6px", textAlign: "right", fontSize: "10.5px", borderBottom: "1px solid #f1f5f9" }}>{fmt(row.principalPmt)}</td>
-                        <td style={{ padding: "5px 6px", textAlign: "right", fontSize: "10.5px", borderBottom: "1px solid #f1f5f9", color: "#64748b" }}>{fmt(row.interest)}</td>
-                        <td style={{ padding: "5px 6px", textAlign: "right", fontSize: "10.5px", borderBottom: "1px solid #f1f5f9" }}>{fmt(row.balance)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <p style={{ marginTop: "16px", fontSize: "10px", color: "#94a3b8", textAlign: "center" }}>
-                  ※ 실제 납입액은 금융사 기준일·계산방식에 따라 일부 다를 수 있습니다.
-                  {rows.length > 12 ? " 전체 회차 상세 내역은 별도 PDF로 요청해주세요." : ""}
-                </p>
-              </div>
+              <RepaymentScheduleCapture
+                ref={scheduleTableRef}
+                subtitle="현대지게차 경기북부판매 할부금융"
+                recipient={scheduleRecipient || undefined}
+                customer={r.company_name ? `${r.company_name}${r.customer_name !== r.company_name ? ` (${r.customer_name})` : ''}` : (r.customer_name ?? "")}
+                principal={principal}
+                annualRate={annualRate}
+                periodLabel={periodLabel}
+                gracePeriod={gracePeriod}
+                financeCompany={r.finance_company ?? "-"}
+                payment={payment}
+                rows={rows}
+              />
             </div>
           </div>
         );
