@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import html2canvas from 'html2canvas';
-import { addCanvasToA4 } from '../../lib/pdfFit';
+import { addCanvasToA4, applyTabularDigits } from '../../lib/pdfFit';
 import jsPDF from 'jspdf';
 import { supabase } from '../../lib/supabase';
 
@@ -165,6 +165,7 @@ async function generateStatementPDF(form: StatementForm, docNo: string): Promise
   const wrapper = document.createElement('div');
   wrapper.style.cssText = 'position:absolute;left:-9999px;top:0;width:794px;background:#fff;';
   wrapper.innerHTML = bodyHTML;
+  applyTabularDigits(wrapper); // 숫자는 고정폭(Arial)으로
   document.head.appendChild(styleEl);
   document.body.appendChild(wrapper);
   try {
@@ -531,6 +532,7 @@ export default function TransactionStatementPage() {
       wrapper = document.createElement('div');
       wrapper.style.cssText = 'position:absolute;left:-9999px;top:0;width:720px;background:#fff;';
       wrapper.innerHTML = bodyHTML;
+      applyTabularDigits(wrapper); // 숫자는 고정폭(Arial)으로
       document.head.appendChild(styleEl);
       document.body.appendChild(wrapper);
       await new Promise(r => setTimeout(r, 300));

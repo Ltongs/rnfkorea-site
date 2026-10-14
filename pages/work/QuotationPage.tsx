@@ -5,7 +5,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import html2canvas from 'html2canvas';
-import { addCanvasToA4 } from '../../lib/pdfFit';
+import { addCanvasToA4, applyTabularDigits } from '../../lib/pdfFit';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
@@ -616,6 +616,7 @@ async function htmlDocToPdfBytes(html: string): Promise<ArrayBuffer> {
   wrapper.style.cssText = 'position:absolute;left:-9999px;top:0;width:794px;background:#fff;letter-spacing:0.01px;';
   wrapper.className = 'pdf-a4'; // 양식의 .pdf-a4 규칙(꼬리말 A4 하단 고정)은 PDF 변환 때만 적용
   wrapper.innerHTML = bodyHTML;
+  applyTabularDigits(wrapper); // 숫자는 고정폭(Arial)으로
   document.head.appendChild(styleEl);
   document.body.appendChild(wrapper);
   try {
@@ -1051,7 +1052,6 @@ export default function QuotationPage() {
   const [history, setHistory]           = useState<HistoryRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  const installmentPreviewRef= useRef<HTMLDivElement>(null);
 
   const flash = (m:string) => { setMsg(m); setTimeout(()=>setMsg(''),5000); };
 
@@ -1507,13 +1507,12 @@ export default function QuotationPage() {
       let target: HTMLElement | null = null;
       let cleanup: (() => void) | null = null;
       let smsQuoteNo = '';
-      if(tab==='installment') {
-        target = installmentPreviewRef.current;
-        smsQuoteNo = await genNo();
-      } else {
+      {
+        // 문자 이미지도 PDF와 같은 양식을 캡처한다 (할부견적서는 A4 폭 794px 고정 양식)
         const no2 = await genNo();
         smsQuoteNo = no2;
-        const htmlStr = tab==='battery' ? buildQuoteHTML('battery', bf, no2)
+        const htmlStr = tab==='installment' ? (buildInstallmentHTML(no2) ?? '')
+          : tab==='battery' ? buildQuoteHTML('battery', bf, no2)
           : tab==='forklift' ? buildQuoteHTML('forklift', ff, no2)
           : tab==='hyundaiForklift' ? buildHyundaiForkliftHTML(hf, no2)
           : tab==='tire' ? buildQuoteHTML('tire', tf, no2)
@@ -1524,8 +1523,9 @@ export default function QuotationPage() {
         const styleEl = document.createElement('style');
         styleEl.textContent = styleMatch ? styleMatch[1] : '';
         const wrapper = document.createElement('div');
-        wrapper.style.cssText = 'position:absolute;left:-9999px;top:0;width:720px;background:#fff;';
+        wrapper.style.cssText = `position:absolute;left:-9999px;top:0;width:${tab==='installment'?794:720}px;background:#fff;`;
         wrapper.innerHTML = bodyHTML;
+        applyTabularDigits(wrapper); // 숫자는 고정폭(Arial)으로
         document.head.appendChild(styleEl);
         document.body.appendChild(wrapper);
         target = wrapper;
@@ -2315,56 +2315,6 @@ table.sc{border-collapse:collapse;width:100%;}
           </div>
         </div>
       )}
-      <div ref={installmentPreviewRef} style={{position:'absolute',left:'-9999px',top:'0',width:'600px',fontFamily:"'Malgun Gothic',sans-serif",background:'#fff',padding:'20px'}}>
-        <div style={{background:'#0a192f',padding:'14px 18px',borderRadius:'6px',marginBottom:'12px',display:'flex',justifyContent:'space-between'}}>
-          <div style={{color:'#fff',fontSize:'16px',fontWeight:700}}>RNF KOREA</div>
-          <div style={{color:'#f97316',fontSize:'16px',fontWeight:700}}>{iff.financeCompany} 할부견적서</div>
-        </div>
-        {iff.recipient&&<p style={{fontSize:'12px',marginBottom:'8px'}}>수신: <strong>{iff.recipient}</strong> 귀중</p>}
-        {n0(iff.principal)>0&&n0(iff.annualRate)>0&&n0(iff.installmentMonths)>0&&(()=>{
-          const p2=n0(iff.principal),r=n0(iff.annualRate),gp=n0(iff.gracePeriod),im=n0(iff.installmentMonths);
-          const{payment,rows}=calcAmortization(p2,r,gp+im,iff.startYM,gp);
-          const fmtN=(n:number)=>Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,',');
-          const shownRows = pickDisplayRows(rows);
-          return(
-            <>
-              <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:'6px',marginBottom:'10px'}}>
-                <div style={{background:'#f1f5f9',borderRadius:'4px',padding:'8px'}}>
-                  <div style={{fontSize:'9px',color:'#64748b'}}>할부원금</div>
-                  <div style={{fontSize:'14px',fontWeight:700,color:'#0a192f'}}>{fmt(p2)}원</div>
-                </div>
-                <div style={{background:'#0a192f',borderRadius:'4px',padding:'8px'}}>
-                  <div style={{fontSize:'9px',color:'#94a3b8'}}>월납입액 ({iff.financeCompany})</div>
-                  <div style={{fontSize:'14px',fontWeight:700,color:'#f97316'}}>{fmt(payment)}원</div>
-                </div>
-              </div>
-              <div style={{background:'#f8fafc',borderRadius:'4px',padding:'10px',fontSize:'11px',marginBottom:'10px'}}>
-                <div>차량/장비: {iff.itemName}{iff.itemSpec?` ${iff.itemSpec}`:''}</div>
-                <div>연이율: {r}% | 기간: {gp+im}개월{gp>0?` (거치 ${gp}+할부 ${im})`:''}</div>
-              </div>
-              <table style={{width:'100%',borderCollapse:'collapse',fontSize:'10px'}}>
-                <thead><tr style={{background:'#0a192f'}}>
-                  {['회차','납입일','월납입액','원금','이자','잔액'].map(h=>
-                    <th key={h} style={{color:'#fff',padding:'5px 4px',fontWeight:600}}>{h}</th>
-                  )}
-                </tr></thead>
-                <tbody>{shownRows.map((row:any,i:number)=> row===null
-                  ? <tr key="ellipsis"><td colSpan={6} style={{textAlign:'center',color:'#94a3b8',padding:'3px 0'}}>⋯</td></tr>
-                  : <tr key={row.no} style={{background:i%2===0?'#f8fafc':'#fff',color:row.principalPmt===0?'#94a3b8':'#1e293b'}}>
-                      <td style={{padding:'4px',textAlign:'center',borderBottom:'1px solid #f1f5f9'}}>{row.no}</td>
-                      <td style={{padding:'4px',textAlign:'center',borderBottom:'1px solid #f1f5f9'}}>{row.date}</td>
-                      <td style={{padding:'4px',textAlign:'right',borderBottom:'1px solid #f1f5f9'}}>{fmtN(row.payment)}</td>
-                      <td style={{padding:'4px',textAlign:'right',borderBottom:'1px solid #f1f5f9'}}>{fmtN(row.principalPmt)}</td>
-                      <td style={{padding:'4px',textAlign:'right',borderBottom:'1px solid #f1f5f9'}}>{fmtN(row.interest)}</td>
-                      <td style={{padding:'4px',textAlign:'right',borderBottom:'1px solid #f1f5f9'}}>{fmtN(row.balance)}</td>
-                    </tr>
-                )}</tbody>
-              </table>
-            </>
-          );
-        })()}
-        <p style={{marginTop:'8px',fontSize:'8px',color:'#94a3b8',textAlign:'center'}}>주식회사 알앤에프코리아 | 1551-1873</p>
-      </div>
     </div>
   );
 }

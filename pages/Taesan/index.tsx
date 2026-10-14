@@ -7,6 +7,7 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 import AppTabBar from "../../components/AppTabBar";
 import RepaymentScheduleCapture from "../../components/RepaymentScheduleCapture";
+import { applyTabularDigits } from "../../lib/pdfFit";
 
 // ─── 정책 ─────────────────────────────────────────────────
 const HIDE_CLOSED_AFTER_DAYS_FOR_NON_ADMIN = 30;
@@ -2747,7 +2748,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                     if (!scheduleTableRef.current) return;
                     setScheduleSending(true);
                     try {
-                      let canvas = await html2canvas(scheduleTableRef.current, { scale: 1.5, backgroundColor: "#ffffff" });
+                      let canvas = await html2canvas(scheduleTableRef.current, { scale: 1.5, backgroundColor: "#ffffff", onclone: (_d, cloned) => applyTabularDigits(cloned) }); // 숫자는 고정폭(Arial)으로
 
                       // Solapi MMS 이미지 크기 제한(가로 1500px, 세로 1440px) 대응
                       const MAX_W = 1500, MAX_H = 1440;

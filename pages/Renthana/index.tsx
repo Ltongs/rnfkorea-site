@@ -11,7 +11,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
-import { addCanvasToA4 } from "../../lib/pdfFit";
+import { addCanvasToA4, applyTabularDigits } from "../../lib/pdfFit";
 import { supabase } from "../../lib/supabase";
 
 const VAT_RATE = 1.1;          // 부가세 10% 포함
@@ -146,6 +146,7 @@ export default function RenthanaPage() {
         )
       );
       const canvas = await html2canvas(el, {
+        onclone: (_doc, cloned) => applyTabularDigits(cloned), // 숫자는 고정폭(Arial)으로
         scale: 2,
         backgroundColor: "#ffffff",
         useCORS: true,

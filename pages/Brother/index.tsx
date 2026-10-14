@@ -6,6 +6,7 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 import AppTabBar from "../../components/AppTabBar";
 import RepaymentScheduleCapture from "../../components/RepaymentScheduleCapture";
+import { applyTabularDigits } from "../../lib/pdfFit";
 import { TireSection, BatterySection, EtcSection, OverviewSection } from "./ItemSections";
 
 // ─── 정책 ─────────────────────────────────────────────────
@@ -3356,6 +3357,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
                         "font-family:'Malgun Gothic','맑은 고딕',sans-serif",
                       ].join(';');
                       document.body.appendChild(clone);
+                      applyTabularDigits(clone); // 숫자는 고정폭(Arial)으로
                       await new Promise(r => setTimeout(r, 100));
                       const h = clone.scrollHeight || clone.offsetHeight;
                       let canvas = await html2canvas(clone, {
