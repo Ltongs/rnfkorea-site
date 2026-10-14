@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import html2canvas from 'html2canvas';
+import { addCanvasToA4 } from '../../lib/pdfFit';
 import jsPDF from 'jspdf';
 import { supabase } from '../../lib/supabase';
 
@@ -173,12 +174,8 @@ async function generateStatementPDF(form: StatementForm, docNo: string): Promise
       useCORS: true, allowTaint: true, logging: false,
       width: wrapper.offsetWidth, windowWidth: wrapper.offsetWidth,
     });
-    const imgData = canvas.toDataURL('image/jpeg', 0.95);
     const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const imgHeight = Math.min(pageHeight, (canvas.height*pageWidth)/canvas.width);
-    pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, imgHeight);
+    addCanvasToA4(pdf, canvas);   // 비율 유지 (길면 살짝 축소하거나 여러 페이지로)
     return pdf.output('arraybuffer');
   } finally {
     document.body.removeChild(wrapper);

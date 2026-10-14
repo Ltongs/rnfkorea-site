@@ -11,6 +11,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import { addCanvasToA4 } from "../../lib/pdfFit";
 import { supabase } from "../../lib/supabase";
 
 const VAT_RATE = 1.1;          // 부가세 10% 포함
@@ -150,12 +151,8 @@ export default function RenthanaPage() {
         useCORS: true,
         logging: false,
       });
-      const imgData = canvas.toDataURL("image/jpeg", 0.95);
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const imgHeight = Math.min(pageHeight, (canvas.height * pageWidth) / canvas.width);
-      pdf.addImage(imgData, "JPEG", 0, 0, pageWidth, imgHeight);
+      addCanvasToA4(pdf, canvas);   // 비율 유지 (길면 살짝 축소)
       pdf.save(`렌타나_${product.label}_렌탈료견적_${meta ? meta.no : todayStr().replace(/\./g, "")}.pdf`);
     } finally {
       setDownloading(false);

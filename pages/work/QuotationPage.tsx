@@ -5,6 +5,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import html2canvas from 'html2canvas';
+import { addCanvasToA4 } from '../../lib/pdfFit';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
@@ -599,7 +600,7 @@ function bytesToBase64(buf: ArrayBuffer): string {
   return btoa(binary);
 }
 
-// 완전한 HTML 문서 문자열을 A4 1페이지 PDF(ArrayBuffer)로 변환한다.
+// 완전한 HTML 문서 문자열을 A4 PDF(ArrayBuffer)로 변환한다. (비율 유지 — lib/pdfFit.ts 참고)
 // 화면 폭에 따라 레이아웃이 늘어나 보이던 문제를 없애기 위해, 항상 A4 폭(794px)으로
 // 오프스크린 렌더링한 뒤 캡처하므로 미리보기·다운로드·이메일 첨부가 모두 동일하게 보인다.
 async function htmlDocToPdfBytes(html: string): Promise<ArrayBuffer> {
@@ -623,12 +624,8 @@ async function htmlDocToPdfBytes(html: string): Promise<ArrayBuffer> {
       useCORS: true, allowTaint: true, logging: false,
       width: wrapper.offsetWidth, windowWidth: wrapper.offsetWidth,
     });
-    const imgData = canvas.toDataURL('image/jpeg', 0.95);
     const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const imgHeight = Math.min(pageHeight, (canvas.height*pageWidth)/canvas.width);
-    pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, imgHeight);
+    addCanvasToA4(pdf, canvas);   // 비율 유지 (길면 살짝 축소하거나 여러 페이지로)
     return pdf.output('arraybuffer');
   } finally {
     document.body.removeChild(wrapper);
@@ -1588,7 +1585,9 @@ export default function QuotationPage() {
   };
 
   // ── 할부견적서 HTML 생성 (다운로드·이메일 첨부 공용)
-  const buildInstallmentHTML = () => {
+  // 할부견적서 PDF — A4 한 장: 위 1/3은 이메일 안내와 같은 요약(머리글·인사말·조건·월 납입액), 아래 2/3는 월별 상환 스케줄.
+  // no: 견적번호 (아직 발급 전이면 생략)
+  const buildInstallmentHTML = (no?: string) => {
     const p=n0(iff.principal),r=n0(iff.annualRate),gp=n0(iff.gracePeriod),im=n0(iff.installmentMonths);
     const months=gp+im;
     if(!p||!r||!months) return null;
@@ -1597,47 +1596,83 @@ export default function QuotationPage() {
     const totalPayment =rows.reduce((s:number,row:any)=>s+row.payment,0);
     const fmtN=(n:number)=>(()=>{ const a=Math.abs(Math.round(n)); return (n<0?'-':'')+a.toString().replace(/\B(?=(\d{3})+(?!\d))/g,','); })();
     const periodLabel=gp>0?`${months}개월 (거치 ${gp}+할부 ${im})`:`${months}개월`;
-    const tRows=rows.map((row:any)=>`<tr class="${row.principalPmt===0?'grace':''}">
+    const rowHTML=(row:any)=>`<tr class="${row.principalPmt===0?'grace':''}">
       <td style="text-align:center">${row.no}</td><td style="text-align:center">${row.date}</td>
       <td style="text-align:right">${fmtN(row.payment)}</td><td style="text-align:right">${fmtN(row.principalPmt)}</td>
       <td style="text-align:right">${fmtN(row.interest)}</td><td style="text-align:right">${fmtN(row.balance)}</td>
-    </tr>`).join('');
+    </tr>`;
+    // 기간이 길면 A4 한 장에 글씨가 찌그러지지 않도록 첫 12개월·마지막 12개월만 보여주고 중간은 생략 (합계는 전체 기준)
+    const EDGE=12;
+    const tRows=rows.length>EDGE*2+1
+      ? rows.slice(0,EDGE).map(rowHTML).join('')
+        +`<tr class="skip"><td colspan="6" style="text-align:center;color:#94a3b8;padding:7px 4px;background:#fff">⋮ ${rows[EDGE].no}회차 ~ ${rows[rows.length-EDGE-1].no}회차 (${rows.length-EDGE*2}개월) 생략 ⋮</td></tr>`
+        +rows.slice(-EDGE).map(rowHTML).join('')
+      : rows.map(rowHTML).join('');
+    const item=`${iff.itemName}${iff.itemSpec?' '+iff.itemSpec:''}`;
+    const totalRepay=p+Math.round(totalInterest);
+    const infoRow=(l:string,v:string)=>`<tr><td class="il">${l}</td><td class="iv">${v}</td></tr>`;
     const html=`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>할부견적서</title>
-<style>@page{size:A4;margin:15mm 14mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}*{box-sizing:border-box;}body{font-family:'맑은 고딕',sans-serif;font-size:11px;color:#1e293b;background:#e5e7eb;}
-.doc{max-width:794px;margin:0 auto;background:#fff;padding:16px;}
-table{border-collapse:collapse;width:100%;}th{background:#0a192f;color:#fff;padding:6px 4px;font-size:10px;}
-td{padding:5px 4px;border-bottom:1px solid #f1f5f9;}tr:nth-child(even) td{background:#f8fafc;}
-tr.grace td{color:#94a3b8;font-style:italic;}.tfoot td{background:#e2e8f0;font-weight:700;border-top:2px solid #94a3b8;}</style></head><body>
+<style>@page{size:A4;margin:0;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;box-sizing:border-box;}
+body{margin:0;font-family:'Apple SD Gothic Neo','맑은 고딕','Malgun Gothic',sans-serif;color:#1e293b;background:#fff;}
+.doc{width:794px;min-height:1123px;margin:0 auto;background:#fff;display:flex;flex-direction:column;}
+.hd{background:#0a192f;padding:26px 40px;display:flex;justify-content:space-between;align-items:center;}
+.bd{padding:22px 40px 14px;flex:1;}
+.il{font-size:12px;color:#64748b;padding:3px 0;}.iv{font-size:13px;color:#0f172a;text-align:right;padding:3px 0;}
+.sum{display:flex;gap:20px;align-items:stretch;margin-bottom:16px;}
+.box{flex:1;background:#f1f5f9;border-radius:8px;padding:14px 20px;}
+.pay{width:230px;background:#0a192f;border-radius:8px;padding:14px 18px;display:flex;flex-direction:column;justify-content:center;text-align:right;}
+.st{font-size:13px;font-weight:700;color:#0a192f;margin:0 0 6px;display:flex;justify-content:space-between;align-items:baseline;}
+table.sc{border-collapse:collapse;width:100%;}
+.sc th{background:#0a192f;color:#fff;padding:5px 6px;font-size:11px;font-weight:600;}
+.sc td{padding:3px 8px;font-size:11.5px;border-bottom:1px solid #eef2f7;line-height:1.35;}
+.sc tbody tr:nth-child(even) td{background:#f8fafc;}
+.sc tr.grace td{color:#94a3b8;font-style:italic;}
+.sc tfoot td{background:#e2e8f0;font-weight:700;border-top:2px solid #94a3b8;padding:5px 8px;}
+.ft{background:#0a192f;padding:12px 40px;text-align:center;}</style></head><body>
 <div class="doc">
-<div style="background:#0a192f;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;border-radius:6px;margin-bottom:12px">
-  <div style="color:#fff;font-size:18px;font-weight:700">RNF KOREA</div>
-  <div style="text-align:right"><div style="color:#f97316;font-size:20px;font-weight:700">${iff.financeCompany} 할부견적서</div>
-  <div style="color:#94a3b8;font-size:9px">${iff.quoteDate}</div></div>
+<div class="hd">
+  <div style="color:#fff;font-size:24px;font-weight:800;letter-spacing:.5px">RNF KOREA</div>
+  <div style="text-align:right">
+    <div style="color:#f97316;font-size:24px;font-weight:800">${iff.financeCompany} 할부 견적서</div>
+    <div style="color:#94a3b8;font-size:11px;margin-top:2px">${no?`No. ${no} · `:''}${iff.quoteDate}</div>
+  </div>
 </div>
-${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${iff.recipient}${iff.companyName?` (${iff.companyName})`:''}</strong> 귀중</p>`:''}
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px">
-  ${[[`할부원금`,fmtN(p)+'원',false],[`월 납입액`,fmtN(payment)+'원',true],[`총 이자`,fmtN(Math.round(totalInterest))+'원',false],[`총 상환액`,fmtN(p+Math.round(totalInterest))+'원',false]].map(([l,v,dk])=>`
-  <div style="background:${dk?'#0a192f':'#f1f5f9'};border-radius:6px;padding:8px;text-align:center">
-    <div style="font-size:9px;color:${dk?'#94a3b8':'#64748b'};margin-bottom:3px">${l}</div>
-    <div style="font-size:12px;font-weight:700;color:${dk?'#f97316':'#0a192f'}">${v}</div>
-  </div>`).join('')}
+<div class="bd">
+  ${iff.recipient?`<p style="font-size:15px;margin:0 0 8px"><strong>${iff.recipient}${iff.companyName?` (${iff.companyName})`:''}</strong> 귀중,</p>`:''}
+  <p style="font-size:13px;color:#374151;margin:0 0 14px;line-height:1.6">안녕하세요. 주식회사 알앤에프코리아입니다.<br>요청하신 할부 견적서를 안내드립니다.</p>
+  <div class="sum">
+    <div class="box"><table style="width:100%;border-collapse:collapse">
+      ${infoRow('차량/장비',item||'-')}
+      ${infoRow('할부원금',fmtN(p)+'원')}
+      ${infoRow('할부금융사',iff.financeCompany||'-')}
+      ${infoRow('연이율',r+'%')}
+      ${infoRow('대출기간',periodLabel)}
+      ${infoRow('총 이자 / 총 상환액',`${fmtN(Math.round(totalInterest))}원 / ${fmtN(totalRepay)}원`)}
+    </table></div>
+    <div class="pay">
+      <div style="font-size:12px;color:#94a3b8;margin-bottom:6px">월 납입액</div>
+      <div style="font-size:27px;font-weight:800;color:#f97316;line-height:1.1">${fmtN(payment)}<span style="font-size:15px">원</span></div>
+      ${gp>0?`<div style="font-size:10px;color:#94a3b8;margin-top:6px">거치기간 ${gp}개월은 이자만 납입</div>`:''}
+    </div>
+  </div>
+  <div class="st"><span>월별 상환 스케줄</span><span style="font-size:10.5px;font-weight:400;color:#94a3b8">${rows.length>EDGE*2+1?`첫 ${EDGE}개월 · 마지막 ${EDGE}개월 표시 (합계는 전체 기간)`:`전체 ${rows.length}개월`}</span></div>
+  <table class="sc">
+    <thead><tr><th>회차</th><th>납입일</th><th>월납입액</th><th>원금</th><th>이자</th><th>잔액</th></tr></thead>
+    <tbody>${tRows}</tbody>
+    <tfoot><tr>
+      <td colspan="2" style="text-align:center">합계</td>
+      <td style="text-align:right">${fmtN(totalPayment)}</td>
+      <td style="text-align:right">${fmtN(p)}</td>
+      <td style="text-align:right">${fmtN(Math.round(totalInterest))}</td>
+      <td style="text-align:right">0</td>
+    </tr></tfoot>
+  </table>
+  <p style="margin:10px 0 0;font-size:11px;color:#64748b">※ 실제 납입액은 금융사 기준일·계산방식에 따라 일부 다를 수 있습니다.</p>
 </div>
-<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:#f8fafc;border-radius:6px;padding:10px;margin-bottom:12px">
-  ${[['금융사',iff.financeCompany],['연이율',r+'%'],['대출기간',periodLabel],['차량/장비',iff.itemName+(iff.itemSpec?' '+iff.itemSpec:'')],['고객명',iff.recipient]].map(([l,v])=>`
-  <div><div style="font-size:9px;color:#94a3b8">${l}</div><div style="font-weight:600;color:#0a192f;font-size:11px">${v}</div></div>`).join('')}
+<div class="ft">
+  <div style="color:#fff;font-size:12px;font-weight:700">주식회사 알앤에프코리아</div>
+  <div style="color:#94a3b8;font-size:10.5px;margin-top:3px">TEL: 1551-1873 | rnfkorea.co.kr</div>
 </div>
-<table>
-  <thead><tr><th>회차</th><th>납입일</th><th>월납입액</th><th>원금</th><th>이자</th><th>잔액</th></tr></thead>
-  <tbody>${tRows}</tbody>
-  <tfoot><tr class="tfoot">
-    <td colspan="2" style="text-align:center">합계</td>
-    <td style="text-align:right">${fmtN(totalPayment)}</td>
-    <td style="text-align:right">${fmtN(p)}</td>
-    <td style="text-align:right">${fmtN(Math.round(totalInterest))}</td>
-    <td style="text-align:right">0</td>
-  </tr></tfoot>
-</table>
-<p style="margin-top:10px;font-size:9px;color:#94a3b8;text-align:center">※ 실제 납입액은 금융사 기준일·계산방식에 따라 일부 다를 수 있습니다. | 주식회사 알앤에프코리아 | 1551-1873</p>
 </div>
 </body></html>`;
     return html;
@@ -1647,13 +1682,13 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
   const downloadInstallmentPDF = async () => {
     const p=n0(iff.principal),r=n0(iff.annualRate),gp=n0(iff.gracePeriod),im=n0(iff.installmentMonths);
     if(!p||!r||!(gp+im)){flash('할부원금, 금리, 기간을 입력해주세요.');return;}
-    const html = buildInstallmentHTML();
-    if(!html) return;
+    if(!buildInstallmentHTML()) return;
     setLoading(true);
     try {
       const{payment}=calcAmortization(p,r,gp+im,iff.startYM,gp);
       const fmtN=(n:number)=>(()=>{ const a=Math.abs(Math.round(n)); return (n<0?'-':'')+a.toString().replace(/\B(?=(\d{3})+(?!\d))/g,','); })();
       const no = await genNo();
+      const html = buildInstallmentHTML(no)!;
       supabase.from('tb_quotations').insert({
         quote_type:'installment',quote_no:no,quote_date:iff.quoteDate,
         recipient:iff.recipient,recipient_email:iff.email1,
@@ -1688,12 +1723,12 @@ ${iff.recipient?`<p style="font-size:13px;margin-bottom:10px">수신: <strong>${
         total_amount:p,vat_amount:0,grand_total:p,created_by:'admin@rnfkorea.co.kr',
       });
       if (insertErr) console.error('[이력저장오류]', insertErr.message, insertErr.details);
-      const installmentHtml = buildInstallmentHTML();
+      const installmentHtml = buildInstallmentHTML(no);
       const pdfBytes = installmentHtml ? await htmlDocToPdfBytes(installmentHtml) : null;
       const{error}=await supabase.functions.invoke('send-quotation',{
         body:{quoteNo:no,quoteType:'installment',recipient:iff.recipient,toList,ccList,
           totalAmount:p,vatAmount:0,grandTotal:p,extraMessage:iff.extraMsg,
-          installmentInfo:{itemName:iff.itemName,financeCompany:iff.financeCompany,
+          installmentInfo:{itemName:iff.itemName,itemSpec:iff.itemSpec||'',financeCompany:iff.financeCompany,
             principal:p,annualRate:r,gracePeriod:gp,installmentMonths:im,totalMonths:months,payment},
           pdfBase64: pdfBytes ? bytesToBase64(pdfBytes) : '',
           fileName: `RNF_할부견적서_${iff.recipient||'고객'}_${no}.pdf`},
