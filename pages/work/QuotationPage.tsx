@@ -161,7 +161,7 @@ const HF0: HyundaiForkliftForm = {
   ...SEND0,
   recipient:'VIP',
   dealerRepName:'이동수', dealerRepTitle:'과장',
-  dealerPhone:'010-5054-9006', dealerTel:'031-574-1400', dealerFax:'0303-3130-9981',
+  dealerPhone:'010-5054-9006', dealerTel:'1899-1373', dealerFax:'0504-311-9006',
   modelName:'25BR-X\n전동지게차\n(입승식)',
   tonnage:'2.5톤', qty:1, vehiclePrice:32_400_000,
   options:[
@@ -635,6 +635,34 @@ async function htmlDocToPdfBytes(html: string): Promise<ArrayBuffer> {
   }
 }
 
+// ── 발송 이력 모델명 검색 ──
+// 비교용: 공백·줄바꿈·하이픈·괄호 등을 빼고 소문자로 (예: "30B-X\n전동지게차" → "30bx전동지게차")
+function normalizeModel(v: string) {
+  return (v || '').toLowerCase().replace(/[\s\-_.()\[\]/·,]+/g, '');
+}
+// 이력 표에 보여줄 모델/품목 요약: 첫 품목명(+규격) "외 N건"
+function modelSummary(items: Item[] | null | undefined) {
+  const named = (items ?? []).filter(it => it?.name && String(it.name).trim());
+  const label = (it: Item) => `${String(it.name).replace(/\n/g, ' ')}${it.spec ? ` ${it.spec}` : ''}`.trim();
+  if (!named.length) return { short: '-', full: '' };
+  const full = named.map(label).join(', ');
+  return { short: named.length > 1 ? `${label(named[0])} 외 ${named.length - 1}건` : label(named[0]), full };
+}
+// 검색창: 입력 후 Enter 또는 잠시 멈추면 검색, ✕로 지우기
+function HistorySearch({ value, onSearch }: { value: string; onSearch: (v: string) => void }) {
+  const [text, setText] = useState(value);
+  useEffect(() => { const t = setTimeout(() => { if (text !== value) onSearch(text); }, 400); return () => clearTimeout(t); }, [text]);
+  return (
+    <div className="relative">
+      <input value={text} onChange={e => setText(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') onSearch(text); }}
+        placeholder="모델명으로 찾기 (예: 30B-X, 25BR)"
+        className="w-56 border border-gray-300 rounded px-3 py-1.5 pr-7 text-xs focus:outline-none focus:ring-2 focus:ring-orange-400"/>
+      {text && <button onClick={() => { setText(''); onSearch(''); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs" title="지우기">✕</button>}
+    </div>
+  );
+}
+
 // 할부 선수율(%) = 1 − 할부원금 ÷ 차량가격. 차량가격이 없거나 할부원금이 더 크면 null.
 function downPaymentRate(carPrice: number, principal: number): number | null {
   if (!(carPrice > 0) || !(principal > 0) || principal > carPrice) return null;
@@ -1103,6 +1131,7 @@ export default function QuotationPage() {
   const [emailSuggestions, setEmailSuggestions] = useState<string[]>([]);
   const [history, setHistory]           = useState<HistoryRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyQuery, setHistoryQuery]       = useState(''); // 모델명·품목명 검색어
 
 
   const flash = (m:string) => { setMsg(m); setTimeout(()=>setMsg(''),5000); };
@@ -1306,14 +1335,18 @@ export default function QuotationPage() {
     setter((f:any) => ({...f, ...patch}));
 
   // ── 히스토리 로드
+  // 검색어가 없으면 최근 30건, 있으면 최근 1000건 중 모델명·품목명(규격 포함)이 맞는 견적을 보여준다.
+  // 공백·줄바꿈·하이픈·대소문자는 무시한다 (예: "30bx", "30B-X" 모두 "30B-X\n전동지게차"를 찾음)
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
+    const q = normalizeModel(historyQuery);
     const { data } = await supabase.from('tb_quotations')
       .select('id,quote_type,quote_no,quote_date,recipient,recipient_email,total_amount,grand_total,created_at,email_sent,items,notes')
-      .order('created_at',{ascending:false}).limit(30);
-    setHistory((data??[]) as HistoryRow[]);
+      .order('created_at',{ascending:false}).limit(q ? 1000 : 30);
+    const rows = (data??[]) as HistoryRow[];
+    setHistory(q ? rows.filter(r => (r.items??[]).some(it => normalizeModel(`${it?.name??''} ${it?.spec??''}`).includes(q))) : rows);
     setHistoryLoading(false);
-  }, []);
+  }, [historyQuery]);
 
   useEffect(() => { if(tab==='history') loadHistory(); }, [tab, loadHistory]);
 
@@ -2238,19 +2271,24 @@ table.sc{border-collapse:collapse;width:100%;}
         {tab==='history' && (
           <div className="bg-white rounded-lg border overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3 border-b">
-              <h2 className="font-semibold text-gray-800 text-sm">발송 이력 (최근 30건)</h2>
-              <button onClick={loadHistory} disabled={historyLoading} className="text-xs border px-3 py-1.5 rounded hover:bg-gray-50 disabled:opacity-50">
-                {historyLoading?'로딩 중...':'새로고침'}
-              </button>
+              <h2 className="font-semibold text-gray-800 text-sm">
+                {historyQuery.trim() ? `발송 이력 — "${historyQuery.trim()}" 검색 결과 ${history.length}건` : '발송 이력 (최근 30건)'}
+              </h2>
+              <div className="flex items-center gap-2">
+                <HistorySearch value={historyQuery} onSearch={setHistoryQuery}/>
+                <button onClick={loadHistory} disabled={historyLoading} className="text-xs border px-3 py-1.5 rounded hover:bg-gray-50 disabled:opacity-50">
+                  {historyLoading?'로딩 중...':'새로고침'}
+                </button>
+              </div>
             </div>
             {historyLoading ? (
               <div className="py-12 text-center text-gray-400 text-sm">로딩 중...</div>
             ) : history.length === 0 ? (
-              <div className="py-12 text-center text-gray-400 text-sm">이력이 없습니다.</div>
+              <div className="py-12 text-center text-gray-400 text-sm">{historyQuery.trim() ? '해당 모델명으로 발송한 견적이 없습니다.' : '이력이 없습니다.'}</div>
             ) : (
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-gray-600">
-                  <tr>{['구분','견적번호','일자','수신인','총액','이메일발송','불러오기','다운로드','삭제'].map(h=>(
+                  <tr>{['구분','견적번호','일자','수신인','모델/품목','총액','이메일발송','불러오기','다운로드','삭제'].map(h=>(
                     <th key={h} className="px-3 py-2.5 text-left font-medium text-xs border-b">{h}</th>
                   ))}</tr>
                 </thead>
@@ -2273,6 +2311,7 @@ table.sc{border-collapse:collapse;width:100%;}
                       <td className="px-3 py-2 font-mono text-xs text-gray-600">{row.quote_no}</td>
                       <td className="px-3 py-2 text-gray-600">{row.quote_date}</td>
                       <td className="px-3 py-2 font-medium">{row.recipient}</td>
+                      <td className="px-3 py-2 text-xs text-gray-600 max-w-[220px] truncate" title={modelSummary(row.items).full}>{modelSummary(row.items).short}</td>
                       <td className="px-3 py-2 text-right">{fmt(row.grand_total||0)}원</td>
                       <td className="px-3 py-2 text-center">
                         {row.email_sent?<span className="text-green-600 text-xs">✅ 발송</span>:<span className="text-gray-400 text-xs">-</span>}
