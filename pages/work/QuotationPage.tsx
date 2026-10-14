@@ -1728,8 +1728,10 @@ table.sc{border-collapse:collapse;width:100%;}
       const{error}=await supabase.functions.invoke('send-quotation',{
         body:{quoteNo:no,quoteType:'installment',recipient:iff.recipient,toList,ccList,
           totalAmount:p,vatAmount:0,grandTotal:p,extraMessage:iff.extraMsg,
-          installmentInfo:{itemName:iff.itemName,itemSpec:iff.itemSpec||'',financeCompany:iff.financeCompany,
-            principal:p,annualRate:r,gracePeriod:gp,installmentMonths:im,totalMonths:months,payment},
+          // PDF가 첨부되면 다른 견적서처럼 짧은 안내 본문만 보낸다 (요약 본문 + 첨부 PDF가 메일에 두 번 보이던 문제).
+          // PDF 생성에 실패했을 때만 요약 본문(installmentInfo)으로 내용을 전달한다.
+          ...(pdfBytes ? {} : {installmentInfo:{itemName:iff.itemName,itemSpec:iff.itemSpec||'',financeCompany:iff.financeCompany,
+            principal:p,annualRate:r,gracePeriod:gp,installmentMonths:im,totalMonths:months,payment}}),
           pdfBase64: pdfBytes ? bytesToBase64(pdfBytes) : '',
           fileName: `RNF_할부견적서_${iff.recipient||'고객'}_${no}.pdf`},
       });
