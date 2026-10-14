@@ -61,7 +61,7 @@ interface HyundaiForkliftForm extends SendInfo {
 }
 interface InstallmentForm extends SendInfo {
   companyName:string; itemName:string; itemSpec:string;
-  carPrice:number|string; attachmentPrice:number|string;
+  carPrice:number|string;
   principal:number|string; annualRate:number|string;
   gracePeriod:number|string; installmentMonths:number|string;
   financeCompany:string; startYM:string;
@@ -185,7 +185,7 @@ const HF0: HyundaiForkliftForm = {
 const IF0: InstallmentForm = {
   ...SEND0,
   companyName:'', itemName:'CPD25-A7LIH4-S (전동지게차)', itemSpec:'3.0톤',
-  carPrice:'', attachmentPrice:'', principal:'', annualRate:'6.5',
+  carPrice:'', principal:'', annualRate:'6.5',
   gracePeriod:'0', installmentMonths:'36',
   financeCompany:'NH캐피탈', startYM:THIS_YM,
 };
@@ -633,6 +633,12 @@ async function htmlDocToPdfBytes(html: string): Promise<ArrayBuffer> {
     document.body.removeChild(wrapper);
     document.head.removeChild(styleEl);
   }
+}
+
+// 할부 선수율(%) = 1 − 할부원금 ÷ 차량가격. 차량가격이 없거나 할부원금이 더 크면 null.
+function downPaymentRate(carPrice: number, principal: number): number | null {
+  if (!(carPrice > 0) || !(principal > 0) || principal > carPrice) return null;
+  return Math.round((1 - principal / carPrice) * 1000) / 10;
 }
 
 // 이메일 첨부파일 이름 — 짧은 영문만 쓴다. 한글·공백이 섞인 긴 이름은 메일 전송 시 여러 조각으로 인코딩되면서
@@ -1633,7 +1639,7 @@ body{margin:0;font-family:'Apple SD Gothic Neo','맑은 고딕','Malgun Gothic',
 .doc{width:794px;min-height:1123px;margin:0 auto;background:#fff;display:flex;flex-direction:column;}
 .hd{background:#0a192f;padding:26px 40px;display:flex;justify-content:space-between;align-items:center;}
 .bd{padding:22px 40px 14px;flex:1;}
-.il{font-size:12px;color:#64748b;padding:3px 0;}.iv{font-size:13px;color:#0f172a;text-align:right;padding:3px 0;}
+.il{font-size:12px;color:#64748b;padding:2px 0;}.iv{font-size:13px;color:#0f172a;text-align:right;padding:2px 0;}
 .sum{display:flex;gap:20px;align-items:stretch;margin-bottom:16px;}
 .box{flex:1;background:#f1f5f9;border-radius:8px;padding:14px 20px;}
 .pay{width:230px;background:#0a192f;border-radius:8px;padding:14px 18px;display:flex;flex-direction:column;justify-content:center;text-align:right;}
@@ -1661,6 +1667,7 @@ table.sc{border-collapse:collapse;width:100%;}
   <div class="sum">
     <div class="box"><table style="width:100%;border-collapse:collapse">
       ${infoRow('차량/장비',item||'-')}
+      ${n0(iff.carPrice)>0?infoRow('차량가격 / 선수율',`${fmtN(n0(iff.carPrice))}원 / ${downPaymentRate(n0(iff.carPrice),p)??'-'}${downPaymentRate(n0(iff.carPrice),p)===null?'':'%'}`):''}
       ${infoRow('할부원금',fmtN(p)+'원')}
       ${infoRow('할부금융사',iff.financeCompany||'-')}
       ${infoRow('연이율',r+'%')}
@@ -2105,7 +2112,12 @@ table.sc{border-collapse:collapse;width:100%;}
               <div><Label>차량/장비명</Label><Input value={iff.itemName} onChange={e=>setIff(f=>({...f,itemName:e.target.value}))}/></div>
               <div><Label>규격</Label><Input value={iff.itemSpec} onChange={e=>setIff(f=>({...f,itemSpec:e.target.value}))}/></div>
               <div><Label>차량가격(원)</Label><NumInput value={iff.carPrice} onChange={v=>setIff(f=>({...f,carPrice:v}))}/></div>
-              <div><Label>부대비용(원)</Label><NumInput value={iff.attachmentPrice} onChange={v=>setIff(f=>({...f,attachmentPrice:v}))}/></div>
+              <div><Label>선수율 (자동계산)</Label>
+                {(()=>{ const dr = downPaymentRate(n0(iff.carPrice), n0(iff.principal));
+                  return <div className="w-full border border-gray-200 bg-gray-50 rounded px-3 py-2 text-sm text-gray-700" title="1 − 할부원금 ÷ 차량가격">
+                    {dr===null ? <span className="text-gray-400">차량가격·할부원금 입력 시 계산</span> : `${dr}%`}
+                  </div>; })()}
+              </div>
               <div><Label>할부원금(원) *</Label><NumInput value={iff.principal} onChange={v=>setIff(f=>({...f,principal:v}))}/></div>
               <div><Label>할부금융사</Label>
                 <select value={iff.financeCompany} onChange={e=>setIff(f=>({...f,financeCompany:e.target.value}))} className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400">
