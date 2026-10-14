@@ -56,3 +56,18 @@ export function applyTabularDigits(root: HTMLElement) {
     node.parentNode?.replaceChild(span, node);
   }
 }
+
+// html2canvas는 글자 기준선을 재려고 body에 "1px 이미지 + 샘플 글자"를 잠깐 붙여 둘의 위치 차이를 잰다.
+// 그런데 이 사이트는 Tailwind 기본 스타일(img{display:block})이 적용돼 있어 그 이미지가 글자 아래 줄로 내려가고,
+// 기준선이 실제보다 크게 잡혀 PDF·문자 이미지의 모든 글자가 몇 px씩 아래로 처져 그려졌다.
+// 캡처하는 동안에만 그 측정용 이미지를 글자와 같은 줄(inline)에 두도록 스타일을 잠깐 덧붙인다.
+export async function withCaptureFix<T>(capture: () => Promise<T>): Promise<T> {
+  const style = document.createElement("style");
+  style.textContent = 'body > div > img[width="1"][height="1"]{display:inline!important;vertical-align:baseline;}';
+  document.head.appendChild(style);
+  try {
+    return await capture();
+  } finally {
+    style.remove();
+  }
+}

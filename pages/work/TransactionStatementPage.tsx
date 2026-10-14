@@ -4,7 +4,7 @@
 // 원본 거래명세서 양식(셀 배치)을 그대로 HTML 표로 재현한 뒤 html2canvas + jsPDF로 PDF를 생성합니다.
 
 import { useEffect, useRef, useState } from 'react';
-import html2canvas from 'html2canvas';
+import html2canvas from '../../lib/html2canvas'; // 글자 처짐 보정 포함
 import { addCanvasToA4, applyTabularDigits } from '../../lib/pdfFit';
 import jsPDF from 'jspdf';
 import { supabase } from '../../lib/supabase';

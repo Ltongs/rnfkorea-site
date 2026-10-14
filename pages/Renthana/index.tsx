@@ -9,7 +9,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import html2canvas from "html2canvas";
+import html2canvas from "../../lib/html2canvas"; // 글자 처짐 보정 포함
 import jsPDF from "jspdf";
 import { addCanvasToA4, applyTabularDigits } from "../../lib/pdfFit";
 import { supabase } from "../../lib/supabase";

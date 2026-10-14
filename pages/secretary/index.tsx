@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus as FhPlus, Search as FhSearch, Check as FhCheck, X as FhX, Pencil as FhPencil, Trash2 as FhTrash2, Loader2 as FhLoader2, PackageCheck as FhPackageCheck, AlertCircle as FhAlertCircle, Upload as FhUpload, FileText as FhFileText, Link2 as FhLink2, FileSpreadsheet as FhFileSpreadsheet } from "lucide-react";
 import ReactDOM from "react-dom";
-import html2canvas from "html2canvas";
+import html2canvas from "../../lib/html2canvas"; // 글자 처짐 보정 포함
 import { Navigate, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";

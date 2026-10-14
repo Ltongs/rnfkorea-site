@@ -4,7 +4,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import html2canvas from 'html2canvas';
+import html2canvas from '../../lib/html2canvas'; // 글자 처짐 보정 포함
 import { addCanvasToA4, applyTabularDigits } from '../../lib/pdfFit';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
