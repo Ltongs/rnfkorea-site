@@ -54,7 +54,8 @@ interface HyundaiForkliftForm extends SendInfo {
   discountAmount:string|number; // 할인금액
   downPayment:string|number;    // 계약금
   installmentRate:string; installmentPrincipal:string; // 할부원금(공란이면 최종판매가-계약금으로 자동계산)
-  registrationFeeEstimate:string|number; // 등록 예상 비용
+  registrationFeeEstimate:string|number; // (예상)등록비용 — 비우면 서울 기준 자동계산
+  registrationType:'registered'|'unregistered'; // 건설기계 등록 대상 여부 (등록비용 자동계산 기준)
   deliveryNotes:string[];       // 3. 납기 및 특약사항
   brotherOptions:string[];      // 4. 형제옵션(선택사항) — 선택된 항목명 목록
   attachmentNote:string;        // "덧발(　　)" 빈칸에 채울 값
@@ -172,7 +173,7 @@ const HF0: HyundaiForkliftForm = {
   freeNote:'#납산배터리 및 충전기 무상 지급',
   discountAmount:3_000_000, downPayment:'',
   installmentRate:'', installmentPrincipal:'',
-  registrationFeeEstimate:'',
+  registrationFeeEstimate:'', registrationType:'registered',
   deliveryNotes:[
     'A/S 보증기간 1년 또는 2000시간 선도래 적용',
     '납기 : 계약후 60일 전, 후',
@@ -222,6 +223,32 @@ const calcHyundaiOptionSum = (options:HyundaiOption[]) =>
 // 최종판매가(부가세 별도) = 차량가격 + 옵션합계 - 할인금액
 const calcHyundaiFinal = (hf:HyundaiForkliftForm) =>
   Math.max(0, n0(hf.vehiclePrice) + calcHyundaiOptionSum(hf.options) - n0(hf.discountAmount));
+
+// ── (예상)등록비용 — 서울 기준 자동계산 ──
+// 과세표준 = 판매가(부가세 별도)
+// · 등록 대상 건설기계(엔진식, 공기압타이어 전동식 등): 지방세법 기계장비 취득세 3% + 지방교육세 0.2% + 농어촌특별세 0.2% = 3.4%
+//   + 서울 도시철도채권 매입(과세표준의 0.5%, 도시철도법 시행령 별표2) — 즉시 매도 시 할인비용만 부담(할인율 가정)
+//   + 번호판·수입인지 등 수수료(정액 가정) + 쿠션비용 5만원(대행·기타 실비 여유분)
+// · 미등록 기계장비(전동식 솔리드타이어, 도로 외 장소 전용 — 건설기계관리법상 등록 제외): 취득세 2% + 농어촌특별세 0.2% = 2.2%
+// 실제 금액은 등록 시점의 채권 할인율·수수료에 따라 달라지므로 견적서에는 "(예상)"으로 표기한다.
+const SEOUL_BOND_RATE = 0.005;       // 도시철도채권 매입: 과세표준의 0.5%
+const SEOUL_BOND_DISCOUNT = 0.12;    // 채권 즉시 매도 할인율 가정 (변동 — 필요 시 조정)
+const REG_FIXED_FEE = 20_000;        // 번호판·수입인지 등 (가정)
+const REG_CUSHION = 50_000;          // 쿠션비용 — 대행·기타 실비 여유분 (등록 대상만)
+function calcRegistrationFee(base: number, type: 'registered'|'unregistered') {
+  if (!(base > 0)) return { total: 0, tax: 0, bondCost: 0, fixed: 0, cushion: 0, taxRate: 0 };
+  if (type === 'unregistered') {
+    const tax = Math.round(base * 0.022);
+    return { total: Math.round(tax / 100) * 100, tax, bondCost: 0, fixed: 0, cushion: 0, taxRate: 2.2 };
+  }
+  const tax = Math.round(base * 0.034);
+  const bondCost = Math.round(base * SEOUL_BOND_RATE * SEOUL_BOND_DISCOUNT);
+  const total = Math.round((tax + bondCost + REG_FIXED_FEE + REG_CUSHION) / 100) * 100;
+  return { total, tax, bondCost, fixed: REG_FIXED_FEE, cushion: REG_CUSHION, taxRate: 3.4 };
+}
+// 견적서·화면에 쓰는 등록비용: 직접 입력값이 있으면 그 값, 없으면 자동계산
+const hyundaiRegFee = (hf: HyundaiForkliftForm) =>
+  n0(hf.registrationFeeEstimate) || calcRegistrationFee(calcHyundaiFinal(hf), hf.registrationType ?? 'registered').total;
 // 이력 저장·SMS 캡처용 — 차량 1행 + 옵션 행들을 공용 Item[] 형태로 변환
 const hyundaiFormItems = (hf:HyundaiForkliftForm): Item[] => [
   { name: hf.modelName.replace(/\n/g,' '), spec: hf.tonnage, qty: hf.qty, price: hf.vehiclePrice },
@@ -633,6 +660,37 @@ async function htmlDocToPdfBytes(html: string): Promise<ArrayBuffer> {
     document.body.removeChild(wrapper);
     document.head.removeChild(styleEl);
   }
+}
+
+// ── 문서 미리보기: 창 폭에 맞춰 자동 축소 ──
+// 견적서는 A4 폭(794px) 기준으로 그려지므로, 그 폭 그대로 그린 뒤 미리보기 칸 폭에 맞게 비율 축소해서
+// 처음 열었을 때 문서 전체 폭이 한눈에 보이게 한다 (확대돼 보이거나 오른쪽이 잘리지 않게).
+const DOC_W = 794;
+function FitPreview({ html }: { html: string }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const [scale, setScale] = useState(1);
+  const [docH, setDocH] = useState(1123);
+  useEffect(() => {
+    const box = boxRef.current; if (!box) return;
+    const fit = () => setScale(Math.min(1, box.clientWidth / DOC_W));
+    fit();
+    const ro = new ResizeObserver(fit); ro.observe(box);
+    return () => ro.disconnect();
+  }, []);
+  const measure = () => {
+    const d = frameRef.current?.contentDocument;
+    if (d) setDocH(Math.max(d.documentElement.scrollHeight, d.body?.scrollHeight ?? 0, 400));
+  };
+  return (
+    <div ref={boxRef} className="w-full overflow-hidden">
+      <div style={{ width: DOC_W * scale, height: docH * scale, margin: '0 auto' }}>
+        <iframe ref={frameRef} srcDoc={html} onLoad={() => { measure(); setTimeout(measure, 300); }}
+          title="문서 미리보기" sandbox="allow-same-origin"
+          style={{ width: DOC_W, height: docH, border: 0, transform: `scale(${scale})`, transformOrigin: 'top left', background: '#fff' }}/>
+      </div>
+    </div>
+  );
 }
 
 // ── 발송 이력 모델명 검색 ──
@@ -1050,7 +1108,7 @@ function buildHyundaiForkliftHTML(hf: HyundaiForkliftForm, quoteNo: string) {
       <tr style="height:30px"><td style="${L};${B}">계약금</td><td class="r" style="${B};border-right:2px solid #111">${downPayment ? fmt(downPayment) : '-'}</td>
         <td style="${L};${B};font-weight:400">60개월</td><td class="r" style="${B}">${rate && principal ? fmt(pmt(principal, rate, 60)) : ''}</td></tr>
       <tr style="height:30px"><td style="${L};${B}">인도금</td><td class="r" style="${B};border-right:2px solid #111">${downPayment ? fmt(deliveryAmount) : fmt(totalWithVat)}</td>
-        <td colspan="2" style="${L};${B};border-top:2px solid #111">등록비용</td><td class="r" style="${B};border-top:2px solid #111;background:#ececec">${hf.registrationFeeEstimate ? fmt(n0(hf.registrationFeeEstimate)) : '-'}</td></tr>
+        <td colspan="2" style="${L};${B};border-top:2px solid #111">(예상)등록비용</td><td class="r" style="${B};border-top:2px solid #111;background:#ececec">${hyundaiRegFee(hf) ? fmt(hyundaiRegFee(hf)) : '-'}</td></tr>
     </tbody>
   </table>
 
@@ -2119,7 +2177,24 @@ table.sc{border-collapse:collapse;width:100%;}
             <div className="grid grid-cols-3 gap-3">
               <div><Label>할인금액 (원)</Label><NumInput value={hf.discountAmount} onChange={v=>setHf(f=>({...f,discountAmount:v}))}/></div>
               <div><Label>계약금 (원)</Label><NumInput value={hf.downPayment} onChange={v=>setHf(f=>({...f,downPayment:v}))}/></div>
-              <div><Label>등록 예상 비용 (원)</Label><NumInput value={hf.registrationFeeEstimate} onChange={v=>setHf(f=>({...f,registrationFeeEstimate:v}))}/></div>
+              <div><Label>등록 구분 (등록비용 계산)</Label>
+                <select value={hf.registrationType ?? 'registered'} onChange={e=>setHf(f=>({...f,registrationType:e.target.value as any}))}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400">
+                  <option value="registered">건설기계 등록 대상 (엔진식·공기압타이어)</option>
+                  <option value="unregistered">미등록 (전동 솔리드타이어·실내 전용)</option>
+                </select>
+              </div>
+              <div><Label>(예상)등록비용 (원)</Label>
+                <NumInput value={hf.registrationFeeEstimate} onChange={v=>setHf(f=>({...f,registrationFeeEstimate:v}))}
+                  placeholder={(()=>{ const r=calcRegistrationFee(calcHyundaiFinal(hf), hf.registrationType ?? 'registered'); return r.total?`자동: ${fmt(r.total)}`:'자동계산'; })()}/>
+                {(()=>{ const r=calcRegistrationFee(calcHyundaiFinal(hf), hf.registrationType ?? 'registered');
+                  if(!r.total) return null;
+                  return <p className="text-[11px] text-gray-500 mt-1 leading-snug">
+                    서울 기준 자동계산 {fmt(r.total)}원 = 취득세 등 {r.taxRate}% {fmt(r.tax)}원
+                    {r.bondCost?` + 도시철도채권 할인비용 ${fmt(r.bondCost)}원`:''}{r.fixed?` + 번호판·인지 ${fmt(r.fixed)}원`:''}{r.cushion?` + 쿠션비용 ${fmt(r.cushion)}원`:''}
+                    {n0(hf.registrationFeeEstimate)?' · 직접 입력값이 우선 적용됩니다':' · 직접 입력하면 그 값이 쓰입니다'}
+                  </p>; })()}
+              </div>
               <div><Label>할부금리 (%)</Label><Input type="number" step="0.1" value={hf.installmentRate} onChange={e=>setHf(f=>({...f,installmentRate:e.target.value}))} placeholder="예: 6.5"/></div>
               <div><Label>할부원금 (원)</Label><NumInput value={hf.installmentPrincipal} onChange={v=>setHf(f=>({...f,installmentPrincipal:v}))} placeholder="자동계산 (최종판매가-계약금)"/></div>
             </div>
@@ -2403,15 +2478,7 @@ table.sc{border-collapse:collapse;width:100%;}
               </div>
             </div>
             <div className="p-4 bg-gray-100 rounded-b-xl">
-              <div className="bg-white shadow-md rounded" style={{minHeight:'800px'}}>
-                <iframe
-                  srcDoc={previewHtml}
-                  className="w-full border-0 rounded"
-                  style={{height:'800px'}}
-                  title="문서 미리보기"
-                  sandbox="allow-same-origin"
-                />
-              </div>
+              <FitPreview html={previewHtml}/>
             </div>
           </div>
         </div>
