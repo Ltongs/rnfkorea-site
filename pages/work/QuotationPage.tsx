@@ -2503,7 +2503,10 @@ table.sc{border-collapse:collapse;width:100%;}
                       </td>
                       <td className="px-3 py-2 font-mono text-xs text-gray-600">{row.quote_no}</td>
                       <td className="px-3 py-2 text-gray-600">{row.quote_date}</td>
-                      <td className="px-3 py-2 font-medium">{row.recipient}</td>
+                      <td className="px-3 py-2 font-medium">
+                        {row.recipient}
+                        {!isGbnView && row.created_by === GBN_QUOTE_EMAIL && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 align-middle">경기북부</span>}
+                      </td>
                       <td className="px-3 py-2 text-xs text-gray-600 max-w-[220px] truncate" title={modelSummary(row.items).full}>{modelSummary(row.items).short}</td>
                       <td className="px-3 py-2 text-right">{fmt(row.grand_total||0)}원</td>
                       <td className="px-3 py-2 text-center">

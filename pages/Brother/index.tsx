@@ -2084,7 +2084,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
             <span className="text-sm font-semibold text-[#0f172a]">🚜 현대지게차 경기북부판매</span>
           </div>
           <div className="flex items-center gap-1.5">
-            {isGbn && (
+            {(isGbn || isAdmin || isSubAdmin) && (
               <button onClick={() => nav("/brother/quote")}
                 className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-orange-200 bg-orange-50 text-orange-600 text-xs font-semibold hover:bg-orange-100 transition-all">
                 📄 견적서

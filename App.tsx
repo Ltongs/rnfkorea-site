@@ -1599,8 +1599,8 @@ const AppRoutes = () => {
             path="/brother/quote"
             element={
               <BrotherRouteGuard>
-                {/* 관리자도 볼 수 없음 — 경기북부 계정 전용 */}
-                {isGbn ? <QuotationPage variant="gbn" /> : <Navigate to="/brother" replace />}
+                {/* 경기북부 계정 + 관리자(관리 목적) */}
+                {(isGbn || isAdmin || isSubAdmin) ? <QuotationPage variant="gbn" /> : <Navigate to="/brother" replace />}
               </BrotherRouteGuard>
             }
           />
