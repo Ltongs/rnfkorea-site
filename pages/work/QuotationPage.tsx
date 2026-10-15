@@ -265,7 +265,9 @@ function hyundaiFormFromHistory(row: HistoryRow, base: HyundaiForkliftForm): Hyu
     vehiclePrice: items[0]?.price ?? base.vehiclePrice,
     options:      items.slice(1).length ? items.slice(1).map(it=>({name:it.name,price:it.price})) : base.options,
     deliveryNotes: row.notes?.length ? row.notes : base.deliveryNotes,
+    // 이전 이력에 남아 있지 않은 값은 기본값 대신 비워 둔다 (엉뚱한 기본 문구·조건이 들어가지 않게)
     downPayment: '', installmentRate: '', installmentPrincipal: '', registrationFeeEstimate: '',
+    freeNote: '', brotherOptions: [], attachmentNote: '',
   };
   const sale = n0(row.total_amount);
   if (sale > 0) form.discountAmount = Math.max(0, n0(form.vehiclePrice) + calcHyundaiOptionSum(form.options) - sale);
@@ -1203,6 +1205,17 @@ export default function QuotationPage() {
   const [iff, setIff] = useState<InstallmentForm>(IF0);
   const [pf, setPf]   = useState<PurchaseForm>(PF0);
 
+  // ── 이력에서 불러온 견적의 재발송/신규발송 ──
+  // 불러오면 견적번호·견적일자까지 원래대로 복원하고, 그 상태(snap)를 기억해 둔다.
+  // 발송할 때 내용이 그대로면 재발송(기존 번호·일자, 새 이력 없음) / 신규발송(새 번호·오늘 일자)을 고르게 하고,
+  // 하나라도 수정됐으면 자동으로 신규발송한다.
+  type SendKey = 'pdf'|'email'|'sms';
+  const [loadedQuote, setLoadedQuote] = useState<{ tab:TabType; quoteNo:string; quoteDate:string; snap:string }|null>(null);
+  const [pendingSnap, setPendingSnap] = useState<{ tab:TabType; quoteNo:string; quoteDate:string }|null>(null);
+  const [pendingSend, setPendingSend] = useState<SendKey|null>(null);
+  const [resendAsk, setResendAsk]     = useState<{ quoteNo:string; quoteDate:string; resolve:(v:'resend'|'new'|null)=>void }|null>(null);
+  const resendRef = useRef<string|null>(null); // 재발송 중이면 그 견적번호 (genNo가 새 번호 대신 반환, 이력 저장 생략)
+
   const [loading, setLoading]           = useState(false);
   const [emailLoading, setEmailLoading] = useState(false);
   const [smsSending, setSmsSending]     = useState(false);
@@ -1224,10 +1237,13 @@ export default function QuotationPage() {
       recipient: row.recipient || '',
       email1:    row.recipient_email || '',
       email2:    '',
-      quoteDate: TODAY,
+      quoteDate: row.quote_date || TODAY, // 견적일자는 원래 일자 그대로 (재발송 기준)
     };
-    // 작성 당시 입력값 전체가 저장된 이력이면 그대로 복원 (견적일자만 오늘로)
-    const fd = row.form_data && typeof row.form_data === 'object' ? { ...row.form_data, quoteDate: TODAY } : null;
+    // 불러온 내용이 화면에 반영된 뒤 그 상태를 기준(snap)으로 기억 → 발송 시 수정 여부 판단
+    const tabOf: Record<string, TabType> = { battery:'battery', forklift:'forklift', hyundai_forklift:'hyundaiForklift', tire:'tire', installment:'installment', purchase:'purchase' };
+    if (tabOf[row.quote_type]) setPendingSnap({ tab: tabOf[row.quote_type], quoteNo: row.quote_no, quoteDate: row.quote_date || TODAY });
+    // 작성 당시 입력값 전체가 저장된 이력이면 그대로 복원 (견적일자도 원래대로)
+    const fd = row.form_data && typeof row.form_data === 'object' ? { ...row.form_data, quoteDate: row.quote_date || row.form_data.quoteDate || TODAY } : null;
     if (fd) {
       const t = (row.quote_type as string);
       if (t === 'battery')               { setBf(prev => ({ ...prev, ...fd })); setTab('battery'); }
@@ -1237,7 +1253,7 @@ export default function QuotationPage() {
       else if (t === 'installment')      { setIff(prev => ({ ...prev, ...fd })); setTab('installment'); }
       else if (t === 'purchase')         { setPf(prev => ({ ...prev, ...fd })); setTab('purchase'); }
       if (['battery','forklift','hyundai_forklift','tire','installment','purchase'].includes(t)) {
-        flash(`✅ ${row.recipient} 견적(${row.quote_no})을 작성 당시 그대로 불러왔습니다. 수정 후 발송하세요.`);
+        flash(`✅ ${row.recipient} 견적(${row.quote_no})을 작성 당시 그대로 불러왔습니다.`);
         return;
       }
     }
@@ -1295,7 +1311,7 @@ export default function QuotationPage() {
       flash('지원하지 않는 유형입니다.');
       return;
     }
-    flash(`✅ ${row.recipient} 데이터를 불러왔습니다. 수정 후 발송하세요.`);
+    flash(`✅ ${row.recipient} 견적(${row.quote_no})을 불러왔습니다.`);
   };
 
   // ── 미리보기 생성
@@ -1452,9 +1468,16 @@ export default function QuotationPage() {
 
   // ── 견적번호 생성 — 회사 전체가 공유하는 통합 번호(RNF-YYMM-NNNNNN), 매달 초기화되는 카운터를 DB에서 원자적으로 발급받는다.
   const genNo = async (): Promise<string> => {
+    if (resendRef.current) return resendRef.current; // 재발송: 기존 견적번호 그대로
     const { data, error } = await supabase.rpc('next_rnf_number');
     if (error || !data) throw new Error(error?.message || '번호 발급 실패');
     return data as string;
+  };
+
+  // ── 발송 이력 저장 — 재발송이면 기존 이력을 그대로 두고 새 줄을 만들지 않는다
+  const saveHistory = (row: Record<string, unknown>): Promise<{ error: any }> => {
+    if (resendRef.current) return Promise.resolve({ error: null });
+    return Promise.resolve(supabase.from('tb_quotations').insert(row)).then(r => ({ error: r.error }));
   };
 
   // ── 현재 폼 정보 추출
@@ -1463,6 +1486,47 @@ export default function QuotationPage() {
 
   const currentQuoteType = () =>
     tab==='purchase'?'purchase':tab==='hyundaiForklift'?'hyundai_forklift':tab;
+
+  // ── 불러온 견적 발송 관리 ──
+  const setCurForm = (t: TabType, fn: (f: any) => any) =>
+    t==='battery'?setBf(fn):t==='forklift'?setFf(fn):t==='hyundaiForklift'?setHf(fn):t==='tire'?setTf(fn):t==='installment'?setIff(fn):setPf(fn);
+  // 불러온 내용이 화면에 반영되면 그 상태를 기준으로 기억
+  useEffect(() => {
+    if (!pendingSnap || pendingSnap.tab !== tab) return;
+    setLoadedQuote({ ...pendingSnap, snap: JSON.stringify(currentSend()) });
+    setPendingSnap(null);
+  }, [pendingSnap, tab, bf, ff, hf, tf, iff, pf]);
+  const loadedChanged = !!loadedQuote && loadedQuote.tab === tab && JSON.stringify(currentSend()) !== loadedQuote.snap;
+  const runSend = (k: SendKey) => k === 'pdf' ? handlePrint() : k === 'email' ? handleEmail() : handleSMS();
+  // 신규발송으로 바꾼 뒤(오늘 일자 반영 후) 실행
+  useEffect(() => {
+    if (!pendingSend) return;
+    const k = pendingSend; setPendingSend(null);
+    void runSend(k);
+  }, [pendingSend]);
+  const askResend = (quoteNo: string, quoteDate: string) =>
+    new Promise<'resend'|'new'|null>(resolve => setResendAsk({ quoteNo, quoteDate, resolve }));
+  // 발송 버튼(PDF·이메일·문자) 공통 입구
+  const guardSend = async (k: SendKey) => {
+    const lq = loadedQuote;
+    if (!lq || lq.tab !== tab) return runSend(k);
+    const cur: any = currentSend();
+    const toNew = () => {
+      // 신규발송: 견적일자를 따로 바꾸지 않았으면 오늘로, 견적번호는 발송 시 새로 발급
+      if (cur.quoteDate === lq.quoteDate) setCurForm(tab, f => ({ ...f, quoteDate: TODAY }));
+      setLoadedQuote(null);
+      setPendingSend(k);
+    };
+    if (JSON.stringify(cur) !== lq.snap) {
+      flash(`수정된 내용이 있어 신규발송(새 견적번호·오늘 일자)으로 처리합니다.`);
+      return toNew();
+    }
+    const choice = await askResend(lq.quoteNo, lq.quoteDate);
+    if (!choice) return;
+    if (choice === 'new') return toNew();
+    resendRef.current = lq.quoteNo;
+    try { await runSend(k); } finally { resendRef.current = null; }
+  };
 
   // ── PDF 다운로드
   const typeLabelOf = (t:TabType) => t==='battery'?'배터리':t==='forklift'?'지게차':t==='hyundaiForklift'?'지게차(현대판매)':t==='tire'?'타이어':t==='purchase'?'발주서':'견적서';
@@ -1483,7 +1547,7 @@ export default function QuotationPage() {
         // 히스토리 저장
         const total = tab==='battery'?bTotal:tab==='forklift'?fTotal:tab==='hyundaiForklift'?hTotal:tab==='tire'?tTotal:pTotal;
         const vat   = Math.round(total*.1);
-        supabase.from('tb_quotations').insert({
+        saveHistory({
           quote_type: currentQuoteType(), quote_no: no, form_data: currentSend(),
           quote_date: s.quoteDate, recipient: s.recipient,
           recipient_email: s.email1, items: tab==='battery'?bf.items:tab==='forklift'?ff.items:tab==='hyundaiForklift'?hyundaiFormItems(hf):tab==='tire'?tf.items:pf.items,
@@ -1606,7 +1670,7 @@ export default function QuotationPage() {
       const notes = tab==='battery'?bf.notes:tab==='forklift'?ff.notes:tab==='hyundaiForklift'?hf.deliveryNotes:tab==='tire'?tf.notes:null;
 
       // DB 저장 — 실패해도 발송 자체는 계속 진행하되, 이력 누락을 사용자에게 알린다
-      const { error: insertErr } = await supabase.from('tb_quotations').insert({
+      const { error: insertErr } = await saveHistory({
         quote_type: currentQuoteType(), quote_no: no, form_data: currentSend(),
         quote_date: s.quoteDate, recipient: s.recipient,
         recipient_email: s.email1, items, notes,
@@ -1647,7 +1711,7 @@ export default function QuotationPage() {
         .update({ email_sent: true, email_sent_at: new Date().toISOString() })
         .eq('quote_no', no);
 
-      if (tab !== 'purchase') {
+      if (tab !== 'purchase' && !resendRef.current) { // 재발송은 상담 중복 등록하지 않음
         void registerConsultationFromQuote({
           workType: tab==='battery'?'battery_sales':(tab==='forklift'||tab==='hyundaiForklift')?'forklift_sales':'tire_sales',
           customerName: s.recipient,
@@ -1746,7 +1810,7 @@ export default function QuotationPage() {
         const smsItems = tab==='battery'?bf.items:tab==='forklift'?ff.items:tab==='hyundaiForklift'?hyundaiFormItems(hf):tab==='tire'?tf.items
           :tab==='installment'?[{name:iff.itemName,spec:iff.itemSpec,qty:1,price:n0(iff.carPrice)||n0(iff.principal)}]:pf.items;
         const smsNotes = tab==='battery'?bf.notes:tab==='forklift'?ff.notes:tab==='hyundaiForklift'?hf.deliveryNotes:tab==='tire'?tf.notes:null;
-        const { error: smsInsertErr } = await supabase.from('tb_quotations').insert({
+        const { error: smsInsertErr } = await saveHistory({
           quote_type: currentQuoteType(), quote_no: smsQuoteNo, form_data: currentSend(),
           quote_date: tab==='installment'?iff.quoteDate:s.quoteDate,
           recipient: s.recipient, recipient_email: tab==='installment'?iff.email1:s.email1,
@@ -1757,7 +1821,7 @@ export default function QuotationPage() {
         if (smsInsertErr) console.error('[이력저장오류]', smsInsertErr.message, smsInsertErr.details);
       }
 
-      if (tab !== 'purchase') {
+      if (tab !== 'purchase' && !resendRef.current) { // 재발송은 상담 중복 등록하지 않음
         void registerConsultationFromQuote({
           workType: tab==='battery'?'battery_sales':(tab==='forklift'||tab==='hyundaiForklift')?'forklift_sales':tab==='tire'?'tire_sales':'finance',
           customerName: s.recipient,
@@ -1881,7 +1945,7 @@ table.sc{border-collapse:collapse;width:100%;}
       const fmtN=(n:number)=>(()=>{ const a=Math.abs(Math.round(n)); return (n<0?'-':'')+a.toString().replace(/\B(?=(\d{3})+(?!\d))/g,','); })();
       const no = await genNo();
       const html = buildInstallmentHTML(no)!;
-      supabase.from('tb_quotations').insert({
+      saveHistory({
         quote_type:'installment',quote_no:no,quote_date:iff.quoteDate,form_data:iff,
         recipient:iff.recipient,recipient_email:iff.email1,
         items:[{name:iff.itemName,spec:iff.itemSpec,qty:1,price:n0(iff.carPrice)||p}],
@@ -1907,7 +1971,7 @@ table.sc{border-collapse:collapse;width:100%;}
       const no=await genNo();
       const toList=[iff.email1,iff.email2].filter(Boolean);
       const ccList=[iff.cc1,iff.cc2].filter(Boolean);
-      const { error: insertErr } = await supabase.from('tb_quotations').insert({
+      const { error: insertErr } = await saveHistory({
         quote_type:'installment',quote_no:no,quote_date:iff.quoteDate,form_data:iff,
         recipient:iff.recipient,recipient_email:iff.email1,
         items:[{name:iff.itemName,spec:iff.itemSpec,qty:1,price:n0(iff.carPrice)||p}],
@@ -1979,7 +2043,7 @@ table.sc{border-collapse:collapse;width:100%;}
               <button onClick={handlePreview} className="bg-white/10 hover:bg-white/20 text-white border border-white/20 px-4 py-2 rounded text-sm font-medium">
                 👁 미리보기
               </button>
-              <button onClick={handlePrint} disabled={loading} className="bg-white text-[#0a192f] hover:bg-gray-100 px-4 py-2 rounded text-sm font-medium disabled:opacity-50">
+              <button onClick={()=>void guardSend('pdf')} disabled={loading} className="bg-white text-[#0a192f] hover:bg-gray-100 px-4 py-2 rounded text-sm font-medium disabled:opacity-50">
                 {loading?'생성 중...':'📥 PDF 다운로드'}
               </button>
               {tab==='battery' && (
@@ -1987,10 +2051,10 @@ table.sc{border-collapse:collapse;width:100%;}
                   📊 엑셀 다운로드 (수기 수정용)
                 </button>
               )}
-              <button onClick={handleEmail} disabled={emailLoading} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded text-sm font-medium disabled:opacity-50">
+              <button onClick={()=>void guardSend('email')} disabled={emailLoading} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded text-sm font-medium disabled:opacity-50">
                 {emailLoading?'발송 중...':'📧 이메일 발송'}
               </button>
-              <button onClick={handleSMS} disabled={smsSending} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium disabled:opacity-50">
+              <button onClick={()=>void guardSend('sms')} disabled={smsSending} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium disabled:opacity-50">
                 {smsSending?'발송 중...':'📤 MMS 발송'}
               </button>
             </div>
@@ -2013,6 +2077,15 @@ table.sc{border-collapse:collapse;width:100%;}
       <div className="max-w-5xl mx-auto px-4 py-6 space-y-5">
         {msg && (
           <div className={`text-sm px-4 py-2.5 rounded border ${msg.startsWith('✅')?'bg-green-50 border-green-200 text-green-700':'bg-red-50 border-red-200 text-red-700'}`}>{msg}</div>
+        )}
+        {loadedQuote && loadedQuote.tab === tab && (
+          <div className={`text-sm px-4 py-2.5 rounded border flex items-center justify-between gap-3 ${loadedChanged ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
+            <span>
+              📄 이력에서 불러온 견적 <b className="font-mono">{loadedQuote.quoteNo}</b> ({loadedQuote.quoteDate}) —{' '}
+              {loadedChanged ? '수정된 내용이 있어 발송 시 신규발송(새 견적번호·오늘 일자)으로 처리됩니다.' : '그대로 발송하면 재발송/신규발송을 선택할 수 있습니다.'}
+            </span>
+            <button onClick={()=>setLoadedQuote(null)} className="text-xs underline shrink-0" title="새 견적으로 작성 (발송 시 새 번호)">새 견적으로</button>
+          </div>
         )}
 
         {/* ══ 배터리 탭 ══ */}
@@ -2481,6 +2554,31 @@ table.sc{border-collapse:collapse;width:100%;}
         )}
       </div>
 
+      {/* ══ 재발송 / 신규발송 선택 ══ */}
+      {resendAsk && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-5 space-y-4">
+            <div>
+              <h3 className="font-semibold text-gray-800">이력에서 불러온 견적을 발송합니다</h3>
+              <p className="text-sm text-gray-500 mt-1">견적번호 <b className="font-mono text-gray-700">{resendAsk.quoteNo}</b> · 견적일자 {resendAsk.quoteDate}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={()=>{ resendAsk.resolve('resend'); setResendAsk(null); }}
+                className="rounded-lg border-2 border-[#0a192f] px-3 py-3 text-left hover:bg-gray-50">
+                <div className="font-semibold text-sm text-[#0a192f]">재발송</div>
+                <div className="text-[11px] text-gray-500 mt-0.5">기존 견적번호·일자 그대로</div>
+              </button>
+              <button onClick={()=>{ resendAsk.resolve('new'); setResendAsk(null); }}
+                className="rounded-lg border-2 border-orange-500 px-3 py-3 text-left hover:bg-orange-50">
+                <div className="font-semibold text-sm text-orange-600">신규발송</div>
+                <div className="text-[11px] text-gray-500 mt-0.5">새 견적번호·오늘 일자</div>
+              </button>
+            </div>
+            <div className="text-right"><button onClick={()=>{ resendAsk.resolve(null); setResendAsk(null); }} className="text-xs text-gray-400 hover:text-gray-600">취소</button></div>
+          </div>
+        </div>
+      )}
+
       {/* ══ 미리보기 모달 ══ */}
       {previewOpen && (
         <div className="fixed inset-0 z-[9999] flex items-start justify-center bg-black/60 p-4 overflow-y-auto" onClick={()=>setPreviewOpen(false)}>
@@ -2489,7 +2587,7 @@ table.sc{border-collapse:collapse;width:100%;}
               <h3 className="font-semibold text-gray-800 text-sm">📄 문서 미리보기</h3>
               <div className="flex gap-2">
                 <button
-                  onClick={()=>{ handlePrint(); setPreviewOpen(false); }}
+                  onClick={()=>{ setPreviewOpen(false); void guardSend('pdf'); }}
                   disabled={loading}
                   className="bg-[#0a192f] text-white px-4 py-1.5 rounded text-xs font-medium hover:bg-[#1a3a5f] disabled:opacity-50"
                 >
