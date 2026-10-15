@@ -2084,12 +2084,6 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
             <span className="text-sm font-semibold text-[#0f172a]">🚜 현대지게차 경기북부판매</span>
           </div>
           <div className="flex items-center gap-1.5">
-            {(isGbn || isAdmin || isSubAdmin) && (
-              <button onClick={() => nav("/brother/quote")}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-orange-200 bg-orange-50 text-orange-600 text-xs font-semibold hover:bg-orange-100 transition-all">
-                📄 견적서
-              </button>
-            )}
             <button onClick={() => { if (window.confirm("로그아웃 하시겠습니까?")) logout(); }}
               className="inline-flex items-center px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-medium hover:border-gray-300 transition-all">
               로그아웃
@@ -2101,7 +2095,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
           <AppTabBar activeTab="brother" />
         </div>
 
-        {/* ── 품목 탭 (할부/타이어/배터리/기타) ── */}
+        {/* ── 품목 탭 (전체/할부/배터리) + 견적서(별도 화면으로 이동) ── */}
         <div className="px-4 flex flex-wrap gap-1.5">
           {(["전체", "할부", "배터리"] as ItemTab[]).map((t) => (
             <button
@@ -2114,6 +2108,12 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
               }`}
             >{t}</button>
           ))}
+          {(isGbn || isAdmin || isSubAdmin) && (
+            <button
+              onClick={() => nav("/brother/quote")}
+              className="px-4 py-1.5 rounded-xl border text-xs font-semibold transition-all bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+            >견적서</button>
+          )}
         </div>
 
       {itemTab === "할부" && (<>
