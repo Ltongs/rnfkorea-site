@@ -632,9 +632,9 @@ function NoteEditor({notes,onChange}:{notes:string[];onChange:(n:string[])=>void
   return (
     <div className="space-y-2">
       {notes.map((n,i)=>(
-        <div key={i} className="flex gap-2">
-          <Input value={n} onChange={e=>{const a=[...notes];a[i]=e.target.value;onChange(a);}}/>
-          <button onClick={()=>onChange(notes.filter((_,idx)=>idx!==i))} className="text-red-400 text-xs px-2">삭제</button>
+        <div key={i} className="flex items-center gap-2">
+          <div className="flex-1 min-w-0"><Input value={n} onChange={e=>{const a=[...notes];a[i]=e.target.value;onChange(a);}}/></div>
+          <button onClick={()=>onChange(notes.filter((_,idx)=>idx!==i))} className="shrink-0 whitespace-nowrap text-red-400 text-xs px-2">삭제</button>
         </div>
       ))}
       <button onClick={()=>onChange([...notes,'※ '])} className="text-xs border px-3 py-1.5 rounded hover:bg-gray-50">+ 추가</button>
@@ -2304,13 +2304,6 @@ table.sc{border-collapse:collapse;width:100%;}
               <div><Label>(예상)등록비용 (원)</Label>
                 <NumInput value={hf.registrationFeeEstimate} onChange={v=>setHf(f=>({...f,registrationFeeEstimate:v}))}
                   placeholder={(()=>{ const r=calcRegistrationFee(calcHyundaiFinal(hf), hf.registrationType ?? 'registered'); return r.total?`자동: ${fmt(r.total)}`:'자동계산'; })()}/>
-                {(()=>{ const r=calcRegistrationFee(calcHyundaiFinal(hf), hf.registrationType ?? 'registered');
-                  if(!r.total) return null;
-                  return <p className="text-[11px] text-gray-500 mt-1 leading-snug">
-                    서울 기준 자동계산 {fmt(r.total)}원 = 취득세 등 {r.taxRate}% {fmt(r.tax)}원
-                    {r.bondCost?` + 도시철도채권 할인비용 ${fmt(r.bondCost)}원`:''}{r.fixed?` + 번호판·인지 ${fmt(r.fixed)}원`:''}{r.cushion?` + 쿠션비용 ${fmt(r.cushion)}원`:''}
-                    {n0(hf.registrationFeeEstimate)?' · 직접 입력값이 우선 적용됩니다':' · 직접 입력하면 그 값이 쓰입니다'}
-                  </p>; })()}
               </div>
               <div><Label>할부금리 (%)</Label><Input type="number" step="0.1" value={hf.installmentRate} onChange={e=>setHf(f=>({...f,installmentRate:e.target.value}))} placeholder="예: 6.5"/></div>
               <div><Label>할부원금 (원)</Label><NumInput value={hf.installmentPrincipal} onChange={v=>setHf(f=>({...f,installmentPrincipal:v}))} placeholder="자동계산 (최종판매가-계약금)"/></div>
