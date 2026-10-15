@@ -78,6 +78,7 @@ interface HistoryRow {
   recipient:string; recipient_email:string; total_amount:number;
   grand_total:number; created_at:string; email_sent:boolean; items:Item[];
   notes:string[]|null;
+  form_data?: any;   // 작성 당시 입력값 전체 (2026-10-15 이후 저장분) — 불러오기·다운로드 시 그대로 복원
 }
 
 // ─── 상수 ───────────────────────────────────────────────────
@@ -249,6 +250,28 @@ function calcRegistrationFee(base: number, type: 'registered'|'unregistered') {
 // 견적서·화면에 쓰는 등록비용: 직접 입력값이 있으면 그 값, 없으면 자동계산
 const hyundaiRegFee = (hf: HyundaiForkliftForm) =>
   n0(hf.registrationFeeEstimate) || calcRegistrationFee(calcHyundaiFinal(hf), hf.registrationType ?? 'registered').total;
+// 발송 이력 → 현대지게차 견적 폼 복원.
+// form_data(작성 당시 전체 입력값)가 있으면 그대로, 없으면(2026-10-15 이전 이력) 품목에서 모델·옵션을 살리고
+// 할인금액은 저장된 판매가(total_amount)로 역산한다: 할인 = 차량가격 + 옵션합계 − 판매가
+function hyundaiFormFromHistory(row: HistoryRow, base: HyundaiForkliftForm): HyundaiForkliftForm {
+  if (row.form_data && typeof row.form_data === 'object') return { ...base, ...row.form_data };
+  const items = row.items ?? [];
+  const form: HyundaiForkliftForm = {
+    ...base,
+    recipient: row.recipient || base.recipient, email1: row.recipient_email || base.email1, quoteDate: row.quote_date || base.quoteDate,
+    modelName:    items[0]?.name || base.modelName,
+    tonnage:      items[0]?.spec || base.tonnage,
+    qty:          items[0]?.qty ?? base.qty,
+    vehiclePrice: items[0]?.price ?? base.vehiclePrice,
+    options:      items.slice(1).length ? items.slice(1).map(it=>({name:it.name,price:it.price})) : base.options,
+    deliveryNotes: row.notes?.length ? row.notes : base.deliveryNotes,
+    downPayment: '', installmentRate: '', installmentPrincipal: '', registrationFeeEstimate: '',
+  };
+  const sale = n0(row.total_amount);
+  if (sale > 0) form.discountAmount = Math.max(0, n0(form.vehiclePrice) + calcHyundaiOptionSum(form.options) - sale);
+  return form;
+}
+
 // 이력 저장·SMS 캡처용 — 차량 1행 + 옵션 행들을 공용 Item[] 형태로 변환
 const hyundaiFormItems = (hf:HyundaiForkliftForm): Item[] => [
   { name: hf.modelName.replace(/\n/g,' '), spec: hf.tonnage, qty: hf.qty, price: hf.vehiclePrice },
@@ -1203,6 +1226,21 @@ export default function QuotationPage() {
       email2:    '',
       quoteDate: TODAY,
     };
+    // 작성 당시 입력값 전체가 저장된 이력이면 그대로 복원 (견적일자만 오늘로)
+    const fd = row.form_data && typeof row.form_data === 'object' ? { ...row.form_data, quoteDate: TODAY } : null;
+    if (fd) {
+      const t = (row.quote_type as string);
+      if (t === 'battery')               { setBf(prev => ({ ...prev, ...fd })); setTab('battery'); }
+      else if (t === 'forklift')         { setFf(prev => ({ ...prev, ...fd })); setTab('forklift'); }
+      else if (t === 'hyundai_forklift') { setHf(prev => ({ ...prev, ...fd })); setTab('hyundaiForklift'); }
+      else if (t === 'tire')             { setTf(prev => ({ ...prev, ...fd })); setTab('tire'); }
+      else if (t === 'installment')      { setIff(prev => ({ ...prev, ...fd })); setTab('installment'); }
+      else if (t === 'purchase')         { setPf(prev => ({ ...prev, ...fd })); setTab('purchase'); }
+      if (['battery','forklift','hyundai_forklift','tire','installment','purchase'].includes(t)) {
+        flash(`✅ ${row.recipient} 견적(${row.quote_no})을 작성 당시 그대로 불러왔습니다. 수정 후 발송하세요.`);
+        return;
+      }
+    }
     if (type === 'battery') {
       setBf(prev => ({
         ...prev, ...baseInfo,
@@ -1218,18 +1256,8 @@ export default function QuotationPage() {
       }));
       setTab('forklift');
     } else if ((type as any) === 'hyundai_forklift') {
-      // 딜러 견적 특성상 할인·계약금·할부조건은 매 건 새로 협의되므로, 모델/옵션/수신정보만 복원하고
-      // 나머지 조건 필드는 기본값으로 남겨 다시 입력하도록 한다.
-      const items = row.items ?? [];
-      setHf(prev => ({
-        ...prev, ...baseInfo,
-        modelName:    items[0]?.name || prev.modelName,
-        tonnage:      items[0]?.spec || prev.tonnage,
-        qty:          items[0]?.qty ?? prev.qty,
-        vehiclePrice: items[0]?.price ?? prev.vehiclePrice,
-        options:      items.slice(1).length ? items.slice(1).map(it=>({name:it.name,price:it.price})) : prev.options,
-        deliveryNotes: row.notes?.length ? row.notes : prev.deliveryNotes,
-      }));
+      // 이전 이력(전체 입력값 미저장): 모델·옵션은 품목에서, 할인금액은 저장된 판매가로 역산해 복원
+      setHf(prev => ({ ...hyundaiFormFromHistory(row, prev), ...baseInfo }));
       setTab('hyundaiForklift');
     } else if (type === 'tire') {
       setTf(prev => ({
@@ -1399,7 +1427,7 @@ export default function QuotationPage() {
     setHistoryLoading(true);
     const q = normalizeModel(historyQuery);
     const { data } = await supabase.from('tb_quotations')
-      .select('id,quote_type,quote_no,quote_date,recipient,recipient_email,total_amount,grand_total,created_at,email_sent,items,notes')
+      .select('id,quote_type,quote_no,quote_date,recipient,recipient_email,total_amount,grand_total,created_at,email_sent,items,notes,form_data')
       .order('created_at',{ascending:false}).limit(q ? 1000 : 30);
     const rows = (data??[]) as HistoryRow[];
     setHistory(q ? rows.filter(r => (r.items??[]).some(it => normalizeModel(`${it?.name??''} ${it?.spec??''}`).includes(q))) : rows);
@@ -1456,7 +1484,7 @@ export default function QuotationPage() {
         const total = tab==='battery'?bTotal:tab==='forklift'?fTotal:tab==='hyundaiForklift'?hTotal:tab==='tire'?tTotal:pTotal;
         const vat   = Math.round(total*.1);
         supabase.from('tb_quotations').insert({
-          quote_type: currentQuoteType(), quote_no: no,
+          quote_type: currentQuoteType(), quote_no: no, form_data: currentSend(),
           quote_date: s.quoteDate, recipient: s.recipient,
           recipient_email: s.email1, items: tab==='battery'?bf.items:tab==='forklift'?ff.items:tab==='hyundaiForklift'?hyundaiFormItems(hf):tab==='tire'?tf.items:pf.items,
           notes: tab==='battery'?bf.notes:tab==='forklift'?ff.notes:tab==='hyundaiForklift'?hf.deliveryNotes:tab==='tire'?tf.notes:null,
@@ -1579,7 +1607,7 @@ export default function QuotationPage() {
 
       // DB 저장 — 실패해도 발송 자체는 계속 진행하되, 이력 누락을 사용자에게 알린다
       const { error: insertErr } = await supabase.from('tb_quotations').insert({
-        quote_type: currentQuoteType(), quote_no: no,
+        quote_type: currentQuoteType(), quote_no: no, form_data: currentSend(),
         quote_date: s.quoteDate, recipient: s.recipient,
         recipient_email: s.email1, items, notes,
         total_amount: total, vat_amount: vat, grand_total: grand,
@@ -1719,7 +1747,7 @@ export default function QuotationPage() {
           :tab==='installment'?[{name:iff.itemName,spec:iff.itemSpec,qty:1,price:n0(iff.carPrice)||n0(iff.principal)}]:pf.items;
         const smsNotes = tab==='battery'?bf.notes:tab==='forklift'?ff.notes:tab==='hyundaiForklift'?hf.deliveryNotes:tab==='tire'?tf.notes:null;
         const { error: smsInsertErr } = await supabase.from('tb_quotations').insert({
-          quote_type: currentQuoteType(), quote_no: smsQuoteNo,
+          quote_type: currentQuoteType(), quote_no: smsQuoteNo, form_data: currentSend(),
           quote_date: tab==='installment'?iff.quoteDate:s.quoteDate,
           recipient: s.recipient, recipient_email: tab==='installment'?iff.email1:s.email1,
           items: smsItems, notes: smsNotes,
@@ -1854,7 +1882,7 @@ table.sc{border-collapse:collapse;width:100%;}
       const no = await genNo();
       const html = buildInstallmentHTML(no)!;
       supabase.from('tb_quotations').insert({
-        quote_type:'installment',quote_no:no,quote_date:iff.quoteDate,
+        quote_type:'installment',quote_no:no,quote_date:iff.quoteDate,form_data:iff,
         recipient:iff.recipient,recipient_email:iff.email1,
         items:[{name:iff.itemName,spec:iff.itemSpec,qty:1,price:n0(iff.carPrice)||p}],
         notes:[`할부원금:${fmtN(p)}원`,`연이율:${r}%`,`거치기간:${gp}개월`,`할부기간:${im}개월`,`월납입:${fmtN(payment)}원`,`금융사:${iff.financeCompany}`],
@@ -1880,7 +1908,7 @@ table.sc{border-collapse:collapse;width:100%;}
       const toList=[iff.email1,iff.email2].filter(Boolean);
       const ccList=[iff.cc1,iff.cc2].filter(Boolean);
       const { error: insertErr } = await supabase.from('tb_quotations').insert({
-        quote_type:'installment',quote_no:no,quote_date:iff.quoteDate,
+        quote_type:'installment',quote_no:no,quote_date:iff.quoteDate,form_data:iff,
         recipient:iff.recipient,recipient_email:iff.email1,
         items:[{name:iff.itemName,spec:iff.itemSpec,qty:1,price:n0(iff.carPrice)||p}],
         notes:[`할부원금:${fmtN(p)}원`,`연이율:${r}%`,`거치기간:${gp}개월`,`할부기간:${im}개월`,`월납입:${fmtN(payment)}원`,`금융사:${iff.financeCompany}`],
@@ -2408,23 +2436,16 @@ table.sc{border-collapse:collapse;width:100%;}
                             let html: string | null = null;
                             if(type==='battery'||type==='forklift'||type==='tire'){
                               const base = type==='battery'?BF0:type==='forklift'?FF0:TF0;
-                              const form = {...base,recipient:row.recipient,email1:row.recipient_email,quoteDate:row.quote_date,items:row.items??base.items,notes:row.notes??base.notes};
+                              // 작성 당시 입력값(form_data)이 있으면 그대로, 없으면 품목·특기사항만으로 다시 만든다
+                              const form = row.form_data ? {...base,...row.form_data,quoteDate:row.quote_date}
+                                : {...base,recipient:row.recipient,email1:row.recipient_email,quoteDate:row.quote_date,items:row.items??base.items,notes:row.notes??base.notes};
                               html=buildQuoteHTML(type,form as any,row.quote_no);
                             } else if(type==='hyundai_forklift'){
-                              const items = row.items ?? [];
-                              const form: HyundaiForkliftForm = {
-                                ...HF0,
-                                recipient:row.recipient, email1:row.recipient_email, quoteDate:row.quote_date,
-                                modelName: items[0]?.name || HF0.modelName,
-                                tonnage:   items[0]?.spec || HF0.tonnage,
-                                qty:       items[0]?.qty ?? HF0.qty,
-                                vehiclePrice: items[0]?.price ?? HF0.vehiclePrice,
-                                options:   items.slice(1).length ? items.slice(1).map(it=>({name:it.name,price:it.price})) : HF0.options,
-                                deliveryNotes: row.notes?.length ? row.notes : HF0.deliveryNotes,
-                              };
+                              const form = { ...hyundaiFormFromHistory(row, HF0), quoteDate: row.quote_date };
                               html=buildHyundaiForkliftHTML(form,row.quote_no);
                             } else if(type==='purchase'){
-                              const form = {...PF0,recipient:row.recipient,email1:row.recipient_email,quoteDate:row.quote_date,receiverName:row.recipient,items:row.items??PF0.items};
+                              const form = row.form_data ? {...PF0,...row.form_data,quoteDate:row.quote_date}
+                                : {...PF0,recipient:row.recipient,email1:row.recipient_email,quoteDate:row.quote_date,receiverName:row.recipient,items:row.items??PF0.items};
                               html=buildPurchaseHTML(form as any,row.quote_no);
                             } else { flash('할부 견적서 재다운로드는 해당 탭에서 다시 입력해 주세요.'); return; }
                             setLoading(true);
