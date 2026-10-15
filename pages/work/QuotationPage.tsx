@@ -467,8 +467,9 @@ function EmailChipInput({
 
 // ─── 발송 정보 공통 폼 ──────────────────────────────────────
 function SendInfoForm({
-  v, onSendChange, emailSuggestions,
+  v, onSendChange, emailSuggestions, hideCeo = false,
 }: {
+  hideCeo?: boolean; // 문서에 RNF 대표자를 표기하지 않는 양식(지게차(현대판매) 딜러 명의 견적서)은 숨김
   v: SendInfo;
   onSendChange: (patch: Partial<SendInfo>) => void;
   emailSuggestions: string[];
@@ -498,7 +499,7 @@ function SendInfoForm({
           <Input type="date" value={v.quoteDate} onChange={e=>onSendChange({quoteDate:e.target.value})}/>
         </div>
       </div>
-      <div>
+      {!hideCeo && <div>
         <Label>대표자</Label>
         <select
           value={v.ceoName || '이동수'}
@@ -508,7 +509,7 @@ function SendInfoForm({
           <option value="이동수">이동수</option>
           <option value="서선경">서선경</option>
         </select>
-      </div>
+      </div>}
       <EmailChipInput
         label="수신 이메일 (최대 2개)"
         emails={toEmails.filter(Boolean)}
@@ -2243,7 +2244,7 @@ table.sc{border-collapse:collapse;width:100%;}
 
         {/* ══ 지게차(현대판매) 탭 — 현대건설기계 경기북부판매㈜ 명의 견적서 ══ */}
         {tab==='hyundaiForklift' && <>
-          <SendInfoForm v={hf} onSendChange={updSend(setHf)} emailSuggestions={emailSuggestions}/>
+          <SendInfoForm v={hf} onSendChange={updSend(setHf)} emailSuggestions={emailSuggestions} hideCeo/>
           <div className="bg-white rounded-lg border p-5">
             <h2 className="font-semibold text-gray-800 mb-3 text-sm">담당자 정보</h2>
             <div className="grid grid-cols-5 gap-3">
