@@ -29,8 +29,8 @@ export default function OrixIncentiveRouteGuard({
     );
   }
 
-  // 이 페이지는 admin(admin@rnfkorea.co.kr, ltongs7@gmail.com)과
-  // ORIX 조용백(yongbaek_jo@orix.co.kr) 단 두 사람만 접근 가능합니다.
+  // 이 페이지는 관리자(admin@rnfkorea.co.kr, ltongs7@gmail.com, everyasset.fc@gmail.com)와
+  // ORIX 조용백(yongbaek_jo@orix.co.kr)만 접근 가능합니다.
   if (!isOrixAdmin && !isOrixPartner) {
     return (
       <div className="container mx-auto px-4 py-16">
