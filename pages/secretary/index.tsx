@@ -13,6 +13,36 @@ type TabKey = "chat"|"schedule"|"diary"|"status"|"orders"|"jinheung"|"narumi"|"e
 // (다른 업무 페이지들의 공용 탭바인 components/AppTabBar.tsx의 APP_TAB_ORDER와 항상 같은 구성으로 맞춘다.)
 // "orix" 탭은 admin@rnfkorea.co.kr/ltongs7@gmail.com(isOrixAdmin)에게만 렌더링되므로
 // everyasset.fc@gmail.com 등 다른 AI비서 접근 계정에는 보이지 않는다 (렌더링 시 필터링).
+// 견적서 탭 타일용 픽토그램 (흰색, 타일 배경색 위에 표시)
+const ForkliftIcon=()=>(
+  <svg viewBox="0 0 64 64" className="w-12 h-12" fill="currentColor" aria-hidden="true">
+    <rect x="45" y="6" width="4" height="46" rx="1"/>
+    <rect x="50" y="34" width="3" height="18" rx="1"/>
+    <rect x="50" y="48" width="13" height="4" rx="1"/>
+    <path d="M4 31h39v15H4z"/>
+    <path d="M13 31V13h21l7 18h-4.5l-5.5-14H17v14z"/>
+    <circle cx="14" cy="50" r="6.5"/>
+    <circle cx="35" cy="50" r="6.5"/>
+  </svg>
+);
+// HD현대사이트솔루션 심볼(초록 꺾쇠, 글자 제외) — 흰 사각 배지 안에
+const HdMarkIcon=()=>(
+  <span className="bg-white rounded-xl w-12 h-12 flex items-center justify-center" role="img" aria-label="HD현대사이트솔루션">
+    <svg viewBox="0 0 45 51" className="h-8 w-auto" aria-hidden="true">
+      <path d="M0 0H30L45 25Z" fill="#35d331"/>
+      <path d="M0 0L45 25L30 51L15 26Z" fill="#00ae43"/>
+      <path d="M15 26L30 51H0Z" fill="#00823e"/>
+    </svg>
+  </span>
+);
+const LfpBatteryIcon=()=>(
+  <svg viewBox="0 0 64 64" className="w-12 h-12" fill="none" stroke="currentColor" strokeWidth="3.5" aria-hidden="true">
+    <rect x="4" y="17" width="49" height="30" rx="4.5"/>
+    <rect x="53" y="26" width="6" height="12" rx="1.5" fill="currentColor"/>
+    <text x="28.5" y="37.5" textAnchor="middle" fontSize="15" fontWeight="800" fill="currentColor" stroke="none" fontFamily="Arial,Helvetica,sans-serif">LFP</text>
+  </svg>
+);
+
 const TAB_ORDER: TabKey[] = ["chat","schedule","diary","status","cns","orders","hyundaicm","brother","jinheung","narumi","taesan","quotation","performance","exportshop","financehub","callmanagement","faxcampaign","orix","numbersearch","email","memo"];
 // 별도 로그인/RouteGuard를 쓰는 독립 페이지로 즉시 이동만 하는 탭(내용을 이 안에서 렌더링하지 않음).
 // tab 상태를 sessionStorage에 남기면, 이동 후 "AI비서" 페이지가 새로 마운트될 때 저장된 tab 값을
@@ -7184,19 +7214,19 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
                 {/* 바로가기 — 정사각형 타일 격자 */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 w-full max-w-4xl mt-2">
                   {([
-                    { icon:"🔋", label:"배터리 견적",           sub:"리튬·납산 배터리",        to:"/work/quotation?type=battery",         cls:"bg-[#0f172a] hover:opacity-90" },
-                    { icon:"🚜", label:"지게차 견적",           sub:"RNF 지게차 판매",         to:"/work/quotation?type=forklift",        cls:"bg-orange-500 hover:bg-orange-600" },
-                    { icon:"🏭", label:"지게차(현대판매) 견적", sub:"현대건설기계 경기북부판매", to:"/work/quotation?type=hyundaiForklift", cls:"bg-amber-600 hover:bg-amber-700" },
+                    { icon:<LfpBatteryIcon/>, label:"배터리 견적",           sub:"리튬·납산 배터리",        to:"/work/quotation?type=battery",         cls:"bg-[#0f172a] hover:opacity-90" },
+                    { icon:<ForkliftIcon/>, label:"지게차 견적",           sub:"RNF 지게차 판매",         to:"/work/quotation?type=forklift",        cls:"bg-orange-500 hover:bg-orange-600" },
+                    { icon:<HdMarkIcon/>, label:"지게차(현대판매) 견적", sub:"현대 경기북부 판매", to:"/work/quotation?type=hyundaiForklift", cls:"bg-amber-600 hover:bg-amber-700" },
                     { icon:"🛞", label:"타이어 견적",           sub:"산업용·화물 타이어",       to:"/work/quotation?type=tire",            cls:"bg-teal-600 hover:bg-teal-700" },
                     { icon:"💳", label:"할부금융 견적",         sub:"월 납입 상환스케줄",       to:"/work/quotation?type=installment",     cls:"bg-blue-600 hover:bg-blue-700" },
                     { icon:"📑", label:"거래명세서",            sub:"발행·이메일·문자",         to:"/work/statement",                      cls:"bg-gray-700 hover:bg-gray-800" },
                     { icon:"📂", label:"이력관리",              sub:"발송 이력·불러오기",       to:"/work/quotation?type=history",         cls:"bg-emerald-600 hover:bg-emerald-700" },
                   ]).map(t=>(
                     <button key={t.label} onClick={()=>navigate(t.to)}
-                      className={`${t.cls} aspect-square rounded-2xl text-white flex flex-col items-center justify-center gap-2 p-4 shadow-sm hover:shadow-md transition-all`}>
-                      <span className="text-4xl leading-none">{t.icon}</span>
-                      <span className="text-base font-bold text-center leading-tight">{t.label}</span>
-                      <span className="text-xs text-white/70 text-center leading-snug">{t.sub}</span>
+                      className={`${t.cls} aspect-square rounded-2xl text-white flex flex-col items-center justify-center gap-1.5 p-3 shadow-sm hover:shadow-md transition-all`}>
+                      <span className="h-12 w-full flex items-center justify-center text-4xl leading-none">{t.icon}</span>
+                      <span className="text-base font-bold text-center leading-tight break-keep">{t.label}</span>
+                      <span className="text-xs text-white/70 text-center leading-snug break-keep">{t.sub}</span>
                     </button>
                   ))}
                 </div>
