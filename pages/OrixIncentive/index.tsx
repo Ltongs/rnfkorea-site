@@ -141,7 +141,7 @@ function emptyAdminForm(): AdminOnlyFields {
 
 export default function OrixIncentivePage() {
   const navigate = useNavigate();
-  const { user, logout, isOrixAdmin, isOrixPartner } = useAuth() as any;
+  const { user, logout, isOrixAdmin, isOrixPartner, isInsAI } = useAuth() as any;
   // admin은 전체 컬럼을 그대로 읽고 쓴다. 조용백은 관리자 전용 항목을 "읽기전용"으로 보되
   // 직접 수정은 못 하도록, 조회용(전체 컬럼)과 입력용(영업 항목만) 뷰를 분리해서 쓴다.
   const readTable = isOrixAdmin ? "orix_incentives" : "orix_incentives_partner_view";
@@ -408,7 +408,7 @@ export default function OrixIncentivePage() {
           <div className="flex items-center gap-2.5">
             {isOrixAdmin && (
               <button
-                onClick={() => navigate("/work/secretary")}
+                onClick={() => navigate(isInsAI ? "/work/secretary-ins" : "/work/secretary")} // 보험 계정은 AI비서(Ins)로
                 className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-semibold hover:border-gray-300 hover:text-gray-700 transition-all"
               >
                 ← AI비서

@@ -2105,6 +2105,8 @@ const SecretaryInsPage:React.FC = () => {
                 )}
               </button>
             ))}
+            {/* 인센티브(ORIX·롯데) — 별도 페이지로 이동 (권한: isOrixAdmin) */}
+            <button className={`${TB} ${TI}`} onClick={()=>navigate("/orix")}>💰 인센티브</button>
           </div>
         </div>
       </div>
