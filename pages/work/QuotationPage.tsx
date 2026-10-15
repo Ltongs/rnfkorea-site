@@ -998,7 +998,7 @@ function buildHyundaiForkliftHTML(hf: HyundaiForkliftForm, quoteNo: string) {
   <!-- 발신(딜러) 정보 + 수신 -->
   <div style="display:flex;justify-content:space-between;align-items:flex-end;position:relative">
     <div style="flex:1;padding-right:24px">
-      <div style="font-size:18px;font-weight:800;text-align:center;border-bottom:2px solid #111;padding-bottom:4px;margin:0 0 2px;width:88%">${esc(hf.recipient || 'VIP')} 대표님 귀중</div>
+      <div style="font-size:18px;font-weight:800;text-align:center;border-bottom:2px solid #111;padding-bottom:4px;margin:0 0 2px;width:88%">${(() => { const r = (hf.recipient || 'VIP').trim(); return /님$/.test(r) ? `${esc(r)} 귀중` : `${esc(r)} 대표님 귀중`; })()}</div>
     </div>
     <div style="text-align:right;font-size:13px;line-height:1.75;position:relative">
       <div>현대건설기계 경기북부판매㈜</div>
@@ -1608,7 +1608,8 @@ export default function QuotationPage() {
         const styleEl = document.createElement('style');
         styleEl.textContent = styleMatch ? styleMatch[1] : '';
         const wrapper = document.createElement('div');
-        wrapper.style.cssText = `position:absolute;left:-9999px;top:0;width:${tab==='installment'?794:720}px;background:#fff;`;
+        // 할부견적서·지게차(현대판매) 견적서는 A4 폭(794px) 고정 양식이라 그 폭으로 캡처해야 오른쪽이 잘리지 않는다
+        wrapper.style.cssText = `position:absolute;left:-9999px;top:0;width:${tab==='installment'||tab==='hyundaiForklift'?794:720}px;background:#fff;`;
         wrapper.innerHTML = bodyHTML;
         applyTabularDigits(wrapper); // 숫자는 고정폭(Arial)으로
         document.head.appendChild(styleEl);
@@ -1618,7 +1619,8 @@ export default function QuotationPage() {
       }
       if(!target) { flash('캡처할 내용이 없습니다.'); setSmsSending(false); return; }
       await new Promise(r => setTimeout(r, 300));
-      const wW = target.offsetWidth || 720;
+      // 내용이 틀보다 넓으면(고정 폭 양식) 내용 폭 기준으로 캡처 — 오른쪽 잘림 방지
+      const wW = Math.max(target.offsetWidth || 720, target.scrollWidth || 0);
       const wH = target.scrollHeight || target.offsetHeight;
       let canvas = await html2canvas(target, {
         scale: 1.5, backgroundColor: '#ffffff',
