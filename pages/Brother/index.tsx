@@ -7,7 +7,7 @@ import { useAuth } from "../../lib/auth";
 import AppTabBar from "../../components/AppTabBar";
 import RepaymentScheduleCapture from "../../components/RepaymentScheduleCapture";
 import { applyTabularDigits } from "../../lib/pdfFit";
-import { TireSection, BatterySection, EtcSection, OverviewSection } from "./ItemSections";
+import { BatterySection, OverviewSection } from "./ItemSections"; // 타이어·기타 항목은 사용 중단(2026-10-15)
 
 // ─── 정책 ─────────────────────────────────────────────────
 const HIDE_CLOSED_AFTER_DAYS_FOR_NON_ADMIN = 30;
@@ -22,7 +22,7 @@ type FinanceCompany = "NH캐피탈" | "오릭스캐피탈" | "우리금융캐피
 
 // ─── 탭 ─────────────────────────────────────────────────
 type ActiveTab = "할부금융" | "보험" | "수출";
-type ItemTab = "전체" | "할부" | "타이어" | "배터리" | "기타";
+type ItemTab = "전체" | "할부" | "배터리";
 
 // ─── 보험 타입 ────────────────────────────────────────────
 type InsuranceStatus = "접수" | "진행중" | "완료" | "취소";
@@ -2075,13 +2075,21 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       <div className="bg-white border-b border-gray-200 sticky top-0 z-30 space-y-3 pb-3">
         <div className="px-3 pt-1.5 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <button onClick={() => nav("/work/secretary")}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-semibold hover:border-gray-300 hover:text-gray-700 transition-all">
-              ← AI비서
-            </button>
+            {(isAdmin || isSubAdmin) && (
+              <button onClick={() => nav("/work/secretary")}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-semibold hover:border-gray-300 hover:text-gray-700 transition-all">
+                ← AI비서
+              </button>
+            )}
             <span className="text-sm font-semibold text-[#0f172a]">🚜 현대지게차 경기북부판매</span>
           </div>
           <div className="flex items-center gap-1.5">
+            {isGbn && (
+              <button onClick={() => nav("/brother/quote")}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-orange-200 bg-orange-50 text-orange-600 text-xs font-semibold hover:bg-orange-100 transition-all">
+                📄 견적서
+              </button>
+            )}
             <button onClick={() => { if (window.confirm("로그아웃 하시겠습니까?")) logout(); }}
               className="inline-flex items-center px-2.5 py-1 rounded-xl border border-gray-200 text-gray-500 text-xs font-medium hover:border-gray-300 transition-all">
               로그아웃
@@ -2095,7 +2103,7 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
 
         {/* ── 품목 탭 (할부/타이어/배터리/기타) ── */}
         <div className="px-4 flex flex-wrap gap-1.5">
-          {(["전체", "할부", "타이어", "배터리", "기타"] as ItemTab[]).map((t) => (
+          {(["전체", "할부", "배터리"] as ItemTab[]).map((t) => (
             <button
               key={t}
               onClick={() => setItemTab(t)}
@@ -2184,16 +2192,10 @@ ${recipient ? `<p class="recipient">수신: <strong>${recipient}</strong> 귀중
       </div>
 
       {itemTab === "전체" && (
-        <OverviewSection onJumpToTab={(t) => setItemTab(t)} />
-      )}
-      {itemTab === "타이어" && (
-        <TireSection isAdminLevel={isAdminLevel} canCreate={canCreate} canChangeStatus={canChangeStatus} />
+        <OverviewSection onJumpToTab={(t) => setItemTab(t as ItemTab)} />
       )}
       {itemTab === "배터리" && (
         <BatterySection isAdminLevel={isAdminLevel} canCreate={canCreate} canChangeStatus={canChangeStatus} />
-      )}
-      {itemTab === "기타" && (
-        <EtcSection isAdminLevel={isAdminLevel} canCreate={canCreate} canChangeStatus={canChangeStatus} />
       )}
 
       {activeTab === "할부금융" && itemTab === "할부" && (

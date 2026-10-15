@@ -78,6 +78,7 @@ interface HistoryRow {
   recipient:string; recipient_email:string; total_amount:number;
   grand_total:number; created_at:string; email_sent:boolean; items:Item[];
   notes:string[]|null;
+  created_by?: string;
   form_data?: any;   // 작성 당시 입력값 전체 (2026-10-15 이후 저장분) — 불러오기·다운로드 시 그대로 복원
 }
 
@@ -162,8 +163,8 @@ const BROTHER_OPTIONS_GRID: (string|null)[][] = [
 const HF0: HyundaiForkliftForm = {
   ...SEND0,
   recipient:'VIP',
-  dealerRepName:'이동수', dealerRepTitle:'과장',
-  dealerPhone:'010-5054-9006', dealerTel:'1899-1373', dealerFax:'0504-311-9006',
+  dealerRepName:'', dealerRepTitle:'',            // 딜러 담당자·직급·휴대폰은 매번 직접 입력
+  dealerPhone:'', dealerTel:'1899-1373', dealerFax:'0303-3130-9981',
   modelName:'25BR-X\n전동지게차\n(입승식)',
   tonnage:'2.5톤', qty:1, vehiclePrice:32_400_000,
   options:[
@@ -1085,7 +1086,7 @@ function buildHyundaiForkliftHTML(hf: HyundaiForkliftForm, quoteNo: string) {
     </div>
     <div style="text-align:right;font-size:13px;line-height:1.75;position:relative">
       <div>현대건설기계 경기북부판매㈜</div>
-      <div style="font-weight:800">${esc(hf.dealerRepName)} ${esc(hf.dealerRepTitle)}(${esc(hf.dealerPhone)})</div>
+      ${(hf.dealerRepName || hf.dealerRepTitle || hf.dealerPhone) ? `<div style="font-weight:800">${esc([hf.dealerRepName, hf.dealerRepTitle].filter(Boolean).join(' '))}${hf.dealerPhone ? `(${esc(hf.dealerPhone)})` : ''}</div>` : ''}
       <div>T:${esc(hf.dealerTel)}, F:${esc(hf.dealerFax)}</div>
     </div>
   </div>
@@ -1155,9 +1156,16 @@ function buildHyundaiForkliftHTML(hf: HyundaiForkliftForm, quoteNo: string) {
 // ─── 메인 페이지 ────────────────────────────────────────────
 type TabType = 'battery'|'forklift'|'hyundaiForklift'|'tire'|'installment'|'purchase'|'history';
 
-export default function QuotationPage() {
+// 현대지게차 경기북부판매(김서정 과장) 전용 견적서 계정 — /brother/quote 에서 variant="gbn"으로 쓴다.
+// 이 화면은 지게차(현대판매) 견적서와 이력 탭만 보이고, 이력은 이 계정 명의(created_by)로 만든 견적만 보여준다.
+export const GBN_QUOTE_EMAIL = 'hj5321006@naver.com';
+
+export default function QuotationPage({ variant = 'rnf' }: { variant?: 'rnf'|'gbn' } = {}) {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<TabType>('battery');
+  const isGbnView = variant === 'gbn';
+  // 발송 이력 명의: 경기북부 화면에서 만든 견적은 누가 로그인했든 경기북부 계정 명의로 남긴다
+  const createdBy = isGbnView ? GBN_QUOTE_EMAIL : 'admin@rnfkorea.co.kr';
+  const [tab, setTab] = useState<TabType>(isGbnView ? 'hyundaiForklift' : 'battery');
 
   // 탭 전환 시 발송정보(recipient/email/phone/extraMsg) 를 다음 탭으로 유지
   const sendInfoKeys = ['recipient','email1','email2','phone1','phone2','extraMsg'] as const;
@@ -1179,7 +1187,8 @@ export default function QuotationPage() {
   const [consultationId, setConsultationId] = useState<number|null>(null);
   useEffect(() => {
     const t = searchParams.get('type') as TabType;
-    if(t && ['battery','forklift','hyundaiForklift','tire','installment','purchase','history'].includes(t)) setTab(t);
+    const allowed = isGbnView ? ['hyundaiForklift','history'] : ['battery','forklift','hyundaiForklift','tire','installment','purchase','history'];
+    if(t && allowed.includes(t)) setTab(t);
 
     const cid = searchParams.get('consultationId');
     if (cid && !isNaN(Number(cid))) setConsultationId(Number(cid));
@@ -1200,7 +1209,8 @@ export default function QuotationPage() {
 
   const [bf, setBf]   = useState<BatteryForm>(BF0);
   const [ff, setFf]   = useState<ForkliftForm>(FF0);
-  const [hf, setHf]   = useState<HyundaiForkliftForm>(HF0);
+  // 경기북부 화면: 이메일 참조는 경기북부 계정으로 (RNF 기본 참조 대신)
+  const [hf, setHf]   = useState<HyundaiForkliftForm>(isGbnView ? { ...HF0, cc1: GBN_QUOTE_EMAIL, cc2: '' } : HF0);
   const [tf, setTf]   = useState<TireForm>(TF0);
   const [iff, setIff] = useState<InstallmentForm>(IF0);
   const [pf, setPf]   = useState<PurchaseForm>(PF0);
@@ -1411,10 +1421,11 @@ export default function QuotationPage() {
       .limit(50)
       .then(async ({data}) => {
         const base = Array.from(new Set([
-          'admin@rnfkorea.co.kr',
-          'ltongs7@gmail.com',
+          ...(isGbnView ? [GBN_QUOTE_EMAIL] : ['admin@rnfkorea.co.kr', 'ltongs7@gmail.com']),
           ...(data??[]).map((r:any)=>r.recipient_email).filter(Boolean),
         ]));
+        // 경기북부 화면은 RNF 구글 주소록을 쓰지 않는다
+        if (isGbnView) { setEmailSuggestions(base); return; }
 
         // Google 주소록에서 연락처 이메일 추가 (google-people-search 엣지함수 경유)
         try {
@@ -1443,8 +1454,10 @@ export default function QuotationPage() {
     setHistoryLoading(true);
     const q = normalizeModel(historyQuery);
     const { data } = await supabase.from('tb_quotations')
-      .select('id,quote_type,quote_no,quote_date,recipient,recipient_email,total_amount,grand_total,created_at,email_sent,items,notes,form_data')
-      .order('created_at',{ascending:false}).limit(q ? 1000 : 30);
+      .select('id,quote_type,quote_no,quote_date,recipient,recipient_email,total_amount,grand_total,created_at,email_sent,items,notes,form_data,created_by')
+      .order('created_at',{ascending:false}).limit(q ? 1000 : 30)
+      // 경기북부 화면: 이 계정 명의로 만든 지게차(현대판매) 견적만
+      .match(isGbnView ? { quote_type: 'hyundai_forklift', created_by: GBN_QUOTE_EMAIL } : {});
     const rows = (data??[]) as HistoryRow[];
     setHistory(q ? rows.filter(r => (r.items??[]).some(it => normalizeModel(`${it?.name??''} ${it?.spec??''}`).includes(q))) : rows);
     setHistoryLoading(false);
@@ -1553,7 +1566,7 @@ export default function QuotationPage() {
           recipient_email: s.email1, items: tab==='battery'?bf.items:tab==='forklift'?ff.items:tab==='hyundaiForklift'?hyundaiFormItems(hf):tab==='tire'?tf.items:pf.items,
           notes: tab==='battery'?bf.notes:tab==='forklift'?ff.notes:tab==='hyundaiForklift'?hf.deliveryNotes:tab==='tire'?tf.notes:null,
           total_amount: total, vat_amount: vat, grand_total: total+vat,
-          created_by:'admin@rnfkorea.co.kr',
+          created_by:createdBy,
         }).then(({error})=>{ if(error) console.error('[이력저장오류]', error.message, error.details); });
         const bytes = await htmlDocToPdfBytes(html);
         downloadPdfBytes(bytes, `RNF_${typeLabelOf(tab)}견적서_${s.recipient||'고객'}_${no}.pdf`);
@@ -1675,7 +1688,7 @@ export default function QuotationPage() {
         quote_date: s.quoteDate, recipient: s.recipient,
         recipient_email: s.email1, items, notes,
         total_amount: total, vat_amount: vat, grand_total: grand,
-        created_by:'admin@rnfkorea.co.kr',
+        created_by:createdBy,
       });
       if (insertErr) console.error('[이력저장오류]', insertErr.message, insertErr.details);
 
@@ -1711,7 +1724,7 @@ export default function QuotationPage() {
         .update({ email_sent: true, email_sent_at: new Date().toISOString() })
         .eq('quote_no', no);
 
-      if (tab !== 'purchase' && !resendRef.current) { // 재발송은 상담 중복 등록하지 않음
+      if (tab !== 'purchase' && !resendRef.current && !isGbnView) { // 재발송·경기북부 견적은 통합상담에 등록하지 않음
         void registerConsultationFromQuote({
           workType: tab==='battery'?'battery_sales':(tab==='forklift'||tab==='hyundaiForklift')?'forklift_sales':'tire_sales',
           customerName: s.recipient,
@@ -1816,12 +1829,12 @@ export default function QuotationPage() {
           recipient: s.recipient, recipient_email: tab==='installment'?iff.email1:s.email1,
           items: smsItems, notes: smsNotes,
           total_amount: smsTotal, vat_amount: smsVat, grand_total: smsTotal+smsVat,
-          created_by: 'admin@rnfkorea.co.kr',
+          created_by: createdBy,
         });
         if (smsInsertErr) console.error('[이력저장오류]', smsInsertErr.message, smsInsertErr.details);
       }
 
-      if (tab !== 'purchase' && !resendRef.current) { // 재발송은 상담 중복 등록하지 않음
+      if (tab !== 'purchase' && !resendRef.current && !isGbnView) { // 재발송·경기북부 견적은 통합상담에 등록하지 않음
         void registerConsultationFromQuote({
           workType: tab==='battery'?'battery_sales':(tab==='forklift'||tab==='hyundaiForklift')?'forklift_sales':tab==='tire'?'tire_sales':'finance',
           customerName: s.recipient,
@@ -1950,7 +1963,7 @@ table.sc{border-collapse:collapse;width:100%;}
         recipient:iff.recipient,recipient_email:iff.email1,
         items:[{name:iff.itemName,spec:iff.itemSpec,qty:1,price:n0(iff.carPrice)||p}],
         notes:[`할부원금:${fmtN(p)}원`,`연이율:${r}%`,`거치기간:${gp}개월`,`할부기간:${im}개월`,`월납입:${fmtN(payment)}원`,`금융사:${iff.financeCompany}`],
-        total_amount:p,vat_amount:0,grand_total:p,created_by:'admin@rnfkorea.co.kr',
+        total_amount:p,vat_amount:0,grand_total:p,created_by:createdBy,
       }).then(()=>{});
       const bytes = await htmlDocToPdfBytes(html);
       downloadPdfBytes(bytes, `RNF_할부견적서_${iff.recipient||'고객'}_${no}.pdf`);
@@ -1976,7 +1989,7 @@ table.sc{border-collapse:collapse;width:100%;}
         recipient:iff.recipient,recipient_email:iff.email1,
         items:[{name:iff.itemName,spec:iff.itemSpec,qty:1,price:n0(iff.carPrice)||p}],
         notes:[`할부원금:${fmtN(p)}원`,`연이율:${r}%`,`거치기간:${gp}개월`,`할부기간:${im}개월`,`월납입:${fmtN(payment)}원`,`금융사:${iff.financeCompany}`],
-        total_amount:p,vat_amount:0,grand_total:p,created_by:'admin@rnfkorea.co.kr',
+        total_amount:p,vat_amount:0,grand_total:p,created_by:createdBy,
       });
       if (insertErr) console.error('[이력저장오류]', insertErr.message, insertErr.details);
       const installmentHtml = buildInstallmentHTML(no);
@@ -2019,7 +2032,9 @@ table.sc{border-collapse:collapse;width:100%;}
     brotherOptions: f.brotherOptions.includes(name) ? f.brotherOptions.filter(o=>o!==name) : [...f.brotherOptions, name],
   }));
 
-  const TABS:[TabType,string][] = [['battery','🔋 배터리'],['forklift','🚜 지게차'],['hyundaiForklift','🚜 지게차(현대판매)'],['tire','🛞 타이어'],['installment','💳 할부'],['purchase','📝 발주서'],['history','📋 이력']];
+  const TABS:[TabType,string][] = isGbnView
+    ? [['hyundaiForklift','🚜 지게차(현대판매)'],['history','📋 이력']]
+    : [['battery','🔋 배터리'],['forklift','🚜 지게차'],['hyundaiForklift','🚜 지게차(현대판매)'],['tire','🛞 타이어'],['installment','💳 할부'],['purchase','📝 발주서'],['history','📋 이력']];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -2028,13 +2043,13 @@ table.sc{border-collapse:collapse;width:100%;}
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
-              onClick={()=>navigate('/work/secretary?tab=quotation')}
+              onClick={()=>navigate(isGbnView ? '/brother' : '/work/secretary?tab=quotation')}
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-white/20 text-white/70 text-xs font-semibold hover:border-white/40 hover:text-white transition-all"
             >
-              ← AI비서
+              {isGbnView ? '← 경기북부' : '← AI비서'}
             </button>
             <div>
-              <h1 className="text-xl font-bold">견적서 · 발주서</h1>
+              <h1 className="text-xl font-bold">{isGbnView ? '지게차 구입 견적서 · 경기북부' : '견적서 · 발주서'}</h1>
               <p className="text-blue-300 text-sm mt-0.5">PDF 출력 · 이메일 · SMS 발송</p>
             </div>
           </div>
@@ -2232,9 +2247,9 @@ table.sc{border-collapse:collapse;width:100%;}
           <div className="bg-white rounded-lg border p-5">
             <h2 className="font-semibold text-gray-800 mb-3 text-sm">담당자 정보</h2>
             <div className="grid grid-cols-5 gap-3">
-              <div><Label>담당자명</Label><Input value={hf.dealerRepName} onChange={e=>setHf(f=>({...f,dealerRepName:e.target.value}))}/></div>
-              <div><Label>직급</Label><Input value={hf.dealerRepTitle} onChange={e=>setHf(f=>({...f,dealerRepTitle:e.target.value}))}/></div>
-              <div><Label>휴대폰</Label><Input value={hf.dealerPhone} onChange={e=>setHf(f=>({...f,dealerPhone:e.target.value}))}/></div>
+              <div><Label>담당자명</Label><Input value={hf.dealerRepName} placeholder="직접 입력 (예: 홍길동)" onChange={e=>setHf(f=>({...f,dealerRepName:e.target.value}))}/></div>
+              <div><Label>직급</Label><Input value={hf.dealerRepTitle} placeholder="예: 과장" onChange={e=>setHf(f=>({...f,dealerRepTitle:e.target.value}))}/></div>
+              <div><Label>휴대폰</Label><Input value={hf.dealerPhone} placeholder="직접 입력 (예: 010-0000-0000)" onChange={e=>setHf(f=>({...f,dealerPhone:e.target.value}))}/></div>
               <div><Label>전화(T)</Label><Input value={hf.dealerTel} onChange={e=>setHf(f=>({...f,dealerTel:e.target.value}))}/></div>
               <div><Label>팩스(F)</Label><Input value={hf.dealerFax} onChange={e=>setHf(f=>({...f,dealerFax:e.target.value}))}/></div>
             </div>

@@ -1086,7 +1086,7 @@ export function OverviewSection({ onJumpToTab }: { onJumpToTab: (t: JumpTab) => 
     return d.getFullYear().toString() + String(d.getMonth() + 1).padStart(2, "0") === statsMonth;
   }), [rows, statsMonth]);
 
-  const TYPES: JumpTab[] = ["할부", "타이어", "배터리", "기타"];
+  const TYPES: JumpTab[] = ["할부", "배터리"]; // 타이어·기타는 사용 중단
   const stats = useMemo(() => {
     const m: Record<JumpTab, { total: number; done: number; amount: number }> = {
       "할부": { total: 0, done: 0, amount: 0 }, "타이어": { total: 0, done: 0, amount: 0 },

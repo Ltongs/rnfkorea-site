@@ -16,14 +16,14 @@ export type AppTabKey =
 
 export const APP_TAB_ORDER: AppTabKey[] = [
   "chat", "schedule", "diary", "status", "cns", "orders", "hyundaicm", "brother", "jinheung", "narumi",
-  "taesan", "quotation", "performance", "rentalos", "exportshop", "financehub",
+  "taesan", "quotation", "performance", "exportshop", "financehub",
   "callmanagement", "faxcampaign", "orix", "numbersearch", "email", "memo",
 ];
 
 // 자주 쓰지 않는 탭 — 오른쪽 "기타 ▾" 드롭다운 안에 묶는다 (pages/secretary/index.tsx의 MORE_TABS와 동일).
 export const APP_MORE_TABS: AppTabKey[] = [
   "chat", "status", "cns", "orders", "performance", "exportshop", "financehub",
-  "rentalos", "email", "callmanagement", "faxcampaign", "numbersearch",
+  "email", "callmanagement", "faxcampaign", "numbersearch",
 ];
 
 // 클릭 시 이 페이지 안에서 렌더링하지 않고 곧바로 다른 라우트로 이동하는 탭

@@ -622,16 +622,6 @@ export default function PageHeader() {
                     </button>
                   )}
 
-                  {(isAdminLevel || isRentalOS) && (
-                    <button
-                      type="button"
-                      className={dropItem}
-                      onClick={() => goWorkInternalOnly("/rental-os")}
-                    >
-                      Rental_O/S업무
-                    </button>
-                  )}
-
                   <button
                     type="button"
                     className={dropItem}

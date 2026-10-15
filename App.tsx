@@ -62,9 +62,6 @@ import BrotherRouteGuard from "./pages/Brother/Routeguard";
 import TaesanPage from "./pages/Taesan/index";
 import TaesanLoginPage from "./pages/Taesan/Login";
 import TaesanRouteGuard from "./pages/Taesan/Routeguard";
-import RentalOSPage from "./pages/RentalOS/index";
-import RentalOSLoginPage from "./pages/RentalOS/Login";
-import RentalOSRouteGuard from "./pages/RentalOS/Routeguard";
 import SitemapPage from "./pages/Sitemap";
 import IndividualCargoFinancePage from "./pages/IndividualCargoFinance/index";
 import TireShopPage from "./pages/TireShop/index";
@@ -1431,7 +1428,7 @@ const ProtectedRoute: React.FC<{
 };
 
 const AppRoutes = () => {
-  const { user, isAdmin, isSubAdmin, isInsAI, loading } = useAuth() as any;
+  const { user, isAdmin, isSubAdmin, isInsAI, isGbn, loading } = useAuth() as any;
   const isAdminLevel = isAdmin || isSubAdmin;
   // ✅ useLocation은 early return(아래 loading 분기) 이전, 컴포넌트 최상단에서
   //    단 한 번만 호출한다. early return 뒤에서 호출하거나 본문 여러 곳에서
@@ -1597,6 +1594,16 @@ const AppRoutes = () => {
               </BrotherRouteGuard>
             }
           />
+          {/* 경기북부 전용 지게차(현대판매) 견적서 — 이력도 이 계정 명의 견적만 */}
+          <Route
+            path="/brother/quote"
+            element={
+              <BrotherRouteGuard>
+                {/* 관리자도 볼 수 없음 — 경기북부 계정 전용 */}
+                {isGbn ? <QuotationPage variant="gbn" /> : <Navigate to="/brother" replace />}
+              </BrotherRouteGuard>
+            }
+          />
 
           {/* 태산통운 */}
           <Route path="/taesan/login" element={<TaesanLoginPage />} />
@@ -1609,16 +1616,8 @@ const AppRoutes = () => {
             }
           />
 
-          {/* Rental_O/S (렌탈 딜 아웃소싱) */}
-          <Route path="/rental-os/login" element={<RentalOSLoginPage />} />
-          <Route
-            path="/rental-os"
-            element={
-              <RentalOSRouteGuard>
-                <RentalOSPage />
-              </RentalOSRouteGuard>
-            }
-          />
+          {/* Rental_O/S — 사용 중단(2026-10-15): 메뉴·화면 제거, 예전 주소는 홈으로 */}
+          <Route path="/rental-os/*" element={<Navigate to="/" replace />} />
 
           {/* BS_ON */}
           <Route path="/bson" element={<BsonWorkPage />} />

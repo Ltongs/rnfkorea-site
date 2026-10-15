@@ -19,7 +19,6 @@ function defaultLandingFor(auth: {
 }): string {
   if (auth.isAdmin || auth.isSubAdmin) return "/work/secretary";
   if (auth.isInsAI) return "/work/secretary-ins";
-  if (auth.isRentalOS) return "/rental-os";
   if (auth.isHyundaiCM || auth.isNhCapital || auth.isNhCapitalStaff || auth.isOrixPartner) return "/hyundaicm";
   if (auth.isGbn) return "/brother";
   if (auth.isTaesan) return "/taesan";
