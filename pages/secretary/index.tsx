@@ -7177,35 +7177,28 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
             <div className="space-y-3 pb-4 w-full">
 
               {/* ── 작성 버튼 ── */}
-              <div className="flex flex-col items-center gap-4 py-10 w-full">
+              <div className="flex flex-col items-center gap-4 py-6 w-full">
                 <div className="text-4xl">📋</div>
                 <h2 className="text-lg font-bold text-[#0f172a]">견적서 작성</h2>
-                <p className="text-sm text-gray-500 text-center">지게차 · 배터리 · 타이어 · 할부금융 견적서를 작성하고<br/>이메일 · SMS로 발송할 수 있습니다.</p>
-                <div className="flex flex-wrap justify-center gap-3">
-                  <button onClick={()=>navigate("/work/quotation?type=battery")}
-                    className="px-5 py-2.5 bg-[#0f172a] text-white rounded-xl text-sm font-semibold hover:opacity-90 transition-all">
-                    🔋 배터리 견적
-                  </button>
-                  <button onClick={()=>navigate("/work/quotation?type=forklift")}
-                    className="px-5 py-2.5 bg-orange-500 text-white rounded-xl text-sm font-semibold hover:bg-orange-600 transition-all">
-                    🚜 지게차 견적
-                  </button>
-                  <button onClick={()=>navigate("/work/quotation?type=tire")}
-                    className="px-5 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-semibold hover:bg-teal-700 transition-all">
-                    🛞 타이어 견적
-                  </button>
-                  <button onClick={()=>navigate("/work/quotation?type=installment")}
-                    className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all">
-                    💳 할부금융 견적
-                  </button>
-                  <button onClick={()=>navigate("/work/statement")}
-                    className="px-5 py-2.5 bg-gray-700 text-white rounded-xl text-sm font-semibold hover:bg-gray-800 transition-all">
-                    📑 거래명세서
-                  </button>
-                  <button onClick={()=>navigate("/work/quotation?type=history")}
-                    className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 transition-all">
-                    📂 이력관리
-                  </button>
+                <p className="text-sm text-gray-500 text-center">지게차 · 지게차(현대판매) · 배터리 · 타이어 · 할부금융 견적서를 작성하고<br/>이메일 · SMS로 발송할 수 있습니다.</p>
+                {/* 바로가기 — 정사각형 타일 격자 */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 w-full max-w-4xl mt-2">
+                  {([
+                    { icon:"🔋", label:"배터리 견적",           sub:"리튬·납산 배터리",        to:"/work/quotation?type=battery",         cls:"bg-[#0f172a] hover:opacity-90" },
+                    { icon:"🚜", label:"지게차 견적",           sub:"RNF 지게차 판매",         to:"/work/quotation?type=forklift",        cls:"bg-orange-500 hover:bg-orange-600" },
+                    { icon:"🏭", label:"지게차(현대판매) 견적", sub:"현대건설기계 경기북부판매", to:"/work/quotation?type=hyundaiForklift", cls:"bg-amber-600 hover:bg-amber-700" },
+                    { icon:"🛞", label:"타이어 견적",           sub:"산업용·화물 타이어",       to:"/work/quotation?type=tire",            cls:"bg-teal-600 hover:bg-teal-700" },
+                    { icon:"💳", label:"할부금융 견적",         sub:"월 납입 상환스케줄",       to:"/work/quotation?type=installment",     cls:"bg-blue-600 hover:bg-blue-700" },
+                    { icon:"📑", label:"거래명세서",            sub:"발행·이메일·문자",         to:"/work/statement",                      cls:"bg-gray-700 hover:bg-gray-800" },
+                    { icon:"📂", label:"이력관리",              sub:"발송 이력·불러오기",       to:"/work/quotation?type=history",         cls:"bg-emerald-600 hover:bg-emerald-700" },
+                  ]).map(t=>(
+                    <button key={t.label} onClick={()=>navigate(t.to)}
+                      className={`${t.cls} aspect-square rounded-2xl text-white flex flex-col items-center justify-center gap-2 p-4 shadow-sm hover:shadow-md transition-all`}>
+                      <span className="text-4xl leading-none">{t.icon}</span>
+                      <span className="text-base font-bold text-center leading-tight">{t.label}</span>
+                      <span className="text-xs text-white/70 text-center leading-snug">{t.sub}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
