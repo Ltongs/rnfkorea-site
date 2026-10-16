@@ -58,17 +58,6 @@ const sections: SiteSection[] = [
     subtitle: "기타 메뉴",
     links: [
       { label: "사이트맵", to: "/sitemap", desc: "전체 구성 안내" },
-      { label: "나르미업무", to: "/narumi/login", desc: "내부 업무 시스템 로그인" },
-      {
-        label: "현대건기업무(부산경남)",
-        to: "/hyundaicm",
-        desc: "현대건기(부산경남) 전용 업무 메뉴",
-      },
-      {
-        label: "현대지게차업무(경기북부)",
-        to: "/brother",
-        desc: "현대지게차 경기북부판매 전용 업무 메뉴",
-      },
     ],
   },
 ];
@@ -203,7 +192,7 @@ const AppleSitemap: React.FC = () => {
           <div className="mt-12 md:mt-16">
             <div className="h-px w-full bg-gray-200" />
             <p className="mt-6 text-xs text-gray-400 leading-relaxed">
-              * 본 사이트맵은 홈페이지 구조 안내 목적입니다. 내부 메뉴(나르미업무)는 권한이 필요할 수 있습니다.
+              * 본 사이트맵은 홈페이지 구조 안내 목적입니다.
             </p>
           </div>
         </section>

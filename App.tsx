@@ -1226,13 +1226,8 @@ const Footer: React.FC = () => {
   const { pathname } = useLocation();
   const { user, canViewAll } = useAuth() as any;
   // 렌타나 계산기(/renthana)는 로그인 없이 URL로 누구나 접근하는 독립 페이지이므로,
-  // 내부 관리자용 링크(Etc: AI비서/나르미/현대건기/현대지게차 로그인)와 그 아래 법적고지 블록은 노출하지 않는다.
+  // Etc(사이트맵) 영역과 그 아래 법적고지 블록은 노출하지 않는다.
   const isRenthana = pathname === "/renthana";
-
-  const goNarumi = () => {
-    if (user && canViewAll) nav("/narumi");
-    else nav("/narumi/login");
-  };
 
   const goWork = (path: string) => {
     if (path === "/narumi") {
@@ -1357,22 +1352,6 @@ const Footer: React.FC = () => {
               <h4 className="font-bold text-base mb-4">Etc</h4>
               <ul className="space-y-2 text-sm text-gray-600">
                 <li><Link to="/sitemap" className="hover:text-orange-500 transition-colors">- 사이트맵</Link></li>
-                <li><Link to="/work/secretary" className="hover:text-orange-500 transition-colors">- AI 비서</Link></li>
-                <li>
-                  <button type="button" onClick={goNarumi} className="hover:text-orange-500 transition-colors text-left">
-                    - 나르미업무
-                  </button>
-                </li>
-                <li>
-                  <Link to="/hyundaicm/login" className="hover:text-orange-500 transition-colors">
-                    - 현대건기(부산경남)업무
-                  </Link>
-                </li>
-                <li>
-                  <Link to="/brother" className="hover:text-orange-500 transition-colors">
-                    - 현대지게차(경기북부)업무
-                  </Link>
-                </li>
               </ul>
             </div>
           )}
