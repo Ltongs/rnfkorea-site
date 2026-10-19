@@ -862,10 +862,12 @@ export default function NarumiPage() {
 
     if (upErr) throw upErr;
 
-    const { error: dbErr } = await supabase
-      .from("narumi_tasks")
-      .update({ manufacture_doc_path: path })
-      .eq("id", rowId as any);
+    // 나르미 계정은 narumi_tasks UPDATE 권한이 없어 직접 update 시 0건 반영되므로
+    // 제작증 경로만 기록하는 전용 RPC를 사용한다.
+    const { error: dbErr } = await supabase.rpc("set_narumi_manufacture_doc_path", {
+      p_task_id: Number(rowId),
+      p_path: path,
+    });
 
     if (dbErr) throw dbErr;
   };
