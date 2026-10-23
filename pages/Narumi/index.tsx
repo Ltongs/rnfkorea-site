@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 import AppTabBar from "../../components/AppTabBar";
+import CustomerDocsAdmin, { type Settlement } from "./CustomerDocsAdmin";
 
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -38,6 +39,9 @@ type NarumiTask = {
   vehicle_doc_uploaded_at?: string | null;
   manufacture_doc_path?: string | null;
   insurance_doc_path?: string | null;
+  receipt_doc_path?: string | null;
+  settlement?: Settlement | null;
+  customer_docs_sent_at?: string | null;
   customer_phone?: string | null;
   customer_phone_set_at?: string | null;
   customer_phone_scrubbed_at?: string | null;
@@ -2778,6 +2782,9 @@ VIN: ${nextVin}`);
                           </button>
                         )}
                       </>
+                    )}
+                    {isAdmin && (
+                      <CustomerDocsAdmin row={r} onChanged={fetchRows} openStorageFile={openStorageFile} />
                     )}
                   </div>
 
