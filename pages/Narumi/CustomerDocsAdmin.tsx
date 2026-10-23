@@ -1,4 +1,4 @@
-// 나르미 관리자 전용: 영수증 첨부 / 차량등록 비용 정산서 작성 / 고객 문자(MMS) 발송
+// 나르미 admin·everyasset 전용: 영수증 첨부 / 차량등록 비용 정산서 작성 / 고객 문자(MMS) 발송
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import html2canvas from "html2canvas";

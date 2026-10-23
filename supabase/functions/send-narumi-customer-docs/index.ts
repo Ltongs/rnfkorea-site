@@ -1,6 +1,6 @@
 // supabase/functions/send-narumi-customer-docs/index.ts
 //
-// 나르미 고객 서류(차량등록증·영수증·정산서) MMS 발송 Edge Function — 관리자 전용
+// 나르미 고객 서류(차량등록증·영수증·정산서) MMS 발송 Edge Function — 관리자·everyasset 전용
 // send-transaction-statement-sms와 동일한 방식(Solapi 이미지 업로드 → MMS 발송)이며,
 // MMS는 이미지 1장만 실을 수 있어 서류마다 MMS 1건씩 보낸다.
 // 이미지는 클라이언트(pages/Narumi)에서 JPEG(200KB 이하)로 변환해 전달한다.
@@ -18,7 +18,7 @@ const CORS = {
 
 const SUPABASE_URL     = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const ADMIN_EMAIL      = "admin@rnfkorea.co.kr";
+const ALLOWED_EMAILS   = ["admin@rnfkorea.co.kr", "everyasset.fc@gmail.com"];
 
 function makeSignature(apiSecret: string): { date: string; salt: string; signature: string } {
   const date      = new Date().toISOString();
@@ -54,11 +54,11 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return jsonError("POST만 지원합니다.", 405);
 
-  // 관리자 계정 토큰으로 호출된 경우만 허용 (고객에게 직접 나가는 문자라 남용 방지)
+  // 허용된 계정 토큰으로 호출된 경우만 허용 (고객에게 직접 나가는 문자라 남용 방지)
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   const { data: userData } = await supabase.auth.getUser(token);
-  if (userData?.user?.email !== ADMIN_EMAIL) return jsonError("관리자만 발송할 수 있습니다.", 403);
+  if (!ALLOWED_EMAILS.includes(userData?.user?.email ?? "")) return jsonError("발송 권한이 없습니다.", 403);
 
   let body: Payload;
   try {

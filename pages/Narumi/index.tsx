@@ -2783,7 +2783,8 @@ VIN: ${nextVin}`);
                         )}
                       </>
                     )}
-                    {isAdmin && (
+                    {/* 영수증·정산서·고객 문자발송: admin + everyasset(isInsAI) 전용 */}
+                    {(isAdmin || isInsAI) && (
                       <CustomerDocsAdmin row={r} onChanged={fetchRows} openStorageFile={openStorageFile} />
                     )}
                   </div>
