@@ -1,7 +1,7 @@
 // pages/Renthana/index.tsx
 // 렌타나(renthana.com) 제휴 배터리·타이어 렌탈료 계산기 — 로그인 없이 URL로 누구나 접근 가능
-// 렌탈료 = (공급가격 × 1.1 부가세 포함) × 103% × 111.7%(12개월) / 135%(36개월)
-// 품목은 상단 버튼 또는 URL(?item=tire)로 선택. 품목별 요율이 달라지면 PRODUCTS의 rate12/rate36만 바꾸면 된다.
+// 월 렌탈료 = 공급가격(VAT 제외) × 1.1 × 월 요율 — 12개월 0.0958755 / 24개월 0.0522927 (렌타나 렌탈정책 기준)
+// 품목은 상단 버튼 또는 URL(?item=tire)로 선택. 품목별 요율이 달라지면 PRODUCTS의 rate12/rate24만 바꾸면 된다.
 // PDF로 저장하면 견적번호(RNF-YYMM-NNNNNN)를 발급받아 견적서 발송 이력(tb_quotations, quote_type='renthana')에 남긴다.
 //   (로그인 없이도 저장되도록 save_renthana_quote RPC 사용 — supabase/migrations/20261012170000_renthana_quote_history.sql)
 // 이력 보기: /renthana?quote=<견적번호> — 관리자로 로그인된 브라우저에서만 저장된 견적을 불러와 그대로 보여주고 다시 받을 수 있다.
@@ -15,13 +15,13 @@ import { addCanvasToA4, applyTabularDigits } from "../../lib/pdfFit";
 import { supabase } from "../../lib/supabase";
 
 const VAT_RATE = 1.1;          // 부가세 10% 포함
-const RATE_12 = 1.03 * 1.117; // 103% × 111.7%
-const RATE_36 = 1.03 * 1.35;  // 103% × 135%
+const RATE_12 = 0.0958755;    // 12개월 월 요율 (100만원 → 월 105,463원)
+const RATE_24 = 0.0522927;    // 24개월 월 요율 (100만원 → 월 57,522원)
 
 type ProductKey = "battery" | "tire";
-const PRODUCTS: Record<ProductKey, { label: string; rate12: number; rate36: number }> = {
-  battery: { label: "배터리", rate12: RATE_12, rate36: RATE_36 },
-  tire:    { label: "타이어", rate12: RATE_12, rate36: RATE_36 },  // 현재 배터리와 동일 요율
+const PRODUCTS: Record<ProductKey, { label: string; rate12: number; rate24: number }> = {
+  battery: { label: "배터리", rate12: RATE_12, rate24: RATE_24 },
+  tire:    { label: "타이어", rate12: RATE_12, rate24: RATE_24 },  // 현재 배터리와 동일 요율
 };
 
 const RENTHANA_STATS = [
@@ -106,8 +106,9 @@ export default function RenthanaPage() {
 
   const price = Number(priceInput.replace(/[^0-9]/g, "")) || 0;
   const priceWithVat = useMemo(() => price * VAT_RATE, [price]);
-  const fee12 = useMemo(() => priceWithVat * product.rate12, [priceWithVat, product]);
-  const fee36 = useMemo(() => priceWithVat * product.rate36, [priceWithVat, product]);
+  // 월 렌탈료 (원 단위 반올림)
+  const fee12 = useMemo(() => Math.round(priceWithVat * product.rate12), [priceWithVat, product]);
+  const fee24 = useMemo(() => Math.round(priceWithVat * product.rate24), [priceWithVat, product]);
 
   const onPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     leaveView();
@@ -126,7 +127,7 @@ export default function RenthanaPage() {
       if (!meta) {
         const { data, error } = await supabase.rpc("save_renthana_quote", {
           p_product: product.label, p_item_name: itemName.trim(), p_price: price,
-          p_show_price: showPrice, p_fee12: Math.round(fee12 / 12), p_fee36: Math.round(fee36 / 36),
+          p_show_price: showPrice, p_fee12: fee12, p_fee24: fee24,
         });
         const row = Array.isArray(data) ? data[0] : data;
         if (error || !row) console.error("[렌타나 견적 이력 저장 실패]", error?.message);
@@ -296,11 +297,11 @@ export default function RenthanaPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="rounded-xl border border-gray-200 p-5 text-center">
                 <p className="text-xs text-gray-400 mb-1">12개월 렌탈료</p>
-                <p className="text-xl font-bold text-[#C1462B]">{formatWon(fee12 / 12)}원/월</p>
+                <p className="text-xl font-bold text-[#C1462B]">{formatWon(fee12)}원/월</p>
               </div>
               <div className="rounded-xl border border-gray-200 p-5 text-center">
-                <p className="text-xs text-gray-400 mb-1">36개월 렌탈료</p>
-                <p className="text-xl font-bold text-[#C1462B]">{formatWon(fee36 / 36)}원/월</p>
+                <p className="text-xs text-gray-400 mb-1">24개월 렌탈료</p>
+                <p className="text-xl font-bold text-[#C1462B]">{formatWon(fee24)}원/월</p>
               </div>
             </div>
 

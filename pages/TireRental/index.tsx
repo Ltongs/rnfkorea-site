@@ -723,15 +723,15 @@ export default function TireRentalPage() {
                 <div className="mt-4 flex items-center gap-2.5 rounded-2xl border border-white/20 bg-white/10 px-4 py-3">
                   <span className="text-xs text-white/70 break-keep shrink-0">렌탈 전문 파트너</span>
                   <div className="flex items-center gap-1.5 rounded-lg bg-white px-2 py-1">
-                    <span className="text-xs font-semibold text-gray-700 break-keep">(주)비에스온</span>
+                    <span className="text-xs font-semibold text-gray-700 break-keep">렌타나</span>
                     <img
-                      src="/logo/bson.jpg"
-                      alt="비에스온(BSON) 로고"
+                      src="/logo/renthana.svg"
+                      alt="렌타나(RENTHANA) 로고"
                       className="h-5 w-auto object-contain"
                       loading="lazy"
                     />
                   </div>
-                  <span className="text-xs text-white/70 break-keep">과 함께합니다.</span>
+                  <span className="text-xs text-white/70 break-keep">와 함께합니다.</span>
                 </div>
               </div>
             </aside>
@@ -1244,15 +1244,15 @@ export default function TireRentalPage() {
                     <div className="mt-3 flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
                       <span className="text-xs text-gray-500 break-keep shrink-0">렌탈 전문 파트너</span>
                       <div className="flex items-center gap-1.5 rounded-lg bg-white border border-gray-100 px-2 py-1">
-                        <span className="text-xs font-semibold text-gray-700 break-keep">(주)비에스온</span>
+                        <span className="text-xs font-semibold text-gray-700 break-keep">렌타나</span>
                         <img
-                          src="/logo/bson.jpg"
-                          alt="비에스온(BSON) 로고"
+                          src="/logo/renthana.svg"
+                          alt="렌타나(RENTHANA) 로고"
                           className="h-5 w-auto object-contain"
                           loading="lazy"
                         />
                       </div>
-                      <span className="text-xs text-gray-500 break-keep">과 함께합니다.</span>
+                      <span className="text-xs text-gray-500 break-keep">와 함께합니다.</span>
                     </div>
                   </div>
 
