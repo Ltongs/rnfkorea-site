@@ -9,7 +9,7 @@ import { Phone, CheckCircle, ChevronRight } from "lucide-react";
 // ====================================================
 const SEO_TITLE = "타이어렌탈몰 | 화물차·지게차 타이어 월 납입 렌탈 | RNF KOREA";
 const SEO_DESC =
-  "카고·덤프·버스·지게차 타이어를 월 렌탈료로. 초기비용 없이 12개월 분납. 대한민국 최초 타이어 렌탈 서비스. 상담 1551-1873.";
+  "카고·덤프·버스·지게차 타이어를 월 렌탈료로. 초기비용 없이 최장 24개월 분납. 대한민국 최초 타이어 렌탈 서비스. 상담 1551-1873.";
 const SEO_CANONICAL = "https://www.rnfkorea.co.kr/tire-rental";
 const SEO_KEYWORDS =
   "타이어렌탈몰,화물차타이어렌탈,지게차타이어렌탈,카고타이어렌탈,덤프타이어렌탈,타이어월납입,타이어분납,상용차타이어렌탈,솔리드타이어렌탈,12R22.5렌탈";
@@ -19,7 +19,7 @@ const JSON_LD_SERVICE = {
   "@context": "https://schema.org",
   "@type": "Service",
   name: "타이어렌탈몰 — 화물차·지게차 타이어 렌탈 서비스",
-  description: "카고·덤프·버스·지게차용 타이어 12개월 렌탈. 초기비용 0원, 월 납입 구조.",
+  description: "카고·덤프·버스·지게차용 타이어 12·24개월 렌탈. 초기비용 0원, 월 납입 구조.",
   provider: {
     "@type": "Organization",
     name: "(주)알앤에프코리아",
@@ -30,7 +30,7 @@ const JSON_LD_SERVICE = {
   serviceType: "타이어 렌탈",
   offers: {
     "@type": "Offer",
-    description: "12개월 월 렌탈 구조, 초기비용 0원",
+    description: "12·24개월 월 렌탈 구조, 초기비용 0원",
     priceCurrency: "KRW",
     availability: "https://schema.org/InStock",
   },
@@ -56,7 +56,7 @@ const JSON_LD_ITEM_LIST = {
       item: {
         "@type": "Product",
         name: "금호타이어 KRS55 12R22.5 렌탈",
-        description: "카고·트레일러 전륜용. 12개월 월 납입 렌탈. 배송비·장착비 포함.",
+        description: "카고·트레일러 전륜용. 최장 24개월 월 납입 렌탈. 배송비·장착비 포함.",
         brand: { "@type": "Brand", name: "금호타이어" },
         offers: { "@type": "Offer", priceCurrency: "KRW", availability: "https://schema.org/InStock", seller: { "@type": "Organization", name: "(주)알앤에프코리아" } },
       },
@@ -66,7 +66,7 @@ const JSON_LD_ITEM_LIST = {
       item: {
         "@type": "Product",
         name: "금호타이어 KRD55 12R22.5 렌탈",
-        description: "카고·트레일러 후륜용. 12개월 월 납입 렌탈. 배송비·장착비 포함.",
+        description: "카고·트레일러 후륜용. 최장 24개월 월 납입 렌탈. 배송비·장착비 포함.",
         brand: { "@type": "Brand", name: "금호타이어" },
         offers: { "@type": "Offer", priceCurrency: "KRW", availability: "https://schema.org/InStock", seller: { "@type": "Organization", name: "(주)알앤에프코리아" } },
       },
@@ -76,7 +76,7 @@ const JSON_LD_ITEM_LIST = {
       item: {
         "@type": "Product",
         name: "금호타이어 KXA11 385/65R22.5 렌탈",
-        description: "덤프용 올시즌 타이어. 12개월 월 납입 렌탈. 배송비·장착비 포함.",
+        description: "덤프용 올시즌 타이어. 최장 24개월 월 납입 렌탈. 배송비·장착비 포함.",
         brand: { "@type": "Brand", name: "금호타이어" },
         offers: { "@type": "Offer", priceCurrency: "KRW", availability: "https://schema.org/InStock", seller: { "@type": "Organization", name: "(주)알앤에프코리아" } },
       },
@@ -86,7 +86,7 @@ const JSON_LD_ITEM_LIST = {
       item: {
         "@type": "Product",
         name: "금호타이어 KRS50 385/65R22.5 렌탈",
-        description: "덤프용 고마일리지 타이어. 12개월 월 납입 렌탈. 배송비·장착비 포함.",
+        description: "덤프용 고마일리지 타이어. 최장 24개월 월 납입 렌탈. 배송비·장착비 포함.",
         brand: { "@type": "Brand", name: "금호타이어" },
         offers: { "@type": "Offer", priceCurrency: "KRW", availability: "https://schema.org/InStock", seller: { "@type": "Organization", name: "(주)알앤에프코리아" } },
       },
@@ -96,7 +96,7 @@ const JSON_LD_ITEM_LIST = {
       item: {
         "@type": "Product",
         name: "금호타이어 KRA53 12R22.5 렌탈 (버스용)",
-        description: "버스 중·장거리 노선 최적화 타이어. 12개월 월 납입 렌탈. 배송비·장착비 포함.",
+        description: "버스 중·장거리 노선 최적화 타이어. 최장 24개월 월 납입 렌탈. 배송비·장착비 포함.",
         brand: { "@type": "Brand", name: "금호타이어" },
         offers: { "@type": "Offer", priceCurrency: "KRW", availability: "https://schema.org/InStock", seller: { "@type": "Organization", name: "(주)알앤에프코리아" } },
       },
@@ -129,7 +129,7 @@ const JSON_LD_FAQ = {
       name: "렌탈 계약 기간은 얼마나 되나요?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "기본 계약 기간은 12개월입니다. 매월 고정된 렌탈료만 납입하면 되므로 현금흐름 관리가 쉬워집니다.",
+        text: "계약 기간은 12개월 또는 24개월 중 선택할 수 있습니다. 매월 고정된 렌탈료만 납입하면 되므로 현금흐름 관리가 쉬워집니다.",
       },
     },
     {
@@ -648,13 +648,13 @@ export default function TireRentalPage() {
 
               <p className="mt-4 text-base md:text-lg leading-7 text-white/75 max-w-3xl break-keep">
                 화물차(카고·덤프·버스)와 지게차 타이어를 목돈 없이 월 렌탈료로.
-                초기비용 0원, 12개월 분납 구조로 현금흐름 부담을 없앱니다.
+                초기비용 0원, 최장 24개월 분납 구조로 현금흐름 부담을 없앱니다.
               </p>
 
               <ul className="mt-6 space-y-2 list-none p-0" aria-label="핵심 혜택">
                 {[
                   "초기비용 0원 — 목돈 부담 없음",
-                  "12개월 월 납입 구조",
+                  "12·24개월 월 납입 구조",
                   "배송비·장착비 포함 — 추가 비용 없음",
                   "화물차·지게차 전 차종 적용",
                   "개인(개별)화물협회 회원 우대 조건",
@@ -702,7 +702,7 @@ export default function TireRentalPage() {
                 <dl className="mt-5 space-y-2.5">
                   {[
                     { label: "초기비용",  value: "0원" },
-                    { label: "계약 기간", value: "12개월" },
+                    { label: "계약 기간", value: "12·24개월 선택" },
                     { label: "적용 차종", value: "화물차·지게차" },
                     { label: "대표번호",  value: "1551-1873" },
                   ].map(({ label, value }) => (
@@ -979,7 +979,7 @@ export default function TireRentalPage() {
               },
               {
                 q: "렌탈 계약 기간은 얼마나 되나요?",
-                a: "기본 계약 기간은 12개월입니다. 매월 고정된 렌탈료만 납입하면 되므로 현금흐름 관리가 쉬워집니다.",
+                a: "계약 기간은 12개월 또는 24개월 중 선택할 수 있습니다. 매월 고정된 렌탈료만 납입하면 되므로 현금흐름 관리가 쉬워집니다.",
               },
               {
                 q: "어떤 차종의 타이어를 렌탈할 수 있나요?",
