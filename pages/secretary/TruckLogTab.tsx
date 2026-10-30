@@ -2,7 +2,7 @@
 // AI비서 "🚚 운행일지" 탭 — 화물운송(타타대우 25톤 윙바디) 운행 기록을 한 페이지 일자별 표로 관리.
 //   일자 / 순번 / 출발지 / 도착지 / 거리 / 주유(L, 금액) / 요소수(L, 금액) / 운임
 // 테이블: truck_trips (supabase/migrations/20261030120000_truck_logs.sql, 20261030150000_truck_trips_places.sql,
-//         20261030160000_truck_trips_fuel_urea_freight.sql)
+//         20261030160000_truck_trips_fuel_urea_freight.sql, 20261030200000_truck_trips_next_day.sql)
 // 장소검색·거리계산: supabase/functions/truck-route (카카오 로컬 + 카카오모빌리티 길찾기)
 // 권한: admin@rnfkorea.co.kr / ltongs7@gmail.com 은 /work/secretary, everyasset.fc@gmail.com 은 /work/secretary-ins 에서
 //       같은 데이터를 함께 본다 (RLS: is_truck_log_user()).
@@ -12,6 +12,8 @@
 //   2) 입력줄 한 곳에서 한 구간씩 입력 (표 칸에 직접 입력하지 않음 — 엑셀식 칸 편집은 커서 이동이 불편해서)
 //      - 출발지·도착지: 상호/주소 입력 → 후보(최근 장소 + 카카오 장소검색)에서 고르면 길찾기 거리 자동 입력
 //      - 같은 날 여러 구간: 저장하면 일자는 유지되고 출발지 = 직전 도착지로 이어진다 (순번은 자동)
+//      - 일자는 상차일 기준. 도착지 옆 [당착]/[익일착] 토글로 구분 (익일착 = 도착일이 상차일 + 1일)
+//        익일착으로 저장하면 다음 입력의 일자가 다음 날로 넘어가고 출발지 = 그 도착지
 //      - 숫자 칸에서 Enter = 저장
 //   3) 표에서 줄을 누르면 입력줄로 불러와 수정, 일자 칸의 "+ 구간"은 그 날짜로 구간 추가
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -22,6 +24,7 @@ type Trip = {
   origin_address: string | null; origin_x: number | null; origin_y: number | null;
   dest_address: string | null; dest_x: number | null; dest_y: number | null;
   distance_km: number | null; distance_approx: boolean;
+  next_day: boolean;   // 익일착 (trip_date = 상차일)
   fuel_liters: number | null; fuel_amount: number | null;
   urea_liters: number | null; urea_amount: number | null;
   freight: number | null; memo: string | null;
@@ -46,6 +49,7 @@ const DEFAULT_DRIVERS = ["대표", "기사"];
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
+const addDays = (s: string, n: number) => { const [y, m, d] = s.split("-").map(Number); const t = new Date(y, m - 1, d + n); return `${t.getFullYear()}-${pad2(t.getMonth() + 1)}-${pad2(t.getDate())}`; };
 const labelDate = (s: string) => { const [y, m, d] = s.split("-").map(Number); return `${m}/${d}(${WEEKDAYS[new Date(y, m - 1, d).getDay()]})`; };
 const monthRange = (ym: string) => {
   const [y, m] = ym.split("-").map(Number);
@@ -68,7 +72,7 @@ const emptyPlace = (): PlaceVal => ({ name: "", address: null, x: null, y: null 
 const hasXY = (p: PlaceVal) => p.x != null && p.y != null;
 const emptyForm = (date = todayStr(), driver = DEFAULT_DRIVERS[0]) => ({
   trip_date: date, driver, origin: emptyPlace(), destination: emptyPlace(),
-  distance_km: "", distance_approx: false,
+  distance_km: "", distance_approx: false, next_day: false,
   fuel_liters: "", fuel_amount: "", urea_liters: "", urea_amount: "", freight: "", memo: "",
 });
 type Form = ReturnType<typeof emptyForm>;
@@ -241,6 +245,7 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
   }, [trips]);
   const total = useMemo(() => sum(trips), [trips]);
   const fuelCost = total.fuelW + total.ureaW;
+  const nextDayCount = useMemo(() => trips.filter(t => t.next_day).length, [trips]);
 
   const resetForm = (date = form.trip_date) => {
     setEditingId(null); setDistanceTouched(false);
@@ -257,6 +262,7 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
       origin: f.origin.name.trim(), origin_address: f.origin.address, origin_x: f.origin.x, origin_y: f.origin.y,
       destination: f.destination.name.trim(), dest_address: f.destination.address, dest_x: f.destination.x, dest_y: f.destination.y,
       distance_km: num(f.distance_km), distance_approx: distanceTouched ? false : f.distance_approx,
+      next_day: f.next_day,
       fuel_liters: num(f.fuel_liters), fuel_amount: int(f.fuel_amount),
       urea_liters: num(f.urea_liters), urea_amount: int(f.urea_amount),
       freight: int(f.freight), memo: f.memo.trim() || null,
@@ -268,10 +274,11 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
     setSaving(false);
     if (res.error) { showToast(`저장 실패: ${res.error.message}`, "err"); return; }
     showToast(editingId ? "수정했습니다." : "저장했습니다.");
-    // 같은 날 다음 구간: 일자 유지, 출발지 = 직전 도착지 → 커서는 도착지로
+    // 다음 구간: 출발지 = 직전 도착지 → 커서는 도착지로. 익일착이면 일자를 다음 날로 넘긴다.
     const wasEditing = editingId != null;
+    const nextDate = !wasEditing && row.next_day ? addDays(row.trip_date, 1) : row.trip_date;
     setEditingId(null); setDistanceTouched(false);
-    setForm({ ...emptyForm(row.trip_date, f.driver), origin: wasEditing ? emptyPlace() : { ...f.destination } });
+    setForm({ ...emptyForm(nextDate, f.driver), origin: wasEditing ? emptyPlace() : { ...f.destination } });
     setTimeout(() => (wasEditing ? originRef : destRef).current?.focus(), 0);
     void loadRecentPlaces();
     if (row.trip_date.slice(0, 7) !== month) setMonth(row.trip_date.slice(0, 7)); else void load();
@@ -284,7 +291,7 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
       trip_date: t.trip_date, driver: t.driver ?? "",
       origin: { name: t.origin, address: t.origin_address, x: xy(t.origin_x), y: xy(t.origin_y) },
       destination: { name: t.destination, address: t.dest_address, x: xy(t.dest_x), y: xy(t.dest_y) },
-      distance_km: str(t.distance_km), distance_approx: t.distance_approx,
+      distance_km: str(t.distance_km), distance_approx: t.distance_approx, next_day: t.next_day,
       fuel_liters: str(t.fuel_liters), fuel_amount: str(t.fuel_amount),
       urea_liters: str(t.urea_liters), urea_amount: str(t.urea_amount),
       freight: str(t.freight), memo: t.memo ?? "",
@@ -292,9 +299,10 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
     formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   const addOnDate = (date: string) => {
-    // 그 날 마지막 도착지를 출발지로
+    // 그 날 마지막 도착지를 출발지로 (그 날 기록이 없으면 전날 익일착 도착지)
     const sameDay = trips.filter(t => t.trip_date === date);
-    const last = sameDay[sameDay.length - 1];
+    const prevNextDay = trips.filter(t => t.trip_date === addDays(date, -1) && t.next_day);
+    const last = sameDay[sameDay.length - 1] ?? prevNextDay[prevNextDay.length - 1];
     setEditingId(null); setDistanceTouched(false);
     setForm(f => ({
       ...emptyForm(date, f.driver),
@@ -344,7 +352,7 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
       {/* 월 요약 */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         {[
-          { k: "운행", v: `${trips.length}건`, s: `${fmt1(total.dist)}km · ${days.length}일` },
+          { k: "운행", v: `${trips.length}건`, s: `${fmt1(total.dist)}km · ${days.length}일${nextDayCount ? ` · 익일착 ${nextDayCount}` : ""}` },
           { k: "⛽ 주유", v: `${fmtWon(total.fuelW)}원`, s: `${fmt1(total.fuelL)}L${total.fuelL > 0 && total.dist > 0 ? ` · 연비 ${(total.dist / total.fuelL).toFixed(2)}km/L` : ""}` },
           { k: "💧 요소수", v: `${fmtWon(total.ureaW)}원`, s: `${fmt1(total.ureaL)}L` },
           { k: "💰 운임", v: `${fmtWon(total.freight)}원`, s: total.dist > 0 ? `km당 ${fmtWon(total.freight / total.dist)}원` : "-" },
@@ -372,8 +380,8 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
             ))}
           </div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-[150px_1fr_auto_1fr_120px] gap-2.5 items-start">
-          <div className="col-span-2 md:col-span-1"><label className={LBL}>일자</label>
+        <div className="grid grid-cols-2 md:grid-cols-[150px_1fr_auto_1fr_auto_120px] gap-2.5 items-start">
+          <div className="col-span-2 md:col-span-1"><label className={LBL}>일자 <span className="font-normal text-gray-400">상차일</span></label>
             <input type="date" className={CTRL} value={form.trip_date} onChange={e => set("trip_date", e.target.value)} /></div>
           <div className="col-span-2 md:col-span-1">
             <PlaceInput label="출발지" value={form.origin} recent={recentPlaces} placeholder="상호 또는 주소" inputRef={originRef}
@@ -385,6 +393,18 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
           <div className="col-span-2 md:col-span-1">
             <PlaceInput label="도착지" value={form.destination} recent={recentPlaces} placeholder="상호 또는 주소" inputRef={destRef}
               onChange={v => set("destination", v)} /></div>
+          <div className="col-span-2 md:col-span-1">
+            <label className={LBL}>도착</label>
+            <div className="flex h-10 rounded-xl border border-gray-200 overflow-hidden">
+              {([false, true] as const).map(nd => (
+                <button key={String(nd)} type="button" onClick={() => set("next_day", nd)}
+                  className={`flex-1 px-3 text-sm font-semibold whitespace-nowrap transition-all ${form.next_day === nd ? (nd ? "bg-indigo-600 text-white" : "bg-[#0f172a] text-white") : "bg-white text-gray-500 hover:bg-gray-50"}`}>
+                  {nd ? "익일착" : "당착"}
+                </button>
+              ))}
+            </div>
+            {form.next_day && form.trip_date && <p className="text-[10px] text-indigo-600 mt-0.5">도착 {labelDate(addDays(form.trip_date, 1))}</p>}
+          </div>
           <div className="col-span-2 md:col-span-1">
             {numInput("distance_km", "거리", "km")}
             {routeInfo && <p className="text-[10px] text-gray-400 mt-0.5 truncate" title={routeInfo}>{routeInfo}</p>}
@@ -409,7 +429,7 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
           {editingId && <button className={`${BTG} h-10`} onClick={() => resetForm()}>취소</button>}
           <button className={`${BTO} h-10 px-6 text-sm`} disabled={saving} onClick={() => void save()}>{editingId ? "수정 저장" : "저장"}</button>
         </div>
-        <p className="text-[11px] text-gray-400">숫자 칸에서 Enter = 저장 · 저장 후 같은 날 다음 구간은 출발지가 직전 도착지로 채워집니다.</p>
+        <p className="text-[11px] text-gray-400">숫자 칸에서 Enter = 저장 · 저장 후 다음 구간은 출발지가 직전 도착지로 채워집니다 (익일착이면 일자도 다음 날로).</p>
       </div>
 
       {/* 일자별 표 */}
@@ -462,6 +482,10 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
                         <td className={TD} title={t.origin_address ?? ""}>{t.origin}</td>
                         <td className={TD} title={t.dest_address ?? ""}>
                           {t.destination}
+                          {t.next_day && (
+                            <span className="ml-1 align-middle text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200"
+                              title={`도착 ${labelDate(addDays(t.trip_date, 1))}`}>익일</span>
+                          )}
                           {t.memo && <span className="block text-[11px] text-gray-400">{t.memo}</span>}
                         </td>
                         <td className={TDN}>{t.distance_approx && t.distance_km != null && <span className="text-gray-400 text-[10px] mr-0.5">약</span>}{fmt1(t.distance_km)}</td>
