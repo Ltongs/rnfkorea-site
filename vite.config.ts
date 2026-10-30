@@ -25,7 +25,7 @@ export default defineConfig(({ mode }) => {
           '/tires',
           '/battery',
           '/golfcart-battery',
-          '/export',
+          // '/export',  — 수출사업 보류 중 (lib/featureFlags.ts)
           '/finance',
           '/cargo-finance',
           '/tire-rental',

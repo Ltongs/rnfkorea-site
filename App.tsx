@@ -84,6 +84,7 @@ import HomePage from "./pages/Home";
 import FinancePage from "./pages/Finance/index";
 import TiresPage from "./pages/Tires/index";
 import ExportPage from "./pages/Export/index";
+import { EXPORT_BUSINESS_VISIBLE } from "./lib/featureFlags";
 import ExportShopPage from "./pages/Export/ExportShopPage";
 import ExportInquiryPage from "./pages/Export/ExportInquiryPage";
 import ExportListingNewPage from "./pages/Export/ExportListingNewPage";
@@ -299,7 +300,7 @@ const ORGANIZATION_JSON_LD = {
   logo: `${SITE_URL}/logo/rnf-logo.png`,
   image: DEFAULT_OG_IMAGE,
   description:
-    "물류기기용 LFP배터리, 산업용·화물용 타이어, 중고장비 수출, 렌탈·금융솔루션을 제공하는 산업재 전문기업",
+    "물류기기용 LFP배터리, 산업용·화물용 타이어, 화물운송, 렌탈·금융솔루션을 제공하는 산업재 전문기업",
   foundingDate: "2022",
   telephone: "1551-1873",
   email: "admin@rnfkorea.co.kr",
@@ -1331,7 +1332,7 @@ const Footer: React.FC = () => {
             <ul className="space-y-2 text-sm text-gray-600">
               <li><Link to="/tires" className="hover:text-orange-500 transition-colors">- 타이어</Link></li>
               <li><Link to="/battery" className="hover:text-orange-500 transition-colors">- 배터리</Link></li>
-              <li><Link to="/export" className="hover:text-orange-500 transition-colors">- 중고장비 수출사업</Link></li>
+              {EXPORT_BUSINESS_VISIBLE && <li><Link to="/export" className="hover:text-orange-500 transition-colors">- 중고장비 수출사업</Link></li>}
               <li><Link to="/finance" className="hover:text-orange-500 transition-colors">- 금융솔루션</Link></li>
               <li><Link to="/cargo-finance" className="hover:text-orange-500 transition-colors">- 개인(개별)협회 전용 금융상품</Link></li>
             </ul>
@@ -1342,7 +1343,7 @@ const Footer: React.FC = () => {
             <ul className="space-y-2 text-sm text-gray-600">
               <li><Link to="/tires-shop" className="hover:text-orange-500 transition-colors">- 타이어 쇼핑몰</Link></li>
               <li><Link to="/tire-rental" className="hover:text-orange-500 transition-colors">- 화물차 타이어 렌탈</Link></li>
-              <li><Link to="/export-shop" className="hover:text-orange-500 transition-colors">- 수출용 쇼핑몰</Link></li>
+              {EXPORT_BUSINESS_VISIBLE && <li><Link to="/export-shop" className="hover:text-orange-500 transition-colors">- 수출용 쇼핑몰</Link></li>}
               <li><Link to="/battery-shop" className="hover:text-orange-500 transition-colors">- 배터리 쇼핑몰</Link></li>
             </ul>
           </div>
@@ -1489,9 +1490,10 @@ const AppRoutes = () => {
           <Route path="/battery" element={<BatteryPage />} />
           <Route path="/renthana" element={<RenthanaPage />} />
           <Route path="/golfcart-battery" element={<GolfCartLfpPage />} />
-          <Route path="/export" element={<ExportPage />} />
-          <Route path="/export-shop" element={<ExportShopPage />} />
-          <Route path="/export-shop/inquiry" element={<ExportInquiryPage />} />
+          {/* 수출사업 보류 중(lib/featureFlags.ts): 일반 방문자는 첫 화면으로, admin급은 계속 열람 */}
+          <Route path="/export" element={EXPORT_BUSINESS_VISIBLE || isAdminLevel ? <ExportPage /> : <Navigate to="/" replace />} />
+          <Route path="/export-shop" element={EXPORT_BUSINESS_VISIBLE || isAdminLevel ? <ExportShopPage /> : <Navigate to="/" replace />} />
+          <Route path="/export-shop/inquiry" element={EXPORT_BUSINESS_VISIBLE || isAdminLevel ? <ExportInquiryPage /> : <Navigate to="/" replace />} />
           <Route path="/export-shop/listing/new" element={<ExportListingNewPage />} />
           <Route path="/export-shop/listing/edit/:id" element={<ExportListingNewPage />} />
           <Route path="/export-shop/listing/manage" element={<ExportListingManagePage />} />

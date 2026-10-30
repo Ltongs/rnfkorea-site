@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Phone, Loader2, Send, LogIn } from "lucide-react";
 import { Battery, Truck, Wallet, Check } from "lucide-react";
+import { EXPORT_BUSINESS_VISIBLE } from "../../lib/featureFlags";
 
 type HeroShowcaseItem = {
   eyebrow: string;
@@ -81,7 +82,9 @@ const heroShowcaseItems: HeroShowcaseItem[] = [
 ];
 
 const HeroShowcaseSlider: React.FC = () => {
-  const loopItems = [...heroShowcaseItems, ...heroShowcaseItems];
+  // 수출사업 보류 중에는 수출 사례(/export로 연결)도 빼고 보여준다
+  const visibleItems = heroShowcaseItems.filter((it) => EXPORT_BUSINESS_VISIBLE || !it.to.startsWith("/export"));
+  const loopItems = [...visibleItems, ...visibleItems];
   const containerRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const [isHovering, setIsHovering] = useState(false);
@@ -717,32 +720,34 @@ const HomePage: React.FC = () => (
         </div>
       </Link>
 
-      {/* 장비 수출 */}
-      <Link
-        to="/export"
-        className="relative p-0 border rounded-lg overflow-hidden bg-white hover:shadow-lg transition-shadow
-                   focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50"
-        aria-label="장비수출 페이지로 이동"
-      >
-        <div className="relative z-10 p-6 md:p-7 pr-24 md:pr-40">
-          <h3 className="text-xl font-semibold mb-2 hover:text-orange-600 transition-colors">
-  장비 재상품화 프로그램
-</h3>
-<p className="text-gray-600">
-  노후 산업장비 선별·정비·수출 구조 설계
-</p>
-        </div>
+      {/* 장비 수출 — 사업 보류 중 숨김 (lib/featureFlags.ts) */}
+      {EXPORT_BUSINESS_VISIBLE && (
+        <Link
+          to="/export"
+          className="relative p-0 border rounded-lg overflow-hidden bg-white hover:shadow-lg transition-shadow
+                     focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200/50"
+          aria-label="장비수출 페이지로 이동"
+        >
+          <div className="relative z-10 p-6 md:p-7 pr-24 md:pr-40">
+            <h3 className="text-xl font-semibold mb-2 hover:text-orange-600 transition-colors">
+    장비 재상품화 프로그램
+  </h3>
+  <p className="text-gray-600">
+    노후 산업장비 선별·정비·수출 구조 설계
+  </p>
+          </div>
 
-        <div className="absolute top-0 right-0 h-full w-[48%]">
-          <img
-            src="/home/export.jpg"
-            alt="장비수출"
-            className="h-full w-full object-cover scale-100 hover:scale-[1.03] transition-transform duration-500"
-            loading="lazy"
-          />
-          <div className="absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-white via-white/70 to-transparent" />
-        </div>
-      </Link>
+          <div className="absolute top-0 right-0 h-full w-[48%]">
+            <img
+              src="/home/export.jpg"
+              alt="장비수출"
+              className="h-full w-full object-cover scale-100 hover:scale-[1.03] transition-transform duration-500"
+              loading="lazy"
+            />
+            <div className="absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-white via-white/70 to-transparent" />
+          </div>
+        </Link>
+      )}
 
       {/* 금융 솔루션 */}
       <Link

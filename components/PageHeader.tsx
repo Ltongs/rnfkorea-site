@@ -3,6 +3,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ChevronDown, Phone } from "lucide-react";
 import { useAuth } from "../lib/auth";
+import { EXPORT_BUSINESS_VISIBLE } from "../lib/featureFlags";
 
 const OPEN_DELAY = 0;
 const CLOSE_DELAY = 90;
@@ -414,13 +415,15 @@ export default function PageHeader() {
                     배터리
                   </Link>
 
-                  <Link
-                    to="/export"
-                    className={dropItem}
-                    onClick={handleMenuNavigate}
-                  >
-                    중고장비 수출사업
-                  </Link>
+                  {EXPORT_BUSINESS_VISIBLE && (
+                    <Link
+                      to="/export"
+                      className={dropItem}
+                      onClick={handleMenuNavigate}
+                    >
+                      중고장비 수출사업
+                    </Link>
+                  )}
 
                   <Link
                     to="/finance"
@@ -513,13 +516,15 @@ export default function PageHeader() {
                   >
                     화물차 타이어 렌탈 🆕
                   </Link>
-                  <Link
-                    to="/export-shop"
-                    className={dropItem}
-                    onClick={handleMenuNavigate}
-                  >
-                    수출용 쇼핑몰
-                  </Link>
+                  {EXPORT_BUSINESS_VISIBLE && (
+                    <Link
+                      to="/export-shop"
+                      className={dropItem}
+                      onClick={handleMenuNavigate}
+                    >
+                      수출용 쇼핑몰
+                    </Link>
+                  )}
                   <Link
                     to="/battery-shop"
                     className={dropItem}

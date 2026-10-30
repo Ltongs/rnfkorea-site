@@ -1,6 +1,7 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
+import { EXPORT_BUSINESS_VISIBLE } from "../../lib/featureFlags";
 
 type SiteLink = {
   label: string;
@@ -27,7 +28,7 @@ const sections: SiteSection[] = [
         to: "/battery",
         desc: "LFP 배터리 라인업 및 납산배터리 교체 컨설팅",
       },
-      { label: "중고장비 수출사업", to: "/export", desc: "중고 산업장비 해외 수출" },
+      ...(EXPORT_BUSINESS_VISIBLE ? [{ label: "중고장비 수출사업", to: "/export", desc: "중고 산업장비 해외 수출" }] : []),
       { label: "금융솔루션", to: "/finance", desc: "렌탈·리스·할부금융 구조 설계" },
       {
         label: "개인(개별)화물협회 전용 금융상품",
@@ -44,7 +45,7 @@ const sections: SiteSection[] = [
     links: [
       { label: "타이어 쇼핑몰", to: "/tires-shop", desc: "상품번호 기준, 제품 검색/상세" },
       { label: "화물차 타이어 렌탈", to: "/tire-rental", desc: "화물차 전용 타이어 렌탈 서비스" },
-      { label: "수출용 쇼핑몰", to: "/export-shop", desc: "정비·등급화된 매물 확인" },
+      ...(EXPORT_BUSINESS_VISIBLE ? [{ label: "수출용 쇼핑몰", to: "/export-shop", desc: "정비·등급화된 매물 확인" }] : []),
       {
         label: "산업용 배터리 렌탈몰",
         to: "/battery-shop",
