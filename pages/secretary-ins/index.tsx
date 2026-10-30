@@ -2113,10 +2113,11 @@ const SecretaryInsPage:React.FC = () => {
       </div>
 
       {/* 바디 */}
-      <div className="flex max-w-6xl w-full mx-auto px-3 sm:px-6 py-3 sm:py-4 gap-5 pb-32 sm:pb-6" style={{minHeight:600}}>
+      {/* 운행일지 탭은 표가 넓어 사이드바 없이 화면 전체 폭을 쓴다 */}
+      <div className={`flex ${tab==="trucklog"?"max-w-none":"max-w-6xl"} w-full mx-auto px-3 sm:px-6 py-3 sm:py-4 gap-5 pb-32 sm:pb-6`} style={{minHeight:600}}>
 
         {/* 사이드바 */}
-        <aside className="w-56 flex-shrink-0 hidden lg:flex flex-col gap-3 self-start sticky top-4">
+        <aside className={`w-56 flex-shrink-0 hidden ${tab==="trucklog"?"":"lg:flex"} flex-col gap-3 self-start sticky top-4`}>
           <MiniCalendar
             onDateSelect={(d)=>{setSchedDate(d);setTab("schedule");}}
             selectedDate={schedDate}

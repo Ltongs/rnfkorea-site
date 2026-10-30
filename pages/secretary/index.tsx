@@ -5572,10 +5572,11 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
       </div>
 
       {/* 바디 */}
-      <div className="flex max-w-6xl w-full mx-auto px-6 py-4 gap-5" style={{minHeight:600}}>
+      {/* 운행일지 탭은 표가 넓어 사이드바 없이 화면 전체 폭을 쓴다 */}
+      <div className={`flex ${tab==="trucklog"?"max-w-none":"max-w-6xl"} w-full mx-auto px-6 py-4 gap-5`} style={{minHeight:600}}>
 
         {/* 사이드바 */}
-        <aside className="w-56 flex-shrink-0 hidden lg:flex flex-col gap-3 self-start sticky top-4">
+        <aside className={`w-56 flex-shrink-0 hidden ${tab==="trucklog"?"":"lg:flex"} flex-col gap-3 self-start sticky top-4`}>
           <MiniCalendar
             onDateSelect={(d)=>{setSchedDate(d);setTabAndSave("schedule");}}
             selectedDate={schedDate}
