@@ -1,48 +1,55 @@
 // pages/secretary/TruckLogTab.tsx
-// AI비서 "🚚 운행일지" 탭 — 화물운송(타타대우 25톤 윙바디) 일자별 운행·주유 기록.
-// 테이블: truck_trips, truck_fuels (supabase/migrations/20261030120000_truck_logs.sql)
+// AI비서 "🚚 운행일지" 탭 — 화물운송(타타대우 25톤 윙바디) 운행 기록을 한 페이지 일자별 표로 관리.
+//   일자 / 순번 / 출발지 / 도착지 / 거리 / 주유(L, 금액) / 요소수(L, 금액) / 운임
+// 테이블: truck_trips (supabase/migrations/20261030120000_truck_logs.sql, 20261030150000_truck_trips_places.sql,
+//         20261030160000_truck_trips_fuel_urea_freight.sql)
+// 장소검색·거리계산: supabase/functions/truck-route (카카오 로컬 + 카카오모빌리티 길찾기)
 // 권한: admin@rnfkorea.co.kr / ltongs7@gmail.com 은 /work/secretary, everyasset.fc@gmail.com 은 /work/secretary-ins 에서
 //       같은 데이터를 함께 본다 (RLS: is_truck_log_user()).
 //
 // 화면 흐름
-//   1) 월 선택 → 그달 운행 횟수·운행거리·주유금액·평균연비를 요약 카드로 표시 (운전자별 거리 포함)
-//   2) "운행" / "주유" 전환 후 입력 카드에서 기록
-//      - 운행: 계기판(출발/도착)을 넣으면 운행거리 자동 계산, 계기판 없이 거리만 넣어도 된다.
-//              저장 후 다음 입력은 출발지 = 직전 도착지, 출발 계기판 = 직전 도착 계기판으로 이어 채운다.
-//      - 주유: 주유량 × 단가로 금액 자동 계산 (금액을 직접 고치면 그 값을 우선)
-//   3) 목록에서 수정(입력 카드로 불러오기)·삭제
+//   1) 월 선택 → 요약(운행·거리·주유·요소수·운임·운임-유류비)
+//   2) 입력줄 한 곳에서 한 구간씩 입력 (표 칸에 직접 입력하지 않음 — 엑셀식 칸 편집은 커서 이동이 불편해서)
+//      - 출발지·도착지: 상호/주소 입력 → 후보(최근 장소 + 카카오 장소검색)에서 고르면 길찾기 거리 자동 입력
+//      - 같은 날 여러 구간: 저장하면 일자는 유지되고 출발지 = 직전 도착지로 이어진다 (순번은 자동)
+//      - 숫자 칸에서 Enter = 저장
+//   3) 표에서 줄을 누르면 입력줄로 불러와 수정, 일자 칸의 "+ 구간"은 그 날짜로 구간 추가
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
 type Trip = {
-  id: number; trip_date: string; driver: string; origin: string; destination: string;
-  odometer_start: number | null; odometer_end: number | null; distance_km: number | null;
-  cargo: string | null; memo: string | null;
+  id: number; trip_date: string; driver: string | null; origin: string; destination: string;
+  origin_address: string | null; origin_x: number | null; origin_y: number | null;
+  dest_address: string | null; dest_x: number | null; dest_y: number | null;
+  distance_km: number | null; distance_approx: boolean;
+  fuel_liters: number | null; fuel_amount: number | null;
+  urea_liters: number | null; urea_amount: number | null;
+  freight: number | null; memo: string | null;
 };
-type Fuel = {
-  id: number; fuel_date: string; driver: string; station: string | null; liters: number | null;
-  unit_price: number | null; amount: number; odometer: number | null; pay_method: string | null; memo: string | null;
-};
-type Mode = "trip" | "fuel";
+// 출발지/도착지 입력값. x·y(경도·위도)는 후보에서 골랐을 때만 채워지고, 글자를 고치면 비워진다.
+type PlaceVal = { name: string; address: string | null; x: number | null; y: number | null };
 
 const CARD = "border border-gray-200 rounded-2xl bg-white shadow-sm";
 const CTRL = "w-full h-10 rounded-xl border border-gray-200 px-3 text-sm text-[#0f172a] bg-white focus:outline-none focus:border-orange-400 transition-all";
+const NUM = `${CTRL} text-right tabular-nums`;
 const LBL = "block text-[11px] font-semibold text-gray-500 mb-1";
 const BTO = "px-3 py-1.5 rounded-xl bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 transition-all disabled:opacity-50";
 const BTG = "px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-600 hover:border-gray-300 transition-all disabled:opacity-50";
-const CHIP = "text-[11px] px-2 py-0.5 rounded-md border transition-all whitespace-nowrap";
+// 표 셀 (엑셀 느낌의 얇은 격자)
+const TH = "border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-semibold text-gray-500 whitespace-nowrap";
+const TD = "border border-gray-200 px-2 py-1.5 text-sm text-[#0f172a]";
+const TDN = `${TD} text-right tabular-nums whitespace-nowrap`;
+const TF = "border border-[#0f172a] px-2 py-2 text-sm text-right tabular-nums";
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 // 운전자는 대표 + 기사 1인 기준. 이름이 정해지면 여기만 바꾸면 된다 (기존 기록은 그대로 남음).
 const DEFAULT_DRIVERS = ["대표", "기사"];
-const PAY_METHODS = ["유류카드", "법인카드", "현금"];
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
 const labelDate = (s: string) => { const [y, m, d] = s.split("-").map(Number); return `${m}/${d}(${WEEKDAYS[new Date(y, m - 1, d).getDay()]})`; };
 const monthRange = (ym: string) => {
   const [y, m] = ym.split("-").map(Number);
-  const last = new Date(y, m, 0).getDate();
-  return { from: `${ym}-01`, to: `${ym}-${pad2(last)}` };
+  return { from: `${ym}-01`, to: `${ym}-${pad2(new Date(y, m, 0).getDate())}` };
 };
 const shiftMonth = (ym: string, n: number) => {
   const [y, m] = ym.split("-").map(Number);
@@ -50,16 +57,102 @@ const shiftMonth = (ym: string, n: number) => {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
 };
 const num = (s: string) => { const v = Number(String(s).replace(/,/g, "")); return s.trim() === "" || !Number.isFinite(v) ? null : v; };
-const won = (n: number) => `${Math.round(n).toLocaleString("ko-KR")}원`;
-const km = (n: number) => `${(Math.round(n * 10) / 10).toLocaleString("ko-KR")}km`;
+const int = (s: string) => { const v = num(s); return v == null ? null : Math.round(v); };
+const n0 = (v: number | null | undefined) => Number(v) || 0;
+const fmtWon = (v: number | null | undefined) => (v == null ? "" : Math.round(Number(v)).toLocaleString("ko-KR"));
+const fmt1 = (v: number | null | undefined) => (v == null ? "" : (Math.round(Number(v) * 10) / 10).toLocaleString("ko-KR"));
+const str = (v: number | null) => (v == null ? "" : String(v));
+const xy = (v: number | null) => (v == null ? null : Number(v));
 
-const emptyTrip = (driver = DEFAULT_DRIVERS[0]) => ({
-  trip_date: todayStr(), driver, origin: "", destination: "",
-  odometer_start: "", odometer_end: "", distance_km: "", cargo: "", memo: "",
+const emptyPlace = (): PlaceVal => ({ name: "", address: null, x: null, y: null });
+const hasXY = (p: PlaceVal) => p.x != null && p.y != null;
+const emptyForm = (date = todayStr(), driver = DEFAULT_DRIVERS[0]) => ({
+  trip_date: date, driver, origin: emptyPlace(), destination: emptyPlace(),
+  distance_km: "", distance_approx: false,
+  fuel_liters: "", fuel_amount: "", urea_liters: "", urea_amount: "", freight: "", memo: "",
 });
-const emptyFuel = (driver = DEFAULT_DRIVERS[0]) => ({
-  fuel_date: todayStr(), driver, station: "", liters: "", unit_price: "", amount: "",
-  odometer: "", pay_method: PAY_METHODS[0], memo: "",
+type Form = ReturnType<typeof emptyForm>;
+type NumKey = "distance_km" | "fuel_liters" | "fuel_amount" | "urea_liters" | "urea_amount" | "freight";
+
+// 출발지/도착지 입력 — 최근 운행에 쓴 장소를 먼저 보여주고, 카카오 장소검색 결과를 이어 붙인다.
+function PlaceInput({ label, value, onChange, recent, placeholder, inputRef }: {
+  label: string; value: PlaceVal; onChange: (v: PlaceVal) => void; recent: PlaceVal[]; placeholder: string;
+  inputRef?: React.Ref<HTMLInputElement>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [results, setResults] = useState<PlaceVal[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState("");
+  const boxRef = useRef<HTMLDivElement>(null);
+  const q = value.name.trim();
+
+  // 글자를 고친 경우(좌표 없음)에만 검색. 0.4초 디바운스.
+  useEffect(() => {
+    if (!open || hasXY(value) || q.length < 2) { setResults([]); setError(""); return; }
+    let alive = true;
+    const t = setTimeout(async () => {
+      setSearching(true);
+      const { data, error } = await supabase.functions.invoke("truck-route", { body: { action: "search", query: q } });
+      if (!alive) return;
+      setSearching(false);
+      if (error || data?.error) { setResults([]); setError("장소검색을 쓸 수 없습니다. 거리는 직접 입력해 주세요."); return; }
+      setError("");
+      setResults(((data?.places ?? []) as PlaceVal[]).map(p => ({ name: p.name, address: p.address, x: p.x, y: p.y })));
+    }, 400);
+    return () => { alive = false; clearTimeout(t); };
+  }, [q, open, value.x, value.y]);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent | TouchEvent) => { if (!boxRef.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("touchstart", close);
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("touchstart", close); };
+  }, [open]);
+
+  const recentHits = recent.filter(r => !q || r.name.includes(q) || (r.address ?? "").includes(q)).slice(0, 5);
+  const options = [
+    ...recentHits.map(p => ({ ...p, recent: true })),
+    ...results.filter(r => !recentHits.some(h => h.name === r.name && h.address === r.address)).map(p => ({ ...p, recent: false })),
+  ];
+  const pick = (p: PlaceVal) => { onChange({ name: p.name, address: p.address, x: p.x, y: p.y }); setOpen(false); };
+
+  return (
+    <div ref={boxRef} className="relative">
+      <label className={LBL}>{label}</label>
+      <input ref={inputRef} className={`${CTRL} ${hasXY(value) ? "border-green-300 bg-green-50/40" : ""}`} value={value.name} placeholder={placeholder}
+        onFocus={() => setOpen(true)}
+        onKeyDown={e => {
+          // Enter = 첫 번째 후보 선택
+          if (e.key === "Enter" && open && !hasXY(value) && options.length > 0) { e.preventDefault(); pick(options[0]); }
+          if (e.key === "Escape") setOpen(false);
+        }}
+        onChange={e => { setOpen(true); onChange({ name: e.target.value, address: null, x: null, y: null }); }} />
+      {value.address && <p className="text-[10px] text-gray-400 mt-0.5 truncate">📍 {value.address}</p>}
+      {open && !hasXY(value) && (options.length > 0 || searching || error) && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-40 rounded-xl border border-gray-200 bg-white shadow-lg py-1 max-h-72 overflow-y-auto">
+          {options.map((p, i) => (
+            <button key={`${p.name}-${p.address}-${i}`} type="button" className="w-full text-left px-3 py-2 hover:bg-orange-50 transition-all"
+              onClick={() => pick(p)}>
+              <p className="text-sm text-[#0f172a] truncate">{p.recent && <span className="text-[10px] text-orange-600 mr-1">최근</span>}{p.name}</p>
+              {p.address && <p className="text-[11px] text-gray-400 truncate">{p.address}</p>}
+            </button>
+          ))}
+          {searching && <p className="px-3 py-2 text-xs text-gray-400">검색 중…</p>}
+          {error && <p className="px-3 py-2 text-xs text-red-500">{error}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const sum = (rows: Trip[]) => ({
+  dist: rows.reduce((a, t) => a + n0(t.distance_km), 0),
+  fuelL: rows.reduce((a, t) => a + n0(t.fuel_liters), 0),
+  fuelW: rows.reduce((a, t) => a + n0(t.fuel_amount), 0),
+  ureaL: rows.reduce((a, t) => a + n0(t.urea_liters), 0),
+  ureaW: rows.reduce((a, t) => a + n0(t.urea_amount), 0),
+  freight: rows.reduce((a, t) => a + n0(t.freight), 0),
 });
 
 export default function TruckLogTab({ showToast }: { showToast: (msg: string, type?: "ok" | "err") => void }) {
@@ -68,87 +161,105 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
   toastRef.current = showToast;
 
   const [month, setMonth] = useState(() => todayStr().slice(0, 7));
-  const [mode, setMode] = useState<Mode>("trip");
   const [trips, setTrips] = useState<Trip[]>([]);
-  const [fuels, setFuels] = useState<Fuel[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  const [tripForm, setTripForm] = useState(emptyTrip());
-  const [fuelForm, setFuelForm] = useState(emptyFuel());
-  const [amountTouched, setAmountTouched] = useState(false);   // 주유 금액을 직접 고쳤는지
+  const [form, setForm] = useState<Form>(() => emptyForm());
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [recentPlaces, setRecentPlaces] = useState<PlaceVal[]>([]);
+  const [routeInfo, setRouteInfo] = useState("");                // 길찾기 결과 안내 문구
+  const [routeKm, setRouteKm] = useState<number | null>(null);
+  const [distanceTouched, setDistanceTouched] = useState(false); // 거리를 직접 고쳤는지
+  const originRef = useRef<HTMLInputElement>(null);
+  const destRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLDivElement>(null);
+  const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm(f => ({ ...f, [k]: v }));
 
   const load = useCallback(async () => {
     setLoading(true);
     const { from, to } = monthRange(month);
-    const [t, f] = await Promise.all([
-      supabase.from("truck_trips").select("*").gte("trip_date", from).lte("trip_date", to)
-        .order("trip_date", { ascending: false }).order("id", { ascending: false }),
-      supabase.from("truck_fuels").select("*").gte("fuel_date", from).lte("fuel_date", to)
-        .order("fuel_date", { ascending: false }).order("id", { ascending: false }),
-    ]);
+    const { data, error } = await supabase.from("truck_trips").select("*")
+      .gte("trip_date", from).lte("trip_date", to)
+      .order("trip_date", { ascending: true }).order("id", { ascending: true });
     setLoading(false);
-    if (t.error || f.error) { toastRef.current(`불러오기 실패: ${(t.error || f.error)!.message}`, "err"); return; }
-    setTrips((t.data ?? []) as Trip[]);
-    setFuels((f.data ?? []) as Fuel[]);
+    if (error) { toastRef.current(`불러오기 실패: ${error.message}`, "err"); return; }
+    setTrips((data ?? []) as Trip[]);
   }, [month]);
   useEffect(() => { void load(); }, [load]);
 
-  // 운전자 후보: 기본 2인 + 기록에 나온 이름
+  // 최근 운행에 쓴 장소(좌표 있는 것만) — 월과 무관하게 최근 200건 기준
+  const loadRecentPlaces = useCallback(async () => {
+    const { data } = await supabase.from("truck_trips")
+      .select("origin,origin_address,origin_x,origin_y,destination,dest_address,dest_x,dest_y")
+      .order("id", { ascending: false }).limit(200);
+    const seen = new Set<string>();
+    const list: PlaceVal[] = [];
+    (data ?? []).forEach((t: any) => {
+      [[t.origin, t.origin_address, t.origin_x, t.origin_y], [t.destination, t.dest_address, t.dest_x, t.dest_y]].forEach(([name, address, x, y]) => {
+        if (x == null || y == null || seen.has(`${name}|${address}`)) return;
+        seen.add(`${name}|${address}`);
+        list.push({ name, address, x: Number(x), y: Number(y) });
+      });
+    });
+    setRecentPlaces(list);
+  }, []);
+  useEffect(() => { void loadRecentPlaces(); }, [loadRecentPlaces]);
+
+  // 출발지·도착지가 모두 좌표를 가지면 길찾기 거리로 거리 칸을 채운다 (직접 고친 거리는 덮어쓰지 않음)
+  const { origin: o, destination: d } = form;
+  useEffect(() => {
+    setRouteKm(null);
+    if (!hasXY(o) || !hasXY(d)) { setRouteInfo(""); return; }
+    let alive = true;
+    setRouteInfo("거리 계산 중…");
+    void (async () => {
+      const { data, error } = await supabase.functions.invoke("truck-route", {
+        body: { action: "route", origin: { x: o.x, y: o.y }, destination: { x: d.x, y: d.y } },
+      });
+      if (!alive) return;
+      if (error || data?.error || data?.km == null) { setRouteInfo("거리 계산 실패 — 직접 입력"); return; }
+      const h = data.minutes != null ? ` · ${Math.floor(data.minutes / 60) ? `${Math.floor(data.minutes / 60)}시간 ` : ""}${data.minutes % 60}분` : "";
+      setRouteKm(data.km);
+      setRouteInfo(data.approx ? `직선 근사 ${data.km}km` : `길찾기 ${data.km}km${h}`);
+      if (!distanceTouched) setForm(f => ({ ...f, distance_km: String(data.km), distance_approx: !!data.approx }));
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [o.x, o.y, d.x, d.y]);
+
   const drivers = useMemo(() => {
     const s = new Set(DEFAULT_DRIVERS);
-    trips.forEach(t => s.add(t.driver));
-    fuels.forEach(f => s.add(f.driver));
+    trips.forEach(t => t.driver && s.add(t.driver));
     return [...s];
-  }, [trips, fuels]);
+  }, [trips]);
 
-  const summary = useMemo(() => {
-    const dist = trips.reduce((a, t) => a + (Number(t.distance_km) || 0), 0);
-    const fuelAmt = fuels.reduce((a, f) => a + (Number(f.amount) || 0), 0);
-    const liters = fuels.reduce((a, f) => a + (Number(f.liters) || 0), 0);
-    const byDriver: Record<string, { trips: number; dist: number }> = {};
-    trips.forEach(t => {
-      const d = (byDriver[t.driver] ??= { trips: 0, dist: 0 });
-      d.trips += 1; d.dist += Number(t.distance_km) || 0;
-    });
-    return { dist, fuelAmt, liters, byDriver, kmPerL: liters > 0 ? dist / liters : null, wonPerKm: dist > 0 ? fuelAmt / dist : null };
-  }, [trips, fuels]);
+  // 일자별 묶음 (같은 날은 입력 순서 = 순번)
+  const days = useMemo(() => {
+    const map = new Map<string, Trip[]>();
+    trips.forEach(t => { if (!map.has(t.trip_date)) map.set(t.trip_date, []); map.get(t.trip_date)!.push(t); });
+    return [...map.entries()];
+  }, [trips]);
+  const total = useMemo(() => sum(trips), [trips]);
+  const fuelCost = total.fuelW + total.ureaW;
 
-  // 계기판 → 운행거리 자동 계산
-  const autoDistance = useMemo(() => {
-    const s = num(tripForm.odometer_start), e = num(tripForm.odometer_end);
-    return s != null && e != null && e >= s ? Math.round((e - s) * 10) / 10 : null;
-  }, [tripForm.odometer_start, tripForm.odometer_end]);
-
-  const setFuelField = (k: keyof ReturnType<typeof emptyFuel>, v: string) => {
-    setFuelForm(prev => {
-      const next = { ...prev, [k]: v };
-      if (!amountTouched && (k === "liters" || k === "unit_price")) {
-        const l = num(next.liters), p = num(next.unit_price);
-        next.amount = l != null && p != null ? String(Math.round(l * p)) : next.amount;
-      }
-      return next;
-    });
+  const resetForm = (date = form.trip_date) => {
+    setEditingId(null); setDistanceTouched(false);
+    setForm(f => emptyForm(date, f.driver));
   };
 
-  const resetForms = () => {
-    setEditingId(null);
-    setAmountTouched(false);
-    setTripForm(f => emptyTrip(f.driver));
-    setFuelForm(f => emptyFuel(f.driver));
-  };
-
-  const saveTrip = async () => {
-    const f = tripForm;
-    if (!f.trip_date || !f.driver.trim() || !f.origin.trim() || !f.destination.trim()) {
-      showToast("일자·운전자·출발지·도착지를 입력해 주세요.", "err"); return;
+  const save = async () => {
+    const f = form;
+    if (!f.trip_date || !f.origin.name.trim() || !f.destination.name.trim()) {
+      showToast("일자·출발지·도착지를 입력해 주세요.", "err"); return;
     }
-    const distance = num(f.distance_km) ?? autoDistance;
     const row = {
-      trip_date: f.trip_date, driver: f.driver.trim(), origin: f.origin.trim(), destination: f.destination.trim(),
-      odometer_start: num(f.odometer_start), odometer_end: num(f.odometer_end), distance_km: distance,
-      cargo: f.cargo.trim() || null, memo: f.memo.trim() || null,
+      trip_date: f.trip_date, driver: f.driver || null,
+      origin: f.origin.name.trim(), origin_address: f.origin.address, origin_x: f.origin.x, origin_y: f.origin.y,
+      destination: f.destination.name.trim(), dest_address: f.destination.address, dest_x: f.destination.x, dest_y: f.destination.y,
+      distance_km: num(f.distance_km), distance_approx: distanceTouched ? false : f.distance_approx,
+      fuel_liters: num(f.fuel_liters), fuel_amount: int(f.fuel_amount),
+      urea_liters: num(f.urea_liters), urea_amount: int(f.urea_amount),
+      freight: int(f.freight), memo: f.memo.trim() || null,
     };
     setSaving(true);
     const res = editingId
@@ -156,88 +267,61 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
       : await supabase.from("truck_trips").insert(row);
     setSaving(false);
     if (res.error) { showToast(`저장 실패: ${res.error.message}`, "err"); return; }
-    showToast(editingId ? "운행 기록을 수정했습니다." : "운행 기록을 저장했습니다.");
-    // 다음 구간 입력이 이어지도록 출발지·계기판을 직전 도착 기준으로 채운다
-    setEditingId(null);
-    setTripForm({
-      ...emptyTrip(row.driver), trip_date: row.trip_date, origin: row.destination,
-      odometer_start: row.odometer_end != null ? String(row.odometer_end) : "",
-    });
+    showToast(editingId ? "수정했습니다." : "저장했습니다.");
+    // 같은 날 다음 구간: 일자 유지, 출발지 = 직전 도착지 → 커서는 도착지로
+    const wasEditing = editingId != null;
+    setEditingId(null); setDistanceTouched(false);
+    setForm({ ...emptyForm(row.trip_date, f.driver), origin: wasEditing ? emptyPlace() : { ...f.destination } });
+    setTimeout(() => (wasEditing ? originRef : destRef).current?.focus(), 0);
+    void loadRecentPlaces();
     if (row.trip_date.slice(0, 7) !== month) setMonth(row.trip_date.slice(0, 7)); else void load();
   };
 
-  const saveFuel = async () => {
-    const f = fuelForm;
-    const amount = num(f.amount);
-    if (!f.fuel_date || !f.driver.trim() || amount == null) {
-      showToast("일자·운전자·금액을 입력해 주세요.", "err"); return;
-    }
-    const row = {
-      fuel_date: f.fuel_date, driver: f.driver.trim(), station: f.station.trim() || null,
-      liters: num(f.liters), unit_price: num(f.unit_price), amount: Math.round(amount),
-      odometer: num(f.odometer), pay_method: f.pay_method || null, memo: f.memo.trim() || null,
-    };
-    setSaving(true);
-    const res = editingId
-      ? await supabase.from("truck_fuels").update({ ...row, updated_at: new Date().toISOString() }).eq("id", editingId)
-      : await supabase.from("truck_fuels").insert(row);
-    setSaving(false);
-    if (res.error) { showToast(`저장 실패: ${res.error.message}`, "err"); return; }
-    showToast(editingId ? "주유 내역을 수정했습니다." : "주유 내역을 저장했습니다.");
-    resetForms();
-    if (row.fuel_date.slice(0, 7) !== month) setMonth(row.fuel_date.slice(0, 7)); else void load();
-  };
-
-  const editTrip = (t: Trip) => {
-    setMode("trip"); setEditingId(t.id);
-    setTripForm({
-      trip_date: t.trip_date, driver: t.driver, origin: t.origin, destination: t.destination,
-      odometer_start: t.odometer_start != null ? String(t.odometer_start) : "",
-      odometer_end: t.odometer_end != null ? String(t.odometer_end) : "",
-      distance_km: t.distance_km != null ? String(t.distance_km) : "",
-      cargo: t.cargo ?? "", memo: t.memo ?? "",
+  const edit = (t: Trip) => {
+    // 저장된 거리를 그대로 두도록 직접 입력한 것으로 취급
+    setEditingId(t.id); setDistanceTouched(true);
+    setForm({
+      trip_date: t.trip_date, driver: t.driver ?? "",
+      origin: { name: t.origin, address: t.origin_address, x: xy(t.origin_x), y: xy(t.origin_y) },
+      destination: { name: t.destination, address: t.dest_address, x: xy(t.dest_x), y: xy(t.dest_y) },
+      distance_km: str(t.distance_km), distance_approx: t.distance_approx,
+      fuel_liters: str(t.fuel_liters), fuel_amount: str(t.fuel_amount),
+      urea_liters: str(t.urea_liters), urea_amount: str(t.urea_amount),
+      freight: str(t.freight), memo: t.memo ?? "",
     });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
-  const editFuel = (f: Fuel) => {
-    setMode("fuel"); setEditingId(f.id); setAmountTouched(true);
-    setFuelForm({
-      fuel_date: f.fuel_date, driver: f.driver, station: f.station ?? "",
-      liters: f.liters != null ? String(f.liters) : "", unit_price: f.unit_price != null ? String(f.unit_price) : "",
-      amount: String(f.amount), odometer: f.odometer != null ? String(f.odometer) : "",
-      pay_method: f.pay_method ?? "", memo: f.memo ?? "",
-    });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  const addOnDate = (date: string) => {
+    // 그 날 마지막 도착지를 출발지로
+    const sameDay = trips.filter(t => t.trip_date === date);
+    const last = sameDay[sameDay.length - 1];
+    setEditingId(null); setDistanceTouched(false);
+    setForm(f => ({
+      ...emptyForm(date, f.driver),
+      origin: last ? { name: last.destination, address: last.dest_address, x: xy(last.dest_x), y: xy(last.dest_y) } : emptyPlace(),
+    }));
+    formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setTimeout(() => (last ? destRef : originRef).current?.focus(), 300);
   };
-  const remove = async (table: "truck_trips" | "truck_fuels", id: number) => {
-    if (!window.confirm("이 기록을 삭제할까요?")) return;
-    const { error } = await supabase.from(table).delete().eq("id", id);
+  const remove = async (id: number) => {
+    if (!window.confirm("이 구간을 삭제할까요?")) return;
+    const { error } = await supabase.from("truck_trips").delete().eq("id", id);
     if (error) { showToast(`삭제 실패: ${error.message}`, "err"); return; }
-    if (editingId === id) resetForms();
+    if (editingId === id) resetForm();
     showToast("삭제했습니다.");
     void load();
   };
 
-  // 일자별 묶음 (운행 + 주유를 한 날짜 아래에)
-  const days = useMemo(() => {
-    const map = new Map<string, { trips: Trip[]; fuels: Fuel[] }>();
-    const get = (d: string) => { if (!map.has(d)) map.set(d, { trips: [], fuels: [] }); return map.get(d)!; };
-    trips.forEach(t => get(t.trip_date).trips.push(t));
-    fuels.forEach(f => get(f.fuel_date).fuels.push(f));
-    return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
-  }, [trips, fuels]);
-
-  const driverPicker = (value: string, onChange: (v: string) => void) => (
+  // 숫자 칸 Enter = 저장
+  const onEnterSave = (e: React.KeyboardEvent) => { if (e.key === "Enter") { e.preventDefault(); if (!saving) void save(); } };
+  const numInput = (k: NumKey, label: string, unit: string) => (
     <div>
-      <label className={LBL}>운전자</label>
-      <div className="flex items-center gap-1.5">
-        {drivers.map(d => (
-          <button key={d} type="button" onClick={() => onChange(d)}
-            className={`h-10 px-3 rounded-xl border text-sm font-semibold transition-all ${value === d ? "bg-[#0f172a] text-white border-[#0f172a]" : "bg-white text-gray-500 border-gray-200 hover:border-gray-400"}`}>
-            {d}
-          </button>
-        ))}
-      </div>
+      <label className={LBL}>{label} <span className="font-normal text-gray-400">{unit}</span></label>
+      <input inputMode="decimal" className={NUM} value={form[k]} onKeyDown={onEnterSave}
+        onChange={e => {
+          if (k === "distance_km") { setDistanceTouched(true); setForm(f => ({ ...f, distance_km: e.target.value, distance_approx: false })); }
+          else set(k, e.target.value);
+        }} />
     </div>
   );
 
@@ -247,7 +331,7 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <p className="text-sm font-semibold text-[#0f172a]">🚚 화물운송 운행일지</p>
-          <p className="text-xs text-gray-400 mt-0.5">타타대우 25톤 윙바디 · 일자별 운행·주유 기록</p>
+          <p className="text-xs text-gray-400 mt-0.5">타타대우 25톤 윙바디 · 일자별 운행·주유·요소수·운임</p>
         </div>
         <div className="flex items-center gap-1.5">
           <button className={BTG} onClick={() => setMonth(m => shiftMonth(m, -1))}>◀</button>
@@ -258,156 +342,173 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
       </div>
 
       {/* 월 요약 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         {[
-          { k: "운행", v: `${trips.length}회`, s: km(summary.dist) },
-          { k: "주유금액", v: won(summary.fuelAmt), s: `${fuels.length}회 · ${(Math.round(summary.liters * 10) / 10).toLocaleString("ko-KR")}L` },
-          { k: "평균연비", v: summary.kmPerL != null ? `${summary.kmPerL.toFixed(2)}km/L` : "-", s: "운행거리 ÷ 주유량" },
-          { k: "km당 유류비", v: summary.wonPerKm != null ? won(summary.wonPerKm) : "-", s: "주유금액 ÷ 운행거리" },
+          { k: "운행", v: `${trips.length}건`, s: `${fmt1(total.dist)}km · ${days.length}일` },
+          { k: "⛽ 주유", v: `${fmtWon(total.fuelW)}원`, s: `${fmt1(total.fuelL)}L${total.fuelL > 0 && total.dist > 0 ? ` · 연비 ${(total.dist / total.fuelL).toFixed(2)}km/L` : ""}` },
+          { k: "💧 요소수", v: `${fmtWon(total.ureaW)}원`, s: `${fmt1(total.ureaL)}L` },
+          { k: "💰 운임", v: `${fmtWon(total.freight)}원`, s: total.dist > 0 ? `km당 ${fmtWon(total.freight / total.dist)}원` : "-" },
+          { k: "운임 − 유류비", v: `${fmtWon(total.freight - fuelCost)}원`, s: `유류비(주유+요소수) ${fmtWon(fuelCost)}원` },
         ].map(c => (
           <div key={c.k} className={`${CARD} p-3`}>
             <p className="text-[11px] text-gray-400">{c.k}</p>
-            <p className="text-lg font-bold text-[#0f172a] mt-0.5">{c.v}</p>
-            <p className="text-[11px] text-gray-500 mt-0.5">{c.s}</p>
+            <p className="text-lg font-bold text-[#0f172a] mt-0.5 tabular-nums">{c.v}</p>
+            <p className="text-[11px] text-gray-500 mt-0.5 truncate">{c.s}</p>
           </div>
         ))}
       </div>
-      {Object.keys(summary.byDriver).length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {Object.entries(summary.byDriver).map(([d, v]) => (
-            <span key={d} className={`${CHIP} border-gray-200 text-gray-600 bg-gray-50`}>{d} · {v.trips}회 · {km(v.dist)}</span>
-          ))}
-        </div>
-      )}
 
-      {/* 입력 카드 */}
-      <div className={`${CARD} p-4 space-y-3`}>
+      {/* 입력줄 */}
+      <div ref={formRef} className={`${CARD} p-4 space-y-3 scroll-mt-4 ${editingId ? "ring-2 ring-orange-300" : ""}`}>
         <div className="flex items-center justify-between gap-2">
-          <div className="flex gap-1.5">
-            {(["trip", "fuel"] as Mode[]).map(m => (
-              <button key={m} onClick={() => { setMode(m); if (editingId) resetForms(); }}
-                className={`px-3 py-1.5 rounded-xl text-sm font-semibold border transition-all ${mode === m ? "bg-orange-500 text-white border-orange-500" : "bg-white text-gray-500 border-gray-200 hover:border-orange-300"}`}>
-                {m === "trip" ? "🛣 운행 기록" : "⛽ 주유 내역"}
+          <p className="text-sm font-semibold text-[#0f172a]">{editingId ? "✏️ 구간 수정" : "➕ 구간 입력"}</p>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-gray-400">운전</span>
+            {drivers.map(dv => (
+              <button key={dv} type="button" onClick={() => set("driver", dv)}
+                className={`h-7 px-2.5 rounded-lg border text-xs font-semibold transition-all ${form.driver === dv ? "bg-[#0f172a] text-white border-[#0f172a]" : "bg-white text-gray-500 border-gray-200 hover:border-gray-400"}`}>
+                {dv}
               </button>
             ))}
           </div>
-          {editingId && <span className="text-xs text-orange-600 font-semibold">수정 중 · <button className="underline" onClick={resetForms}>취소</button></span>}
         </div>
-
-        {mode === "trip" ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-            <div><label className={LBL}>일자</label>
-              <input type="date" className={CTRL} value={tripForm.trip_date} onChange={e => setTripForm(f => ({ ...f, trip_date: e.target.value }))} /></div>
-            <div className="col-span-1 md:col-span-3">{driverPicker(tripForm.driver, v => setTripForm(f => ({ ...f, driver: v })))}</div>
-            <div className="col-span-1 md:col-span-2"><label className={LBL}>출발지</label>
-              <input className={CTRL} value={tripForm.origin} placeholder="예) 평택항" onChange={e => setTripForm(f => ({ ...f, origin: e.target.value }))} /></div>
-            <div className="col-span-1 md:col-span-2"><label className={LBL}>도착지</label>
-              <input className={CTRL} value={tripForm.destination} placeholder="예) 부산 신항" onChange={e => setTripForm(f => ({ ...f, destination: e.target.value }))} /></div>
-            <div><label className={LBL}>출발 계기판(km)</label>
-              <input inputMode="decimal" className={CTRL} value={tripForm.odometer_start} onChange={e => setTripForm(f => ({ ...f, odometer_start: e.target.value }))} /></div>
-            <div><label className={LBL}>도착 계기판(km)</label>
-              <input inputMode="decimal" className={CTRL} value={tripForm.odometer_end} onChange={e => setTripForm(f => ({ ...f, odometer_end: e.target.value }))} /></div>
-            <div><label className={LBL}>운행거리(km)</label>
-              <input inputMode="decimal" className={CTRL} value={tripForm.distance_km}
-                placeholder={autoDistance != null ? `자동 ${autoDistance}` : "직접 입력"}
-                onChange={e => setTripForm(f => ({ ...f, distance_km: e.target.value }))} /></div>
-            <div><label className={LBL}>화물/화주</label>
-              <input className={CTRL} value={tripForm.cargo} onChange={e => setTripForm(f => ({ ...f, cargo: e.target.value }))} /></div>
-            <div className="col-span-2 md:col-span-3"><label className={LBL}>메모</label>
-              <input className={CTRL} value={tripForm.memo} onChange={e => setTripForm(f => ({ ...f, memo: e.target.value }))} /></div>
-            <div className="col-span-2 md:col-span-1 flex items-end gap-1.5">
-              <button className={`${BTO} h-10 flex-1`} disabled={saving} onClick={() => void saveTrip()}>{editingId ? "수정 저장" : "운행 저장"}</button>
-              <button type="button" className={`${BTG} h-10`} title="출발지↔도착지 바꾸기 (복귀 운행)"
-                onClick={() => setTripForm(f => ({ ...f, origin: f.destination, destination: f.origin }))}>⇄</button>
-            </div>
+        <div className="grid grid-cols-2 md:grid-cols-[150px_1fr_auto_1fr_120px] gap-2.5 items-start">
+          <div className="col-span-2 md:col-span-1"><label className={LBL}>일자</label>
+            <input type="date" className={CTRL} value={form.trip_date} onChange={e => set("trip_date", e.target.value)} /></div>
+          <div className="col-span-2 md:col-span-1">
+            <PlaceInput label="출발지" value={form.origin} recent={recentPlaces} placeholder="상호 또는 주소" inputRef={originRef}
+              onChange={v => set("origin", v)} /></div>
+          <div className="hidden md:block pt-5">
+            <button type="button" className={`${BTG} h-10`} title="출발지↔도착지 바꾸기 (복귀 운행)"
+              onClick={() => setForm(f => ({ ...f, origin: f.destination, destination: f.origin }))}>⇄</button>
           </div>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-            <div><label className={LBL}>일자</label>
-              <input type="date" className={CTRL} value={fuelForm.fuel_date} onChange={e => setFuelField("fuel_date", e.target.value)} /></div>
-            <div className="col-span-1 md:col-span-3">{driverPicker(fuelForm.driver, v => setFuelField("driver", v))}</div>
-            <div className="col-span-2"><label className={LBL}>주유소</label>
-              <input className={CTRL} value={fuelForm.station} placeholder="예) 서해안고속도로 화성휴게소" onChange={e => setFuelField("station", e.target.value)} /></div>
-            <div><label className={LBL}>주유량(L)</label>
-              <input inputMode="decimal" className={CTRL} value={fuelForm.liters} onChange={e => setFuelField("liters", e.target.value)} /></div>
-            <div><label className={LBL}>단가(원/L)</label>
-              <input inputMode="numeric" className={CTRL} value={fuelForm.unit_price} onChange={e => setFuelField("unit_price", e.target.value)} /></div>
-            <div><label className={LBL}>금액(원) *</label>
-              <input inputMode="numeric" className={CTRL} value={fuelForm.amount}
-                onChange={e => { setAmountTouched(true); setFuelField("amount", e.target.value); }} /></div>
-            <div><label className={LBL}>계기판(km)</label>
-              <input inputMode="decimal" className={CTRL} value={fuelForm.odometer} onChange={e => setFuelField("odometer", e.target.value)} /></div>
-            <div className="col-span-2"><label className={LBL}>결제수단</label>
-              <div className="flex gap-1.5">
-                {PAY_METHODS.map(p => (
-                  <button key={p} type="button" onClick={() => setFuelField("pay_method", p)}
-                    className={`h-10 px-3 rounded-xl border text-sm transition-all ${fuelForm.pay_method === p ? "bg-[#0f172a] text-white border-[#0f172a]" : "bg-white text-gray-500 border-gray-200 hover:border-gray-400"}`}>{p}</button>
-                ))}
-              </div></div>
-            <div className="col-span-2 md:col-span-3"><label className={LBL}>메모</label>
-              <input className={CTRL} value={fuelForm.memo} onChange={e => setFuelField("memo", e.target.value)} /></div>
-            <div className="col-span-2 md:col-span-1 flex items-end">
-              <button className={`${BTO} h-10 w-full`} disabled={saving} onClick={() => void saveFuel()}>{editingId ? "수정 저장" : "주유 저장"}</button>
-            </div>
+          <div className="col-span-2 md:col-span-1">
+            <PlaceInput label="도착지" value={form.destination} recent={recentPlaces} placeholder="상호 또는 주소" inputRef={destRef}
+              onChange={v => set("destination", v)} /></div>
+          <div className="col-span-2 md:col-span-1">
+            {numInput("distance_km", "거리", "km")}
+            {routeInfo && <p className="text-[10px] text-gray-400 mt-0.5 truncate" title={routeInfo}>{routeInfo}</p>}
+            {distanceTouched && routeKm != null && String(routeKm) !== form.distance_km && (
+              <button type="button" className="text-[10px] text-orange-600 underline"
+                onClick={() => { setDistanceTouched(false); setForm(f => ({ ...f, distance_km: String(routeKm), distance_approx: false })); }}>
+                길찾기 거리 적용
+              </button>
+            )}
           </div>
-        )}
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_1.3fr] gap-2.5 p-3 rounded-xl bg-gray-50">
+          {numInput("fuel_liters", "⛽ 주유량", "L")}
+          {numInput("fuel_amount", "⛽ 주유 금액", "원")}
+          {numInput("urea_liters", "💧 요소수", "L")}
+          {numInput("urea_amount", "💧 요소수 금액", "원")}
+          <div className="col-span-2 md:col-span-1">{numInput("freight", "💰 운임", "원")}</div>
+        </div>
+        <div className="flex items-end gap-2">
+          <div className="flex-1"><label className={LBL}>메모</label>
+            <input className={CTRL} value={form.memo} placeholder="화주·특이사항 (선택)" onChange={e => set("memo", e.target.value)} onKeyDown={onEnterSave} /></div>
+          {editingId && <button className={`${BTG} h-10`} onClick={() => resetForm()}>취소</button>}
+          <button className={`${BTO} h-10 px-6 text-sm`} disabled={saving} onClick={() => void save()}>{editingId ? "수정 저장" : "저장"}</button>
+        </div>
+        <p className="text-[11px] text-gray-400">숫자 칸에서 Enter = 저장 · 저장 후 같은 날 다음 구간은 출발지가 직전 도착지로 채워집니다.</p>
       </div>
 
-      {/* 일자별 목록 */}
-      {loading ? (
-        <p className="text-sm text-gray-400 text-center py-8">불러오는 중…</p>
-      ) : days.length === 0 ? (
-        <p className="text-sm text-gray-400 text-center py-8">{month.replace("-", "년 ")}월 기록이 없습니다.</p>
-      ) : (
-        <div className="space-y-2">
-          {days.map(([date, d]) => {
-            const dayDist = d.trips.reduce((a, t) => a + (Number(t.distance_km) || 0), 0);
-            const dayFuel = d.fuels.reduce((a, f) => a + (Number(f.amount) || 0), 0);
-            return (
-              <div key={date} className={`${CARD} p-3`}>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-bold text-[#0f172a]">{labelDate(date)}</p>
-                  <p className="text-[11px] text-gray-500">{dayDist > 0 && km(dayDist)}{dayDist > 0 && dayFuel > 0 && " · "}{dayFuel > 0 && `주유 ${won(dayFuel)}`}</p>
-                </div>
-                <div className="divide-y divide-gray-100">
-                  {d.trips.map(t => (
-                    <div key={`t${t.id}`} className="py-2 flex items-start gap-2">
-                      <span className={`${CHIP} border-blue-200 bg-blue-50 text-blue-700 mt-0.5`}>운행</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-[#0f172a]"><b>{t.origin}</b> → <b>{t.destination}</b>
-                          {t.distance_km != null && <span className="text-gray-500"> · {km(Number(t.distance_km))}</span>}</p>
-                        <p className="text-[11px] text-gray-500 mt-0.5">
-                          {t.driver}
-                          {t.odometer_start != null && t.odometer_end != null && ` · 계기판 ${Number(t.odometer_start).toLocaleString()}→${Number(t.odometer_end).toLocaleString()}`}
-                          {t.cargo && ` · ${t.cargo}`}{t.memo && ` · ${t.memo}`}
-                        </p>
-                      </div>
-                      <button className={BTG} onClick={() => editTrip(t)}>수정</button>
-                      <button className={`${BTG} hover:text-red-600`} onClick={() => void remove("truck_trips", t.id)}>삭제</button>
-                    </div>
-                  ))}
-                  {d.fuels.map(f => (
-                    <div key={`f${f.id}`} className="py-2 flex items-start gap-2">
-                      <span className={`${CHIP} border-orange-200 bg-orange-50 text-orange-700 mt-0.5`}>주유</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-[#0f172a]"><b>{won(Number(f.amount))}</b>
-                          {f.liters != null && <span className="text-gray-500"> · {Number(f.liters)}L</span>}
-                          {f.unit_price != null && <span className="text-gray-500"> · {Number(f.unit_price).toLocaleString()}원/L</span>}</p>
-                        <p className="text-[11px] text-gray-500 mt-0.5">
-                          {f.driver}{f.station && ` · ${f.station}`}{f.pay_method && ` · ${f.pay_method}`}
-                          {f.odometer != null && ` · 계기판 ${Number(f.odometer).toLocaleString()}`}{f.memo && ` · ${f.memo}`}
-                        </p>
-                      </div>
-                      <button className={BTG} onClick={() => editFuel(f)}>수정</button>
-                      <button className={`${BTG} hover:text-red-600`} onClick={() => void remove("truck_fuels", f.id)}>삭제</button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+      {/* 일자별 표 */}
+      <div className={`${CARD} overflow-hidden`}>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[920px] border-collapse">
+            <thead>
+              <tr>
+                <th rowSpan={2} className={`${TH} w-[84px]`}>일자</th>
+                <th rowSpan={2} className={`${TH} w-[44px]`}>순번</th>
+                <th rowSpan={2} className={TH}>출발지</th>
+                <th rowSpan={2} className={TH}>도착지</th>
+                <th rowSpan={2} className={`${TH} w-[72px]`}>거리<br /><span className="font-normal">km</span></th>
+                <th colSpan={2} className={`${TH} !bg-orange-50 text-orange-700`}>⛽ 주유</th>
+                <th colSpan={2} className={`${TH} !bg-sky-50 text-sky-700`}>💧 요소수</th>
+                <th rowSpan={2} className={`${TH} w-[96px] !bg-emerald-50 text-emerald-700`}>💰 운임<br /><span className="font-normal">원</span></th>
+                <th rowSpan={2} className={`${TH} w-[40px]`}></th>
+              </tr>
+              <tr>
+                <th className={`${TH} w-[60px] !bg-orange-50/60`}>L</th>
+                <th className={`${TH} w-[88px] !bg-orange-50/60`}>금액</th>
+                <th className={`${TH} w-[56px] !bg-sky-50/60`}>L</th>
+                <th className={`${TH} w-[80px] !bg-sky-50/60`}>금액</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={11} className="text-sm text-gray-400 text-center py-10">불러오는 중…</td></tr>
+              ) : days.length === 0 ? (
+                <tr><td colSpan={11} className="text-sm text-gray-400 text-center py-10">{month.replace("-", "년 ")}월 운행 기록이 없습니다.</td></tr>
+              ) : days.map(([date, rows], di) => {
+                const s = sum(rows);
+                const band = di % 2 ? "bg-gray-50/60" : "bg-white";
+                return (
+                  <React.Fragment key={date}>
+                    {rows.map((t, i) => (
+                      <tr key={t.id} onClick={() => edit(t)}
+                        className={`${band} cursor-pointer hover:bg-orange-50/60 ${editingId === t.id ? "!bg-orange-100/70" : ""}`}>
+                        {i === 0 && (
+                          <td rowSpan={rows.length + (rows.length > 1 ? 1 : 0)} className={`${TD} align-top font-semibold whitespace-nowrap ${band}`}
+                            onClick={e => e.stopPropagation()}>
+                            {labelDate(date)}
+                            <button className="block mt-1 text-[11px] text-orange-600 hover:underline font-normal" onClick={() => addOnDate(date)}>+ 구간</button>
+                          </td>
+                        )}
+                        <td className={`${TD} text-center tabular-nums`}>
+                          {i + 1}
+                          {t.driver && t.driver !== DEFAULT_DRIVERS[0] && <span className="block text-[10px] text-gray-400">{t.driver}</span>}
+                        </td>
+                        <td className={TD} title={t.origin_address ?? ""}>{t.origin}</td>
+                        <td className={TD} title={t.dest_address ?? ""}>
+                          {t.destination}
+                          {t.memo && <span className="block text-[11px] text-gray-400">{t.memo}</span>}
+                        </td>
+                        <td className={TDN}>{t.distance_approx && t.distance_km != null && <span className="text-gray-400 text-[10px] mr-0.5">약</span>}{fmt1(t.distance_km)}</td>
+                        <td className={`${TDN} bg-orange-50/30`}>{fmt1(t.fuel_liters)}</td>
+                        <td className={`${TDN} bg-orange-50/30`}>{fmtWon(t.fuel_amount)}</td>
+                        <td className={`${TDN} bg-sky-50/30`}>{fmt1(t.urea_liters)}</td>
+                        <td className={`${TDN} bg-sky-50/30`}>{fmtWon(t.urea_amount)}</td>
+                        <td className={`${TDN} bg-emerald-50/30 font-semibold`}>{fmtWon(t.freight)}</td>
+                        <td className={`${TD} text-center`} onClick={e => e.stopPropagation()}>
+                          <button className="text-gray-300 hover:text-red-500 text-xs" title="삭제" onClick={() => void remove(t.id)}>✕</button>
+                        </td>
+                      </tr>
+                    ))}
+                    {rows.length > 1 && (
+                      <tr className={band}>
+                        <td colSpan={3} className={`${TD} text-right text-[11px] text-gray-500`}>소계</td>
+                        <td className={`${TDN} text-gray-600`}>{fmt1(s.dist)}</td>
+                        <td className={`${TDN} text-gray-600`}>{s.fuelL ? fmt1(s.fuelL) : ""}</td>
+                        <td className={`${TDN} text-gray-600`}>{s.fuelW ? fmtWon(s.fuelW) : ""}</td>
+                        <td className={`${TDN} text-gray-600`}>{s.ureaL ? fmt1(s.ureaL) : ""}</td>
+                        <td className={`${TDN} text-gray-600`}>{s.ureaW ? fmtWon(s.ureaW) : ""}</td>
+                        <td className={`${TDN} text-gray-700 font-semibold`}>{s.freight ? fmtWon(s.freight) : ""}</td>
+                        <td className={TD}></td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+            {trips.length > 0 && (
+              <tfoot>
+                <tr className="bg-[#0f172a] text-white">
+                  <td colSpan={4} className="border border-[#0f172a] px-2 py-2 text-sm font-semibold">{Number(month.slice(5))}월 합계 · {trips.length}건</td>
+                  <td className={TF}>{fmt1(total.dist)}</td>
+                  <td className={TF}>{fmt1(total.fuelL)}</td>
+                  <td className={TF}>{fmtWon(total.fuelW)}</td>
+                  <td className={TF}>{fmt1(total.ureaL)}</td>
+                  <td className={TF}>{fmtWon(total.ureaW)}</td>
+                  <td className={`${TF} font-bold`}>{fmtWon(total.freight)}</td>
+                  <td className="border border-[#0f172a]"></td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
         </div>
-      )}
+        <p className="px-3 py-2 text-[11px] text-gray-400 border-t border-gray-100">줄을 누르면 위 입력줄에서 수정 · 일자 칸의 “+ 구간”으로 그 날 구간 추가</p>
+      </div>
     </div>
   );
 }
