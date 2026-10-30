@@ -47,6 +47,8 @@ async function rasterize(src: string, height: number): Promise<string> {
   return canvas.toDataURL("image/png");
 }
 
+const CAPTURE_WIDTH = 576; // PDF 캡처 폭(px) — PC 화면의 견적 카드 폭(max-w-xl)
+
 const formatWon = (n: number) => Math.round(n).toLocaleString("ko-KR");
 const todayStr = () => {
   const d = new Date();
@@ -147,14 +149,20 @@ export default function RenthanaPage() {
         )
       );
       const canvas = await html2canvas(el, {
-        onclone: (_doc, cloned) => applyTabularDigits(cloned), // 숫자는 고정폭(Arial)으로
+        // 휴대폰에서 받으면 카드가 좁고 길게 찍혀 2페이지로 나뉘므로, 기기와 상관없이 PC 화면 폭으로 캡처한다
+        onclone: (_doc, cloned) => {
+          cloned.style.width = `${CAPTURE_WIDTH}px`;
+          applyTabularDigits(cloned); // 숫자는 고정폭(Arial)으로
+        },
+        windowWidth: Math.max(window.innerWidth, CAPTURE_WIDTH + 64),
+        width: CAPTURE_WIDTH,
         scale: 2,
         backgroundColor: "#ffffff",
         useCORS: true,
         logging: false,
       });
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      addCanvasToA4(pdf, canvas);   // 비율 유지 (길면 살짝 축소)
+      addCanvasToA4(pdf, canvas, 0.95, true);   // 비율 유지, 항상 한 장에
       pdf.save(`렌타나_${product.label}_렌탈료견적_${meta ? meta.no : todayStr().replace(/\./g, "")}.pdf`);
     } finally {
       setDownloading(false);
