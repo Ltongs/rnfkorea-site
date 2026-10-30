@@ -10,12 +10,12 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/auth";
 
 export type AppTabKey =
-  | "chat" | "schedule" | "diary" | "status" | "orders" | "jinheung" | "narumi" | "email" | "memo"
+  | "chat" | "schedule" | "diary" | "trucklog" | "status" | "orders" | "jinheung" | "narumi" | "email" | "memo"
   | "financehub" | "exportshop" | "quotation" | "cns" | "performance" | "rentalos"
   | "hyundaicm" | "numbersearch" | "taesan" | "callmanagement" | "faxcampaign" | "orix" | "brother";
 
 export const APP_TAB_ORDER: AppTabKey[] = [
-  "chat", "schedule", "diary", "status", "cns", "orders", "hyundaicm", "brother", "jinheung", "narumi",
+  "chat", "schedule", "diary", "trucklog", "status", "cns", "orders", "hyundaicm", "brother", "jinheung", "narumi",
   "taesan", "quotation", "performance", "exportshop", "financehub",
   "callmanagement", "faxcampaign", "orix", "numbersearch", "email", "memo",
 ];
@@ -38,7 +38,7 @@ export const APP_EXTERNAL_TAB_LINKS: Partial<Record<AppTabKey, string>> = {
 };
 
 const APP_TAB_LABELS: Record<AppTabKey, string> = {
-  chat: "💬 채팅", schedule: "📅 일정", diary: "📔 다이어리", status: "📊 업무현황", orders: "📦 주문·상담",
+  chat: "💬 채팅", schedule: "📅 일정", diary: "📔 다이어리", trucklog: "🚚 운행일지", status: "📊 업무현황", orders: "📦 주문·상담",
   jinheung: "🔧 진흥주문", narumi: "🚛 나르미", memo: "📝 메모", financehub: "💵 매출/매입",
   exportshop: "🌏 수출장비", quotation: "📋 견적서", cns: "🗂 통합상담", performance: "📈 실적관리",
   rentalos: "🚐 Rental_O/S", hyundaicm: "🏗 현대건기(부산경남)", numbersearch: "🔍 번호검색",
@@ -71,6 +71,7 @@ export default function AppTabBar({ activeTab }: { activeTab: AppTabKey }) {
   // 태산통운은 접근 불가하므로 taesan 조건에는 isOrixPartner를 넣지 않는다.
   const tabVisible: Partial<Record<AppTabKey, boolean>> = {
     orix: isOrixAdmin || isOrixPartner,
+    trucklog: isAdminLevel && isOrixAdmin, // 운행일지: admin·ltongs7 (everyasset은 /work/secretary-ins에서 사용)
     narumi: canViewAll,
     hyundaicm: isAdminLevel || isHyundaiCM || isNhCapital || isNhCapitalStaff || isOrixPartner,
     brother: isAdminLevel || isGbn,

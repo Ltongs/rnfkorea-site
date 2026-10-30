@@ -629,6 +629,29 @@ const CTASection: React.FC = () => {
     </div>
   );
 };
+// 화물운송사업 카드 사진 3장을 번갈아 보여준다 (크로스페이드)
+const TRUCK_IMAGES = ["/home/truck-1.webp", "/home/truck-2.webp", "/home/truck-3.webp"];
+const TruckSlides: React.FC = () => {
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setIdx((i) => (i + 1) % TRUCK_IMAGES.length), 3500);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <>
+      {TRUCK_IMAGES.map((src, i) => (
+        <img
+          key={src}
+          src={src}
+          alt={`화물운송 25톤 윙바디 ${i + 1}`}
+          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ${i === idx ? "opacity-100" : "opacity-0"}`}
+          loading="lazy"
+        />
+      ))}
+    </>
+  );
+};
+
 const HomePage: React.FC = () => (
   <>
 
@@ -801,6 +824,23 @@ const HomePage: React.FC = () => (
     <div className="absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-white via-white/70 to-transparent" />
   </div>
 </Link>
+
+{/* 화물운송사업 — 사업항목 소개용 카드 (이동할 페이지 없음) */}
+<div className="relative p-0 border rounded-lg overflow-hidden bg-white hover:shadow-lg transition-shadow">
+  <div className="relative z-10 p-6 md:p-7 pr-24 md:pr-40">
+    <h3 className="text-xl font-semibold mb-2">
+      화물운송사업
+    </h3>
+    <p className="text-gray-600">
+      25톤 윙바디 화물 직접 운송
+    </p>
+  </div>
+
+  <div className="absolute top-0 right-0 h-full w-[48%]">
+    <TruckSlides />
+    <div className="absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-white via-white/70 to-transparent" />
+  </div>
+</div>
 
     </div>
   </div>

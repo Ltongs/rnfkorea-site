@@ -6,9 +6,10 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
 import DiaryTab from "./DiaryTab";
+import TruckLogTab from "./TruckLogTab";
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
-type TabKey = "chat"|"schedule"|"diary"|"status"|"orders"|"jinheung"|"narumi"|"email"|"memo"|"financehub"|"exportshop"|"quotation"|"cns"|"performance"|"rentalos"|"hyundaicm"|"numbersearch"|"taesan"|"callmanagement"|"faxcampaign"|"orix"|"brother";
+type TabKey = "chat"|"schedule"|"diary"|"trucklog"|"status"|"orders"|"jinheung"|"narumi"|"email"|"memo"|"financehub"|"exportshop"|"quotation"|"cns"|"performance"|"rentalos"|"hyundaicm"|"numbersearch"|"taesan"|"callmanagement"|"faxcampaign"|"orix"|"brother";
 // 견적서 탭 타일용 픽토그램 (흰색, 타일 배경색 위에 표시)
 const ForkliftIcon=()=>(
   <svg viewBox="0 0 64 64" className="w-12 h-12" fill="currentColor" aria-hidden="true">
@@ -43,14 +44,14 @@ const LfpBatteryIcon=()=>(
 // (다른 업무 페이지들의 공용 탭바인 components/AppTabBar.tsx의 APP_TAB_ORDER와 항상 같은 구성으로 맞춘다.)
 // "orix"(인센티브) 탭은 isOrixAdmin(admin@rnfkorea.co.kr/ltongs7@gmail.com/everyasset.fc@gmail.com)에게만
 // 렌더링되므로 그 외 AI비서 접근 계정에는 보이지 않는다 (렌더링 시 필터링).
-const TAB_ORDER: TabKey[] = ["chat","schedule","diary","status","cns","orders","hyundaicm","brother","jinheung","narumi","taesan","quotation","performance","exportshop","financehub","callmanagement","faxcampaign","orix","numbersearch","email","memo"];
+const TAB_ORDER: TabKey[] = ["chat","schedule","diary","trucklog","status","cns","orders","hyundaicm","brother","jinheung","narumi","taesan","quotation","performance","exportshop","financehub","callmanagement","faxcampaign","orix","numbersearch","email","memo"];
 // 별도 로그인/RouteGuard를 쓰는 독립 페이지로 즉시 이동만 하는 탭(내용을 이 안에서 렌더링하지 않음).
 // tab 상태를 sessionStorage에 남기면, 이동 후 "AI비서" 페이지가 새로 마운트될 때 저장된 tab 값을
 // 다시 읽어 useEffect가 곧바로 재이동시켜 "뒤로가기가 안 먹히는" 문제가 생기므로 setTabAndSave를 타지 않는다.
 // 자주 쓰지 않는 탭 — 탭바에 펼쳐두지 않고 오른쪽 "기타 ▾" 드롭다운 안에 묶는다.
 // (components/AppTabBar.tsx의 APP_MORE_TABS와 항상 같은 구성으로 맞춘다.)
 const MORE_TABS: TabKey[] = ["chat","status","cns","orders","performance","exportshop","financehub","email","callmanagement","faxcampaign","numbersearch"];
-const TAB_LABELS: Record<TabKey,string> = {email:"📧 이메일",...{chat:"💬 채팅",schedule:"📅 일정",diary:"📔 다이어리",status:"📊 업무현황",orders:"📦 주문·상담",jinheung:"🔧 진흥주문",narumi:"🚛 나르미",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비",quotation:"📋 견적서",cns:"🗂 통합상담",performance:"📈 실적관리",rentalos:"🚐 Rental_O/S",hyundaicm:"🏗 현대건기(부산경남)",numbersearch:"🔍 번호검색",taesan:"🚚 태산통운",callmanagement:"📞 상담관리",faxcampaign:"📠 팩스발송",orix:"💰 인센티브",brother:"🚜 현대지게차 경기북부"}};
+const TAB_LABELS: Record<TabKey,string> = {email:"📧 이메일",...{chat:"💬 채팅",schedule:"📅 일정",diary:"📔 다이어리",trucklog:"🚚 운행일지",status:"📊 업무현황",orders:"📦 주문·상담",jinheung:"🔧 진흥주문",narumi:"🚛 나르미",memo:"📝 메모",financehub:"💵 매출/매입",exportshop:"🌏 수출장비",quotation:"📋 견적서",cns:"🗂 통합상담",performance:"📈 실적관리",rentalos:"🚐 Rental_O/S",hyundaicm:"🏗 현대건기(부산경남)",numbersearch:"🔍 번호검색",taesan:"🚚 태산통운",callmanagement:"📞 상담관리",faxcampaign:"📠 팩스발송",orix:"💰 인센티브",brother:"🚜 현대지게차 경기북부"}};
 const EXTERNAL_TAB_LINKS: Partial<Record<TabKey,string>> = { hyundaicm:"/hyundaicm", brother:"/brother", rentalos:"/rental-os", taesan:"/taesan", callmanagement:"/work/call-management", faxcampaign:"/work/fax-campaign", orix:"/orix" };
 // 통합상담 탭 서브필터
 type CnsActiveTab = "통합상담" | "할부금융" | "보험" | "지게차" | "배터리" | "타이어" | "나르미" | "Rental_O/S";
@@ -5524,8 +5525,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
             }}
           >
             {(()=>{
-              // "orix"(인센티브) 탭은 isOrixAdmin(admin@rnfkorea.co.kr/ltongs7@gmail.com/everyasset.fc@gmail.com)에게만 노출한다.
-              const visibleTabs = TAB_ORDER.filter(t=>(t!=="orix"||isOrixAdmin)&&!MORE_TABS.includes(t));
+              // "orix"(인센티브)·"trucklog"(운행일지) 탭은 isOrixAdmin(admin@rnfkorea.co.kr/ltongs7@gmail.com/everyasset.fc@gmail.com)에게만 노출한다.
+              const visibleTabs = TAB_ORDER.filter(t=>((t!=="orix"&&t!=="trucklog")||isOrixAdmin)&&!MORE_TABS.includes(t));
               return [...visibleTabs,...visibleTabs,...visibleTabs];
             })().map((t,i)=>(
               <button key={`${t}-${i}`} data-tab-key={t} className={`${TB} ${tab===t?TA:TI}`} style={{flexShrink:0,whiteSpace:"nowrap"}} onClick={()=>{
@@ -6699,6 +6700,8 @@ Each element: {"title":"제목","memo_date":"YYYY-MM-DD","category":"meeting|cal
               }}
             />
           )}
+
+          {tab==="trucklog"&&isOrixAdmin&&<TruckLogTab showToast={showToast}/>}
 
           {tab==="memo"&&(
             <div className="space-y-4 pb-4">

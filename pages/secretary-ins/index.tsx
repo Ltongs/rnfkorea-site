@@ -3,9 +3,10 @@ import ReactDOM from "react-dom";
 import { Navigate, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth";
+import TruckLogTab from "../secretary/TruckLogTab";
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
-type TabKey = "chat"|"schedule"|"todo"|"consults"|"policies"|"claims"|"customers"|"narumi";
+type TabKey = "chat"|"schedule"|"todo"|"consults"|"policies"|"claims"|"customers"|"narumi"|"trucklog";
 type Schedule = {
   id:number; title:string; description:string|null; schedule_date:string;
   start_time:string|null; end_time:string|null;
@@ -2094,9 +2095,9 @@ const SecretaryInsPage:React.FC = () => {
           </div>
           {/* 탭 */}
           <div className="flex items-center gap-1.5 flex-wrap">
-            {(["chat","schedule","todo","consults","policies","claims","customers","narumi"] as TabKey[]).map(t=>(
+            {(["chat","schedule","todo","consults","policies","claims","customers","narumi","trucklog"] as TabKey[]).map(t=>(
               <button key={t} className={`${TB} ${tab===t?TA:TI} relative`} onClick={()=>setTab(t)}>
-                {{chat:"💬 채팅",schedule:"📅 일정",todo:"✅ 할일",consults:"🛡 상담",policies:"📋 계약",claims:"🏥 청구",customers:"👤 고객조회",narumi:"🚛 나르미"}[t]}
+                {{chat:"💬 채팅",schedule:"📅 일정",todo:"✅ 할일",consults:"🛡 상담",policies:"📋 계약",claims:"🏥 청구",customers:"👤 고객조회",narumi:"🚛 나르미",trucklog:"🚚 운행일지"}[t]}
                 {t==="policies"&&stats.expiringCount>0&&(
                   <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center">{stats.expiringCount}</span>
                 )}
@@ -3368,6 +3369,9 @@ const SecretaryInsPage:React.FC = () => {
               )}
             </div>
           )}
+
+          {/* ══ 운행일지 (화물운송) ══ */}
+          {tab==="trucklog"&&<TruckLogTab showToast={showToast}/>}
 
           {/* ══ 나르미 ══ */}
           {tab==="narumi"&&(
