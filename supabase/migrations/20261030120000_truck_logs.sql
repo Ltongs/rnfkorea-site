@@ -61,3 +61,6 @@ grant select, insert, update, delete on public.truck_trips to authenticated;
 grant select, insert, update, delete on public.truck_fuels to authenticated;
 grant all on public.truck_trips to service_role;
 grant all on public.truck_fuels to service_role;
+-- 비로그인(anon) 접근은 필요 없으므로 기본 권한을 회수 (RLS로도 막혀 있지만 이중으로)
+revoke all on public.truck_trips from anon;
+revoke all on public.truck_fuels from anon;
