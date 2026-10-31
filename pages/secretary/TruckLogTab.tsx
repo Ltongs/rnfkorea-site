@@ -433,10 +433,7 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
     <div className="space-y-4 pb-4">
       {/* 헤더 + 월 선택 */}
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <p className="text-sm font-semibold text-[#0f172a]">🚚 화물운송 운행일지</p>
-          <p className="text-xs text-gray-400 mt-0.5">타타대우 25톤 윙바디 · 일자별 운행·주유·요소수·운임</p>
-        </div>
+        <p className="text-sm font-semibold text-[#0f172a]">🚚 화물운송 운행일지</p>
         <div className="flex items-center gap-1.5">
           <button className={BTG} onClick={() => setMonth(m => shiftMonth(m, -1))}>◀</button>
           <input type="month" value={month} onChange={e => e.target.value && setMonth(e.target.value)}
@@ -445,39 +442,41 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
         </div>
       </div>
 
-      {/* 월 요약 */}
+      {/* 월 요약 — 입력칸 높이의 한 줄 */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
         {[
-          { k: "운행", v: `${trips.length}건`, s: `${days.length}일${nextDayCount ? ` · 익일착 ${nextDayCount}` : ""}` },
-          { k: "🛣 총 이동거리", v: `${fmt1(moveTotal)}km`, s: `운행 ${fmt1(total.dist)} · 공차 ${fmt1(emptyTotal)}${moveTotal > 0 ? ` (${Math.round(emptyTotal / moveTotal * 100)}%)` : ""}` },
-          { k: "⛽ 주유", v: `${fmtWon(total.fuelW)}원`, s: `${fmt1(total.fuelL)}L${total.fuelL > 0 && moveTotal > 0 ? ` · 연비 ${(moveTotal / total.fuelL).toFixed(2)}km/L` : ""}` },
-          { k: "💧 요소수", v: `${fmtWon(total.ureaW)}원`, s: `${fmt1(total.ureaL)}L` },
-          { k: "💰 운임", v: `${fmtWon(total.freight)}원`, s: moveTotal > 0 ? `총 이동 km당 ${fmtWon(total.freight / moveTotal)}원` : "-" },
-          { k: "운임 − 유류비", v: `${fmtWon(total.freight - fuelCost)}원`, s: `유류비(주유+요소수) ${fmtWon(fuelCost)}원` },
+          { k: "운행", v: `${trips.length}건`, s: `${days.length}일${nextDayCount ? ` · 익일 ${nextDayCount}` : ""}` },
+          { k: "🛣 이동", v: `${fmt1(moveTotal)}km`, s: moveTotal > 0 ? `공차 ${Math.round(emptyTotal / moveTotal * 100)}%` : "",
+            t: `운행 ${fmt1(total.dist)}km · 공차 ${fmt1(emptyTotal)}km` },
+          { k: "⛽ 주유", v: `${fmtWon(total.fuelW)}원`, s: total.fuelL > 0 && moveTotal > 0 ? `연비 ${(moveTotal / total.fuelL).toFixed(2)}` : "",
+            t: `${fmt1(total.fuelL)}L` },
+          { k: "💧 요소수", v: `${fmtWon(total.ureaW)}원`, s: total.ureaL ? `${fmt1(total.ureaL)}L` : "" },
+          { k: "💰 운임", v: `${fmtWon(total.freight)}원`, s: moveTotal > 0 && total.freight ? `km당 ${fmtWon(total.freight / moveTotal)}` : "" },
+          { k: "운임−유류비", v: `${fmtWon(total.freight - fuelCost)}원`, s: "", t: `유류비(주유+요소수) ${fmtWon(fuelCost)}원` },
         ].map(c => (
-          <div key={c.k} className={`${CARD} p-3`}>
-            <p className="text-[11px] text-gray-400">{c.k}</p>
-            <p className="text-lg font-bold text-[#0f172a] mt-0.5 tabular-nums">{c.v}</p>
-            <p className="text-[11px] text-gray-500 mt-0.5 truncate">{c.s}</p>
+          <div key={c.k} title={c.t ?? c.s} className="h-10 px-3 rounded-xl border border-gray-200 bg-white flex items-center gap-2 min-w-0">
+            <span className="text-[11px] text-gray-400 whitespace-nowrap">{c.k}</span>
+            <span className="text-sm font-bold text-[#0f172a] tabular-nums whitespace-nowrap">{c.v}</span>
+            {c.s && <span className="ml-auto text-[10px] text-gray-400 truncate">{c.s}</span>}
           </div>
         ))}
       </div>
 
       {/* 입력줄 */}
-      <div ref={formRef} className={`${CARD} p-4 space-y-3 scroll-mt-4 ${editingId ? "ring-2 ring-orange-300" : ""}`}>
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-semibold text-[#0f172a]">{editingId ? "✏️ 구간 수정" : "➕ 구간 입력"}</p>
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-gray-400">운전</span>
-            {drivers.map(dv => (
-              <button key={dv} type="button" onClick={() => set("driver", dv)}
-                className={`h-7 px-2.5 rounded-lg border text-xs font-semibold transition-all ${form.driver === dv ? "bg-[#0f172a] text-white border-[#0f172a]" : "bg-white text-gray-500 border-gray-200 hover:border-gray-400"}`}>
-                {dv}
-              </button>
-            ))}
+      <div ref={formRef} className={`${CARD} p-3 space-y-2.5 scroll-mt-4 ${editingId ? "ring-2 ring-orange-300" : ""}`}>
+        {/* 1줄: 운전 · 일자 · 출발지 ⇄ 도착지 · 당착/익일착 · 거리 */}
+        <div className="grid grid-cols-2 md:grid-cols-[auto_140px_1fr_auto_1fr_auto_110px] gap-2.5 items-start">
+          <div className="col-span-2 md:col-span-1">
+            <label className={LBL}>{editingId ? <span className="text-orange-600">✏️ 수정 중</span> : "운전"}</label>
+            <div className="flex h-10 rounded-xl border border-gray-200 overflow-hidden">
+              {drivers.map(dv => (
+                <button key={dv} type="button" onClick={() => set("driver", dv)}
+                  className={`px-3 text-sm font-semibold whitespace-nowrap transition-all ${form.driver === dv ? "bg-[#0f172a] text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}>
+                  {dv}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-[150px_1fr_auto_1fr_auto_120px] gap-2.5 items-start">
           <div className="col-span-2 md:col-span-1"><label className={LBL}>일자 <span className="font-normal text-gray-400">상차일</span></label>
             <input type="date" className={CTRL} value={form.trip_date} onChange={e => set("trip_date", e.target.value)} /></div>
           <div className="col-span-2 md:col-span-1">
@@ -490,7 +489,7 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
           <div className="col-span-2 md:col-span-1">
             <PlaceInput label="도착지" value={form.destination} recent={recentPlaces} placeholder="상호 또는 주소" inputRef={destRef}
               onChange={v => set("destination", v)} /></div>
-          <div className="col-span-2 md:col-span-1">
+          <div className="col-span-1">
             <label className={LBL}>도착</label>
             <div className="flex h-10 rounded-xl border border-gray-200 overflow-hidden">
               {([false, true] as const).map(nd => (
@@ -502,7 +501,7 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
             </div>
             {form.next_day && form.trip_date && <p className="text-[10px] text-indigo-600 mt-0.5">도착 {labelDate(addDays(form.trip_date, 1))}</p>}
           </div>
-          <div className="col-span-2 md:col-span-1">
+          <div className="col-span-1">
             {numInput("distance_km", "거리", "km")}
             {routeInfo && <p className="text-[10px] text-gray-400 mt-0.5 truncate" title={routeInfo}>{routeInfo}</p>}
             {distanceTouched && routeKm != null && String(routeKm) !== form.distance_km && (
@@ -513,20 +512,20 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
             )}
           </div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_1.3fr] gap-2.5 p-3 rounded-xl bg-gray-50">
+        {/* 2줄: 주유 · 요소수 · 운임 · 메모 · 저장 */}
+        <div className="grid grid-cols-2 md:grid-cols-[90px_120px_90px_120px_130px_1fr_auto] gap-2.5 items-end">
           {numInput("fuel_liters", "⛽ 주유량", "L")}
           {numInput("fuel_amount", "⛽ 주유 금액", "원")}
           {numInput("urea_liters", "💧 요소수", "L")}
           {numInput("urea_amount", "💧 요소수 금액", "원")}
           <div className="col-span-2 md:col-span-1">{numInput("freight", "💰 운임", "원")}</div>
-        </div>
-        <div className="flex items-end gap-2">
-          <div className="flex-1"><label className={LBL}>메모</label>
+          <div className="col-span-2 md:col-span-1"><label className={LBL}>메모</label>
             <input className={CTRL} value={form.memo} placeholder="화주·특이사항 (선택)" onChange={e => set("memo", e.target.value)} onKeyDown={onEnterSave} /></div>
-          {editingId && <button className={`${BTG} h-10`} onClick={() => resetForm()}>취소</button>}
-          <button className={`${BTO} h-10 px-6 text-sm`} disabled={saving} onClick={() => void save()}>{editingId ? "수정 저장" : "저장"}</button>
+          <div className="col-span-2 md:col-span-1 flex gap-2">
+            {editingId && <button className={`${BTG} h-10`} onClick={() => resetForm()}>취소</button>}
+            <button className={`${BTO} h-10 px-6 text-sm flex-1 whitespace-nowrap`} disabled={saving} onClick={() => void save()}>{editingId ? "수정 저장" : "저장"}</button>
+          </div>
         </div>
-        <p className="text-[11px] text-gray-400">숫자 칸에서 Enter = 저장 · 저장 후 다음 구간은 출발지가 직전 도착지로 채워집니다 (익일착이면 일자도 다음 날로).</p>
       </div>
 
       {/* 일자별 표 */}
@@ -646,7 +645,6 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
             )}
           </table>
         </div>
-        <p className="px-3 py-2 text-[11px] text-gray-400 border-t border-gray-100">줄을 누르면 위 입력줄에서 수정 · 회색 공차 칸을 누르면 공차거리 수정 · 일자 칸의 “+ 구간”으로 그 날 구간 추가</p>
       </div>
     </div>
   );
