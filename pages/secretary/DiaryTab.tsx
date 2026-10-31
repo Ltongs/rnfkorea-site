@@ -34,6 +34,8 @@ const CARD = "border border-gray-200 rounded-2xl bg-white shadow-sm";
 const CTRL = "w-full h-10 rounded-xl border border-gray-200 px-3 text-sm text-[#0f172a] bg-white focus:outline-none focus:border-orange-400 transition-all";
 const BTO = "px-3 py-1.5 rounded-xl bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 transition-all disabled:opacity-50";
 const BTG = "px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-600 hover:border-gray-300 transition-all disabled:opacity-50";
+// 모바일 좁은 폭에서 내용 칸이 몇 글자씩 세로로 깨지지 않도록 줄 최소 폭을 주고 목록은 가로 스크롤 (sm 이상은 해제)
+const ROW_MIN = "min-w-[600px] sm:min-w-0";
 const CHIP = "flex-shrink-0 text-[11px] px-2 py-0.5 rounded-md border transition-all whitespace-nowrap";
 const CAT_LABEL: Record<SchedCategory, string> = { meeting: "미팅", call: "통화", task: "업무", followup: "팔로업" };
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
@@ -81,7 +83,7 @@ function ReviewRow({
   const done = !!item.completed_at;
   const commit = () => { const t = text.trim(); if (t && t !== item.content) onSave(t); else if (!t) setText(item.content); };
   return (
-    <li className={`group flex items-center gap-2 py-1 border-b border-gray-50 last:border-b-0 ${done ? "bg-gray-50/70" : ""}`}>
+    <li className={`group flex items-center gap-2 py-1 border-b border-gray-50 last:border-b-0 ${ROW_MIN} ${done ? "bg-gray-50/70" : ""}`}>
       <span className={`w-5 text-right text-[11px] text-gray-300 flex-shrink-0 tabular-nums ${done ? "line-through" : ""}`}>{index + 1}</span>
       <input ref={inputRef}
         className={`flex-1 min-w-0 h-8 text-sm bg-transparent focus:outline-none focus:bg-orange-50/40 rounded-md px-1 ${done ? "line-through decoration-gray-400 text-gray-400" : "text-[#0f172a]"}`}
@@ -400,9 +402,9 @@ export default function DiaryTab({
               <p className="text-xs font-semibold text-gray-500">📌 미완료 업무 <span className="text-orange-500">{pending.length}</span></p>
               <span className="text-[11px] text-gray-400">날짜를 누르면 그날 다이어리로 이동</span>
             </div>
-            <ul className="mt-1 max-h-72 overflow-y-auto">
+            <ul className="mt-1 max-h-72 overflow-auto">
               {pending.map(item => (
-                <li key={item.id} className={`group flex items-center gap-2 py-1.5 transition-opacity ${completingIds.has(item.id) ? "opacity-50" : ""}`}>
+                <li key={item.id} className={`group flex items-center gap-2 py-1.5 transition-opacity ${ROW_MIN} ${completingIds.has(item.id) ? "opacity-50" : ""}`}>
                   <button className={`${CHIP} ${item.entry_date > todayStr() ? "bg-blue-50 text-blue-600 border-blue-100" : item.entry_date < todayStr() ? "bg-amber-50 text-amber-600 border-amber-100" : "bg-orange-50 text-orange-600 border-orange-200"}`}
                     title={`${labelDate(item.kind === "plan" ? addDays(item.entry_date, -1) : item.entry_date)} 다이어리 열기`} onClick={() => changeDate(item.kind === "plan" ? addDays(item.entry_date, -1) : item.entry_date)}>
                     {item.kind === "plan" ? `${dayWord(item.entry_date)} 할 일` : labelDate(item.entry_date)}
@@ -463,7 +465,7 @@ export default function DiaryTab({
             </div>
             <p className="text-[11px] text-gray-400 mt-1">한 일을 한 줄씩 자유롭게 적으세요 · Enter 다음 줄 · 빈 줄에서 ⌫ 삭제 · 여러 줄 붙여넣기 가능</p>
             {loading && rows.length === 0 && <p className="text-xs text-gray-400 mt-2">불러오는 중…</p>}
-            <ul className="mt-2 flex-1 cursor-text" onClick={e => { if (e.target === e.currentTarget) newRowRef.current?.focus(); }}>
+            <ul className="mt-2 flex-1 cursor-text overflow-x-auto" onClick={e => { if (e.target === e.currentTarget) newRowRef.current?.focus(); }}>
               {rows.map((r, idx) => (
                 <ReviewRow key={r.id} item={r} index={idx}
                   inputRef={el => { rowRefs.current[r.id] = el; }}
@@ -492,7 +494,7 @@ export default function DiaryTab({
                     </button>
                   </>} />
               ))}
-              <li className="flex items-center gap-2 py-1">
+              <li className={`flex items-center gap-2 py-1 ${ROW_MIN}`}>
                 <span className="w-5 text-right text-[11px] text-gray-300 flex-shrink-0">+</span>
                 <input ref={newRowRef}
                   className="flex-1 min-w-0 h-8 text-sm text-[#0f172a] bg-transparent focus:outline-none focus:bg-orange-50/40 rounded-md px-1 placeholder:text-gray-300"
