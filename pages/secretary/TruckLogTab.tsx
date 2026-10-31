@@ -16,8 +16,9 @@
 //      - 일자는 상차일 기준. 도착지 옆 [당착]/[익일착] 토글로 구분 (익일착 = 도착일이 상차일 + 1일)
 //        익일착으로 저장하면 다음 입력의 일자가 다음 날로 넘어가고 출발지 = 그 도착지
 //      - 숫자 칸에서 Enter = 저장
-//   3) 공차: 직전 구간 도착지 ≠ 이 구간 출발지면 그 사이 빈 차 이동을 "공차" 줄로 표에 끼워 넣는다.
-//      거리는 길찾기로 자동 계산해 이 구간(뒤 구간)의 empty_km에 저장하고, 공차 줄을 누르면 직접 고칠 수 있다.
+//   3) 공차: 직전 구간 도착지 ≠ 이 구간 출발지면 그 사이 빈 차 이동을 이 구간의 "공차" 칸(거리 옆)에 표시한다.
+//      거리는 길찾기로 자동 계산해 이 구간의 empty_km에 저장하고, 공차 칸을 누르면 직접 고칠 수 있다.
+//      일계·월계 줄에는 운행·공차와 함께 총 이동거리를 보여준다.
 //      총 이동거리 = 운행거리 + 공차거리 (연비·km당 운임은 총 이동거리 기준)
 //   4) 표에서 줄을 누르면 입력줄로 불러와 수정, 일자 칸의 "+ 구간"은 그 날짜로 구간 추가
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -531,20 +532,22 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
       {/* 일자별 표 */}
       <div className={`${CARD} overflow-hidden`}>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px] border-collapse">
+          <table className="w-full min-w-[980px] border-collapse">
             <thead>
               <tr>
                 <th rowSpan={2} className={`${TH} w-[84px]`}>일자</th>
                 <th rowSpan={2} className={`${TH} w-[44px]`}>순번</th>
                 <th rowSpan={2} className={TH}>출발지</th>
                 <th rowSpan={2} className={TH}>도착지</th>
-                <th rowSpan={2} className={`${TH} w-[72px]`}>거리<br /><span className="font-normal">km</span></th>
+                <th colSpan={2} className={TH}>거리 <span className="font-normal">km</span></th>
                 <th colSpan={2} className={`${TH} !bg-orange-50 text-orange-700`}>⛽ 주유</th>
                 <th colSpan={2} className={`${TH} !bg-sky-50 text-sky-700`}>💧 요소수</th>
                 <th rowSpan={2} className={`${TH} w-[96px] !bg-emerald-50 text-emerald-700`}>💰 운임<br /><span className="font-normal">원</span></th>
                 <th rowSpan={2} className={`${TH} w-[40px]`}></th>
               </tr>
               <tr>
+                <th className={`${TH} w-[68px]`}>운행</th>
+                <th className={`${TH} w-[64px] !bg-slate-100 text-slate-500`}>공차</th>
                 <th className={`${TH} w-[60px] !bg-orange-50/60`}>L</th>
                 <th className={`${TH} w-[88px] !bg-orange-50/60`}>금액</th>
                 <th className={`${TH} w-[56px] !bg-sky-50/60`}>L</th>
@@ -553,49 +556,29 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={11} className="text-sm text-gray-400 text-center py-10">불러오는 중…</td></tr>
+                <tr><td colSpan={12} className="text-sm text-gray-400 text-center py-10">불러오는 중…</td></tr>
               ) : days.length === 0 ? (
-                <tr><td colSpan={11} className="text-sm text-gray-400 text-center py-10">{month.replace("-", "년 ")}월 운행 기록이 없습니다.</td></tr>
+                <tr><td colSpan={12} className="text-sm text-gray-400 text-center py-10">{month.replace("-", "년 ")}월 운행 기록이 없습니다.</td></tr>
               ) : days.map(([date, rows], di) => {
                 const s = sum(rows);
                 const band = di % 2 ? "bg-gray-50/60" : "bg-white";
-                // 공차 줄은 그 구간 바로 앞에 끼워 넣는다
-                const items = rows.flatMap(t => (gaps.has(t.id) ? [{ t, g: gaps.get(t.id)! }, { t }] : [{ t }])) as { t: Trip; g?: Gap }[];
                 const dayEmpty = rows.reduce((a, t) => a + (gaps.get(t.id)?.km ?? 0), 0);
-                const hasGap = rows.some(t => gaps.has(t.id));
-                const showSub = rows.length > 1 || hasGap;
                 return (
                   <React.Fragment key={date}>
-                    {items.map(({ t, g }, idx) => {
-                      const dateCell = idx === 0 && (
-                        <td rowSpan={items.length + (showSub ? 1 : 0)} className={`${TD} align-top font-semibold whitespace-nowrap ${band}`}
-                          onClick={e => e.stopPropagation()}>
-                          {labelDate(date)}
-                          <button className="block mt-1 text-[11px] text-orange-600 hover:underline font-normal" onClick={() => addOnDate(date)}>+ 구간</button>
-                        </td>
-                      );
-                      if (g) return (
-                        <tr key={`g${t.id}`} onClick={() => void editGap(t, g.prev)} title="눌러서 공차거리 수정"
-                          className="cursor-pointer bg-slate-100/70 hover:bg-slate-200/60 text-slate-500">
-                          {dateCell}
-                          <td className={`${TD} text-center text-[11px] !text-slate-500`}>공차</td>
-                          <td className={`${TD} text-[13px] !text-slate-500`}>↳ {g.prev.destination}</td>
-                          <td className={`${TD} text-[13px] !text-slate-500`}>{t.origin}</td>
-                          <td className={`${TDN} !text-slate-600`}>
-                            {g.pending ? <span className="text-[11px] text-slate-400">계산 중</span>
-                              : g.km == null ? <span className="text-[11px] text-orange-600 underline">입력</span>
-                              : <>{g.approx && <span className="text-slate-400 text-[10px] mr-0.5">약</span>}{fmt1(g.km)}</>}
-                          </td>
-                          <td colSpan={5} className={`${TD} text-[11px] !text-slate-400`}>빈 차 이동{g.manual ? " · 직접 입력" : ""}</td>
-                          <td className={TD}></td>
-                        </tr>
-                      );
+                    {rows.map((t, i) => {
+                      const g = gaps.get(t.id);
                       return (
                         <tr key={t.id} onClick={() => edit(t)}
                           className={`${band} cursor-pointer hover:bg-orange-50/60 ${editingId === t.id ? "!bg-orange-100/70" : ""}`}>
-                          {dateCell}
+                          {i === 0 && (
+                            <td rowSpan={rows.length + 1} className={`${TD} align-top font-semibold whitespace-nowrap ${band}`}
+                              onClick={e => e.stopPropagation()}>
+                              {labelDate(date)}
+                              <button className="block mt-1 text-[11px] text-orange-600 hover:underline font-normal" onClick={() => addOnDate(date)}>+ 구간</button>
+                            </td>
+                          )}
                           <td className={`${TD} text-center tabular-nums`}>
-                            {rows.indexOf(t) + 1}
+                            {i + 1}
                             {t.driver && t.driver !== DEFAULT_DRIVERS[0] && <span className="block text-[10px] text-gray-400">{t.driver}</span>}
                           </td>
                           <td className={TD} title={t.origin_address ?? ""}>{t.origin}</td>
@@ -608,6 +591,14 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
                             {t.memo && <span className="block text-[11px] text-gray-400">{t.memo}</span>}
                           </td>
                           <td className={TDN}>{t.distance_approx && t.distance_km != null && <span className="text-gray-400 text-[10px] mr-0.5">약</span>}{fmt1(t.distance_km)}</td>
+                          {/* 공차: 직전 도착지 → 이 출발지. 누르면 직접 수정 */}
+                          <td className={`${TDN} bg-slate-50 !text-slate-600 ${g ? "cursor-pointer hover:bg-slate-200/70" : ""}`}
+                            title={g ? `공차: ${g.prev.destination} → ${t.origin}${g.manual ? " (직접 입력)" : ""} · 눌러서 수정` : ""}
+                            onClick={e => { if (!g) return; e.stopPropagation(); void editGap(t, g.prev); }}>
+                            {!g ? "" : g.pending ? <span className="text-[10px] text-slate-400">계산중</span>
+                              : g.km == null ? <span className="text-[11px] text-orange-600 underline">입력</span>
+                              : <>{g.approx && <span className="text-slate-400 text-[10px] mr-0.5">약</span>}{fmt1(g.km)}</>}
+                          </td>
                           <td className={`${TDN} bg-orange-50/30`}>{fmt1(t.fuel_liters)}</td>
                           <td className={`${TDN} bg-orange-50/30`}>{fmtWon(t.fuel_amount)}</td>
                           <td className={`${TDN} bg-sky-50/30`}>{fmt1(t.urea_liters)}</td>
@@ -619,20 +610,20 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
                         </tr>
                       );
                     })}
-                    {showSub && (
-                      <tr className={band}>
-                        <td colSpan={3} className={`${TD} text-right text-[11px] text-gray-500`}>
-                          소계{dayEmpty > 0 && <span className="text-slate-500"> · 공차 {fmt1(dayEmpty)}km · 이동 {fmt1(s.dist + dayEmpty)}km</span>}
-                        </td>
-                        <td className={`${TDN} text-gray-600`}>{fmt1(s.dist)}</td>
-                        <td className={`${TDN} text-gray-600`}>{s.fuelL ? fmt1(s.fuelL) : ""}</td>
-                        <td className={`${TDN} text-gray-600`}>{s.fuelW ? fmtWon(s.fuelW) : ""}</td>
-                        <td className={`${TDN} text-gray-600`}>{s.ureaL ? fmt1(s.ureaL) : ""}</td>
-                        <td className={`${TDN} text-gray-600`}>{s.ureaW ? fmtWon(s.ureaW) : ""}</td>
-                        <td className={`${TDN} text-gray-700 font-semibold`}>{s.freight ? fmtWon(s.freight) : ""}</td>
-                        <td className={TD}></td>
-                      </tr>
-                    )}
+                    {/* 일계: 운행·공차와 총 이동거리 */}
+                    <tr className={band}>
+                      <td colSpan={3} className={`${TD} text-right text-[11px] text-gray-500 whitespace-nowrap`}>
+                        일계 <span className="ml-1 text-[13px] font-bold text-[#0f172a] tabular-nums">총 {fmt1(s.dist + dayEmpty)}km</span>
+                      </td>
+                      <td className={`${TDN} text-gray-600`}>{fmt1(s.dist)}</td>
+                      <td className={`${TDN} bg-slate-50 text-slate-500`}>{dayEmpty ? fmt1(dayEmpty) : ""}</td>
+                      <td className={`${TDN} text-gray-600`}>{s.fuelL ? fmt1(s.fuelL) : ""}</td>
+                      <td className={`${TDN} text-gray-600`}>{s.fuelW ? fmtWon(s.fuelW) : ""}</td>
+                      <td className={`${TDN} text-gray-600`}>{s.ureaL ? fmt1(s.ureaL) : ""}</td>
+                      <td className={`${TDN} text-gray-600`}>{s.ureaW ? fmtWon(s.ureaW) : ""}</td>
+                      <td className={`${TDN} text-gray-700 font-semibold`}>{s.freight ? fmtWon(s.freight) : ""}</td>
+                      <td className={TD}></td>
+                    </tr>
                   </React.Fragment>
                 );
               })}
@@ -640,8 +631,13 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
             {trips.length > 0 && (
               <tfoot>
                 <tr className="bg-[#0f172a] text-white">
-                  <td colSpan={4} className="border border-[#0f172a] px-2 py-2 text-sm font-semibold">{Number(month.slice(5))}월 운행 합계 · {trips.length}건</td>
+                  <td colSpan={4} className="border border-[#0f172a] px-2 py-2 text-sm font-semibold whitespace-nowrap">
+                    {Number(month.slice(5))}월 월계 · {trips.length}건
+                    <span className="ml-2 text-base font-bold tabular-nums">총 {fmt1(moveTotal)}km</span>
+                    {moveTotal > 0 && <span className="ml-1.5 text-[11px] font-normal text-slate-300">공차율 {Math.round(emptyTotal / moveTotal * 100)}%</span>}
+                  </td>
                   <td className={TF}>{fmt1(total.dist)}</td>
+                  <td className={`${TF} text-slate-300`}>{fmt1(emptyTotal)}</td>
                   <td className={TF}>{fmt1(total.fuelL)}</td>
                   <td className={TF}>{fmtWon(total.fuelW)}</td>
                   <td className={TF}>{fmt1(total.ureaL)}</td>
@@ -649,23 +645,11 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
                   <td className={`${TF} font-bold`}>{fmtWon(total.freight)}</td>
                   <td className="border border-[#0f172a]"></td>
                 </tr>
-                <tr className="bg-slate-700 text-white">
-                  <td colSpan={4} className="border border-slate-700 px-2 py-1.5 text-sm">공차 합계 · {gaps.size}회</td>
-                  <td className="border border-slate-700 px-2 py-1.5 text-sm text-right tabular-nums">{fmt1(emptyTotal)}</td>
-                  <td colSpan={6} className="border border-slate-700"></td>
-                </tr>
-                <tr className="bg-slate-800 text-white">
-                  <td colSpan={4} className="border border-slate-800 px-2 py-1.5 text-sm font-semibold">총 이동거리 (운행 + 공차)</td>
-                  <td className="border border-slate-800 px-2 py-1.5 text-sm text-right tabular-nums font-bold">{fmt1(moveTotal)}</td>
-                  <td colSpan={6} className="border border-slate-800 px-2 py-1.5 text-[11px] text-slate-300">
-                    {moveTotal > 0 && `공차율 ${Math.round(emptyTotal / moveTotal * 100)}%`}
-                  </td>
-                </tr>
               </tfoot>
             )}
           </table>
         </div>
-        <p className="px-3 py-2 text-[11px] text-gray-400 border-t border-gray-100">줄을 누르면 위 입력줄에서 수정 · 회색 “공차” 줄을 누르면 공차거리 수정 · 일자 칸의 “+ 구간”으로 그 날 구간 추가</p>
+        <p className="px-3 py-2 text-[11px] text-gray-400 border-t border-gray-100">줄을 누르면 위 입력줄에서 수정 · 회색 공차 칸을 누르면 공차거리 수정 · 일자 칸의 “+ 구간”으로 그 날 구간 추가</p>
       </div>
     </div>
   );
