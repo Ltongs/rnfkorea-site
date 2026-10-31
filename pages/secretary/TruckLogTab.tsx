@@ -450,7 +450,7 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
         </div>
       </div>
 
-      {/* 월 요약 — 내용 폭 박스를 입력칸 높이 한 줄로 (좁으면 가로 스크롤) */}
+      {/* 월 요약 — 입력칸 높이 한 줄, 글자 양에 비례해 화면 폭을 채운다 (좁으면 가로 스크롤) */}
       <div className="flex gap-2 overflow-x-auto">
         {[
           { k: "운행", v: `${trips.length}건`, s: `${days.length}일${nextDayCount ? ` · 익일 ${nextDayCount}` : ""}` },
@@ -462,10 +462,10 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
           { k: "💰 운임", v: `${fmtWon(total.freight)}원`, s: moveTotal > 0 && total.freight ? `km당 ${fmtWon(total.freight / moveTotal)}` : "" },
           { k: "운임−유류비", v: `${fmtWon(total.freight - fuelCost)}원`, s: "", t: `유류비(주유+요소수) ${fmtWon(fuelCost)}원` },
         ].map(c => (
-          <div key={c.k} title={c.t ?? c.s} className="h-10 px-3 rounded-xl border border-gray-200 bg-white flex items-center gap-1.5 flex-shrink-0">
+          <div key={c.k} title={c.t ?? c.s} className="h-10 px-3 rounded-xl border border-gray-200 bg-white flex items-center gap-1.5 flex-auto">
             <span className="text-[11px] text-gray-400 whitespace-nowrap">{c.k}</span>
             <span className="text-sm font-bold text-[#0f172a] tabular-nums whitespace-nowrap">{c.v}</span>
-            {c.s && <span className="text-[10px] text-gray-400 whitespace-nowrap">{c.s}</span>}
+            {c.s && <span className="ml-auto pl-1 text-[10px] text-gray-400 whitespace-nowrap">{c.s}</span>}
           </div>
         ))}
       </div>
