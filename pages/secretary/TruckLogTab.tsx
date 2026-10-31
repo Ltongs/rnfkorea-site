@@ -2,7 +2,8 @@
 // AI비서 "🚚 운행일지" 탭 — 화물운송(타타대우 25톤 윙바디) 운행 기록을 한 페이지 일자별 표로 관리.
 //   일자 / 순번 / 출발지 / 도착지 / 거리 / 주유(L, 금액) / 요소수(L, 금액) / 운임
 // 테이블: truck_trips (supabase/migrations/20261030120000_truck_logs.sql, 20261030150000_truck_trips_places.sql,
-//         20261030160000_truck_trips_fuel_urea_freight.sql, 20261030200000_truck_trips_next_day.sql)
+//         20261030160000_truck_trips_fuel_urea_freight.sql, 20261030200000_truck_trips_next_day.sql,
+//         20261031100000_truck_trips_empty_run.sql)
 // 장소검색·거리계산: supabase/functions/truck-route (카카오 로컬 + 카카오모빌리티 길찾기)
 // 권한: admin@rnfkorea.co.kr / ltongs7@gmail.com 은 /work/secretary, everyasset.fc@gmail.com 은 /work/secretary-ins 에서
 //       같은 데이터를 함께 본다 (RLS: is_truck_log_user()).
@@ -15,7 +16,10 @@
 //      - 일자는 상차일 기준. 도착지 옆 [당착]/[익일착] 토글로 구분 (익일착 = 도착일이 상차일 + 1일)
 //        익일착으로 저장하면 다음 입력의 일자가 다음 날로 넘어가고 출발지 = 그 도착지
 //      - 숫자 칸에서 Enter = 저장
-//   3) 표에서 줄을 누르면 입력줄로 불러와 수정, 일자 칸의 "+ 구간"은 그 날짜로 구간 추가
+//   3) 공차: 직전 구간 도착지 ≠ 이 구간 출발지면 그 사이 빈 차 이동을 "공차" 줄로 표에 끼워 넣는다.
+//      거리는 길찾기로 자동 계산해 이 구간(뒤 구간)의 empty_km에 저장하고, 공차 줄을 누르면 직접 고칠 수 있다.
+//      총 이동거리 = 운행거리 + 공차거리 (연비·km당 운임은 총 이동거리 기준)
+//   4) 표에서 줄을 누르면 입력줄로 불러와 수정, 일자 칸의 "+ 구간"은 그 날짜로 구간 추가
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
@@ -25,6 +29,8 @@ type Trip = {
   dest_address: string | null; dest_x: number | null; dest_y: number | null;
   distance_km: number | null; distance_approx: boolean;
   next_day: boolean;   // 익일착 (trip_date = 상차일)
+  // 공차: 직전 구간 도착지 → 이 구간 출발지 사이 빈 차 이동. empty_from = 계산 기준(직전 도착지 서명)
+  empty_km: number | null; empty_approx: boolean; empty_manual: boolean; empty_from: string | null;
   fuel_liters: number | null; fuel_amount: number | null;
   urea_liters: number | null; urea_amount: number | null;
   freight: number | null; memo: string | null;
@@ -67,6 +73,21 @@ const fmtWon = (v: number | null | undefined) => (v == null ? "" : Math.round(Nu
 const fmt1 = (v: number | null | undefined) => (v == null ? "" : (Math.round(Number(v) * 10) / 10).toLocaleString("ko-KR"));
 const str = (v: number | null) => (v == null ? "" : String(v));
 const xy = (v: number | null) => (v == null ? null : Number(v));
+
+// 공차 판정: 직전 도착지와 이 출발지가 같은 곳인가 (둘 다 좌표가 있으면 500m 이내, 아니면 이름 비교)
+const destSig = (t: Trip) => `${t.destination}|${t.dest_x ?? ""}|${t.dest_y ?? ""}`;
+const normName = (v: string) => v.replace(/\s+/g, "").toLowerCase();
+const straightKm = (ax: number, ay: number, bx: number, by: number) => {
+  const rad = (v: number) => v * Math.PI / 180;
+  const h = Math.sin(rad(by - ay) / 2) ** 2 + Math.cos(rad(ay)) * Math.cos(rad(by)) * Math.sin(rad(bx - ax) / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(h));
+};
+const samePlace = (prev: Trip, t: Trip) => {
+  if (prev.dest_x != null && prev.dest_y != null && t.origin_x != null && t.origin_y != null)
+    return straightKm(Number(prev.dest_x), Number(prev.dest_y), Number(t.origin_x), Number(t.origin_y)) < 0.5;
+  return normName(prev.destination) === normName(t.origin);
+};
+type Gap = { prev: Trip; km: number | null; approx: boolean; manual: boolean; pending: boolean };
 
 const emptyPlace = (): PlaceVal => ({ name: "", address: null, x: null, y: null });
 const hasXY = (p: PlaceVal) => p.x != null && p.y != null;
@@ -178,15 +199,22 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
   const destRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLDivElement>(null);
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm(f => ({ ...f, [k]: v }));
+  const [prevTrip, setPrevTrip] = useState<Trip | null>(null);   // 이 달 첫 구간의 공차 계산용 (전달 마지막 구간)
+  const gapTried = useRef(new Set<string>());                     // 공차 자동계산을 이미 시도한 "구간id|기준"
 
   const load = useCallback(async () => {
     setLoading(true);
     const { from, to } = monthRange(month);
-    const { data, error } = await supabase.from("truck_trips").select("*")
-      .gte("trip_date", from).lte("trip_date", to)
-      .order("trip_date", { ascending: true }).order("id", { ascending: true });
+    const [{ data, error }, before] = await Promise.all([
+      supabase.from("truck_trips").select("*")
+        .gte("trip_date", from).lte("trip_date", to)
+        .order("trip_date", { ascending: true }).order("id", { ascending: true }),
+      supabase.from("truck_trips").select("*").lt("trip_date", from)
+        .order("trip_date", { ascending: false }).order("id", { ascending: false }).limit(1),
+    ]);
     setLoading(false);
     if (error) { toastRef.current(`불러오기 실패: ${error.message}`, "err"); return; }
+    setPrevTrip(((before.data ?? [])[0] as Trip) ?? null);
     setTrips((data ?? []) as Trip[]);
   }, [month]);
   useEffect(() => { void load(); }, [load]);
@@ -245,6 +273,73 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
   }, [trips]);
   const total = useMemo(() => sum(trips), [trips]);
   const fuelCost = total.fuelW + total.ureaW;
+
+  // 공차 구간: 구간id → 직전 구간과 공차거리 (같은 곳에서 이어지면 없음)
+  const gaps = useMemo(() => {
+    const m = new Map<number, Gap>();
+    trips.forEach((t, i) => {
+      const prev = i > 0 ? trips[i - 1] : prevTrip;
+      if (!prev || samePlace(prev, t)) return;
+      const current = t.empty_from === destSig(prev);
+      const hasXYBoth = prev.dest_x != null && t.origin_x != null;
+      m.set(t.id, {
+        prev, km: current ? (t.empty_km == null ? null : Number(t.empty_km)) : null,
+        approx: current && t.empty_approx, manual: current && t.empty_manual,
+        pending: !current && hasXYBoth,
+      });
+    });
+    return m;
+  }, [trips, prevTrip]);
+  const emptyTotal = useMemo(() => [...gaps.values()].reduce((a, g) => a + (g.km ?? 0), 0), [gaps]);
+  const moveTotal = total.dist + emptyTotal;
+
+  // 공차거리 자동계산·정리 — 기준(직전 도착지)이 바뀐 구간만 길찾기로 다시 계산해 저장한다
+  useEffect(() => {
+    if (loading) return;
+    const patchLocal = (id: number, patch: Partial<Trip>) => setTrips(ts => ts.map(x => (x.id === id ? { ...x, ...patch } : x)));
+    trips.forEach((t, i) => {
+      const prev = i > 0 ? trips[i - 1] : prevTrip;
+      const isGap = !!prev && !samePlace(prev, t);
+      const sig = isGap ? destSig(prev!) : "";
+      const key = `${t.id}|${sig}`;
+      if (gapTried.current.has(key)) return;
+      if (!isGap) {
+        if (t.empty_km == null && t.empty_from == null) return;
+        gapTried.current.add(key);
+        const patch = { empty_km: null, empty_approx: false, empty_manual: false, empty_from: null };
+        void supabase.from("truck_trips").update(patch).eq("id", t.id).then(() => patchLocal(t.id, patch));
+        return;
+      }
+      if (t.empty_from === sig) return;   // 이미 이 기준으로 계산(또는 직접 입력)됨
+      gapTried.current.add(key);
+      void (async () => {
+        let km: number | null = null, approx = false;
+        if (prev!.dest_x != null && prev!.dest_y != null && t.origin_x != null && t.origin_y != null) {
+          const { data } = await supabase.functions.invoke("truck-route", {
+            body: { action: "route", origin: { x: prev!.dest_x, y: prev!.dest_y }, destination: { x: t.origin_x, y: t.origin_y } },
+          });
+          if (data?.km != null) { km = data.km; approx = !!data.approx; }
+        }
+        const patch = { empty_km: km, empty_approx: approx, empty_manual: false, empty_from: sig };
+        const { error } = await supabase.from("truck_trips").update(patch).eq("id", t.id);
+        if (!error) patchLocal(t.id, patch);
+      })();
+    });
+  }, [trips, prevTrip, loading]);
+
+  // 공차 줄 클릭 → 공차거리 직접 입력 (비우면 자동계산으로 되돌림)
+  const editGap = async (t: Trip, prev: Trip) => {
+    const v = window.prompt(`공차거리(km)\n${prev.destination} → ${t.origin}\n비우면 자동계산으로 되돌립니다.`, t.empty_km != null ? String(t.empty_km) : "");
+    if (v === null) return;
+    const km = num(v);
+    const patch = km == null
+      ? { empty_km: null, empty_approx: false, empty_manual: false, empty_from: null }
+      : { empty_km: km, empty_approx: false, empty_manual: true, empty_from: destSig(prev) };
+    const { error } = await supabase.from("truck_trips").update(patch).eq("id", t.id);
+    if (error) { showToast(`저장 실패: ${error.message}`, "err"); return; }
+    gapTried.current.delete(`${t.id}|${destSig(prev)}`);
+    setTrips(ts => ts.map(x => (x.id === t.id ? { ...x, ...patch } : x)));
+  };
   const nextDayCount = useMemo(() => trips.filter(t => t.next_day).length, [trips]);
 
   const resetForm = (date = form.trip_date) => {
@@ -350,12 +445,13 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
       </div>
 
       {/* 월 요약 */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
         {[
-          { k: "운행", v: `${trips.length}건`, s: `${fmt1(total.dist)}km · ${days.length}일${nextDayCount ? ` · 익일착 ${nextDayCount}` : ""}` },
-          { k: "⛽ 주유", v: `${fmtWon(total.fuelW)}원`, s: `${fmt1(total.fuelL)}L${total.fuelL > 0 && total.dist > 0 ? ` · 연비 ${(total.dist / total.fuelL).toFixed(2)}km/L` : ""}` },
+          { k: "운행", v: `${trips.length}건`, s: `${days.length}일${nextDayCount ? ` · 익일착 ${nextDayCount}` : ""}` },
+          { k: "🛣 총 이동거리", v: `${fmt1(moveTotal)}km`, s: `운행 ${fmt1(total.dist)} · 공차 ${fmt1(emptyTotal)}${moveTotal > 0 ? ` (${Math.round(emptyTotal / moveTotal * 100)}%)` : ""}` },
+          { k: "⛽ 주유", v: `${fmtWon(total.fuelW)}원`, s: `${fmt1(total.fuelL)}L${total.fuelL > 0 && moveTotal > 0 ? ` · 연비 ${(moveTotal / total.fuelL).toFixed(2)}km/L` : ""}` },
           { k: "💧 요소수", v: `${fmtWon(total.ureaW)}원`, s: `${fmt1(total.ureaL)}L` },
-          { k: "💰 운임", v: `${fmtWon(total.freight)}원`, s: total.dist > 0 ? `km당 ${fmtWon(total.freight / total.dist)}원` : "-" },
+          { k: "💰 운임", v: `${fmtWon(total.freight)}원`, s: moveTotal > 0 ? `총 이동 km당 ${fmtWon(total.freight / moveTotal)}원` : "-" },
           { k: "운임 − 유류비", v: `${fmtWon(total.freight - fuelCost)}원`, s: `유류비(주유+요소수) ${fmtWon(fuelCost)}원` },
         ].map(c => (
           <div key={c.k} className={`${CARD} p-3`}>
@@ -463,45 +559,71 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
               ) : days.map(([date, rows], di) => {
                 const s = sum(rows);
                 const band = di % 2 ? "bg-gray-50/60" : "bg-white";
+                // 공차 줄은 그 구간 바로 앞에 끼워 넣는다
+                const items = rows.flatMap(t => (gaps.has(t.id) ? [{ t, g: gaps.get(t.id)! }, { t }] : [{ t }])) as { t: Trip; g?: Gap }[];
+                const dayEmpty = rows.reduce((a, t) => a + (gaps.get(t.id)?.km ?? 0), 0);
+                const hasGap = rows.some(t => gaps.has(t.id));
+                const showSub = rows.length > 1 || hasGap;
                 return (
                   <React.Fragment key={date}>
-                    {rows.map((t, i) => (
-                      <tr key={t.id} onClick={() => edit(t)}
-                        className={`${band} cursor-pointer hover:bg-orange-50/60 ${editingId === t.id ? "!bg-orange-100/70" : ""}`}>
-                        {i === 0 && (
-                          <td rowSpan={rows.length + (rows.length > 1 ? 1 : 0)} className={`${TD} align-top font-semibold whitespace-nowrap ${band}`}
-                            onClick={e => e.stopPropagation()}>
-                            {labelDate(date)}
-                            <button className="block mt-1 text-[11px] text-orange-600 hover:underline font-normal" onClick={() => addOnDate(date)}>+ 구간</button>
+                    {items.map(({ t, g }, idx) => {
+                      const dateCell = idx === 0 && (
+                        <td rowSpan={items.length + (showSub ? 1 : 0)} className={`${TD} align-top font-semibold whitespace-nowrap ${band}`}
+                          onClick={e => e.stopPropagation()}>
+                          {labelDate(date)}
+                          <button className="block mt-1 text-[11px] text-orange-600 hover:underline font-normal" onClick={() => addOnDate(date)}>+ 구간</button>
+                        </td>
+                      );
+                      if (g) return (
+                        <tr key={`g${t.id}`} onClick={() => void editGap(t, g.prev)} title="눌러서 공차거리 수정"
+                          className="cursor-pointer bg-slate-100/70 hover:bg-slate-200/60 text-slate-500">
+                          {dateCell}
+                          <td className={`${TD} text-center text-[11px] !text-slate-500`}>공차</td>
+                          <td className={`${TD} text-[13px] !text-slate-500`}>↳ {g.prev.destination}</td>
+                          <td className={`${TD} text-[13px] !text-slate-500`}>{t.origin}</td>
+                          <td className={`${TDN} !text-slate-600`}>
+                            {g.pending ? <span className="text-[11px] text-slate-400">계산 중</span>
+                              : g.km == null ? <span className="text-[11px] text-orange-600 underline">입력</span>
+                              : <>{g.approx && <span className="text-slate-400 text-[10px] mr-0.5">약</span>}{fmt1(g.km)}</>}
                           </td>
-                        )}
-                        <td className={`${TD} text-center tabular-nums`}>
-                          {i + 1}
-                          {t.driver && t.driver !== DEFAULT_DRIVERS[0] && <span className="block text-[10px] text-gray-400">{t.driver}</span>}
-                        </td>
-                        <td className={TD} title={t.origin_address ?? ""}>{t.origin}</td>
-                        <td className={TD} title={t.dest_address ?? ""}>
-                          {t.destination}
-                          {t.next_day && (
-                            <span className="ml-1 align-middle text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200"
-                              title={`도착 ${labelDate(addDays(t.trip_date, 1))}`}>익일</span>
-                          )}
-                          {t.memo && <span className="block text-[11px] text-gray-400">{t.memo}</span>}
-                        </td>
-                        <td className={TDN}>{t.distance_approx && t.distance_km != null && <span className="text-gray-400 text-[10px] mr-0.5">약</span>}{fmt1(t.distance_km)}</td>
-                        <td className={`${TDN} bg-orange-50/30`}>{fmt1(t.fuel_liters)}</td>
-                        <td className={`${TDN} bg-orange-50/30`}>{fmtWon(t.fuel_amount)}</td>
-                        <td className={`${TDN} bg-sky-50/30`}>{fmt1(t.urea_liters)}</td>
-                        <td className={`${TDN} bg-sky-50/30`}>{fmtWon(t.urea_amount)}</td>
-                        <td className={`${TDN} bg-emerald-50/30 font-semibold`}>{fmtWon(t.freight)}</td>
-                        <td className={`${TD} text-center`} onClick={e => e.stopPropagation()}>
-                          <button className="text-gray-300 hover:text-red-500 text-xs" title="삭제" onClick={() => void remove(t.id)}>✕</button>
-                        </td>
-                      </tr>
-                    ))}
-                    {rows.length > 1 && (
+                          <td colSpan={5} className={`${TD} text-[11px] !text-slate-400`}>빈 차 이동{g.manual ? " · 직접 입력" : ""}</td>
+                          <td className={TD}></td>
+                        </tr>
+                      );
+                      return (
+                        <tr key={t.id} onClick={() => edit(t)}
+                          className={`${band} cursor-pointer hover:bg-orange-50/60 ${editingId === t.id ? "!bg-orange-100/70" : ""}`}>
+                          {dateCell}
+                          <td className={`${TD} text-center tabular-nums`}>
+                            {rows.indexOf(t) + 1}
+                            {t.driver && t.driver !== DEFAULT_DRIVERS[0] && <span className="block text-[10px] text-gray-400">{t.driver}</span>}
+                          </td>
+                          <td className={TD} title={t.origin_address ?? ""}>{t.origin}</td>
+                          <td className={TD} title={t.dest_address ?? ""}>
+                            {t.destination}
+                            {t.next_day && (
+                              <span className="ml-1 align-middle text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200"
+                                title={`도착 ${labelDate(addDays(t.trip_date, 1))}`}>익일</span>
+                            )}
+                            {t.memo && <span className="block text-[11px] text-gray-400">{t.memo}</span>}
+                          </td>
+                          <td className={TDN}>{t.distance_approx && t.distance_km != null && <span className="text-gray-400 text-[10px] mr-0.5">약</span>}{fmt1(t.distance_km)}</td>
+                          <td className={`${TDN} bg-orange-50/30`}>{fmt1(t.fuel_liters)}</td>
+                          <td className={`${TDN} bg-orange-50/30`}>{fmtWon(t.fuel_amount)}</td>
+                          <td className={`${TDN} bg-sky-50/30`}>{fmt1(t.urea_liters)}</td>
+                          <td className={`${TDN} bg-sky-50/30`}>{fmtWon(t.urea_amount)}</td>
+                          <td className={`${TDN} bg-emerald-50/30 font-semibold`}>{fmtWon(t.freight)}</td>
+                          <td className={`${TD} text-center`} onClick={e => e.stopPropagation()}>
+                            <button className="text-gray-300 hover:text-red-500 text-xs" title="삭제" onClick={() => void remove(t.id)}>✕</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {showSub && (
                       <tr className={band}>
-                        <td colSpan={3} className={`${TD} text-right text-[11px] text-gray-500`}>소계</td>
+                        <td colSpan={3} className={`${TD} text-right text-[11px] text-gray-500`}>
+                          소계{dayEmpty > 0 && <span className="text-slate-500"> · 공차 {fmt1(dayEmpty)}km · 이동 {fmt1(s.dist + dayEmpty)}km</span>}
+                        </td>
                         <td className={`${TDN} text-gray-600`}>{fmt1(s.dist)}</td>
                         <td className={`${TDN} text-gray-600`}>{s.fuelL ? fmt1(s.fuelL) : ""}</td>
                         <td className={`${TDN} text-gray-600`}>{s.fuelW ? fmtWon(s.fuelW) : ""}</td>
@@ -518,7 +640,7 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
             {trips.length > 0 && (
               <tfoot>
                 <tr className="bg-[#0f172a] text-white">
-                  <td colSpan={4} className="border border-[#0f172a] px-2 py-2 text-sm font-semibold">{Number(month.slice(5))}월 합계 · {trips.length}건</td>
+                  <td colSpan={4} className="border border-[#0f172a] px-2 py-2 text-sm font-semibold">{Number(month.slice(5))}월 운행 합계 · {trips.length}건</td>
                   <td className={TF}>{fmt1(total.dist)}</td>
                   <td className={TF}>{fmt1(total.fuelL)}</td>
                   <td className={TF}>{fmtWon(total.fuelW)}</td>
@@ -527,11 +649,23 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
                   <td className={`${TF} font-bold`}>{fmtWon(total.freight)}</td>
                   <td className="border border-[#0f172a]"></td>
                 </tr>
+                <tr className="bg-slate-700 text-white">
+                  <td colSpan={4} className="border border-slate-700 px-2 py-1.5 text-sm">공차 합계 · {gaps.size}회</td>
+                  <td className="border border-slate-700 px-2 py-1.5 text-sm text-right tabular-nums">{fmt1(emptyTotal)}</td>
+                  <td colSpan={6} className="border border-slate-700"></td>
+                </tr>
+                <tr className="bg-slate-800 text-white">
+                  <td colSpan={4} className="border border-slate-800 px-2 py-1.5 text-sm font-semibold">총 이동거리 (운행 + 공차)</td>
+                  <td className="border border-slate-800 px-2 py-1.5 text-sm text-right tabular-nums font-bold">{fmt1(moveTotal)}</td>
+                  <td colSpan={6} className="border border-slate-800 px-2 py-1.5 text-[11px] text-slate-300">
+                    {moveTotal > 0 && `공차율 ${Math.round(emptyTotal / moveTotal * 100)}%`}
+                  </td>
+                </tr>
               </tfoot>
             )}
           </table>
         </div>
-        <p className="px-3 py-2 text-[11px] text-gray-400 border-t border-gray-100">줄을 누르면 위 입력줄에서 수정 · 일자 칸의 “+ 구간”으로 그 날 구간 추가</p>
+        <p className="px-3 py-2 text-[11px] text-gray-400 border-t border-gray-100">줄을 누르면 위 입력줄에서 수정 · 회색 “공차” 줄을 누르면 공차거리 수정 · 일자 칸의 “+ 구간”으로 그 날 구간 추가</p>
       </div>
     </div>
   );
