@@ -72,6 +72,14 @@ const int = (s: string) => { const v = num(s); return v == null ? null : Math.ro
 const n0 = (v: number | null | undefined) => Number(v) || 0;
 const fmtWon = (v: number | null | undefined) => (v == null ? "" : Math.round(Number(v)).toLocaleString("ko-KR"));
 const fmt1 = (v: number | null | undefined) => (v == null ? "" : (Math.round(Number(v) * 10) / 10).toLocaleString("ko-KR"));
+// 주유·요소수 칸: "L · 금액"을 한 칸에 (금액을 크게, L은 작게)
+const pairCell = (l: number | null | undefined, w: number | null | undefined) =>
+  !l && !w ? "" : (
+    <>
+      {!!l && <span className="text-[11px] text-gray-400 mr-1">{fmt1(l)}L</span>}
+      {!!w && <span>{fmtWon(w)}</span>}
+    </>
+  );
 const str = (v: number | null) => (v == null ? "" : String(v));
 const xy = (v: number | null) => (v == null ? null : Number(v));
 
@@ -442,8 +450,8 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
         </div>
       </div>
 
-      {/* 월 요약 — 입력칸 높이의 한 줄 */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
+      {/* 월 요약 — 내용 폭 박스를 입력칸 높이 한 줄로 (좁으면 가로 스크롤) */}
+      <div className="flex gap-2 overflow-x-auto">
         {[
           { k: "운행", v: `${trips.length}건`, s: `${days.length}일${nextDayCount ? ` · 익일 ${nextDayCount}` : ""}` },
           { k: "🛣 이동", v: `${fmt1(moveTotal)}km`, s: moveTotal > 0 ? `공차 ${Math.round(emptyTotal / moveTotal * 100)}%` : "",
@@ -454,10 +462,10 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
           { k: "💰 운임", v: `${fmtWon(total.freight)}원`, s: moveTotal > 0 && total.freight ? `km당 ${fmtWon(total.freight / moveTotal)}` : "" },
           { k: "운임−유류비", v: `${fmtWon(total.freight - fuelCost)}원`, s: "", t: `유류비(주유+요소수) ${fmtWon(fuelCost)}원` },
         ].map(c => (
-          <div key={c.k} title={c.t ?? c.s} className="h-10 px-3 rounded-xl border border-gray-200 bg-white flex items-center gap-2 min-w-0">
+          <div key={c.k} title={c.t ?? c.s} className="h-10 px-3 rounded-xl border border-gray-200 bg-white flex items-center gap-1.5 flex-shrink-0">
             <span className="text-[11px] text-gray-400 whitespace-nowrap">{c.k}</span>
             <span className="text-sm font-bold text-[#0f172a] tabular-nums whitespace-nowrap">{c.v}</span>
-            {c.s && <span className="ml-auto text-[10px] text-gray-400 truncate">{c.s}</span>}
+            {c.s && <span className="text-[10px] text-gray-400 whitespace-nowrap">{c.s}</span>}
           </div>
         ))}
       </div>
@@ -531,7 +539,7 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
       {/* 일자별 표 */}
       <div className={`${CARD} overflow-hidden`}>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] border-collapse">
+          <table className="w-full min-w-[860px] border-collapse">
             <thead>
               <tr>
                 <th rowSpan={2} className={`${TH} w-[84px]`}>일자</th>
@@ -539,25 +547,21 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
                 <th rowSpan={2} className={TH}>출발지</th>
                 <th rowSpan={2} className={TH}>도착지</th>
                 <th colSpan={2} className={TH}>거리 <span className="font-normal">km</span></th>
-                <th colSpan={2} className={`${TH} !bg-orange-50 text-orange-700`}>⛽ 주유</th>
-                <th colSpan={2} className={`${TH} !bg-sky-50 text-sky-700`}>💧 요소수</th>
+                <th rowSpan={2} className={`${TH} w-[130px] !bg-orange-50 text-orange-700`}>⛽ 주유<br /><span className="font-normal">L · 원</span></th>
+                <th rowSpan={2} className={`${TH} w-[110px] !bg-sky-50 text-sky-700`}>💧 요소수<br /><span className="font-normal">L · 원</span></th>
                 <th rowSpan={2} className={`${TH} w-[96px] !bg-emerald-50 text-emerald-700`}>💰 운임<br /><span className="font-normal">원</span></th>
                 <th rowSpan={2} className={`${TH} w-[40px]`}></th>
               </tr>
               <tr>
                 <th className={`${TH} w-[68px]`}>운행</th>
                 <th className={`${TH} w-[64px] !bg-slate-100 text-slate-500`}>공차</th>
-                <th className={`${TH} w-[60px] !bg-orange-50/60`}>L</th>
-                <th className={`${TH} w-[88px] !bg-orange-50/60`}>금액</th>
-                <th className={`${TH} w-[56px] !bg-sky-50/60`}>L</th>
-                <th className={`${TH} w-[80px] !bg-sky-50/60`}>금액</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={12} className="text-sm text-gray-400 text-center py-10">불러오는 중…</td></tr>
+                <tr><td colSpan={10} className="text-sm text-gray-400 text-center py-10">불러오는 중…</td></tr>
               ) : days.length === 0 ? (
-                <tr><td colSpan={12} className="text-sm text-gray-400 text-center py-10">{month.replace("-", "년 ")}월 운행 기록이 없습니다.</td></tr>
+                <tr><td colSpan={10} className="text-sm text-gray-400 text-center py-10">{month.replace("-", "년 ")}월 운행 기록이 없습니다.</td></tr>
               ) : days.map(([date, rows], di) => {
                 const s = sum(rows);
                 const band = di % 2 ? "bg-gray-50/60" : "bg-white";
@@ -597,10 +601,8 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
                               : g.km == null ? <span className="text-[11px] text-orange-600 underline">입력</span>
                               : <>{g.approx && <span className="text-slate-400 text-[10px] mr-0.5">약</span>}{fmt1(g.km)}</>}
                           </td>
-                          <td className={`${TDN} bg-orange-50/30`}>{fmt1(t.fuel_liters)}</td>
-                          <td className={`${TDN} bg-orange-50/30`}>{fmtWon(t.fuel_amount)}</td>
-                          <td className={`${TDN} bg-sky-50/30`}>{fmt1(t.urea_liters)}</td>
-                          <td className={`${TDN} bg-sky-50/30`}>{fmtWon(t.urea_amount)}</td>
+                          <td className={`${TDN} bg-orange-50/30`}>{pairCell(t.fuel_liters, t.fuel_amount)}</td>
+                          <td className={`${TDN} bg-sky-50/30`}>{pairCell(t.urea_liters, t.urea_amount)}</td>
                           <td className={`${TDN} bg-emerald-50/30 font-semibold`}>{fmtWon(t.freight)}</td>
                           <td className={`${TD} text-center`} onClick={e => e.stopPropagation()}>
                             <button className="text-gray-300 hover:text-red-500 text-xs" title="삭제" onClick={() => void remove(t.id)}>✕</button>
@@ -613,10 +615,8 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
                       <td colSpan={3} className={`${TD} text-right text-[11px] text-gray-500`}>일계</td>
                       <td className={`${TDN} text-gray-700 font-semibold`}>{fmt1(s.dist)}</td>
                       <td className={`${TDN} bg-slate-50`}></td>
-                      <td className={`${TDN} text-gray-600`}>{s.fuelL ? fmt1(s.fuelL) : ""}</td>
-                      <td className={`${TDN} text-gray-600`}>{s.fuelW ? fmtWon(s.fuelW) : ""}</td>
-                      <td className={`${TDN} text-gray-600`}>{s.ureaL ? fmt1(s.ureaL) : ""}</td>
-                      <td className={`${TDN} text-gray-600`}>{s.ureaW ? fmtWon(s.ureaW) : ""}</td>
+                      <td className={`${TDN} text-gray-600`}>{pairCell(s.fuelL, s.fuelW)}</td>
+                      <td className={`${TDN} text-gray-600`}>{pairCell(s.ureaL, s.ureaW)}</td>
                       <td className={`${TDN} text-gray-700 font-semibold`}>{s.freight ? fmtWon(s.freight) : ""}</td>
                       <td className={TD}></td>
                     </tr>
@@ -634,10 +634,8 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
                   </td>
                   <td className={TF}>{fmt1(total.dist)}</td>
                   <td className={`${TF} text-slate-300`}>{fmt1(emptyTotal)}</td>
-                  <td className={TF}>{fmt1(total.fuelL)}</td>
-                  <td className={TF}>{fmtWon(total.fuelW)}</td>
-                  <td className={TF}>{fmt1(total.ureaL)}</td>
-                  <td className={TF}>{fmtWon(total.ureaW)}</td>
+                  <td className={TF}>{!!total.fuelL && <span className="text-[11px] text-slate-300 mr-1">{fmt1(total.fuelL)}L</span>}{fmtWon(total.fuelW)}</td>
+                  <td className={TF}>{!!total.ureaL && <span className="text-[11px] text-slate-300 mr-1">{fmt1(total.ureaL)}L</span>}{fmtWon(total.ureaW)}</td>
                   <td className={`${TF} font-bold`}>{fmtWon(total.freight)}</td>
                   <td className="border border-[#0f172a]"></td>
                 </tr>
