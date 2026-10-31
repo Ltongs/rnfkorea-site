@@ -18,7 +18,7 @@
 //      - 숫자 칸에서 Enter = 저장
 //   3) 공차: 직전 구간 도착지 ≠ 이 구간 출발지면 그 사이 빈 차 이동을 이 구간의 "공차" 칸(거리 옆)에 표시한다.
 //      거리는 길찾기로 자동 계산해 이 구간의 empty_km에 저장하고, 공차 칸을 누르면 직접 고칠 수 있다.
-//      일계·월계 줄에는 운행·공차와 함께 총 이동거리를 보여준다.
+//      일계는 운행거리만, 공차 합계·총 이동거리·공차율은 하단 월계에서 보여준다.
 //      총 이동거리 = 운행거리 + 공차거리 (연비·km당 운임은 총 이동거리 기준)
 //   4) 표에서 줄을 누르면 입력줄로 불러와 수정, 일자 칸의 "+ 구간"은 그 날짜로 구간 추가
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -562,7 +562,6 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
               ) : days.map(([date, rows], di) => {
                 const s = sum(rows);
                 const band = di % 2 ? "bg-gray-50/60" : "bg-white";
-                const dayEmpty = rows.reduce((a, t) => a + (gaps.get(t.id)?.km ?? 0), 0);
                 return (
                   <React.Fragment key={date}>
                     {rows.map((t, i) => {
@@ -610,13 +609,11 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
                         </tr>
                       );
                     })}
-                    {/* 일계: 운행·공차와 총 이동거리 */}
+                    {/* 일계: 운행거리만 (공차는 하단 월계에서 합산) */}
                     <tr className={band}>
-                      <td colSpan={3} className={`${TD} text-right text-[11px] text-gray-500 whitespace-nowrap`}>
-                        일계 <span className="ml-1 text-[13px] font-bold text-[#0f172a] tabular-nums">총 {fmt1(s.dist + dayEmpty)}km</span>
-                      </td>
-                      <td className={`${TDN} text-gray-600`}>{fmt1(s.dist)}</td>
-                      <td className={`${TDN} bg-slate-50 text-slate-500`}>{dayEmpty ? fmt1(dayEmpty) : ""}</td>
+                      <td colSpan={3} className={`${TD} text-right text-[11px] text-gray-500`}>일계</td>
+                      <td className={`${TDN} text-gray-700 font-semibold`}>{fmt1(s.dist)}</td>
+                      <td className={`${TDN} bg-slate-50`}></td>
                       <td className={`${TDN} text-gray-600`}>{s.fuelL ? fmt1(s.fuelL) : ""}</td>
                       <td className={`${TDN} text-gray-600`}>{s.fuelW ? fmtWon(s.fuelW) : ""}</td>
                       <td className={`${TDN} text-gray-600`}>{s.ureaL ? fmt1(s.ureaL) : ""}</td>
