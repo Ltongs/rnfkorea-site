@@ -439,18 +439,9 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
 
   return (
     <div className="space-y-4 pb-4">
-      {/* 헤더 + 월 선택 */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <p className="text-sm font-semibold text-[#0f172a]">🚚 화물운송 운행일지</p>
-        <div className="flex items-center gap-1.5">
-          <button className={BTG} onClick={() => setMonth(m => shiftMonth(m, -1))}>◀</button>
-          <input type="month" value={month} onChange={e => e.target.value && setMonth(e.target.value)}
-            className="h-8 rounded-xl border border-gray-200 px-2 text-sm text-[#0f172a]" />
-          <button className={BTG} onClick={() => setMonth(m => shiftMonth(m, 1))}>▶</button>
-        </div>
-      </div>
+      <p className="text-sm font-semibold text-[#0f172a]">🚚 화물운송 운행일지</p>
 
-      {/* 월 요약 — 입력칸 높이 한 줄, 글자 양에 비례해 화면 폭을 채운다 (좁으면 가로 스크롤) */}
+      {/* 월 요약 + 월 선택 — 입력칸 높이 한 줄, 요약 박스는 글자 양에 비례해 화면 폭을 채운다 (좁으면 가로 스크롤) */}
       <div className="flex gap-2 overflow-x-auto">
         {[
           { k: "운행", v: `${trips.length}건`, s: `${days.length}일${nextDayCount ? ` · 익일 ${nextDayCount}` : ""}` },
@@ -468,6 +459,13 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
             {c.s && <span className="ml-auto pl-1 text-[10px] text-gray-400 whitespace-nowrap">{c.s}</span>}
           </div>
         ))}
+        {/* 7번째: 월 선택 */}
+        <div className="h-10 rounded-xl border border-gray-200 bg-white flex items-center flex-shrink-0 overflow-hidden">
+          <button className="h-full px-2.5 text-xs text-gray-500 hover:bg-gray-50" onClick={() => setMonth(m => shiftMonth(m, -1))}>◀</button>
+          <input type="month" value={month} onChange={e => e.target.value && setMonth(e.target.value)}
+            className="h-full px-1 text-sm font-semibold text-[#0f172a] bg-transparent focus:outline-none" />
+          <button className="h-full px-2.5 text-xs text-gray-500 hover:bg-gray-50" onClick={() => setMonth(m => shiftMonth(m, 1))}>▶</button>
+        </div>
       </div>
 
       {/* 입력줄 */}
