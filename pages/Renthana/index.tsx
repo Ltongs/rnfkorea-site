@@ -1,6 +1,7 @@
 // pages/Renthana/index.tsx
 // 렌타나(renthana.com) 제휴 배터리·타이어 렌탈료 계산기 — 로그인 없이 URL로 누구나 접근 가능
-// 월 렌탈료 = 공급가격(VAT 제외) × 1.1 × 월 요율 — 12개월 0.0958755 / 24개월 0.0522927 (렌타나 렌탈정책 기준)
+// 월 렌탈료 = 공급가격(VAT 제외) × 1.1 × 1.03(알앤에프 마진 3%) × 월 요율 — 12개월 0.0958755 / 24개월 0.0522927 (렌타나 렌탈정책 기준)
+// 마진은 렌탈료에만 붙고, 화면·PDF의 공급가격/부가세 포함 금액은 입력값 그대로 보여준다.
 // 품목은 상단 버튼 또는 URL(?item=tire)로 선택. 품목별 요율이 달라지면 PRODUCTS의 rate12/rate24만 바꾸면 된다.
 // PDF로 저장하면 견적번호(RNF-YYMM-NNNNNN)를 발급받아 견적서 발송 이력(tb_quotations, quote_type='renthana')에 남긴다.
 //   (로그인 없이도 저장되도록 save_renthana_quote RPC 사용 — supabase/migrations/20261012170000_renthana_quote_history.sql)
@@ -15,8 +16,9 @@ import { addCanvasToA4, applyTabularDigits } from "../../lib/pdfFit";
 import { supabase } from "../../lib/supabase";
 
 const VAT_RATE = 1.1;          // 부가세 10% 포함
-const RATE_12 = 0.0958755;    // 12개월 월 요율 (100만원 → 월 105,463원)
-const RATE_24 = 0.0522927;    // 24개월 월 요율 (100만원 → 월 57,522원)
+const MARGIN_RATE = 1.03;      // 알앤에프 마진 3%
+const RATE_12 = 0.0958755;    // 12개월 월 요율 (100만원 → 마진 포함 월 108,627원)
+const RATE_24 = 0.0522927;    // 24개월 월 요율 (100만원 → 마진 포함 월 59,248원)
 
 type ProductKey = "battery" | "tire";
 const PRODUCTS: Record<ProductKey, { label: string; rate12: number; rate24: number }> = {
@@ -108,9 +110,9 @@ export default function RenthanaPage() {
 
   const price = Number(priceInput.replace(/[^0-9]/g, "")) || 0;
   const priceWithVat = useMemo(() => price * VAT_RATE, [price]);
-  // 월 렌탈료 (원 단위 반올림)
-  const fee12 = useMemo(() => Math.round(priceWithVat * product.rate12), [priceWithVat, product]);
-  const fee24 = useMemo(() => Math.round(priceWithVat * product.rate24), [priceWithVat, product]);
+  // 월 렌탈료 (마진 포함, 원 단위 반올림)
+  const fee12 = useMemo(() => Math.round(priceWithVat * MARGIN_RATE * product.rate12), [priceWithVat, product]);
+  const fee24 = useMemo(() => Math.round(priceWithVat * MARGIN_RATE * product.rate24), [priceWithVat, product]);
 
   const onPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     leaveView();
