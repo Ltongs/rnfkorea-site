@@ -40,14 +40,18 @@ type Trip = {
 type PlaceVal = { name: string; address: string | null; x: number | null; y: number | null };
 
 const CARD = "border border-gray-200 rounded-2xl bg-white shadow-sm";
-const CTRL = "w-full h-10 rounded-xl border border-gray-200 px-3 text-sm text-[#0f172a] bg-white focus:outline-none focus:border-orange-400 transition-all";
+// 모바일은 칸·글씨를 한 단계 작게 (sm 이상은 기존 크기)
+const CTRL = "w-full min-w-0 h-9 sm:h-10 rounded-xl border border-gray-200 px-2.5 sm:px-3 text-[13px] sm:text-sm text-[#0f172a] bg-white focus:outline-none focus:border-orange-400 transition-all";
 const NUM = `${CTRL} text-right tabular-nums`;
-const LBL = "block text-[11px] font-semibold text-gray-500 mb-1";
+const LBL = "block text-[10px] sm:text-[11px] font-semibold text-gray-500 mb-1 whitespace-nowrap";
+// 운전·도착 같은 2칸 토글
+const SEG = "flex h-9 sm:h-10 rounded-xl border border-gray-200 overflow-hidden";
+const SEG_BTN = "flex-1 px-2.5 sm:px-3 text-[13px] sm:text-sm font-semibold whitespace-nowrap transition-all";
 const BTO = "px-3 py-1.5 rounded-xl bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 transition-all disabled:opacity-50";
 const BTG = "px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-600 hover:border-gray-300 transition-all disabled:opacity-50";
 // 표 셀 (엑셀 느낌의 얇은 격자)
-const TH = "border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-semibold text-gray-500 whitespace-nowrap";
-const TD = "border border-gray-200 px-2 py-1.5 text-sm text-[#0f172a]";
+const TH = "border border-gray-200 bg-gray-50 px-1.5 sm:px-2 py-1.5 text-[10px] sm:text-[11px] font-semibold text-gray-500 whitespace-nowrap";
+const TD = "border border-gray-200 px-1.5 sm:px-2 py-1 sm:py-1.5 text-[12px] sm:text-sm text-[#0f172a]";
 const TDN = `${TD} text-right tabular-nums whitespace-nowrap`;
 const TF = "border border-[#0f172a] px-2 py-2 text-sm text-right tabular-nums";
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
@@ -223,7 +227,6 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
   const [editingId, setEditingId] = useState<number | null>(null);
   const [recentPlaces, setRecentPlaces] = useState<PlaceVal[]>([]);
   const [routeInfo, setRouteInfo] = useState("");                // 길찾기 결과 안내 문구
-  const [routeKm, setRouteKm] = useState<number | null>(null);
   const [distanceTouched, setDistanceTouched] = useState(false); // 거리를 직접 고쳤는지
   const originRef = useRef<HTMLInputElement>(null);
   const destRef = useRef<HTMLInputElement>(null);
@@ -270,7 +273,6 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
   // 출발지·도착지가 모두 좌표를 가지면 길찾기 거리로 거리 칸을 채운다 (직접 고친 거리는 덮어쓰지 않음)
   const { origin: o, destination: d } = form;
   useEffect(() => {
-    setRouteKm(null);
     if (!hasXY(o) || !hasXY(d)) { setRouteInfo(""); return; }
     let alive = true;
     setRouteInfo("거리 계산 중…");
@@ -281,7 +283,6 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
       if (!alive) return;
       if (error || data?.error || data?.km == null) { setRouteInfo("거리 계산 실패 — 직접 입력"); return; }
       const h = data.minutes != null ? ` · ${Math.floor(data.minutes / 60) ? `${Math.floor(data.minutes / 60)}시간 ` : ""}${data.minutes % 60}분` : "";
-      setRouteKm(data.km);
       setRouteInfo(data.approx ? `직선 근사 ${data.km}km` : `길찾기 ${data.km}km${h}`);
       if (!distanceTouched) setForm(f => ({ ...f, distance_km: String(data.km), distance_approx: !!data.approx }));
     })();
@@ -410,8 +411,8 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
   };
 
   const edit = (t: Trip) => {
-    // 저장된 거리를 그대로 두도록 직접 입력한 것으로 취급
-    setEditingId(t.id); setDistanceTouched(true);
+    // 거리 입력칸이 없으므로 장소를 다시 고르면 길찾기 거리로 다시 채운다
+    setEditingId(t.id); setDistanceTouched(false);
     setForm({
       trip_date: t.trip_date, driver: t.driver ?? "",
       origin: { name: t.origin, address: t.origin_address, x: xy(t.origin_x), y: xy(t.origin_y) },
@@ -459,7 +460,7 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
   );
 
   return (
-    <div className="space-y-4 pb-4">
+    <div className="space-y-3 sm:space-y-4 pb-4">
       <p className="text-sm font-semibold text-[#0f172a]">🚚 화물운송 운행일지</p>
 
       {/* 월 요약 + 월 선택 — 입력칸 높이 한 줄, 요약 박스는 글자 양에 비례해 화면 폭을 채운다 (좁으면 가로 스크롤) */}
@@ -474,84 +475,18 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
           { k: "💰 운임", v: `${fmtWon(total.freight)}원`, s: moveTotal > 0 && total.freight ? `km당 ${fmtWon(total.freight / moveTotal)}` : "" },
           { k: "운임−유류비", v: `${fmtWon(total.freight - fuelCost)}원`, s: "", t: `유류비(주유+요소수) ${fmtWon(fuelCost)}원` },
         ].map(c => (
-          <div key={c.k} title={c.t ?? c.s} className="h-10 px-3 rounded-xl border border-gray-200 bg-white flex items-center gap-1.5 flex-auto">
+          <div key={c.k} title={c.t ?? c.s} className="h-9 sm:h-10 px-2.5 sm:px-3 rounded-xl border border-gray-200 bg-white flex items-center gap-1.5 flex-auto">
             <span className="text-[11px] text-gray-400 whitespace-nowrap">{c.k}</span>
-            <span className="text-sm font-bold text-[#0f172a] tabular-nums whitespace-nowrap">{c.v}</span>
+            <span className="text-[13px] sm:text-sm font-bold text-[#0f172a] tabular-nums whitespace-nowrap">{c.v}</span>
             {c.s && <span className="ml-auto pl-1 text-[10px] text-gray-400 whitespace-nowrap">{c.s}</span>}
           </div>
         ))}
         {/* 7번째: 월 선택 */}
-        <div className="h-10 rounded-xl border border-gray-200 bg-white flex items-center flex-shrink-0 overflow-hidden">
+        <div className="h-9 sm:h-10 rounded-xl border border-gray-200 bg-white flex items-center flex-shrink-0 overflow-hidden">
           <button className="h-full px-2.5 text-xs text-gray-500 hover:bg-gray-50" onClick={() => setMonth(m => shiftMonth(m, -1))}>◀</button>
           <input type="month" value={month} onChange={e => e.target.value && setMonth(e.target.value)}
             className="h-full px-1 text-sm font-semibold text-[#0f172a] bg-transparent focus:outline-none" />
           <button className="h-full px-2.5 text-xs text-gray-500 hover:bg-gray-50" onClick={() => setMonth(m => shiftMonth(m, 1))}>▶</button>
-        </div>
-      </div>
-
-      {/* 입력줄 */}
-      <div ref={formRef} className={`${CARD} p-3 space-y-2.5 scroll-mt-4 ${editingId ? "ring-2 ring-orange-300" : ""}`}>
-        {/* 1줄: 운전 · 일자 · 출발지 ⇄ 도착지 · 당착/익일착 · 거리 */}
-        <div className="grid grid-cols-2 md:grid-cols-[auto_140px_1fr_auto_1fr_auto_110px] gap-2.5 items-start">
-          <div className="col-span-2 md:col-span-1">
-            <label className={LBL}>{editingId ? <span className="text-orange-600">✏️ 수정 중</span> : "운전"}</label>
-            <div className="flex h-10 rounded-xl border border-gray-200 overflow-hidden">
-              {drivers.map(dv => (
-                <button key={dv} type="button" onClick={() => set("driver", dv)}
-                  className={`px-3 text-sm font-semibold whitespace-nowrap transition-all ${form.driver === dv ? "bg-[#0f172a] text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}>
-                  {dv}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="col-span-2 md:col-span-1"><label className={LBL}>일자 <span className="font-normal text-gray-400">상차일</span></label>
-            <input type="date" className={CTRL} value={form.trip_date} onChange={e => set("trip_date", e.target.value)} /></div>
-          <div className="col-span-2 md:col-span-1">
-            <PlaceInput label="출발지" value={form.origin} recent={recentPlaces} placeholder="상호 또는 주소" inputRef={originRef}
-              onChange={v => set("origin", v)} /></div>
-          <div className="hidden md:block pt-5">
-            <button type="button" className={`${BTG} h-10`} title="출발지↔도착지 바꾸기 (복귀 운행)"
-              onClick={() => setForm(f => ({ ...f, origin: f.destination, destination: f.origin }))}>⇄</button>
-          </div>
-          <div className="col-span-2 md:col-span-1">
-            <PlaceInput label="도착지" value={form.destination} recent={recentPlaces} placeholder="상호 또는 주소" inputRef={destRef}
-              onChange={v => set("destination", v)} /></div>
-          <div className="col-span-1">
-            <label className={LBL}>도착</label>
-            <div className="flex h-10 rounded-xl border border-gray-200 overflow-hidden">
-              {([false, true] as const).map(nd => (
-                <button key={String(nd)} type="button" onClick={() => set("next_day", nd)}
-                  className={`flex-1 px-3 text-sm font-semibold whitespace-nowrap transition-all ${form.next_day === nd ? (nd ? "bg-indigo-600 text-white" : "bg-[#0f172a] text-white") : "bg-white text-gray-500 hover:bg-gray-50"}`}>
-                  {nd ? "익일착" : "당착"}
-                </button>
-              ))}
-            </div>
-            {form.next_day && form.trip_date && <p className="text-[10px] text-indigo-600 mt-0.5">도착 {labelDate(addDays(form.trip_date, 1))}</p>}
-          </div>
-          <div className="col-span-1">
-            {numInput("distance_km", "거리", "km")}
-            {routeInfo && <p className="text-[10px] text-gray-400 mt-0.5 truncate" title={routeInfo}>{routeInfo}</p>}
-            {distanceTouched && routeKm != null && String(routeKm) !== form.distance_km && (
-              <button type="button" className="text-[10px] text-orange-600 underline"
-                onClick={() => { setDistanceTouched(false); setForm(f => ({ ...f, distance_km: String(routeKm), distance_approx: false })); }}>
-                길찾기 거리 적용
-              </button>
-            )}
-          </div>
-        </div>
-        {/* 2줄: 주유 · 요소수 · 운임 · 메모 · 저장 */}
-        <div className="grid grid-cols-2 md:grid-cols-[90px_120px_90px_120px_130px_1fr_auto] gap-2.5 items-end">
-          {numInput("fuel_liters", "⛽ 주유량", "L")}
-          {numInput("fuel_amount", "⛽ 주유 금액", "원")}
-          {numInput("urea_liters", "💧 요소수", "L")}
-          {numInput("urea_amount", "💧 요소수 금액", "원")}
-          <div className="col-span-2 md:col-span-1">{numInput("freight", "💰 운임", "원")}</div>
-          <div className="col-span-2 md:col-span-1"><label className={LBL}>메모</label>
-            <input className={CTRL} value={form.memo} placeholder="화주·특이사항 (선택)" onChange={e => set("memo", e.target.value)} onKeyDown={onEnterSave} /></div>
-          <div className="col-span-2 md:col-span-1 flex gap-2">
-            {editingId && <button className={`${BTG} h-10`} onClick={() => resetForm()}>취소</button>}
-            <button className={`${BTO} h-10 px-6 text-sm flex-1 whitespace-nowrap`} disabled={saving} onClick={() => void save()}>{editingId ? "수정 저장" : "저장"}</button>
-          </div>
         </div>
       </div>
 
@@ -661,6 +596,67 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
               </tfoot>
             )}
           </table>
+        </div>
+      </div>
+
+      {/* 구간 입력 — 표 아래 */}
+      <div ref={formRef} className={`${CARD} p-3 space-y-2 scroll-mt-4 ${editingId ? "ring-2 ring-orange-300" : ""}`}>
+        {/* 1줄: 운전 · 일자 · 출발지 ⇄ 도착지 · 당착/익일착 (모바일: 운전|일자 / 출발지|도착지 / 도착) */}
+        <div className="grid grid-cols-2 md:grid-cols-[auto_140px_1fr_auto_1fr_auto] gap-2 items-start">
+          <div>
+            <label className={LBL}>{editingId ? <span className="text-orange-600">✏️ 수정 중</span> : "운전"}</label>
+            <div className={SEG}>
+              {drivers.map(dv => (
+                <button key={dv} type="button" onClick={() => set("driver", dv)}
+                  className={`${SEG_BTN} ${form.driver === dv ? "bg-[#0f172a] text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}>
+                  {dv}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div><label className={LBL}>일자 <span className="font-normal text-gray-400">상차일</span></label>
+            <input type="date" className={`${CTRL} appearance-none`} value={form.trip_date} onChange={e => set("trip_date", e.target.value)} /></div>
+          <div>
+            <PlaceInput label="출발지" value={form.origin} recent={recentPlaces} placeholder="상호 또는 주소" inputRef={originRef}
+              onChange={v => set("origin", v)} /></div>
+          <div className="hidden md:block pt-5">
+            <button type="button" className={`${BTG} h-10`} title="출발지↔도착지 바꾸기 (복귀 운행)"
+              onClick={() => setForm(f => ({ ...f, origin: f.destination, destination: f.origin }))}>⇄</button>
+          </div>
+          <div>
+            <PlaceInput label="도착지" value={form.destination} recent={recentPlaces} placeholder="상호 또는 주소" inputRef={destRef}
+              onChange={v => set("destination", v)} />
+            {/* 거리는 입력하지 않고 장소로 자동 계산 */}
+            {(routeInfo || form.distance_km) && (
+              <p className="text-[10px] text-gray-500 mt-0.5 truncate" title={routeInfo}>🛣 {routeInfo || `거리 ${form.distance_km}km`}</p>
+            )}
+          </div>
+          <div className="col-span-2 md:col-span-1">
+            <label className={LBL}>도착</label>
+            <div className={SEG}>
+              {([false, true] as const).map(nd => (
+                <button key={String(nd)} type="button" onClick={() => set("next_day", nd)}
+                  className={`${SEG_BTN} ${form.next_day === nd ? (nd ? "bg-indigo-600 text-white" : "bg-[#0f172a] text-white") : "bg-white text-gray-500 hover:bg-gray-50"}`}>
+                  {nd ? "익일착" : "당착"}
+                </button>
+              ))}
+            </div>
+            {form.next_day && form.trip_date && <p className="text-[10px] text-indigo-600 mt-0.5">도착 {labelDate(addDays(form.trip_date, 1))}</p>}
+          </div>
+        </div>
+        {/* 2줄: 주유 L·금액 · 요소수 L·금액 · 운임 · 메모 · 저장 (모바일: 주유·요소수 4칸 / 운임|메모 / 저장) */}
+        <div className="grid grid-cols-4 md:grid-cols-[90px_120px_90px_120px_130px_1fr_auto] gap-2 items-end">
+          {numInput("fuel_liters", "⛽ 주유", "L")}
+          {numInput("fuel_amount", "⛽ 금액", "원")}
+          {numInput("urea_liters", "💧 요소수", "L")}
+          {numInput("urea_amount", "💧 금액", "원")}
+          <div className="col-span-2 md:col-span-1">{numInput("freight", "💰 운임", "원")}</div>
+          <div className="col-span-2 md:col-span-1"><label className={LBL}>메모</label>
+            <input className={CTRL} value={form.memo} placeholder="화주·특이사항" onChange={e => set("memo", e.target.value)} onKeyDown={onEnterSave} /></div>
+          <div className="col-span-4 md:col-span-1 flex gap-2">
+            {editingId && <button className={`${BTG} h-9 sm:h-10`} onClick={() => resetForm()}>취소</button>}
+            <button className={`${BTO} h-9 sm:h-10 px-6 text-sm flex-1 whitespace-nowrap`} disabled={saving} onClick={() => void save()}>{editingId ? "수정 저장" : "저장"}</button>
+          </div>
         </div>
       </div>
     </div>
