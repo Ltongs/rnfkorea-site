@@ -81,6 +81,27 @@ const pairCell = (l: number | null | undefined, w: number | null | undefined) =>
     </>
   );
 const str = (v: number | null) => (v == null ? "" : String(v));
+
+// 같은 상호의 여러 사업장을 구분하려고 주소에서 시·군을 뽑는다.
+//   "전북특별자치도 김제시 중앙로 73" → 김제시, "인천 제물포구 …" → 인천시, "경남 산청군 …" → 산청군
+const METRO = ["서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종"];
+const regionOf = (address: string | null | undefined) => {
+  const [a, b] = (address ?? "").trim().split(/\s+/);
+  if (!a) return null;
+  const metro = METRO.find(m => a.startsWith(m));
+  if (metro) return `${metro}시`;
+  return b && /[시군]$/.test(b) ? b : null;
+};
+// 상호 뒤에 붙일 (시·군) — 이름에 이미 그 지역명이 들어 있으면(주소로 적은 장소, "천안공장" 등) 생략
+const regionTag = (name: string, address: string | null | undefined) => {
+  const r = regionOf(address);
+  if (!r) return null;
+  return name.includes(r) || name.includes(r.replace(/[시군]$/, "")) ? null : r;
+};
+const PlaceName = ({ name, address }: { name: string; address: string | null | undefined }) => {
+  const r = regionTag(name, address);
+  return <>{name}{r && <span className="text-gray-500 whitespace-nowrap">({r})</span>}</>;
+};
 const xy = (v: number | null) => (v == null ? null : Number(v));
 
 // 공차 판정: 직전 도착지와 이 출발지가 같은 곳인가 (둘 다 좌표가 있으면 500m 이내, 아니면 이름 비교)
@@ -168,7 +189,7 @@ function PlaceInput({ label, value, onChange, recent, placeholder, inputRef }: {
           {options.map((p, i) => (
             <button key={`${p.name}-${p.address}-${i}`} type="button" className="w-full text-left px-3 py-2 hover:bg-orange-50 transition-all"
               onClick={() => pick(p)}>
-              <p className="text-sm text-[#0f172a] truncate">{p.recent && <span className="text-[10px] text-orange-600 mr-1">최근</span>}{p.name}</p>
+              <p className="text-sm text-[#0f172a] truncate">{p.recent && <span className="text-[10px] text-orange-600 mr-1">최근</span>}<PlaceName name={p.name} address={p.address} /></p>
               {p.address && <p className="text-[11px] text-gray-400 truncate">{p.address}</p>}
             </button>
           ))}
@@ -581,11 +602,11 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
                             {i + 1}
                             {t.driver && t.driver !== DEFAULT_DRIVERS[0] && <span className="block text-[10px] text-gray-400">{t.driver}</span>}
                           </td>
-                          <td className={TD} title={t.origin_address ?? ""}>{t.origin}</td>
+                          <td className={TD} title={t.origin_address ?? ""}><PlaceName name={t.origin} address={t.origin_address} /></td>
                           <td className={TD} title={t.dest_address ?? ""}>
-                            {t.destination}
+                            <PlaceName name={t.destination} address={t.dest_address} />
                             {t.next_day && (
-                              <span className="ml-1 align-middle text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200"
+                              <span className="ml-1 align-middle whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200"
                                 title={`도착 ${labelDate(addDays(t.trip_date, 1))}`}>익일</span>
                             )}
                             {t.memo && <span className="block text-[11px] text-gray-400">{t.memo}</span>}
