@@ -78,6 +78,9 @@ import DashboardPage from "./pages/Dashboard";
 import WorkManualPage from "./pages/WorkManual";
 import BatteryPage from "./pages/Battery/index";
 import RenthanaPage from "./pages/Renthana/index";
+import RenthanaWorkPage from "./pages/Renthana/work/index";
+import RenthanaWorkLoginPage from "./pages/Renthana/work/Login";
+import RenthanaWorkRouteGuard from "./pages/Renthana/work/RouteGuard";
 import GolfCartLfpPopup from "./components/GolfCartLfpPopup";
 import GolfCartLfpPage from "./pages/Battery/GolfCartLfp";
 import HomePage from "./pages/Home";
@@ -348,6 +351,7 @@ const AutoSeoHead: React.FC = () => {
     pathname.startsWith("/narumi") ||
     pathname.startsWith("/work/narumi") ||
     pathname.startsWith("/bson") ||
+    pathname.startsWith("/renthana/") ||
     pathname.startsWith("/work/")
   ) {
     return (
@@ -549,6 +553,7 @@ function ScrollToTopButton() {
     || pathname.startsWith("/hyundaicm")
     || pathname.startsWith("/brother")
     || pathname.startsWith("/taesan")
+    || pathname.startsWith("/renthana/")
     || pathname.startsWith("/rental-os")
     || pathname.startsWith("/work/narumi");
   const hideOnMobile = pathname.startsWith("/tires-shop");
@@ -1438,6 +1443,7 @@ const AppRoutes = () => {
   const hideHeader =
     isGolfCartLanding
     || pathname === "/renthana"
+    || pathname.startsWith("/renthana/")
     || pathname.startsWith("/work/secretary")
     || pathname.startsWith("/work/narumi")
     || pathname.startsWith("/work/manual")
@@ -1453,6 +1459,7 @@ const AppRoutes = () => {
   const hideFooter =
     isGolfCartLanding
     || pathname === "/renthana"
+    || pathname.startsWith("/renthana/")
     || pathname.startsWith("/work/")
     || pathname.startsWith("/orix")
     || pathname.startsWith("/hyundaicm")
@@ -1489,6 +1496,16 @@ const AppRoutes = () => {
           <Route path="/tires" element={<TiresPage />} />
           <Route path="/battery" element={<BatteryPage />} />
           <Route path="/renthana" element={<RenthanaPage />} />
+          {/* 렌타나 타이어렌탈 공유 업무 (RNF ↔ 렌타나) */}
+          <Route path="/renthana/login" element={<RenthanaWorkLoginPage />} />
+          <Route
+            path="/renthana/work"
+            element={
+              <RenthanaWorkRouteGuard>
+                <RenthanaWorkPage />
+              </RenthanaWorkRouteGuard>
+            }
+          />
           <Route path="/golfcart-battery" element={<GolfCartLfpPage />} />
           {/* 수출사업 보류 중(lib/featureFlags.ts): 일반 방문자는 첫 화면으로, admin급은 계속 열람 */}
           <Route path="/export" element={EXPORT_BUSINESS_VISIBLE || isAdminLevel ? <ExportPage /> : <Navigate to="/" replace />} />

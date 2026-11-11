@@ -94,7 +94,7 @@ function calcMobileMenuStyle(btnEl: HTMLButtonElement | null): MobileMenuStyle {
 export default function PageHeader() {
   const { pathname } = useLocation();
   const nav = useNavigate();
-  const { user, canViewAll, isAdmin, isSubAdmin, isNarumi, isLotte, isInsuranceManager, isHyundaiCM, isNhCapital, isNhCapitalStaff, isOrixPartner, isInsAI, isTaesan, isRentalOS, isGbn, logout } = useAuth() as any;
+  const { user, canViewAll, isAdmin, isSubAdmin, isNarumi, isLotte, isInsuranceManager, isHyundaiCM, isNhCapital, isNhCapitalStaff, isOrixPartner, isInsAI, isTaesan, isRentalOS, isGbn, isRenthana, logout } = useAuth() as any;
   const isAdminLevel = isAdmin || isSubAdmin;
 
   // 참고: PWA 앱은 manifest.json의 start_url(/work/secretary 등)로 곧장 진입하며,
@@ -288,6 +288,12 @@ export default function PageHeader() {
     // 태산통운: 항상 태산통운 로그인으로 (RouteGuard가 권한 처리)
     if (path === "/taesan") {
       nav("/taesan/login");
+      return;
+    }
+
+    // 렌타나 타이어렌탈: 항상 렌타나 로그인으로 (이미 로그인돼 있으면 바로 업무 화면으로 넘어감)
+    if (path === "/renthana/work") {
+      nav("/renthana/login");
       return;
     }
 
@@ -624,6 +630,16 @@ export default function PageHeader() {
                       onClick={() => goWorkInternalOnly("/taesan")}
                     >
                       태산통운업무
+                    </button>
+                  )}
+
+                  {(isAdminLevel || isRenthana) && (
+                    <button
+                      type="button"
+                      className={dropItem}
+                      onClick={() => goWorkInternalOnly("/renthana/work")}
+                    >
+                      렌타나(타이어렌탈)업무
                     </button>
                   )}
 
