@@ -52,8 +52,10 @@ type AuthContextType = {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // 렌타나 담당자 계정 — DB is_renthana_partner()와 같은 목록으로 유지할 것
-// TODO: 렌타나 담당자 계정 생성 후 이메일 추가
-export const RENTHANA_EMAILS: string[] = [];
+export const RENTHANA_EMAILS: string[] = [
+  "gfz111@renthana.com", // 조상현 대리
+  "jsy@renthana.com",    // 정순용 팀장
+];
 
 function normalizeEmail(email?: string | null) {
   return (email ?? "").trim().toLowerCase();

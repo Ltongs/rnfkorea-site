@@ -26,8 +26,8 @@ const SOLAPI_API_SECRET = Deno.env.get("SOLAPI_API_SECRET") ?? "";
 const SENDER_PHONE      = Deno.env.get("SOLAPI_SENDER")     ?? "01050549006";
 
 const parsePhones = (raw: string) => [...new Set(raw.split(",").map((n) => n.replace(/\D/g, "")).filter(Boolean))];
-// TODO: 렌타나 담당자 번호 확정 후 RENTHANA_SMS_RECIPIENTS 환경변수에 등록 (그 전까지는 관리자에게만 발송)
-const RENTHANA_RECIPIENTS = parsePhones(Deno.env.get("RENTHANA_SMS_RECIPIENTS") ?? "01050549006");
+// 렌타나 담당자: 조상현 대리, 정순용 팀장 (+ 관리자 참조)
+const RENTHANA_RECIPIENTS = parsePhones(Deno.env.get("RENTHANA_SMS_RECIPIENTS") ?? "01090961914,01050971518,01050549006");
 const RNF_RECIPIENTS      = parsePhones(Deno.env.get("RNF_RENTHANA_SMS_RECIPIENTS") ?? "01050549006");
 
 const PF_ID    = "KA01PF2606081346516718bsSRTnA56x"; // @주식회사알앤에프코리아 (현대CM과 동일 채널)

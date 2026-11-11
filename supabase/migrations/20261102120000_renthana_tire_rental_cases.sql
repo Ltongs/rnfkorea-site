@@ -16,12 +16,12 @@ begin;
 
 -- ============================================================
 -- 0) 렌타나 담당자 계정 — lib/auth.tsx의 RENTHANA_EMAILS와 같은 목록으로 유지할 것
---    TODO: 렌타나 담당자 계정 생성 후 이메일을 여기에 추가
 -- ============================================================
 create or replace function public.is_renthana_partner()
 returns boolean language sql stable as $$
   select lower(coalesce((auth.jwt()->>'email'), '')) = any (array[
-    -- 예: 'manager@renthana.co.kr'
+    'gfz111@renthana.com',  -- 조상현 대리
+    'jsy@renthana.com'      -- 정순용 팀장
   ]::text[]);
 $$;
 
