@@ -1,9 +1,10 @@
 // @ts-nocheck -- Deno Edge Function: npm/Deno 환경 타입 충돌 회피용
 // supabase/functions/send-renthana-fax/index.ts
-// 렌타나 업무페이지(/renthana/work)의 [설치확인서 팩스 발송] 버튼 — 화면에서 만든 장착확인서·품질보증 안내 PDF를
-// 렌타나 지정 팩스번호로 솔라피 팩스 발송하고, 보낸 PDF는 케이스 첨부(기타)와 진행 이력에 남긴다.
+// 렌타나 업무페이지(/renthana/work)의 [장착점으로 팩스 발송] 버튼 — 화면에서 만든 장착확인서·품질보증 안내 PDF를
+// 그 건의 장착점 팩스번호(renthana_rental_cases.install_shop_fax)로 솔라피 팩스 발송하고,
+// 보낸 PDF는 케이스 첨부(기타)와 진행 이력에 남긴다.
 //
-// 받는 번호는 서버에 고정(RENTHANA_FAX_NUMBER)이고 화면에서 바꿀 수 없다.
+// 받는 번호는 요청 본문이 아니라 DB에 저장된 장착점 팩스번호를 쓴다(화면에서 먼저 저장한 뒤 호출).
 // 로그인한 RNF 관리자만 보낼 수 있다(요청자의 로그인 토큰으로 is_admin_level()을 확인).
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -12,8 +13,6 @@ const SOLAPI_API_KEY    = Deno.env.get("SOLAPI_API_KEY")    ?? "";
 const SOLAPI_API_SECRET = Deno.env.get("SOLAPI_API_SECRET") ?? "";
 // 팩스 발신번호: 기존 팩스 캠페인과 같은 번호
 const FAX_SENDER = (Deno.env.get("SOLAPI_SENDER_NUMBER") || Deno.env.get("SOLAPI_SENDER") || "").replace(/\D/g, "");
-// 받는 번호: RENTHANA_FAX_NUMBER 시크릿 (2026-11-11 시험용으로 대표님 팩스 0504-311-9006 설정 — 렌타나 번호 확정 시 교체)
-const FAX_TO = (Deno.env.get("RENTHANA_FAX_NUMBER") ?? "").replace(/\D/g, "");
 
 const SUPABASE_URL = Deno.env.get("APP_SUPABASE_URL") ?? Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY  = Deno.env.get("APP_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -68,12 +67,14 @@ serve(async (req) => {
     if (!caseId || !pdfBase64) return json({ error: "caseId, pdfBase64가 필요합니다." }, 400);
     if (pdfBase64.length * 0.75 > MAX_PDF_BYTES) return json({ error: "PDF가 너무 큽니다." }, 400);
 
-    // 받는 번호가 정해지기 전에는 보내지 않는다 (예: "0212345678")
-    if (FAX_TO.length < 9) return json({ error: "렌타나 팩스번호가 아직 설정되지 않았습니다. 관리자에게 문의해주세요." }, 400);
-
     const db = createClient(SUPABASE_URL, SERVICE_KEY);
-    const { data: c } = await db.from("renthana_rental_cases").select("id, case_no, customer_name, vehicle_no").eq("id", caseId).maybeSingle();
+    const { data: c } = await db.from("renthana_rental_cases").select("id, case_no, customer_name, install_shop, install_shop_fax").eq("id", caseId).maybeSingle();
     if (!c) return json({ error: "케이스가 없습니다." }, 404);
+
+    const FAX_TO = String(c.install_shop_fax ?? "").replace(/\D/g, "");
+    if (FAX_TO.length < 9 || FAX_TO.length > 11) return json({ error: "장착점 팩스번호를 입력해주세요." }, 400);
+    // 솔라피 팩스는 050X(평생번호·안심번호) 대역으로 보낼 수 없다
+    if (/^050\d/.test(FAX_TO)) return json({ error: "050으로 시작하는 팩스번호(인터넷팩스·안심번호)로는 보낼 수 없습니다. 지역번호 팩스번호를 입력해주세요." }, 400);
 
     // ── 솔라피: PDF 업로드 → 팩스 발송 ──
     const fileName = `장착확인서_${c.case_no ?? caseId}.pdf`;
@@ -106,7 +107,7 @@ serve(async (req) => {
     }
     await db.from("renthana_case_history").insert({
       case_id: caseId, event_type: "fax",
-      note: `설치확인서 팩스 발송 → ${fmtFax(FAX_TO)} (접수번호 ${sent.messageId ?? "-"})`,
+      note: `설치확인서 팩스 발송 → ${c.install_shop ?? "장착점"} ${fmtFax(FAX_TO)} (접수번호 ${sent.messageId ?? "-"})`,
       created_by: email,
     });
 

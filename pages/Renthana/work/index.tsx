@@ -39,6 +39,7 @@ type RentalCase = {
   rental_months: number | null;
   monthly_fee: number | null;
   install_shop: string | null;
+  install_shop_fax: string | null;
   install_date: string | null;
   decision_note: string | null;
   decided_by: string | null;
@@ -121,6 +122,11 @@ const fmtPhone = (v: string) => {
   if (d.length < 8) return `${d.slice(0, 3)}-${d.slice(3)}`;
   return `${d.slice(0, 3)}-${d.slice(3, d.length - 4)}-${d.slice(-4)}`;
 };
+// 팩스·유선번호: 서울(02)만 국번 앞자리가 2자리
+const fmtFax = (v: string) => {
+  const d = v.replace(/\D/g, "");
+  return d.startsWith("02") ? d.replace(/^(02)(\d{3,4})(\d{4})$/, "$1-$2-$3") : fmtPhone(d);
+};
 const toNum = (v: string) => (v.trim() === "" ? null : Number(v.replace(/,/g, "")));
 
 async function genCaseNo(): Promise<string> {
@@ -157,7 +163,7 @@ const EMPTY_NEW = { customer_name: "", customer_phone: "", company_name: "", spe
 type EditForm = Record<
   "customer_name" | "customer_phone" | "company_name" | "biz_no" | "vehicle_no" | "vehicle_model" |
   "quote_no" | "tire_spec" | "tire_qty_front" | "tire_qty_rear" | "supply_price" | "rental_months" | "monthly_fee" |
-  "install_shop" | "install_date" | "special_note", string>;
+  "install_shop" | "install_shop_fax" | "install_date" | "special_note", string>;
 
 const toEditForm = (c: RentalCase): EditForm => ({
   customer_name: c.customer_name ?? "", customer_phone: c.customer_phone ?? "",
@@ -169,7 +175,7 @@ const toEditForm = (c: RentalCase): EditForm => ({
   supply_price: c.supply_price != null ? String(c.supply_price) : "",
   rental_months: c.rental_months != null ? String(c.rental_months) : "",
   monthly_fee: c.monthly_fee != null ? String(c.monthly_fee) : "",
-  install_shop: c.install_shop ?? "", install_date: c.install_date ?? "",
+  install_shop: c.install_shop ?? "", install_shop_fax: c.install_shop_fax ?? "", install_date: c.install_date ?? "",
   special_note: c.special_note ?? "",
 });
 
@@ -370,6 +376,7 @@ export default function RenthanaWorkPage() {
       rental_months: toNum(editForm.rental_months),
       monthly_fee: toNum(editForm.monthly_fee),
       install_shop: editForm.install_shop.trim() || null,
+      install_shop_fax: editForm.install_shop_fax.trim() || null,
       install_date: editForm.install_date || null,
       special_note: editForm.special_note.trim() || null,
     }).eq("id", c.id);
@@ -466,11 +473,23 @@ export default function RenthanaWorkPage() {
   };
 
   const faxCertificate = async (c: RentalCase) => {
+    // 장착점마다 번호가 달라 보낼 때마다 확인받고, 바뀌면 그 건에 저장한다
+    const input = window.prompt(`${c.install_shop ?? "장착점"} 팩스번호를 확인해주세요.`, c.install_shop_fax ?? "");
+    if (input == null) return;
+    const digits = input.replace(/\D/g, "");
+    if (digits.length < 9 || digits.length > 11) { alert("팩스번호를 정확히 입력해주세요."); return; }
+    if (/^050\d/.test(digits)) { alert("050으로 시작하는 번호(인터넷팩스·안심번호)로는 보낼 수 없습니다. 지역번호 팩스번호를 입력해주세요."); return; }
+    const faxNo = fmtFax(digits);
     const missing = [!c.vehicle_no && "차량번호", !c.install_date && "장착일"].filter(Boolean);
     if (missing.length && !window.confirm(`${missing.join("·")}이(가) 비어 있습니다. 빈칸으로 보낼까요?`)) return;
-    if (!window.confirm(`'${c.customer_name}' 건 설치확인서를 렌타나 팩스로 보낼까요?`)) return;
+    if (!window.confirm(`'${c.customer_name}' 건 설치확인서를 ${faxNo}(으)로 팩스 발송할까요?`)) return;
     setCertBusy(`${c.id}:fax`);
     try {
+      if (faxNo !== c.install_shop_fax) {
+        const { error: upErr } = await supabase.from("renthana_rental_cases").update({ install_shop_fax: faxNo }).eq("id", c.id);
+        if (upErr) throw upErr;
+        setCases(prev => prev.map(x => x.id === c.id ? { ...x, install_shop_fax: faxNo } : x));
+      }
       const blob = await buildCertificatePdf(certData(c));
       const pdfBase64 = await new Promise<string>((resolve, reject) => {
         const r = new FileReader();
@@ -817,8 +836,9 @@ export default function RenthanaWorkPage() {
                       </div>
                       <div>
                         <p className={sectionTitle}>4. 장착</p>
-                        <div className="grid sm:grid-cols-2 gap-3">
+                        <div className="grid sm:grid-cols-3 gap-3">
                           {field("install_shop", "장착점")}
+                          {field("install_shop_fax", "장착점 팩스번호", { inputMode: "tel", placeholder: "설치확인서 받을 번호" })}
                           {field("install_date", "장착일", { type: "date" })}
                         </div>
                       </div>
@@ -837,7 +857,7 @@ export default function RenthanaWorkPage() {
                         <div><span className="text-gray-400">타이어 </span>{c.tire_spec ?? "-"}{fmtQty(c.tire_qty_front, c.tire_qty_rear) ? ` (${fmtQty(c.tire_qty_front, c.tire_qty_rear)})` : ""}</div>
                         <div><span className="text-gray-400">공급가 </span><span className="font-semibold text-[#0a192f]">{fmtWon(c.supply_price)}</span></div>
                         <div><span className="text-gray-400">렌탈 </span>{c.rental_months ? `${c.rental_months}개월` : "-"} / 월 {fmtWon(c.monthly_fee)}</div>
-                        <div><span className="text-gray-400">장착 </span>{c.install_date ?? "-"}{c.install_shop ? ` · ${c.install_shop}` : ""}</div>
+                        <div><span className="text-gray-400">장착 </span>{c.install_date ?? "-"}{c.install_shop ? ` · ${c.install_shop}` : ""}{c.install_shop_fax ? ` (팩스 ${c.install_shop_fax})` : ""}</div>
                         {c.status === "paid" && <div><span className="text-gray-400">지급 </span><span className="font-semibold">{fmtWon(c.paid_amount)}</span>{c.paid_date ? ` (${c.paid_date})` : ""}</div>}
                       </div>
                       {c.special_note && <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">⚠ {c.special_note}</p>}
@@ -907,13 +927,13 @@ export default function RenthanaWorkPage() {
                   {isRnf && ["approved", "installed", "paid"].includes(c.status) && (
                     <div className="rounded-xl border border-gray-200 p-3 space-y-2">
                       <p className="text-xs font-bold text-[#0a192f]">설치확인서 (장착확인서 + 품질보증 안내)</p>
-                      <p className="text-[11px] text-gray-500">차량번호·제조사·규격·수량·장착일·장착점은 위 정보로 자동 입력됩니다. 정보 수정을 저장한 뒤 보내주세요.</p>
+                      <p className="text-[11px] text-gray-500">차량번호·제조사·규격·수량·장착일·장착점은 위 정보로 자동 입력되어 장착점 팩스로 보내집니다. 정보 수정을 저장한 뒤 보내주세요.</p>
                       <div className="flex flex-wrap gap-2">
                         <button onClick={() => void downloadCertificate(c)} disabled={!!certBusy || isEditing} className={btnSecondary}>
                           {certBusy === `${c.id}:pdf` ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} PDF 미리받기
                         </button>
                         <button onClick={() => void faxCertificate(c)} disabled={!!certBusy || isEditing} className={btnPrimary}>
-                          {certBusy === `${c.id}:fax` ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} 렌타나로 팩스 발송
+                          {certBusy === `${c.id}:fax` ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} 장착점으로 팩스 발송
                         </button>
                       </div>
                     </div>
