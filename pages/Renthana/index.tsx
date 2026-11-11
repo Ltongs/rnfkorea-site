@@ -15,10 +15,7 @@ import jsPDF from "jspdf";
 import { addCanvasToA4, applyTabularDigits } from "../../lib/pdfFit";
 import { supabase } from "../../lib/supabase";
 
-const VAT_RATE = 1.1;          // 부가세 10% 포함
-const MARGIN_RATE = 1.03;      // 알앤에프 마진 3%
-const RATE_12 = 0.0958755;    // 12개월 월 요율 (100만원 → 마진 포함 월 108,627원)
-const RATE_24 = 0.0522927;    // 24개월 월 요율 (100만원 → 마진 포함 월 59,248원)
+import { VAT_RATE, MARGIN_RATE, RATE_12, RATE_24 } from "../../lib/renthanaRate"; // 업무페이지(/renthana/work)와 같은 요율
 
 type ProductKey = "battery" | "tire";
 const PRODUCTS: Record<ProductKey, { label: string; rate12: number; rate24: number }> = {

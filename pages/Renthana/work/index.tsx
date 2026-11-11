@@ -11,6 +11,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../lib/auth";
 import { compressImage } from "../../../lib/imageCompress";
+import { renthanaMonthlyFee } from "../../../lib/renthanaRate";
+import { buildCertificatePdf, type CertificateData } from "./InstallCertificate";
 import {
   Plus, Search, Loader2, Upload, Trash2, Pencil, X, Check, ChevronDown, ChevronUp,
   RefreshCw, FileText, Clock, Send, CircleCheck, Circle, Image as ImageIcon,
@@ -31,7 +33,8 @@ type RentalCase = {
   vehicle_model: string | null;
   quote_no: string | null;
   tire_spec: string | null;
-  tire_qty: number | null;
+  tire_qty_front: number | null;
+  tire_qty_rear: number | null;
   supply_price: number | null;
   rental_months: number | null;
   monthly_fee: number | null;
@@ -100,7 +103,7 @@ const FILE_KIND_LABEL: Record<FileKind, string> = {
 
 const EVENT_LABEL: Record<string, string> = {
   created: "📝 등록", status_change: "🔄 단계 변경", note: "💬 메모", notify: "🔔 알림 발송",
-  file_upload: "📎 파일 첨부", file_delete: "🗑 파일 삭제", edit: "✏️ 정보 수정",
+  file_upload: "📎 파일 첨부", file_delete: "🗑 파일 삭제", edit: "✏️ 정보 수정", fax: "📠 팩스 발송",
 };
 
 // ── 유틸 ──────────────────────────────────────────────────────
@@ -153,7 +156,7 @@ const EMPTY_NEW = { customer_name: "", customer_phone: "", company_name: "", spe
 
 type EditForm = Record<
   "customer_name" | "customer_phone" | "company_name" | "biz_no" | "vehicle_no" | "vehicle_model" |
-  "quote_no" | "tire_spec" | "tire_qty" | "supply_price" | "rental_months" | "monthly_fee" |
+  "quote_no" | "tire_spec" | "tire_qty_front" | "tire_qty_rear" | "supply_price" | "rental_months" | "monthly_fee" |
   "install_shop" | "install_date" | "special_note", string>;
 
 const toEditForm = (c: RentalCase): EditForm => ({
@@ -161,7 +164,8 @@ const toEditForm = (c: RentalCase): EditForm => ({
   company_name: c.company_name ?? "", biz_no: c.biz_no ?? "",
   vehicle_no: c.vehicle_no ?? "", vehicle_model: c.vehicle_model ?? "",
   quote_no: c.quote_no ?? "", tire_spec: c.tire_spec ?? "",
-  tire_qty: c.tire_qty != null ? String(c.tire_qty) : "",
+  tire_qty_front: c.tire_qty_front != null ? String(c.tire_qty_front) : "",
+  tire_qty_rear: c.tire_qty_rear != null ? String(c.tire_qty_rear) : "",
   supply_price: c.supply_price != null ? String(c.supply_price) : "",
   rental_months: c.rental_months != null ? String(c.rental_months) : "",
   monthly_fee: c.monthly_fee != null ? String(c.monthly_fee) : "",
@@ -169,7 +173,40 @@ const toEditForm = (c: RentalCase): EditForm => ({
   special_note: c.special_note ?? "",
 });
 
-type QuoteRow = { quote_no: string; quote_date: string; recipient: string | null; items: any[] | null };
+type QuoteRow = { quote_no: string; quote_type: string; quote_date: string; recipient: string | null; items: any[] | null };
+
+// 수량 표기: 전 2 · 후 4
+const fmtQty = (front: number | null, rear: number | null) =>
+  front == null && rear == null ? "" : `전 ${front ?? 0} · 후 ${rear ?? 0}`;
+
+// 견적서 → 공급가·규격·전/후 수량 추출
+//  - 타이어 견적서(tire): 품목 줄마다 단가×수량 합계, 품목명에 "전륜"/"후륜"이 있으면 그 줄 수량을 전·후로 나눔
+//  - 렌타나 계산기(renthana): 공급가 1줄, 품목명에 "전륜 … 2p / 후륜 … 4p"처럼 적혀 있으면 수량을 읽음
+function parseQuote(q: QuoteRow) {
+  const rows = (q.items ?? []).filter((it: any) => it && String(it.name ?? "").trim() && Number(it.price) > 0);
+  if (q.quote_type === "renthana") {
+    const it = rows[0] ?? {};
+    const name = String(it.name ?? "");
+    const pick = (re: RegExp) => { const m = name.match(re); return m ? Number(m[1]) : null; };
+    return {
+      supply: Number(it.price) || null,
+      spec: name && name !== it.product ? name : "",
+      front: pick(/전륜.*?(\d+)\s*(?:p|P|본|개)/),
+      rear: pick(/후륜.*?(\d+)\s*(?:p|P|본|개)/),
+    };
+  }
+  let supply = 0, front: number | null = null, rear: number | null = null;
+  const specs: string[] = [];
+  for (const it of rows) {
+    const qty = Number(it.qty) || 1;
+    supply += Number(it.price) * qty;
+    const label = `${it.name}${it.spec ? ` ${it.spec}` : ""}`;
+    if (/전륜|앞/.test(label)) front = (front ?? 0) + qty;
+    else if (/후륜|뒤/.test(label)) rear = (rear ?? 0) + qty;
+    specs.push(`${/전륜/.test(label) ? "전륜 " : /후륜/.test(label) ? "후륜 " : ""}${it.spec || it.name}`);
+  }
+  return { supply: supply || null, spec: specs.join(" / "), front, rear };
+}
 
 export default function RenthanaWorkPage() {
   const { user, isAdmin, isSubAdmin, isRenthana, logout } = useAuth() as any;
@@ -185,6 +222,7 @@ export default function RenthanaWorkPage() {
   const [newForm, setNewForm] = useState({ ...EMPTY_NEW });
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [certBusy, setCertBusy] = useState<string | null>(null); // `${caseId}:pdf` | `${caseId}:fax`
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<EditForm | null>(null);
@@ -213,8 +251,8 @@ export default function RenthanaWorkPage() {
   // 렌타나 계산기에서 저장한 견적 이력 — 견적번호·공급가·렌탈료 자동 입력용 (RNF만 조회 가능)
   useEffect(() => {
     if (!isRnf) return;
-    supabase.from("tb_quotations").select("quote_no, quote_date, recipient, items")
-      .eq("quote_type", "renthana").order("quote_date", { ascending: false }).limit(50)
+    supabase.from("tb_quotations").select("quote_no, quote_type, quote_date, recipient, items")
+      .in("quote_type", ["renthana", "tire"]).order("created_at", { ascending: false }).limit(80)
       .then(({ data }: { data: unknown[] | null }) => setQuotes((data ?? []) as QuoteRow[]));
   }, [isRnf]);
 
@@ -326,7 +364,8 @@ export default function RenthanaWorkPage() {
       vehicle_model: editForm.vehicle_model.trim() || null,
       quote_no: editForm.quote_no.trim() || null,
       tire_spec: editForm.tire_spec.trim() || null,
-      tire_qty: toNum(editForm.tire_qty),
+      tire_qty_front: toNum(editForm.tire_qty_front),
+      tire_qty_rear: toNum(editForm.tire_qty_rear),
       supply_price: toNum(editForm.supply_price),
       rental_months: toNum(editForm.rental_months),
       monthly_fee: toNum(editForm.monthly_fee),
@@ -342,20 +381,26 @@ export default function RenthanaWorkPage() {
     await loadCases();
   };
 
+  // 공급가·기간이 바뀌면 월 렌탈료를 렌타나 요율로 다시 계산 (계산기와 같은 공식)
+  const withFee = (f: EditForm): EditForm => {
+    const price = toNum(f.supply_price);
+    const months = f.rental_months === "12" ? 12 : f.rental_months === "24" ? 24 : null;
+    return price && months ? { ...f, monthly_fee: String(renthanaMonthlyFee(price, months)) } : f;
+  };
+
   const applyQuote = (quoteNo: string) => {
     const q = quotes.find(x => x.quote_no === quoteNo);
     if (!q || !editForm) return;
-    const item = (q.items ?? [])[0] ?? {};
-    const months = editForm.rental_months || "24";
-    const fee = months === "12" ? item.fee12 : item.fee24;
-    setEditForm({
+    const p = parseQuote(q);
+    setEditForm(withFee({
       ...editForm,
       quote_no: q.quote_no,
-      tire_spec: editForm.tire_spec || (item.name && item.name !== item.product ? String(item.name) : ""),
-      supply_price: item.price != null ? String(item.price) : editForm.supply_price,
-      rental_months: months,
-      monthly_fee: fee != null ? String(fee) : editForm.monthly_fee,
-    });
+      tire_spec: p.spec || editForm.tire_spec,
+      tire_qty_front: p.front != null ? String(p.front) : editForm.tire_qty_front,
+      tire_qty_rear: p.rear != null ? String(p.rear) : editForm.tire_qty_rear,
+      supply_price: p.supply != null ? String(p.supply) : editForm.supply_price,
+      rental_months: editForm.rental_months || "12",
+    }));
   };
 
   const deleteCase = async (c: RentalCase) => {
@@ -394,6 +439,57 @@ export default function RenthanaWorkPage() {
       setUploading(null);
       const ref = fileInputRefs.current[key];
       if (ref) ref.value = "";
+    }
+  };
+
+  // ── 설치확인서 (장착확인서 + 품질보증 안내) ──
+  const certData = (c: RentalCase): CertificateData => ({
+    caseNo: c.case_no, customerName: c.customer_name, companyName: c.company_name,
+    vehicleNo: c.vehicle_no, tireSpec: c.tire_spec, qtyFront: c.tire_qty_front, qtyRear: c.tire_qty_rear,
+    installDate: c.install_date, installShop: c.install_shop,
+  });
+
+  const downloadCertificate = async (c: RentalCase) => {
+    setCertBusy(`${c.id}:pdf`);
+    try {
+      const blob = await buildCertificatePdf(certData(c));
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `장착확인서_${c.case_no ?? c.id}.pdf`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch (e: any) {
+      alert("설치확인서 만들기 실패: " + e.message);
+    } finally {
+      setCertBusy(null);
+    }
+  };
+
+  const faxCertificate = async (c: RentalCase) => {
+    const missing = [!c.vehicle_no && "차량번호", !c.install_date && "장착일"].filter(Boolean);
+    if (missing.length && !window.confirm(`${missing.join("·")}이(가) 비어 있습니다. 빈칸으로 보낼까요?`)) return;
+    if (!window.confirm(`'${c.customer_name}' 건 설치확인서를 렌타나 팩스로 보낼까요?`)) return;
+    setCertBusy(`${c.id}:fax`);
+    try {
+      const blob = await buildCertificatePdf(certData(c));
+      const pdfBase64 = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = () => reject(r.error);
+        r.readAsDataURL(blob);
+      });
+      const { data, error } = await supabase.functions.invoke("send-renthana-fax", { body: { caseId: c.id, pdfBase64 } });
+      if (error) {
+        const detail = await (error as any).context?.json?.().catch(() => null);
+        throw new Error(detail?.error ?? error.message);
+      }
+      alert(`팩스 발송을 접수했습니다 (${data.to}). 수신까지 몇 분 걸릴 수 있습니다.`);
+      void loadFiles(c.id);
+      void loadHistory(c.id);
+    } catch (e: any) {
+      alert("팩스 발송 실패: " + e.message);
+    } finally {
+      setCertBusy(null);
     }
   };
 
@@ -528,7 +624,11 @@ export default function RenthanaWorkPage() {
     <div>
       <label className={labelClass}>{label}</label>
       <input className={inputClass} value={editForm?.[k] ?? ""} {...props}
-        onChange={e => setEditForm(f => f ? { ...f, [k]: k === "customer_phone" ? fmtPhone(e.target.value) : e.target.value } : f)} />
+        onChange={e => setEditForm(f => {
+          if (!f) return f;
+          const next = { ...f, [k]: k === "customer_phone" ? fmtPhone(e.target.value) : e.target.value };
+          return k === "supply_price" ? withFee(next) : next;
+        })} />
     </div>
   );
 
@@ -688,24 +788,27 @@ export default function RenthanaWorkPage() {
                         <p className={sectionTitle}>3. 견적</p>
                         {quotes.length > 0 && (
                           <div className="mb-3">
-                            <label className={labelClass}>렌타나 계산기 견적에서 불러오기</label>
+                            <label className={labelClass}>기존 견적 불러오기 (타이어 견적서·렌타나 계산기)</label>
                             <select className={inputClass} value="" onChange={e => applyQuote(e.target.value)}>
                               <option value="">견적번호 선택…</option>
                               {quotes.map(q => {
-                                const it = (q.items ?? [])[0] ?? {};
-                                return <option key={q.quote_no} value={q.quote_no}>{q.quote_no} · {q.quote_date} · {q.recipient ?? ""} · {it.price ? fmtWon(Number(it.price)) : ""}</option>;
+                                const p = parseQuote(q);
+                                return <option key={q.quote_no} value={q.quote_no}>{q.quote_no} · {q.quote_date} · {q.quote_type === "tire" ? "타이어견적" : "렌타나계산기"} · {q.recipient || "-"} · {p.supply ? fmtWon(p.supply) : ""}</option>;
                               })}
                             </select>
                           </div>
                         )}
-                        <div className="grid sm:grid-cols-3 gap-3">
+                        <div className="grid sm:grid-cols-4 gap-3">
                           {field("quote_no", "견적번호")}
                           {field("tire_spec", "타이어 규격·브랜드", { placeholder: "예: 미쉐린 295/80R22.5" })}
-                          {field("tire_qty", "수량(본)", { inputMode: "numeric" })}
+                          {field("tire_qty_front", "전륜 수량(본)", { inputMode: "numeric" })}
+                          {field("tire_qty_rear", "후륜 수량(본)", { inputMode: "numeric" })}
+                        </div>
+                        <div className="grid sm:grid-cols-3 gap-3 mt-3">
                           {field("supply_price", "공급가격(VAT 제외)", { inputMode: "numeric" })}
                           <div>
                             <label className={labelClass}>렌탈 기간</label>
-                            <select className={inputClass} value={editForm.rental_months} onChange={e => setEditForm(f => f ? { ...f, rental_months: e.target.value } : f)}>
+                            <select className={inputClass} value={editForm.rental_months} onChange={e => setEditForm(f => f ? withFee({ ...f, rental_months: e.target.value }) : f)}>
                               <option value="">선택</option><option value="12">12개월</option><option value="24">24개월</option>
                             </select>
                           </div>
@@ -731,7 +834,7 @@ export default function RenthanaWorkPage() {
                         <div><span className="text-gray-400">사업자번호 </span>{c.biz_no ?? "-"}</div>
                         <div><span className="text-gray-400">차량 </span>{c.vehicle_no ?? "-"}{c.vehicle_model ? ` (${c.vehicle_model})` : ""}</div>
                         <div><span className="text-gray-400">견적번호 </span>{c.quote_no ?? "-"}</div>
-                        <div><span className="text-gray-400">타이어 </span>{c.tire_spec ?? "-"}{c.tire_qty ? ` × ${c.tire_qty}본` : ""}</div>
+                        <div><span className="text-gray-400">타이어 </span>{c.tire_spec ?? "-"}{fmtQty(c.tire_qty_front, c.tire_qty_rear) ? ` (${fmtQty(c.tire_qty_front, c.tire_qty_rear)})` : ""}</div>
                         <div><span className="text-gray-400">공급가 </span><span className="font-semibold text-[#0a192f]">{fmtWon(c.supply_price)}</span></div>
                         <div><span className="text-gray-400">렌탈 </span>{c.rental_months ? `${c.rental_months}개월` : "-"} / 월 {fmtWon(c.monthly_fee)}</div>
                         <div><span className="text-gray-400">장착 </span>{c.install_date ?? "-"}{c.install_shop ? ` · ${c.install_shop}` : ""}</div>
@@ -796,6 +899,22 @@ export default function RenthanaWorkPage() {
                       <div className="grid sm:grid-cols-2 gap-2">
                         {fileSlot(c, "install_photo", postEditable, postEditable)}
                         {fileSlot(c, "warranty", postEditable, postEditable)}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* RNF: 설치확인서 PDF·팩스 (기본정보로 자동 작성) */}
+                  {isRnf && ["approved", "installed", "paid"].includes(c.status) && (
+                    <div className="rounded-xl border border-gray-200 p-3 space-y-2">
+                      <p className="text-xs font-bold text-[#0a192f]">설치확인서 (장착확인서 + 품질보증 안내)</p>
+                      <p className="text-[11px] text-gray-500">차량번호·제조사·규격·수량·장착일·장착점은 위 정보로 자동 입력됩니다. 정보 수정을 저장한 뒤 보내주세요.</p>
+                      <div className="flex flex-wrap gap-2">
+                        <button onClick={() => void downloadCertificate(c)} disabled={!!certBusy || isEditing} className={btnSecondary}>
+                          {certBusy === `${c.id}:pdf` ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} PDF 미리받기
+                        </button>
+                        <button onClick={() => void faxCertificate(c)} disabled={!!certBusy || isEditing} className={btnPrimary}>
+                          {certBusy === `${c.id}:fax` ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} 렌타나로 팩스 발송
+                        </button>
                       </div>
                     </div>
                   )}
