@@ -21,6 +21,8 @@
 //      일계는 운행거리만, 공차 합계·총 이동거리·공차율은 하단 월계에서 보여준다.
 //      총 이동거리 = 운행거리 + 공차거리 (연비·km당 운임은 총 이동거리 기준)
 //   4) 표에서 줄을 누르면 입력줄로 불러와 수정, 일자 칸의 "+ 구간"은 그 날짜로 구간 추가
+//   5) 운임 자동적용: 출발지·도착지가 예전에 운임을 넣은 구간과 같으면(좌표 500m 이내, 좌표가 없으면 이름) 가장 최근
+//      운임(공급가)을 운임 칸에 채운다. 운임을 직접 고치거나, 수정하려고 불러온 줄에 이미 운임이 있으면 덮어쓰지 않는다.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
@@ -121,6 +123,12 @@ const samePlace = (prev: Trip, t: Trip) => {
     return straightKm(Number(prev.dest_x), Number(prev.dest_y), Number(t.origin_x), Number(t.origin_y)) < 0.5;
   return normName(prev.destination) === normName(t.origin);
 };
+// 운임 자동적용용 구간 비교 — 두 지점이 같은 곳인가 (좌표가 둘 다 있으면 500m 이내, 아니면 이름 비교)
+const samePoint = (an: string, ax: number | null, ay: number | null, bn: string, bx: number | null, by: number | null) =>
+  ax != null && ay != null && bx != null && by != null
+    ? straightKm(Number(ax), Number(ay), Number(bx), Number(by)) < 0.5
+    : normName(an) === normName(bn);
+type FreightRow = Pick<Trip, "trip_date" | "origin" | "origin_x" | "origin_y" | "destination" | "dest_x" | "dest_y" | "freight">;
 type Gap = { prev: Trip; km: number | null; approx: boolean; manual: boolean; pending: boolean };
 
 const emptyPlace = (): PlaceVal => ({ name: "", address: null, x: null, y: null });
@@ -228,6 +236,9 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
   const [recentPlaces, setRecentPlaces] = useState<PlaceVal[]>([]);
   const [routeInfo, setRouteInfo] = useState("");                // 길찾기 결과 안내 문구
   const [distanceTouched, setDistanceTouched] = useState(false); // 거리를 직접 고쳤는지
+  const [freightBook, setFreightBook] = useState<FreightRow[]>([]); // 운임을 넣은 구간 (최근 순)
+  const [freightTouched, setFreightTouched] = useState(false);   // 운임을 직접 고쳤는지 (자동적용 안 함)
+  const [freightInfo, setFreightInfo] = useState("");             // 운임 자동적용 안내 문구
   const originRef = useRef<HTMLInputElement>(null);
   const destRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLDivElement>(null);
@@ -270,6 +281,16 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
   }, []);
   useEffect(() => { void loadRecentPlaces(); }, [loadRecentPlaces]);
 
+  // 운임을 넣은 구간 — 같은 구간을 새로 입력하면 가장 최근 운임을 자동으로 채운다
+  const loadFreightBook = useCallback(async () => {
+    const { data } = await supabase.from("truck_trips")
+      .select("trip_date,origin,origin_x,origin_y,destination,dest_x,dest_y,freight")
+      .not("freight", "is", null)
+      .order("trip_date", { ascending: false }).order("id", { ascending: false }).limit(500);
+    setFreightBook((data ?? []) as FreightRow[]);
+  }, []);
+  useEffect(() => { void loadFreightBook(); }, [loadFreightBook]);
+
   // 출발지·도착지가 모두 좌표를 가지면 길찾기 거리로 거리 칸을 채운다 (직접 고친 거리는 덮어쓰지 않음)
   const { origin: o, destination: d } = form;
   useEffect(() => {
@@ -289,6 +310,24 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [o.x, o.y, d.x, d.y]);
+
+  // 출발지·도착지가 운임을 넣었던 구간과 같으면 운임 칸을 채운다 (직접 고친 운임은 덮어쓰지 않음)
+  useEffect(() => {
+    if (freightTouched) return;
+    const hit = o.name.trim() && d.name.trim()
+      ? freightBook.find(r => samePoint(o.name, o.x, o.y, r.origin, r.origin_x, r.origin_y)
+          && samePoint(d.name, d.x, d.y, r.destination, r.dest_x, r.dest_y))
+      : undefined;
+    if (hit) {
+      setForm(f => ({ ...f, freight: String(hit.freight) }));
+      setFreightInfo(`동일 구간 운임 (${labelDate(hit.trip_date)})`);
+    } else if (freightInfo) {
+      // 자동으로 채웠던 운임은 구간이 바뀌면 비운다
+      setForm(f => ({ ...f, freight: "" }));
+      setFreightInfo("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [o.name, o.x, o.y, d.name, d.x, d.y, freightBook, freightTouched]);
 
   const drivers = useMemo(() => {
     const s = new Set(DEFAULT_DRIVERS);
@@ -374,7 +413,7 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
   const nextDayCount = useMemo(() => trips.filter(t => t.next_day).length, [trips]);
 
   const resetForm = (date = form.trip_date) => {
-    setEditingId(null); setDistanceTouched(false);
+    setEditingId(null); setDistanceTouched(false); setFreightTouched(false); setFreightInfo("");
     setForm(f => emptyForm(date, f.driver));
   };
 
@@ -403,16 +442,19 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
     // 다음 구간: 출발지 = 직전 도착지 → 커서는 도착지로. 익일착이면 일자를 다음 날로 넘긴다.
     const wasEditing = editingId != null;
     const nextDate = !wasEditing && row.next_day ? addDays(row.trip_date, 1) : row.trip_date;
-    setEditingId(null); setDistanceTouched(false);
+    setEditingId(null); setDistanceTouched(false); setFreightTouched(false); setFreightInfo("");
     setForm({ ...emptyForm(nextDate, f.driver), origin: wasEditing ? emptyPlace() : { ...f.destination } });
     setTimeout(() => (wasEditing ? originRef : destRef).current?.focus(), 0);
     void loadRecentPlaces();
+    if (row.freight != null) void loadFreightBook();
     if (row.trip_date.slice(0, 7) !== month) setMonth(row.trip_date.slice(0, 7)); else void load();
   };
 
   const edit = (t: Trip) => {
     // 거리 입력칸이 없으므로 장소를 다시 고르면 길찾기 거리로 다시 채운다
     setEditingId(t.id); setDistanceTouched(false);
+    // 이미 운임이 있는 줄은 그대로 두고, 비어 있으면 동일 구간 운임을 채운다
+    setFreightTouched(t.freight != null); setFreightInfo("");
     setForm({
       trip_date: t.trip_date, driver: t.driver ?? "",
       origin: { name: t.origin, address: t.origin_address, x: xy(t.origin_x), y: xy(t.origin_y) },
@@ -429,7 +471,7 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
     const sameDay = trips.filter(t => t.trip_date === date);
     const prevNextDay = trips.filter(t => t.trip_date === addDays(date, -1) && t.next_day);
     const last = sameDay[sameDay.length - 1] ?? prevNextDay[prevNextDay.length - 1];
-    setEditingId(null); setDistanceTouched(false);
+    setEditingId(null); setDistanceTouched(false); setFreightTouched(false); setFreightInfo("");
     setForm(f => ({
       ...emptyForm(date, f.driver),
       origin: last ? { name: last.destination, address: last.dest_address, x: xy(last.dest_x), y: xy(last.dest_y) } : emptyPlace(),
@@ -451,11 +493,13 @@ export default function TruckLogTab({ showToast }: { showToast: (msg: string, ty
   const numInput = (k: NumKey, label: string, unit: string) => (
     <div>
       <label className={LBL}>{label} <span className="font-normal text-gray-400">{unit}</span></label>
-      <input inputMode="decimal" className={NUM} value={form[k]} onKeyDown={onEnterSave}
+      <input inputMode="decimal" className={`${NUM} ${k === "freight" && freightInfo ? "border-emerald-300 bg-emerald-50/40" : ""}`} value={form[k]} onKeyDown={onEnterSave}
         onChange={e => {
           if (k === "distance_km") { setDistanceTouched(true); setForm(f => ({ ...f, distance_km: e.target.value, distance_approx: false })); }
+          else if (k === "freight") { setFreightTouched(true); setFreightInfo(""); set(k, e.target.value); }
           else set(k, e.target.value);
         }} />
+      {k === "freight" && freightInfo && <p className="text-[10px] text-emerald-600 mt-0.5 truncate">{freightInfo}</p>}
     </div>
   );
 
