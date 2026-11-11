@@ -10,14 +10,12 @@
 //   RNF → 렌타나: submitted(심사요청·재요청), installed(장착완료)  → RENTHANA_SMS_RECIPIENTS
 //   렌타나 → RNF: approved / on_hold / rejected / paid             → RNF_SMS_RECIPIENTS
 //
-// 알림톡 템플릿은 아직 미등록 — Solapi에 아래 문구로 등록·승인 후 TEMPLATES에 ID를 넣으면 알림톡으로 바뀐다.
-// ID가 비어 있는 동안은 같은 내용을 문자(LMS)로 보낸다.
-//   공통 변수: #{케이스번호} #{고객명} #{상호} #{단계} #{내용} #{시간}
-//   예) [렌타나 타이어렌탈 #{단계}]
-//       케이스: #{케이스번호}
-//       고객: #{고객명} (#{상호})
-//       #{내용}
-//       시간: #{시간}
+// 알림톡: 렌타나 전용 템플릿 없이 현대CM의 hcm_edit(정보 수정) 승인 템플릿을 재사용한다
+// (태산통운·경기북부도 같은 방식). 변수 7개를 아래처럼 바꿔 채운다.
+//   #{케이스번호}=케이스번호  #{고객명}=고객명  #{고객유형}=상호  #{현재단계}=단계
+//   #{영업사원}=보낸 쪽(RNF/렌타나)  #{변경사항}=단계별 내용  #{시간}=발송시각
+// 알림톡이 거절되면(템플릿·버튼 불일치 등) 같은 내용이 문자(LMS)로 자동 대체 발송된다.
+// 2026-11-11 관리자 번호로 시험 발송 → 알림톡 수신 완료(4000, 문자 대체 없음) 확인.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -33,14 +31,7 @@ const RNF_RECIPIENTS      = parsePhones(Deno.env.get("RNF_RENTHANA_SMS_RECIPIENT
 const PF_ID    = "KA01PF2606081346516718bsSRTnA56x"; // @주식회사알앤에프코리아 (현대CM과 동일 채널)
 const PAGE_URL = "https://rnfkorea.co.kr/renthana/work";
 
-const TEMPLATES: Record<string, string> = {
-  submitted: "",
-  approved:  "",
-  on_hold:   "",
-  rejected:  "",
-  installed: "",
-  paid:      "",
-};
+const TEMPLATE_ID = "KA01TP260609092454633U0Fz7Y3y3w3"; // hcm_edit (send-hyundaicm-kakao HCM_TEMPLATES와 동일)
 
 const STAGE_LABEL: Record<string, string> = {
   submitted: "심사요청", approved: "승인", on_hold: "보류", rejected: "부결",
@@ -117,6 +108,29 @@ async function sendAlimtalk(to: string, templateId: string, variables: Record<st
   }
 }
 
+// 템플릿 변수 + 대체 문자 본문
+function buildMessage(c: Record<string, any>, stage: string, sender: string, detail: string) {
+  const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+  const variables = {
+    "#{케이스번호}": c.case_no ?? "-",
+    "#{고객명}":     c.customer_name ?? "-",
+    "#{고객유형}":   c.company_name || "-",
+    "#{현재단계}":   `렌타나 타이어렌탈 ${stage}`,
+    "#{영업사원}":   sender,
+    "#{변경사항}":   detail,
+    "#{시간}":       now,
+  };
+  const text = [
+    `[렌타나 타이어렌탈 ${stage}]`, "",
+    `케이스: ${c.case_no ?? "-"}`,
+    `고객: ${c.customer_name}${c.company_name ? ` (${c.company_name})` : ""}`,
+    detail, "",
+    `시간: ${now}`,
+    PAGE_URL,
+  ].join("\n");
+  return { variables, text };
+}
+
 const won = (n: unknown) => (n == null || n === "" ? "-" : `${Math.round(Number(n)).toLocaleString("ko-KR")}원`);
 
 // 단계별 본문 — 상대방이 다음에 무엇을 해야 하는지까지 적는다.
@@ -168,6 +182,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json() as Record<string, unknown>;
+
     const caseId = Number(body.caseId);
     const event = String(body.event ?? "");
     if (!caseId || !STAGE_LABEL[event]) return json({ error: "caseId, event가 올바르지 않습니다." }, 400);
@@ -183,36 +198,15 @@ serve(async (req) => {
     const fileCount: Record<string, number> = {};
     for (const f of files ?? []) fileCount[f.kind] = (fileCount[f.kind] ?? 0) + 1;
 
-    const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
     const stage = event === "submitted" && body.resubmit ? "재심사요청" : STAGE_LABEL[event];
     const detail = buildDetail(event, c, !!body.resubmit, fileCount);
-    const variables = {
-      "#{케이스번호}": c.case_no ?? "-",
-      "#{고객명}":     c.customer_name ?? "-",
-      "#{상호}":       c.company_name || "-",
-      "#{단계}":       stage,
-      "#{내용}":       detail,
-      "#{시간}":       now,
-    };
-    const text = [
-      `[렌타나 타이어렌탈 ${stage}]`, "",
-      `케이스: ${c.case_no ?? "-"}`,
-      `고객: ${c.customer_name}${c.company_name ? ` (${c.company_name})` : ""}`,
-      detail, "",
-      `시간: ${now}`,
-      PAGE_URL,
-    ].join("\n");
+    const { variables, text } = buildMessage(c, stage, TO_RENTHANA.has(event) ? "RNF" : "렌타나", detail);
 
     const recipients = TO_RENTHANA.has(event) ? RENTHANA_RECIPIENTS : RNF_RECIPIENTS;
-    const templateId = TEMPLATES[event];
-    if (templateId) {
-      try {
-        await Promise.all(recipients.map((to) => sendAlimtalk(to, templateId, variables, text)));
-      } catch (e) {
-        console.warn("[렌타나 알림톡 실패 → 문자 폴백]:", (e as Error).message);
-        await sendSms(text, recipients);
-      }
-    } else {
+    try {
+      await Promise.all(recipients.map((to) => sendAlimtalk(to, TEMPLATE_ID, variables, text)));
+    } catch (e) {
+      console.warn("[렌타나 알림톡 실패 → 문자 폴백]:", (e as Error).message);
       await sendSms(text, recipients);
     }
 
