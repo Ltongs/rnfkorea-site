@@ -1485,51 +1485,39 @@ export default function NarumiPage() {
     }
 
     const normalized = onlyDigits(trimmed) || trimmed;
-    const directLookupUrl = `https://service.epost.go.kr/trace.RetrieveDomRigiTraceList.comm?sid1=${encodeURIComponent(normalized)}`;
-    const fallbackLookupUrl = "https://service.epost.go.kr/iservice/trace.jsp";
+    const fallbackLookupUrl = "https://www.ds3211.co.kr/freight/internalFreightForm.jsp";
 
     let opened = false;
 
-    // 1) 공식 조회 endpoint로 새 탭 오픈
+    // 대신택배 조회는 POST 요청만 지원하므로 hidden form submit으로 새 탭 오픈
     try {
-      const anchor = document.createElement("a");
-      anchor.href = directLookupUrl;
-      anchor.target = "_blank";
-      anchor.rel = "noopener noreferrer";
-      anchor.style.display = "none";
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
+      const form = document.createElement("form");
+      form.method = "POST";
+      form.action = "https://www.ds3211.co.kr/freight/internalFreightSearch.ht";
+      form.target = "_blank";
+      form.style.display = "none";
+
+      const billnoInput = document.createElement("input");
+      billnoInput.type = "hidden";
+      billnoInput.name = "billno";
+      billnoInput.value = normalized;
+
+      const sfInput = document.createElement("input");
+      sfInput.type = "hidden";
+      sfInput.name = "sf";
+      sfInput.value = "";
+
+      form.appendChild(billnoInput);
+      form.appendChild(sfInput);
+      document.body.appendChild(form);
+      form.submit();
+      document.body.removeChild(form);
       opened = true;
     } catch {
       // 아래 fallback 진행
     }
 
-    // 2) anchor 클릭이 막히면 GET form submit으로 재시도
-    if (!opened) {
-      try {
-        const form = document.createElement("form");
-        form.method = "GET";
-        form.action = "https://service.epost.go.kr/trace.RetrieveDomRigiTraceList.comm";
-        form.target = "_blank";
-        form.style.display = "none";
-
-        const input = document.createElement("input");
-        input.type = "hidden";
-        input.name = "sid1";
-        input.value = normalized;
-
-        form.appendChild(input);
-        document.body.appendChild(form);
-        form.submit();
-        document.body.removeChild(form);
-        opened = true;
-      } catch {
-        // 아래 fallback 진행
-      }
-    }
-
-    // 3) 최종 fallback: 일반 조회 화면 오픈 + 등기번호 복사
+    // 최종 fallback: 일반 조회 화면 오픈 + 운송장번호 복사
     if (!opened) {
       try {
         const popup = window.open(fallbackLookupUrl, "_blank", "noopener,noreferrer");
